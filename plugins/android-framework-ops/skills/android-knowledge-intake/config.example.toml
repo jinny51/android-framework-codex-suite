@@ -5,7 +5,7 @@ repo_url = "test35:/home/test35/work/knowledge/remote.git"
 
 [paths]
 codex_home = "$CODEX_HOME"
-out_dir = "/mnt/c/Users/jinny/Documents/Codex/artifacts/android-knowledge-intake"
+out_dir = "$CODEX_HOME/artifacts/android-knowledge-intake"
 
 include_patches = true
 incoming_schema_version = "1.0"
@@ -19,7 +19,7 @@ member_name = "成员姓名"
 role = "member"
 allowed_modes = ["daily", "weekly"]
 incoming_schema_version = "1.0"
-repo_worktree = "/mnt/c/Users/jinny/Documents/Codex/worktrees/knowledge-member_alias"
+repo_worktree = "$CODEX_HOME/worktrees/knowledge-member_alias"
 git_user_name = "成员姓名"
 git_user_email = "member_alias@codex.local"
 
@@ -28,6 +28,6 @@ member_alias = "jinny"
 member_name = "吴金雨"
 role = "maintainer"
 allowed_modes = ["patch"]
-repo_worktree = "/mnt/c/Users/jinny/Documents/Codex/worktrees/knowledge-jinny"
+repo_worktree = "$CODEX_HOME/worktrees/knowledge-jinny"
 git_user_name = "吴金雨"
 git_user_email = "jinny@codex.local"

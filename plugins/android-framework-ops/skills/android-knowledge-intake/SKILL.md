@@ -97,21 +97,21 @@ repo_url = "test35:/home/test35/work/knowledge/remote.git"
 
 [paths]
 codex_home = "$CODEX_HOME"
-out_dir = "/mnt/c/Users/jinny/Documents/Codex/artifacts/android-knowledge-intake"
+out_dir = "$CODEX_HOME/artifacts/android-knowledge-intake"
 
 [profiles.member_alias]
 member_alias = "member_alias"
 member_name = "成员姓名"
 role = "member"
 allowed_modes = ["daily", "weekly"]
-repo_worktree = "/mnt/c/Users/jinny/Documents/Codex/worktrees/knowledge-member_alias"
+repo_worktree = "$CODEX_HOME/worktrees/knowledge-member_alias"
 
 [profiles.jinny]
 member_alias = "jinny"
 member_name = "吴金雨"
 role = "maintainer"
 allowed_modes = ["patch"]
-repo_worktree = "/mnt/c/Users/jinny/Documents/Codex/worktrees/knowledge-jinny"
+repo_worktree = "$CODEX_HOME/worktrees/knowledge-jinny"
 ```
 
 `allowed_modes` is enforced before prepare/upload/submit. For `jinny`, `daily` and `weekly` must fail.

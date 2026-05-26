@@ -28,6 +28,30 @@ def codex_home() -> Path:
     return expand_path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
 
 
+def codex_documents_roots() -> list[Path]:
+    candidates: list[Path] = []
+    if os.environ.get("CODEX_DOCUMENTS"):
+        candidates.append(expand_path(os.environ["CODEX_DOCUMENTS"]))
+    candidates.append(expand_path(Path.home() / "Documents" / "Codex"))
+
+    windows_users = Path("/mnt/c/Users")
+    if windows_users.is_dir():
+        try:
+            for user_dir in windows_users.iterdir():
+                candidates.append(user_dir / "Documents" / "Codex")
+        except OSError:
+            pass
+
+    result: list[Path] = []
+    seen: set[str] = set()
+    for item in candidates:
+        key = str(item)
+        if key not in seen:
+            seen.add(key)
+            result.append(item)
+    return result
+
+
 def is_knowledge_root(path: Path) -> bool:
     return path.is_dir() and any((path / marker).exists() for marker in ROOT_MARKERS)
 
@@ -52,12 +76,19 @@ def candidate_roots(explicit_root: str | None) -> list[Path]:
         pass
 
     home = codex_home()
-    documents = Path("/mnt/c/Users/jinny/Documents/Codex")
+    for documents in codex_documents_roots():
+        candidates.extend(
+            [
+                documents / "worktrees" / "knowledge-jinny",
+                documents / "worktrees" / "knowledge",
+                documents / "worktrees" / "knowledge-test",
+            ]
+        )
     candidates.extend(
         [
-            documents / "worktrees" / "knowledge-jinny",
-            documents / "worktrees" / "knowledge",
-            documents / "worktrees" / "knowledge-test",
+            home / "worktrees" / "knowledge-jinny",
+            home / "worktrees" / "knowledge",
+            home / "worktrees" / "knowledge-test",
             home / "knowledge",
             Path("/mnt/z/knowledge/worktree"),
             Path("/mnt/z/knowledge"),

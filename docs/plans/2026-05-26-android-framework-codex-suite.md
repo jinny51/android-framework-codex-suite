@@ -10,17 +10,27 @@
 - `jinny-android-practices`：可选实践插件，放代码风格、review、项目规范等 opinionated 规则。
 - `codex-workspace-care`：独立维护插件，放 Codex 历史清理和上下文交接能力。
 
+## 当前状态
+
+已完成：
+
+1. 新仓库已独立创建。
+2. 三个插件目录、`.codex-plugin/plugin.json` 和 suite marketplace 已创建。
+3. Android Framework 核心 skill 已复制到 `android-framework-ops`。
+4. Codex 本地历史维护 skill 已复制到 `codex-workspace-care`。
+5. `jinny-android-practices` 作为可选实践插件保留边界，当前不包含具体实践 skill。
+6. 插件校验脚本和同步脚本已建立。
+
 ## 迁移策略
 
 新仓库先独立完善，旧 `codex-team-skills` 不删除、不移动、不改安装方式。
 
-正确顺序：
+后续顺序：
 
-1. 新仓库完成插件骨架和验证链路。
-2. 从旧仓库复制需要迁移的 skill。
-3. 新插件本机试装并验证 Codex 能识别。
-4. 小范围团队试用。
-5. 稳定后再决定旧仓库归档、停止维护或删除旧安装方式。
+1. 新插件本机试装并验证 Codex 能识别。
+2. 小范围团队试用。
+3. 根据团队反馈补齐 `jinny-android-practices`。
+4. 稳定后再决定旧仓库归档、停止维护或删除旧安装方式。
 
 ## 核心原则
 

@@ -40,7 +40,7 @@ The script searches the first valid knowledge root it can find:
 1. `--root <path>`
 2. `CODEX_KNOWLEDGE_ROOT`
 3. current directory or its parents, when they contain `index/knowledge.sqlite` or `index/*.jsonl`
-4. common Codex worktrees under `/mnt/c/Users/jinny/Documents/Codex/worktrees/`
+4. common Codex worktrees under `$CODEX_HOME/worktrees/`, `CODEX_DOCUMENTS/worktrees/`, or detected Windows `Documents/Codex/worktrees/`
 5. common mapped server locations such as `/mnt/z/knowledge/worktree`
 
 Pass `--refresh` only when using a local Git clone and the latest server content is required. Refresh runs `git pull --ff-only`; it skips refresh when the worktree is dirty.

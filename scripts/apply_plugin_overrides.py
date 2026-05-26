@@ -5,7 +5,8 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CODEX_DOCUMENTS = "/mnt/c/Users/jinny/Documents/Codex"
+CODEX_WORKTREES = "$CODEX_HOME/worktrees"
+CODEX_ARTIFACTS = "$CODEX_HOME/artifacts"
 
 
 def replace(path: Path, old: str, new: str) -> None:
@@ -64,10 +65,10 @@ def patch_knowledge_intake_code() -> None:
 
     intake = REPO_ROOT / "plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py"
     replace(intake, '"source": "codex-team-skills"', '"source": "android-framework-ops"')
-    replace(intake, '"repo_worktree": "$CODEX_HOME/report/knowledge"', f'"repo_worktree": "{CODEX_DOCUMENTS}/worktrees/knowledge"')
-    replace(intake, '"out_dir": "$CODEX_HOME/android-knowledge-intake/out"', f'"out_dir": "{CODEX_DOCUMENTS}/artifacts/android-knowledge-intake"')
-    replace(intake, "~/Documents/Codex/worktrees/knowledge", f"{CODEX_DOCUMENTS}/worktrees/knowledge")
-    replace(intake, "~/Documents/Codex/artifacts/android-knowledge-intake", f"{CODEX_DOCUMENTS}/artifacts/android-knowledge-intake")
+    replace(intake, '"repo_worktree": "$CODEX_HOME/report/knowledge"', f'"repo_worktree": "{CODEX_WORKTREES}/knowledge"')
+    replace(intake, '"out_dir": "$CODEX_HOME/android-knowledge-intake/out"', f'"out_dir": "{CODEX_ARTIFACTS}/android-knowledge-intake"')
+    replace(intake, "~/Documents/Codex/worktrees/knowledge", f"{CODEX_WORKTREES}/knowledge")
+    replace(intake, "~/Documents/Codex/artifacts/android-knowledge-intake", f"{CODEX_ARTIFACTS}/android-knowledge-intake")
 
 
 def patch_knowledge_paths() -> None:
@@ -79,29 +80,57 @@ def patch_knowledge_paths() -> None:
     for path in intake_files:
         if not path.exists():
             continue
-        replace(path, "$CODEX_HOME/android-knowledge-intake/out", f"{CODEX_DOCUMENTS}/artifacts/android-knowledge-intake")
-        replace(path, "$CODEX_HOME/report/knowledge-member_alias", f"{CODEX_DOCUMENTS}/worktrees/knowledge-member_alias")
-        replace(path, "$CODEX_HOME/report/knowledge-jinny", f"{CODEX_DOCUMENTS}/worktrees/knowledge-jinny")
-        replace(path, "$CODEX_HOME/report/knowledge", f"{CODEX_DOCUMENTS}/worktrees/knowledge")
-        replace(path, "~/Documents/Codex/artifacts/android-knowledge-intake", f"{CODEX_DOCUMENTS}/artifacts/android-knowledge-intake")
-        replace(path, "~/Documents/Codex/worktrees/knowledge-member_alias", f"{CODEX_DOCUMENTS}/worktrees/knowledge-member_alias")
-        replace(path, "~/Documents/Codex/worktrees/knowledge-jinny", f"{CODEX_DOCUMENTS}/worktrees/knowledge-jinny")
-        replace(path, "~/Documents/Codex/worktrees/knowledge", f"{CODEX_DOCUMENTS}/worktrees/knowledge")
+        replace(path, "$CODEX_HOME/android-knowledge-intake/out", f"{CODEX_ARTIFACTS}/android-knowledge-intake")
+        replace(path, "$CODEX_HOME/report/knowledge-member_alias", f"{CODEX_WORKTREES}/knowledge-member_alias")
+        replace(path, "$CODEX_HOME/report/knowledge-jinny", f"{CODEX_WORKTREES}/knowledge-jinny")
+        replace(path, "$CODEX_HOME/report/knowledge", f"{CODEX_WORKTREES}/knowledge")
+        replace(path, "~/Documents/Codex/artifacts/android-knowledge-intake", f"{CODEX_ARTIFACTS}/android-knowledge-intake")
+        replace(path, "~/Documents/Codex/worktrees/knowledge-member_alias", f"{CODEX_WORKTREES}/knowledge-member_alias")
+        replace(path, "~/Documents/Codex/worktrees/knowledge-jinny", f"{CODEX_WORKTREES}/knowledge-jinny")
+        replace(path, "~/Documents/Codex/worktrees/knowledge", f"{CODEX_WORKTREES}/knowledge")
 
     search_skill = REPO_ROOT / "plugins/android-framework-ops/skills/android-knowledge-search/SKILL.md"
     replace(
         search_skill,
         "4. common Codex report clones under `$CODEX_HOME/report/`\n5. common mapped server locations such as `/mnt/z/knowledge/worktree`",
-        f"4. common Codex worktrees under `{CODEX_DOCUMENTS}/worktrees/`\n5. common mapped server locations such as `/mnt/z/knowledge/worktree`",
+        "4. common Codex worktrees under `$CODEX_HOME/worktrees/`, `CODEX_DOCUMENTS/worktrees/`, or detected Windows `Documents/Codex/worktrees/`\n5. common mapped server locations such as `/mnt/z/knowledge/worktree`",
     )
-    replace(search_skill, "`~/Documents/Codex/worktrees/`", f"`{CODEX_DOCUMENTS}/worktrees/`")
+    replace(search_skill, "`~/Documents/Codex/worktrees/`", "`$CODEX_HOME/worktrees/`")
 
     search_readme = REPO_ROOT / "plugins/android-framework-ops/skills/android-knowledge-search/README.md"
     if search_readme.exists():
-        replace(search_readme, "$CODEX_HOME/report/", f"{CODEX_DOCUMENTS}/worktrees/")
-        replace(search_readme, "~/Documents/Codex/worktrees/", f"{CODEX_DOCUMENTS}/worktrees/")
+        replace(search_readme, "$CODEX_HOME/report/", f"{CODEX_WORKTREES}/")
+        replace(search_readme, "~/Documents/Codex/worktrees/", f"{CODEX_WORKTREES}/")
 
     search_script = REPO_ROOT / "plugins/android-framework-ops/skills/android-knowledge-search/scripts/android_knowledge_search.py"
+    insert_after(
+        search_script,
+        '''def codex_home() -> Path:
+    return expand_path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+''',
+        '''def codex_documents_roots() -> list[Path]:
+    candidates: list[Path] = []
+    if os.environ.get("CODEX_DOCUMENTS"):
+        candidates.append(expand_path(os.environ["CODEX_DOCUMENTS"]))
+    candidates.append(expand_path(Path.home() / "Documents" / "Codex"))
+
+    windows_users = Path("/mnt/c/Users")
+    if windows_users.is_dir():
+        try:
+            for user_dir in windows_users.iterdir():
+                candidates.append(user_dir / "Documents" / "Codex")
+        except OSError:
+            pass
+
+    result: list[Path] = []
+    seen: set[str] = set()
+    for item in candidates:
+        key = str(item)
+        if key not in seen:
+            seen.add(key)
+            result.append(item)
+    return result''',
+    )
     replace(
         search_script,
         '''    home = codex_home()
@@ -118,12 +147,19 @@ def patch_knowledge_paths() -> None:
     )
 ''',
         '''    home = codex_home()
-    documents = Path("/mnt/c/Users/jinny/Documents/Codex")
+    for documents in codex_documents_roots():
+        candidates.extend(
+            [
+                documents / "worktrees" / "knowledge-jinny",
+                documents / "worktrees" / "knowledge",
+                documents / "worktrees" / "knowledge-test",
+            ]
+        )
     candidates.extend(
         [
-            documents / "worktrees" / "knowledge-jinny",
-            documents / "worktrees" / "knowledge",
-            documents / "worktrees" / "knowledge-test",
+            home / "worktrees" / "knowledge-jinny",
+            home / "worktrees" / "knowledge",
+            home / "worktrees" / "knowledge-test",
             home / "knowledge",
             Path("/mnt/z/knowledge/worktree"),
             Path("/mnt/z/knowledge"),
@@ -153,8 +189,13 @@ def patch_command_examples() -> None:
     patch_capture_skill = REPO_ROOT / "plugins/android-framework-ops/skills/android-framework-patch-capture/SKILL.md"
     replace(
         patch_capture_skill,
-        "scripts/android_knowledge_intake.py",
-        "../android-knowledge-intake/scripts/android_knowledge_intake.py",
+        'python3 "scripts/android_knowledge_intake.py"',
+        'python3 "../android-knowledge-intake/scripts/android_knowledge_intake.py"',
+    )
+    replace(
+        patch_capture_skill,
+        'python3 "../android-knowledge-intake/../android-knowledge-intake/scripts/android_knowledge_intake.py"',
+        'python3 "../android-knowledge-intake/scripts/android_knowledge_intake.py"',
     )
 
 
