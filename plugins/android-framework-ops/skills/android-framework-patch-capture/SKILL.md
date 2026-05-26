@@ -49,12 +49,14 @@ The script writes:
     └── package-check.json
 ```
 
-To submit later with `android-knowledge-intake`:
+To submit later with `android-knowledge-intake`, pass the whole capture package directory so
+search-before-change, verification, and package-check evidence are preserved:
 
 ```bash
-python3 "../android-knowledge-intake/scripts/android_knowledge_intake.py" \
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" \
   --profile jinny patch --prepare \
-  --patch .codex/patch-packages/<run-id>/patches/<patch-name>.patch \
+  --schema-version 2.0 \
+  --patch-package .codex/patch-packages/<run-id>/ \
   --project "Android Framework" \
   --summary "补丁摘要" \
   --status candidate
