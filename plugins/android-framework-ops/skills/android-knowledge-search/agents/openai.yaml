@@ -1,0 +1,7 @@
+interface:
+  display_name: "Android Knowledge Search"
+  short_description: "Search reusable team knowledge assets"
+  default_prompt: "Use $android-knowledge-search to search the team knowledge repository for prior reports, patches, symbols, and validation evidence before reimplementing a feature."
+
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,9 @@
+*.sqlite
+*.sqlite-*
+*.db
+*.jsonl
+*.bak*
+extracted-*.md
+context-source*.md
+generated_images/
+logs/

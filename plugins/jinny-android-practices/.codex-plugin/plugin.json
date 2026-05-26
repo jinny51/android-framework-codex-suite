@@ -1,0 +1,39 @@
+{
+  "name": "jinny-android-practices",
+  "version": "1.0.0",
+  "description": "Optional opinionated Android Framework coding, review, and project workflow practices.",
+  "author": {
+    "name": "Jinny Android Framework Team",
+    "url": "https://github.com/jinny51"
+  },
+  "homepage": "https://github.com/jinny51/android-framework-codex-suite",
+  "repository": "https://github.com/jinny51/android-framework-codex-suite",
+  "license": "MIT",
+  "keywords": [
+    "android",
+    "framework",
+    "coding-style",
+    "review",
+    "team-practices"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Jinny Android Practices",
+    "shortDescription": "可选的 Android Framework 代码风格、评审和项目实践规则",
+    "longDescription": "Jinny 团队使用的可选 Android Framework 实践插件。它可以和 Android Framework Ops 一起使用，但不会被核心插件强制依赖。",
+    "developerName": "Jinny Android Framework Team",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "按 Jinny 的 Framework 规范检查这次修改",
+      "用团队 review 规则看一下当前 patch",
+      "按项目本地规范整理实现方案"
+    ],
+    "brandColor": "#7C3AED",
+    "screenshots": []
+  }
+}

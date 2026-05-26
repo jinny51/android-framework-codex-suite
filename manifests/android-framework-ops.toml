@@ -1,0 +1,47 @@
+# Neutral Android Framework engineering skills shipped by android-framework-ops.
+
+[[skills]]
+name = "android-framework-change-workflow"
+category = "Framework Workflow"
+summary = "统筹 Android Framework 需求分析、诊断、修改、风险判断、验证验收和最终报告"
+
+[[skills]]
+name = "android-framework-patch-capture"
+category = "Framework Workflow"
+summary = "将已完成或阶段性 Framework 修改整理成标准 patch、说明和验证材料补丁包"
+
+[[skills]]
+name = "android-knowledge-search"
+category = "Knowledge System"
+summary = "搜索团队知识库中的历史报告、补丁、修改文件、代码标识和验证记录"
+
+[[skills]]
+name = "android-knowledge-intake"
+category = "Knowledge System"
+summary = "生成、检查并提交日报、周报或维护者补丁贡献包到团队知识库 incoming 协议"
+
+[[skills]]
+name = "android-remote-channel"
+category = "Remote Execution"
+summary = "统一管理 Android 构建服务器 SSH/tmux 长会话、命令日志、占用状态和锁"
+
+[[skills]]
+name = "android-wsl-source-access"
+category = "Source Access"
+summary = "在 WSL 中挂载或恢复 Android 服务器源码，并记录本地路径、远程路径和 SSH 主机映射"
+
+[[skills]]
+name = "android-wsl-remote-build-deploy"
+category = "Build Deploy"
+summary = "在 WSL 源码接入场景下调用服务器完成 Android 编译、产物定位和设备推送"
+
+[[skills]]
+name = "android-windows-source-access"
+category = "Source Access"
+summary = "在 Windows 中识别 SMB/UNC 源码路径，并记录本地路径、远程路径和 SSH 主机映射"
+
+[[skills]]
+name = "android-windows-remote-build-deploy"
+category = "Build Deploy"
+summary = "在 Windows SMB/UNC 场景下调用服务器完成 Android 编译、产物定位和本地 adb 推送"
+
