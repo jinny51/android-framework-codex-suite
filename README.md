@@ -2,7 +2,7 @@
 
 面向 Android Framework 团队的 Codex 插件套件。
 
-这个仓库不是旧 `codex-team-skills` 的简单搬家。它把原来集中分发的 skill 拆成可组合插件：团队成员可以只安装 Android Framework 工程核心能力，也可以额外安装 Jinny 团队实践规则，或者单独安装 Codex 本地工作区维护工具。
+这个仓库是 Android Framework 相关 Codex 能力的插件市场来源。团队成员可以只安装 Android Framework 工程核心能力，也可以额外安装 Jinny 团队实践规则，或者单独安装 Codex 本地工作区维护工具。
 
 ## 插件一览
 
@@ -68,8 +68,8 @@ android-framework-codex-suite/
 │   ├── jinny-android-practices/            # 可选团队实践插件
 │   └── codex-workspace-care/               # 独立工作区维护插件
 ├── manifests/                              # 每个插件包含的 skill 白名单
-├── docs/                                   # 设计和迁移计划
-└── scripts/                                # 同步、覆盖、校验脚本
+├── docs/                                   # 设计文档和实施计划
+└── scripts/                                # 插件校验脚本
 ```
 
 每个插件必须保留 `.codex-plugin/plugin.json`。插件可安装入口由 `.agents/plugins/marketplace.json` 管理。
@@ -138,28 +138,6 @@ $CODEX_HOME/<skill-name>.toml
 
 这些路径是维护者配置，不是插件对所有成员的硬编码要求。团队成员应在自己的 `config.toml` profile 中设置实际路径。
 
-## 从旧仓库同步
-
-迁移期间，旧仓库 `codex-team-skills` 作为 skill 内容来源和稳定版本参考。同步脚本只复制白名单内的 skill，不移动、不删除旧仓库内容。
-
-```bash
-scripts/sync_from_team_skills.sh
-```
-
-默认来源：
-
-```text
-${CODEX_HOME:-$HOME/.codex}/team-skills
-```
-
-如果要从其他路径同步：
-
-```bash
-scripts/sync_from_team_skills.sh /path/to/codex-team-skills
-```
-
-同步后会执行 `scripts/apply_plugin_overrides.py`，用于把旧 skill 调整为插件内可组合使用的版本。
-
 ## 维护
 
 普通成员默认只需要安装和更新插件，不需要向本仓库提交。
@@ -167,9 +145,8 @@ scripts/sync_from_team_skills.sh /path/to/codex-team-skills
 维护者更新流程：
 
 ```bash
-# 1. 在实际使用环境中修改和验证 skill
-# 2. 从旧 team-skills 或指定来源同步到插件仓库
-scripts/sync_from_team_skills.sh
+# 1. 在本仓库中修改插件、skill、脚本或文档
+# 2. 在实际使用环境中验证相关工作流
 
 # 3. 自检
 scripts/validate_plugins.sh
@@ -183,7 +160,6 @@ git push
 Windows PowerShell：
 
 ```powershell
-.\scripts\sync_from_team_skills.ps1
 .\scripts\validate_plugins.ps1
 git add .
 git commit -m "update plugins"

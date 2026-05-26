@@ -187,6 +187,130 @@ def search_before_change(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def modules_from_files(files: list[str]) -> list[str]:
+    modules: list[str] = []
+    for path in files:
+        if "/com/android/server/wm/" in path:
+            modules.append("WindowManager")
+        if "ActivityTaskManager" in path or "ActivityRecord" in path:
+            modules.append("ActivityTaskManager")
+        if "PhoneWindowManager" in path:
+            modules.append("Policy")
+        if "PackageManager" in path or "/com/android/server/pm/" in path:
+            modules.append("PackageManager")
+        if "SystemUI" in path:
+            modules.append("SystemUI")
+        if "Launcher" in path:
+            modules.append("Launcher")
+        if "/input/" in path:
+            modules.append("Input")
+    if not modules and files:
+        modules.append(infer_module(files))
+    return sorted(set(modules))
+
+
+def symbols_from_diff(diff_text: str) -> list[str]:
+    symbols: list[str] = []
+    current_class = ""
+    for raw in diff_text.splitlines():
+        if raw.startswith("+++ "):
+            path = raw.removeprefix("+++ ").strip()
+            if path.startswith("b/"):
+                path = path[2:]
+            current_class = Path(path).stem if path and path != "/dev/null" else ""
+            continue
+        if not raw.startswith("@@") or not current_class:
+            continue
+        match = re.match(r"^@@ .* @@\s*(.*)$", raw)
+        context = match.group(1).strip() if match else ""
+        methods = re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", context)
+        method = next((item for item in reversed(methods) if item not in {"if", "for", "while", "switch"}), "")
+        if method:
+            symbols.append(f"{current_class}.{method}")
+    return sorted(set(symbols))
+
+
+def patch_analysis_from_diff(diff_text: str, facts: dict[str, Any], patch_name: str, args: argparse.Namespace) -> dict[str, dict[str, Any]]:
+    files = facts["modified_files"]
+    modules = modules_from_files(files)
+    symbols = symbols_from_diff(diff_text)
+    joined = "\n".join([diff_text, args.summary, args.feature, " ".join(files), " ".join(modules)]).lower()
+    keywords = sorted(
+        {
+            *modules,
+            *[Path(path).stem for path in files],
+            *[item for item in ["focus", "launcher", "power", "policy", "package", "input"] if item in joined],
+        }
+    )
+    basis = [f"patch modifies {path}" for path in files]
+    basis.extend(f"module inferred from path: {module}" for module in modules)
+    basis.extend(f"symbol inferred from hunk context: {symbol}" for symbol in symbols)
+    if args.summary:
+        basis.append("capture summary was provided by the operator")
+
+    if "focus" in joined and ("WindowManager" in modules or "ActivityTaskManager" in modules):
+        inferred_problem = "Window or activity focus behavior may not match the requirement"
+        inferred_solution = "Adjust WindowManager or ActivityTaskManager focus handling in the modified path"
+        confidence = "medium"
+    elif "power" in joined or "Policy" in modules:
+        inferred_problem = "Policy or power behavior may not match the requirement"
+        inferred_solution = "Adjust policy handling in the modified Framework path"
+        confidence = "medium"
+    else:
+        inferred_problem = f"Behavior in {', '.join(modules) if modules else 'modified Framework files'} may need correction"
+        inferred_solution = "Review the changed code path against the captured requirement and verification evidence"
+        confidence = "low"
+
+    risks = sorted(
+        {
+            *("window focus" for _ in [0] if "focus" in joined or "WindowManager" in modules),
+            *("activity launch/resume" for _ in [0] if "ActivityTaskManager" in modules),
+            *("power or policy behavior" for _ in [0] if "power" in joined or "Policy" in modules),
+            *("package install or package state" for _ in [0] if "PackageManager" in modules),
+        }
+    )
+    if not risks:
+        risks = ["modified code path requires requirement-specific verification"]
+
+    limits = [
+        "patch content does not prove the original customer wording",
+        "patch content does not prove device verification",
+        "patch content does not prove release acceptance",
+    ]
+    source_patch = f"patches/{patch_name}"
+    return {
+        "patch_diff_facts": {
+            "kind": "patch_diff_facts",
+            "source_patch": source_patch,
+            "modified_files": files,
+            "modules": modules,
+            "symbols": symbols,
+            "system_properties": facts["system_properties"],
+            "settings_keys": facts["settings_keys"],
+            "resource_keys": facts["resource_keys"],
+            "framework_log_keys": facts["framework_log_keys"],
+        },
+        "patch_problem_inference": {
+            "kind": "patch_problem_inference",
+            "source_patch": source_patch,
+            "confidence": confidence,
+            "inferred_problem": inferred_problem,
+            "inferred_solution": inferred_solution,
+            "inferred_keywords": keywords,
+            "basis": basis,
+            "limits": limits,
+        },
+        "risk_surface": {
+            "kind": "risk_surface",
+            "source_patch": source_patch,
+            "confidence": confidence,
+            "risk_areas": risks,
+            "basis": basis,
+            "limits": limits,
+        },
+    }
+
+
 def validate_verification_for_status(args: argparse.Namespace, payload: dict[str, Any]) -> list[str]:
     if args.status not in {"validated", "released"}:
         return []
@@ -383,6 +507,7 @@ def main() -> int:
         errors.append("patch 新增代码包含直接 Log/Slog 调用，应改用 FrameworkLog: " + ", ".join(facts["banned_log_hits"]))
     verification_payload = verification_result(args)
     search_payload = search_before_change(args)
+    patch_analysis = patch_analysis_from_diff(diff_text, facts, patch_name, args)
     errors.extend(validate_verification_for_status(args, verification_payload))
 
     package_check = {"status": "FAIL" if errors else "PASS", "errors": errors, "warnings": warnings}
@@ -401,6 +526,27 @@ def main() -> int:
             "path": "evidence/verification-result.json",
             "result": verification_payload["result"],
             "summary": f"{verification_payload['method']} verification evidence",
+        },
+        {
+            "id": "patch-diff-facts",
+            "kind": "patch_diff_facts",
+            "path": "evidence/patch-diff-facts.json",
+            "result": "INFO",
+            "summary": "facts parsed directly from patch content",
+        },
+        {
+            "id": "patch-problem-inference",
+            "kind": "patch_problem_inference",
+            "path": "evidence/patch-problem-inference.json",
+            "result": "INFO",
+            "summary": "likely problem and solution inferred from patch content",
+        },
+        {
+            "id": "risk-surface",
+            "kind": "risk_surface",
+            "path": "evidence/risk-surface.json",
+            "result": "INFO",
+            "summary": "risk surface inferred from changed files and symbols",
         },
         {
             "id": "search-before-change",
@@ -439,6 +585,9 @@ def main() -> int:
     }
     write_json(package_dir / "manifest.json", manifest)
     write_json(evidence_dir / "changed-files.json", {"facts": facts, "git": manifest["git"]})
+    write_json(evidence_dir / "patch-diff-facts.json", patch_analysis["patch_diff_facts"])
+    write_json(evidence_dir / "patch-problem-inference.json", patch_analysis["patch_problem_inference"])
+    write_json(evidence_dir / "risk-surface.json", patch_analysis["risk_surface"])
     write_json(evidence_dir / "verification-result.json", verification_payload)
     write_json(evidence_dir / "search-before-change.json", search_payload)
     write_json(evidence_dir / "package-check.json", package_check)

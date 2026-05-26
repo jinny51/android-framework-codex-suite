@@ -12,6 +12,9 @@ This package is a local handoff artifact. `android-knowledge-intake` can later s
 │   └── <patch-name>.readme.md
 └── evidence/
     ├── changed-files.json
+    ├── patch-diff-facts.json
+    ├── patch-problem-inference.json
+    ├── risk-surface.json
     ├── build-result.json
     ├── verification-result.json
     ├── search-before-change.json
@@ -34,6 +37,27 @@ This package is a local handoff artifact. `android-knowledge-intake` can later s
       "path": "evidence/verification-result.json",
       "result": "PASS",
       "summary": "device verification evidence"
+    },
+    {
+      "id": "patch-diff-facts",
+      "kind": "patch_diff_facts",
+      "path": "evidence/patch-diff-facts.json",
+      "result": "INFO",
+      "summary": "facts parsed directly from patch content"
+    },
+    {
+      "id": "patch-problem-inference",
+      "kind": "patch_problem_inference",
+      "path": "evidence/patch-problem-inference.json",
+      "result": "INFO",
+      "summary": "likely problem and solution inferred from patch content"
+    },
+    {
+      "id": "risk-surface",
+      "kind": "risk_surface",
+      "path": "evidence/risk-surface.json",
+      "result": "INFO",
+      "summary": "risk surface inferred from changed files and symbols"
     },
     {
       "id": "search-before-change",
@@ -75,7 +99,21 @@ Good facts:
 - equivalent verification method, reason, coverage, and remaining risk
 - failure evidence
 
-AI judgment should happen at search/use time:
+Patch-content inference is allowed only when it is labeled as inference and carries basis and limits:
+
+```json
+{
+  "kind": "patch_problem_inference",
+  "confidence": "medium",
+  "inferred_problem": "likely problem inferred from modified paths and diff content",
+  "inferred_solution": "likely solution inferred from changed code path",
+  "inferred_keywords": [],
+  "basis": [],
+  "limits": []
+}
+```
+
+These judgments should still happen at search/use time:
 
 - applicability to a new project
 - reuse risk

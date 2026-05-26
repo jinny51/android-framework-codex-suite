@@ -83,15 +83,30 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             package_dir = Path(json.loads(result.stdout)["package"])
             verification = json.loads((package_dir / "evidence" / "verification-result.json").read_text(encoding="utf-8"))
             search = json.loads((package_dir / "evidence" / "search-before-change.json").read_text(encoding="utf-8"))
+            diff_facts = json.loads((package_dir / "evidence" / "patch-diff-facts.json").read_text(encoding="utf-8"))
+            problem_inference = json.loads((package_dir / "evidence" / "patch-problem-inference.json").read_text(encoding="utf-8"))
+            risk_surface = json.loads((package_dir / "evidence" / "risk-surface.json").read_text(encoding="utf-8"))
             manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+            evidence_ids = {item["id"] for item in manifest["evidence"]}
 
             self.assertEqual(verification["result"], "PASS")
             self.assertEqual(verification["method"], "device")
             self.assertEqual(verification["device"], "rk3576")
             self.assertEqual(search["result"], "INFO")
             self.assertEqual(search["queries"], ["navigation policy toggle"])
-            self.assertIn("verification-result", {item["id"] for item in manifest["evidence"]})
-            self.assertIn("search-before-change", {item["id"] for item in manifest["evidence"]})
+            self.assertEqual(diff_facts["kind"], "patch_diff_facts")
+            self.assertTrue(diff_facts["modified_files"])
+            self.assertEqual(problem_inference["kind"], "patch_problem_inference")
+            self.assertIn(problem_inference["confidence"], {"low", "medium", "high"})
+            self.assertTrue(problem_inference["basis"])
+            self.assertTrue(problem_inference["limits"])
+            self.assertEqual(risk_surface["kind"], "risk_surface")
+            self.assertTrue(risk_surface["risk_areas"])
+            self.assertIn("patch-diff-facts", evidence_ids)
+            self.assertIn("patch-problem-inference", evidence_ids)
+            self.assertIn("risk-surface", evidence_ids)
+            self.assertIn("verification-result", evidence_ids)
+            self.assertIn("search-before-change", evidence_ids)
 
     def test_validated_equivalent_verification_requires_reason_coverage_and_risk(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

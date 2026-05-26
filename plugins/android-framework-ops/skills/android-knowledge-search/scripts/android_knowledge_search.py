@@ -206,6 +206,13 @@ def load_from_sqlite(root: Path) -> list[dict[str, Any]]:
                     "patch_files",
                     "modified_files",
                     "deleted_files",
+                    "modules",
+                    "symbols",
+                    "resource_keys",
+                    "inferred_keywords",
+                    "inference_basis",
+                    "inference_limits",
+                    "risk_areas",
                     "framework_log_keys",
                     "system_properties",
                     "settings_keys",
@@ -305,11 +312,21 @@ def row_text(row: dict[str, Any]) -> str:
         "report_path",
         "patch_files",
         "modified_files",
+        "modules",
+        "symbols",
         "framework_log_keys",
         "system_properties",
         "settings_keys",
+        "resource_keys",
         "strings",
         "keywords",
+        "inferred_problem",
+        "inferred_solution",
+        "inferred_keywords",
+        "inference_confidence",
+        "inference_basis",
+        "inference_limits",
+        "risk_areas",
         "symbol",
         "path",
         "patch_id",
@@ -338,9 +355,14 @@ def score_row(row: dict[str, Any], terms: list[str]) -> tuple[int, list[str]]:
         (7, "symbol"),
         (7, "quality"),
         (6, "modified_files"),
+        (6, "modules"),
+        (6, "inferred_keywords"),
+        (6, "inferred_problem"),
         (6, "payload"),
         (6, "system_properties"),
         (6, "settings_keys"),
+        (5, "risk_areas"),
+        (5, "symbols"),
         (5, "strings"),
         (5, "framework_log_keys"),
         (4, "overview"),
@@ -436,10 +458,27 @@ def format_patch(root: Path, row: dict[str, Any], index: int) -> str:
         lines.append(f"   - summary: {row.get('summary')}")
     if row.get("modified_files"):
         lines.append(f"   - modified_files: {compact_list(row.get('modified_files'))}")
+    if row.get("modules"):
+        lines.append(f"   - modules: {compact_list(row.get('modules'))}")
+    if row.get("inferred_problem") or row.get("inferred_solution"):
+        lines.append(
+            "   - inferred_problem: "
+            f"{row.get('inferred_problem') or ''}"
+            f" / confidence={row.get('inference_confidence') or 'unknown'}"
+        )
+        if row.get("inferred_solution"):
+            lines.append(f"   - inferred_solution: {row.get('inferred_solution')}")
+    if row.get("inferred_keywords") or row.get("risk_areas"):
+        lines.append(
+            "   - inferred_keywords/risk: "
+            f"{compact_list(row.get('inferred_keywords'))}"
+            f" / {compact_list(row.get('risk_areas'))}"
+        )
     symbols = compact_list(
         [
             *parse_json(row.get("system_properties"), []),
             *parse_json(row.get("settings_keys"), []),
+            *parse_json(row.get("resource_keys"), []),
             *parse_json(row.get("strings"), []),
             *parse_json(row.get("framework_log_keys"), []),
         ]

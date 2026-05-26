@@ -70,7 +70,7 @@ Use scripts in `scripts/` as optional helpers. Prefer them for log slicing, heal
 Before editing behavior:
 
 1. Identify whether the request is a new requirement, behavior change, bug/regression, verification task, or failure recovery.
-2. If the request may overlap prior team work, use `android-knowledge-search` with feature words, subsystem, file/class names, properties, Settings keys, resource keys, or artifact names. Treat matches as evidence, not final truth. Record the query terms, top relevant results, reuse decision, and reason so `android-framework-patch-capture` can later write `search-before-change.json`.
+2. For Android Framework implementation work, use `android-knowledge-search` before source edits when the team knowledge repository is available. Search with feature words, subsystem, file/class names, properties, Settings keys, resource keys, artifact names, and visible log keywords. Treat matches as evidence, not final truth. Record the query terms, top relevant results, reuse decision, and reason so `android-framework-patch-capture` can later write `search-before-change.json`. If search is impossible, record the concrete reason in the final report and later patch package evidence.
 3. For direct requirements, capture acceptance criteria, negative cases, product/device/variant scope, and expected owner subsystem. Load `references/requirements-implementation.md`.
 4. For bugs or regressions, capture visible symptom, reproduction, expected behavior, and evidence source.
 5. Identify likely owner process and subsystem: app, SystemUI, launcher, system_server, WM/ATM, PMS, input, resources/overlays, display/surface/compositor, native service, or build config.

@@ -71,14 +71,17 @@ V2 treats incoming as knowledge event packages, not report uploads.
 
 Channels:
 
-- `light`: daily/weekly/session traces. Allowed quality: `trace`, `candidate`.
-- `strict`: Framework changes, patch contributions, reuse decisions. Allowed quality: `candidate`, `validated`.
+- `light`: daily/weekly/session traces. Allowed quality: `imported`, `trace`, `candidate`.
+- `strict`: Framework changes, patch contributions, reuse decisions. Allowed quality: `imported`, `candidate`, `validated`, `released`, `buggy`.
 
 Quality:
 
+- `imported`: historical or reconstructed material without modern validation evidence.
 - `trace`: only proves work happened.
 - `candidate`: useful assets exist, but verification is incomplete or limited.
 - `validated`: suitable as a first-class reuse candidate.
+- `released`: validated and known to have shipped or entered a release baseline.
+- `buggy`: known-bad or failed attempt retained as learning evidence.
 
 Runtime behavior changes in the modified module require device verification for `validated`. Equivalent verification is allowed for resource-only, build-only, packaging-only, static config, or documentation changes when the package records method, reason, coverage, and remaining risk.
 
@@ -147,6 +150,9 @@ patches/
 evidence/
 ├── source.json
 ├── patch-contribution.json
+├── patch-diff-facts.json
+├── patch-problem-inference.json
+├── risk-surface.json
 ├── capture-verification-result.json
 └── capture-search-before-change.json
 ```
@@ -172,5 +178,39 @@ Patch item:
   }
 }
 ```
+
+## Patch Analysis Evidence
+
+Patch files are evidence, not opaque attachments. Intake and server normalization may inspect patch content to fill missing facts and improve search.
+
+Direct facts belong in `patch_diff_facts`:
+
+```text
+modified_files
+symbols
+system_properties
+settings_keys
+resource_keys
+framework_log_keys
+modules
+```
+
+Likely problem, likely solution, keywords, applicability, and risks belong in `patch_problem_inference` or `risk_surface`. These are inferred conclusions and must include:
+
+```json
+{
+  "confidence": "medium",
+  "basis": ["patch modifies frameworks/base/..."],
+  "limits": ["original issue text was not found"]
+}
+```
+
+Rules:
+
+- Inferred fields improve search and reuse judgment.
+- Inferred fields must not be presented as verified facts.
+- Inference alone cannot upgrade `quality` to `validated`.
+- Historical imports may use patch analysis to recover missing title, summary, module, files, keywords, likely problem, likely solution, and risk surface.
+- New incoming packages may use patch analysis as a consistency check against the human readme.
 
 When importing an `android-framework-patch-capture` output directory with `--patch-package`, intake preserves its evidence entries under `evidence/capture-*.json`. A strict patch contribution may claim `quality=validated` only when it carries PASS device verification or accepted equivalent verification evidence. Strict patch contributions without verification evidence should stay `candidate`, even if the human-facing patch status is `validated`.

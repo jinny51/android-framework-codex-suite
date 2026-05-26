@@ -33,6 +33,12 @@ REPORT_HEADINGS = {
 }
 PACKAGE_TYPES = {"daily", "weekly", "patch"}
 PATCH_README_HEADINGS = ("功能描述", "修改点", "日志控制", "SystemProperties", "字符串国际化", "可回滚性")
+V2_LIGHT_KINDS = {"daily_trace", "weekly_trace", "session_trace"}
+V2_STRICT_KINDS = {"framework_change", "patch_contribution", "reuse_decision"}
+V2_LIGHT_QUALITIES = {"imported", "trace", "candidate"}
+V2_STRICT_QUALITIES = {"imported", "candidate", "validated", "released", "buggy"}
+V2_INFERENCE_EVIDENCE_KINDS = {"patch_problem_inference", "risk_surface"}
+V2_CONFIDENCE_VALUES = {"low", "medium", "high"}
 
 
 CONFIG_DEFAULTS = {
@@ -436,7 +442,7 @@ def should_skip_session(work: SessionWork) -> bool:
         return True
     if work.cwd:
         normalized = work.cwd.replace("\\", "/")
-        if "/.codex/team-skills/" in normalized or "/.codex/skills/android-knowledge-intake/" in normalized:
+        if "/.codex/plugins/cache/" in normalized or "/.codex/skills/android-knowledge-intake/" in normalized:
             return True
     skip_names = ("日报上传测试", "周报上传测试", "小组日报汇总", "小组周报汇总")
     return any(name in work.thread_name for name in skip_names)
@@ -1066,15 +1072,10 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def team_skills_commit() -> str:
-    candidates = [
-        PLUGIN_ROOT,
-        Path(default_codex_home()) / "team-skills",
-    ]
-    for repo in candidates:
-        cp = run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"])
-        if cp.returncode == 0:
-            return cp.stdout.strip()
+def plugin_commit() -> str:
+    cp = run(["git", "-C", str(PLUGIN_ROOT), "rev-parse", "--short", "HEAD"])
+    if cp.returncode == 0:
+        return cp.stdout.strip()
     return ""
 
 
@@ -1083,7 +1084,7 @@ def source_metadata(config: dict[str, str], skill: str) -> dict[str, Any]:
         "source": "android-framework-ops",
         "skill": skill,
         "skill_version": "",
-        "codex_team_skills_commit": team_skills_commit(),
+        "plugin_commit": plugin_commit(),
         "member_alias": config["member_alias"],
         "generated_at": local_now(config).isoformat(),
         "host": os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or "",
@@ -1178,6 +1179,69 @@ def v2_referenced_paths(manifest: dict[str, Any]) -> list[str]:
     return paths
 
 
+def v2_reference_path(package_dir: Path, rel: str) -> Path:
+    path = (package_dir / rel).resolve()
+    root = package_dir.resolve()
+    if path != root and root not in path.parents:
+        raise ValueError(f"引用路径越界: {rel}")
+    return path
+
+
+def v2_read_referenced_json(package_dir: Path, rel: str) -> dict[str, Any] | None:
+    try:
+        path = v2_reference_path(package_dir, rel)
+    except ValueError:
+        return None
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def v2_patch_diff_modified_files(package_dir: Path, rel: str) -> list[str]:
+    try:
+        path = v2_reference_path(package_dir, rel)
+    except ValueError:
+        return []
+    if not path.is_file():
+        return []
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    files: list[str] = []
+    seen: set[str] = set()
+    for match in re.finditer(r"^\+\+\+\s+(.+)$", text, re.M):
+        value = match.group(1).strip()
+        if value == "/dev/null":
+            continue
+        if value.startswith("b/"):
+            value = value[2:]
+        if value and value not in seen:
+            seen.add(value)
+            files.append(value)
+    return files
+
+
+def v2_validate_inference_evidence(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
+    rel = item.get("path")
+    if not isinstance(rel, str) or not rel:
+        errors.append("反推 evidence 必须引用 JSON 文件")
+        return
+    payload = v2_read_referenced_json(package_dir, rel)
+    if payload is None:
+        return
+    confidence = payload.get("confidence")
+    basis = payload.get("basis")
+    limits = payload.get("limits")
+    if confidence not in V2_CONFIDENCE_VALUES:
+        errors.append(f"{rel} confidence 必须是 low、medium 或 high")
+    if not isinstance(basis, list) or not basis:
+        errors.append(f"{rel} basis 必须是非空数组")
+    if not isinstance(limits, list) or not limits:
+        errors.append(f"{rel} limits 必须是非空数组")
+
+
 def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -1201,19 +1265,42 @@ def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str
         errors.append(f"manifest 缺少必填字段: {field}")
     if manifest.get("schema_version") != "2.0":
         errors.append("schema_version 必须是 2.0")
-    if manifest.get("channel") == "light" and manifest.get("quality") == "validated":
-        errors.append("light channel 不能声明 validated")
-    if manifest.get("channel") == "strict" and manifest.get("quality") not in {"candidate", "validated"}:
-        errors.append("strict channel 只能使用 candidate 或 validated")
-    if manifest.get("channel") not in {"light", "strict"}:
+
+    channel = manifest.get("channel")
+    quality = manifest.get("quality")
+    package_kind = manifest.get("package_kind")
+    if channel == "light":
+        if package_kind not in V2_LIGHT_KINDS:
+            errors.append(f"light channel 不能使用 package_kind={package_kind}")
+        if quality not in V2_LIGHT_QUALITIES:
+            errors.append(f"light channel 不能使用 quality={quality}")
+    elif channel == "strict":
+        if package_kind not in V2_STRICT_KINDS:
+            errors.append(f"strict channel 不能使用 package_kind={package_kind}")
+        if quality not in V2_STRICT_QUALITIES:
+            errors.append(f"strict channel 不能使用 quality={quality}")
+    else:
         errors.append("channel 必须是 light 或 strict")
+
     for rel in v2_referenced_paths(manifest):
-        path = (package_dir / rel).resolve()
-        root = package_dir.resolve()
-        if path != root and root not in path.parents:
-            errors.append(f"引用路径越界: {rel}")
-        elif not path.is_file():
+        try:
+            path = v2_reference_path(package_dir, rel)
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        if not path.is_file():
             errors.append(f"引用文件不存在: {rel}")
+
+    evidence = manifest.get("evidence", [])
+    if not isinstance(evidence, list):
+        errors.append("evidence 必须是数组")
+        evidence = []
+    for item in evidence:
+        if not isinstance(item, dict):
+            errors.append("evidence 中每一项必须是对象")
+            continue
+        if item.get("kind") in V2_INFERENCE_EVIDENCE_KINDS:
+            v2_validate_inference_evidence(package_dir, item, errors)
 
     patches = manifest.get("patches", [])
     if not isinstance(patches, list):
@@ -1224,10 +1311,19 @@ def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str
             errors.append("patches 中每一项必须是对象")
             continue
         facts = item.get("facts", {})
-        if manifest.get("quality") in {"candidate", "validated"} and (not isinstance(facts, dict) or not facts.get("modified_files")):
-            errors.append("candidate/validated patch 必须提供 facts.modified_files")
+        modified_files = facts.get("modified_files") if isinstance(facts, dict) else None
+        if not modified_files:
+            patch_rel = item.get("path")
+            if isinstance(patch_rel, str) and v2_patch_diff_modified_files(package_dir, patch_rel):
+                warnings.append(f"patch facts.modified_files 已从补丁 diff 反推: {patch_rel}")
+            else:
+                errors.append("patch 必须提供 facts.modified_files，或可从补丁 diff 反推")
+        if quality in {"candidate", "validated"}:
+            readme = item.get("readme")
+            if not isinstance(readme, str) or not readme:
+                errors.append("candidate/validated patch 必须提供 readme")
 
-    if manifest.get("quality") == "validated":
+    if quality == "validated":
         claims = manifest.get("quality_claims", {})
         if not isinstance(claims, dict):
             claims = {}

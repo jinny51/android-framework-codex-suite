@@ -64,6 +64,41 @@ def create_capture_package(root: Path, status: str = "validated") -> Path:
         },
     )
     write_json(
+        package / "evidence" / "patch-diff-facts.json",
+        {
+            "kind": "patch_diff_facts",
+            "modified_files": ["frameworks/base/services/core/java/X.java"],
+            "modules": ["frameworks-base"],
+            "symbols": [],
+            "system_properties": ["persist.sys.nav_policy"],
+            "settings_keys": [],
+            "resource_keys": [],
+            "framework_log_keys": [],
+        },
+    )
+    write_json(
+        package / "evidence" / "patch-problem-inference.json",
+        {
+            "kind": "patch_problem_inference",
+            "confidence": "medium",
+            "inferred_problem": "Navigation policy may not match product requirement",
+            "inferred_solution": "Adjust framework policy path",
+            "inferred_keywords": ["navigation", "policy"],
+            "basis": ["patch modifies frameworks/base/services/core/java/X.java"],
+            "limits": ["device verification is recorded separately"],
+        },
+    )
+    write_json(
+        package / "evidence" / "risk-surface.json",
+        {
+            "kind": "risk_surface",
+            "confidence": "medium",
+            "risk_areas": ["policy behavior"],
+            "basis": ["patch modifies frameworks/base/services/core/java/X.java"],
+            "limits": ["nearby regressions require separate verification"],
+        },
+    )
+    write_json(
         package / "manifest.json",
         {
             "schema_version": "1.0",
@@ -102,10 +137,90 @@ def create_capture_package(root: Path, status: str = "validated") -> Path:
                     "result": "INFO",
                     "summary": "pre-change search",
                 },
+                {
+                    "id": "patch-diff-facts",
+                    "kind": "patch_diff_facts",
+                    "path": "evidence/patch-diff-facts.json",
+                    "result": "INFO",
+                    "summary": "patch facts",
+                },
+                {
+                    "id": "patch-problem-inference",
+                    "kind": "patch_problem_inference",
+                    "path": "evidence/patch-problem-inference.json",
+                    "result": "INFO",
+                    "summary": "patch inference",
+                },
+                {
+                    "id": "risk-surface",
+                    "kind": "risk_surface",
+                    "path": "evidence/risk-surface.json",
+                    "result": "INFO",
+                    "summary": "risk surface",
+                },
             ],
         },
     )
     return package
+
+
+def create_v2_patch_incoming(
+    root: Path,
+    *,
+    quality: str = "candidate",
+    facts: dict | None = None,
+    evidence_payload: dict | None = None,
+) -> tuple[Path, dict]:
+    package = root / "incoming"
+    patch = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
+    readme = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.readme.md"
+    patch.parent.mkdir(parents=True)
+    patch.write_text(
+        "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+        "--- a/frameworks/base/services/core/java/X.java\n"
+        "+++ b/frameworks/base/services/core/java/X.java\n"
+        "@@ -1 +1,2 @@\n"
+        "+//gyf 20260526@ nav policy toggle\n",
+        encoding="utf-8",
+    )
+    readme.write_text("# nav policy toggle\n", encoding="utf-8")
+    evidence = []
+    if evidence_payload is not None:
+        evidence_path = package / "evidence" / "analysis.json"
+        write_json(evidence_path, evidence_payload)
+        evidence = [
+            {
+                "id": "analysis",
+                "kind": evidence_payload.get("kind"),
+                "path": "evidence/analysis.json",
+                "result": "INFO",
+            }
+        ]
+    manifest = {
+        "schema_version": "2.0",
+        "package_kind": "patch_contribution",
+        "channel": "strict",
+        "quality": quality,
+        "member": "jinny",
+        "date": "2026-05-26",
+        "run_id": "20260526-120000-patch",
+        "project": "Android Framework",
+        "summary": "Allow nav policy toggle",
+        "source": {},
+        "reports": [],
+        "patches": [
+            {
+                "id": "patch-main",
+                "path": "patches/rk14-frameworks-base@nav-policy-toggle.patch",
+                "readme": "patches/rk14-frameworks-base@nav-policy-toggle.readme.md",
+                "facts": facts if facts is not None else {"modified_files": ["frameworks/base/services/core/java/X.java"]},
+            }
+        ],
+        "evidence": evidence,
+        "relations": [],
+        "quality_claims": {},
+    }
+    return package, manifest
 
 
 class PatchCaptureIngestTests(unittest.TestCase):
@@ -142,8 +257,14 @@ class PatchCaptureIngestTests(unittest.TestCase):
             evidence_ids = {item["id"] for item in manifest["evidence"]}
             self.assertIn("capture-verification-result", evidence_ids)
             self.assertIn("capture-search-before-change", evidence_ids)
+            self.assertIn("capture-patch-diff-facts", evidence_ids)
+            self.assertIn("capture-patch-problem-inference", evidence_ids)
+            self.assertIn("capture-risk-surface", evidence_ids)
             self.assertTrue((package / "evidence" / "capture-verification-result.json").is_file())
             self.assertTrue((package / "evidence" / "capture-search-before-change.json").is_file())
+            self.assertTrue((package / "evidence" / "capture-patch-diff-facts.json").is_file())
+            self.assertTrue((package / "evidence" / "capture-patch-problem-inference.json").is_file())
+            self.assertTrue((package / "evidence" / "capture-risk-surface.json").is_file())
 
     def test_local_v2_validation_rejects_validated_without_pass_verification(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -194,6 +315,43 @@ class PatchCaptureIngestTests(unittest.TestCase):
 
             self.assertEqual(result["status"], "FAIL")
             self.assertTrue(any("PASS" in error for error in result["errors"]))
+
+    def test_local_v2_validation_accepts_imported_strict_patch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package, manifest = create_v2_patch_incoming(Path(tmp), quality="imported")
+
+            result = intake.validate_v2_package(package, manifest)
+
+            self.assertEqual(result["status"], "PASS")
+
+    def test_local_v2_validation_derives_missing_modified_files_from_patch_diff(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package, manifest = create_v2_patch_incoming(Path(tmp), facts={})
+
+            result = intake.validate_v2_package(package, manifest)
+
+            self.assertEqual(result["status"], "PASS")
+            self.assertTrue(any("反推" in warning for warning in result["warnings"]))
+
+    def test_local_v2_validation_rejects_inference_without_basis_or_limits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package, manifest = create_v2_patch_incoming(
+                Path(tmp),
+                evidence_payload={
+                    "kind": "patch_problem_inference",
+                    "confidence": "certain",
+                    "inferred_problem": "Navigation behavior changed",
+                    "basis": [],
+                    "limits": [],
+                },
+            )
+
+            result = intake.validate_v2_package(package, manifest)
+
+            self.assertEqual(result["status"], "FAIL")
+            self.assertTrue(any("confidence" in error for error in result["errors"]))
+            self.assertTrue(any("basis" in error for error in result["errors"]))
+            self.assertTrue(any("limits" in error for error in result["errors"]))
 
     def test_candidate_capture_package_does_not_become_validated_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

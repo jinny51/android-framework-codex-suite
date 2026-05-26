@@ -102,6 +102,59 @@ class AndroidKnowledgeSearchV2Tests(unittest.TestCase):
         self.assertIn("[event]", text)
         self.assertIn("[evidence]", text)
 
+    def test_patch_analysis_fields_are_searchable_and_formatted(self):
+        root = Path(tempfile.mkdtemp())
+        index = root / "index"
+        index.mkdir()
+        conn = sqlite3.connect(index / "knowledge.sqlite")
+        try:
+            conn.executescript(
+                """
+                CREATE TABLE patches(
+                  id TEXT PRIMARY KEY, title TEXT, summary TEXT, modules TEXT, inferred_problem TEXT,
+                  inferred_solution TEXT, inferred_keywords TEXT, inference_confidence TEXT,
+                  inference_basis TEXT, inference_limits TEXT, risk_areas TEXT, modified_files TEXT,
+                  patch_files TEXT, status TEXT
+                );
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO patches
+                (id, title, summary, modules, inferred_problem, inferred_solution, inferred_keywords,
+                 inference_confidence, inference_basis, inference_limits, risk_areas, modified_files, patch_files, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "patch-focus",
+                    "Focus fix",
+                    "",
+                    '["WindowManager"]',
+                    "Launcher launch may leave window focus stale",
+                    "Adjust WindowManager focus update",
+                    '["focus", "Launcher"]',
+                    "medium",
+                    '["patch modifies WindowState.java"]',
+                    '["device verification is separate"]',
+                    '["window focus"]',
+                    '["frameworks/base/services/core/java/com/android/server/wm/WindowState.java"]',
+                    '["patches/by-id/patch-focus/patch.patch"]',
+                    "candidate",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        rows = search.load_rows(root)
+        results = search.search(rows, "Launcher focus", "patch", 5, include_synthetic=False)
+        text = search.format_markdown(root, "Launcher focus", results, None)
+
+        self.assertEqual(results[0]["id"], "patch-focus")
+        self.assertIn("inferred_problem", text)
+        self.assertIn("window focus", text)
+        self.assertIn("medium", text)
+
 
 if __name__ == "__main__":
     unittest.main()
