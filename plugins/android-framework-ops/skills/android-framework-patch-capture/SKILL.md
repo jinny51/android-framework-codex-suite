@@ -5,7 +5,7 @@ description: "Use after Android Framework code changes are implemented or staged
 
 # Android Framework Patch Capture
 
-Use this skill when a Framework change is ready to be packaged as a reusable or reviewable patch asset. It does not implement requirements, diagnose root cause, build, deploy, or decide final correctness. It packages existing source changes into `patch + readme + evidence`.
+Use this skill when a Framework change is ready to be packaged as a reusable or reviewable patch asset. It does not implement requirements, diagnose root cause, build, deploy, or decide final correctness. It packages existing source changes into `patch + readme + evidence` so `android-knowledge-intake` can submit them as incoming.
 
 Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-knowledge-intake` uploads a valuable patch to the team knowledge repository.
 
@@ -55,7 +55,6 @@ search-before-change, verification, and package-check evidence are preserved:
 ```bash
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" \
   --profile jinny patch --prepare \
-  --schema-version 2.0 \
   --patch-package .codex/patch-packages/<run-id>/ \
   --project "Android Framework" \
   --summary "补丁摘要" \

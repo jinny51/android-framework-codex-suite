@@ -1,11 +1,13 @@
 ---
 name: android-knowledge-intake
-description: Generate, review, and submit Codex daily, weekly, or maintainer patch contribution packages into the team knowledge repository incoming protocol. Use when asked about 个人日报、个人周报、日报周报提交、管理员补丁归档、工作包、incoming、patch 归档、知识库入库 or report automation.
+description: Generate, review, and submit member-side Codex incoming packages into the team knowledge repository. Use when asked about 个人日报、个人周报、日报周报提交、管理员补丁归档、工作包、incoming、patch 归档、知识库入库 or report automation.
 ---
 
 # Android Knowledge Intake
 
-Use this skill for member-side report automation and maintainer patch contribution. The skill does not write final `daily/`, `weekly/`, `patches/`, or `index/` directories. It creates a local pending work package first, then submits that package to `incoming/YYYYMMDD/member_alias/run_id/` in the team knowledge Git repository.
+Use this skill for member-side knowledge intake automation and maintainer patch contribution. The skill does not write final `daily/`, `weekly/`, `patches/`, or `index/` directories. It creates a local pending incoming package first, then submits that package to `incoming/YYYYMMDD/member_alias/run_id/` in the team knowledge Git repository.
+
+The member-side Codex agent is the knowledge producer. It should collect session context, git diff, patch diff, build results, verification records, and optional human notes, then generate incoming. The server validates, archives, indexes, and renders; it does not perform heavy AI inference.
 
 Ordinary members use `daily` and `weekly`. The maintainer alias `jinny` uses `patch` only when manually contributing valuable patches; it must not generate daily or weekly reports for that maintainer flow.
 
@@ -45,7 +47,7 @@ python3 "scripts/android_knowledge_intake.py" --profile jinny patch --prepare --
 When the patch was packaged by `android-framework-patch-capture`, submit the capture package directory so verification and pre-change search evidence are preserved:
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile jinny patch --prepare --schema-version 2.0 --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "Android Framework" --summary "功能补丁摘要" --status validated
+python3 "scripts/android_knowledge_intake.py" --profile jinny patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "Android Framework" --summary "功能补丁摘要" --status validated
 ```
 
 Submit the latest prepared patch package:
@@ -94,6 +96,8 @@ default_profile = "member_alias"
 
 [server]
 repo_url = "test35:/home/test35/work/knowledge/remote.git"
+
+incoming_schema_version = "2.0"
 
 [paths]
 codex_home = "$CODEX_HOME"

@@ -2,7 +2,7 @@
 
 Member-side automation and maintainer patch contribution must submit only `incoming` work packages. Server-side scripts generate final `daily/`, `weekly/`, `patches/by-id/`, `knowledge-events/`, `index/`, and `site/`.
 
-The path layout is stable for v1 and v2:
+The path layout is stable:
 
 ```text
 incoming/YYYYMMDD/member_alias/run_id/
@@ -13,11 +13,11 @@ Rules:
 - `YYYYMMDD` is the package date.
 - `member_alias` must exist in the server `config/team.yaml`.
 - `run_id` must start with `YYYYMMDD-HHMMSS`.
-- `schema_version` decides the server behavior.
+- `schema_version` is an internal compatibility field. Do not expose it as a user-facing workflow name.
 
-## V1 Packages
+## Legacy Schema Compatibility
 
-V1 is kept for compatibility.
+The legacy report-package schema is kept only for compatibility.
 
 Allowed `type` values:
 
@@ -51,7 +51,7 @@ patches/
 evidence/
 ```
 
-Minimal v1 manifest:
+Minimal legacy manifest:
 
 ```json
 {
@@ -65,9 +65,9 @@ Minimal v1 manifest:
 }
 ```
 
-## V2 Packages
+## Current Incoming Packages
 
-V2 treats incoming as knowledge event packages, not report uploads.
+Current incoming treats packages as Codex-generated knowledge and evidence packages, not manual report uploads.
 
 Channels:
 
@@ -85,7 +85,7 @@ Quality:
 
 Runtime behavior changes in the modified module require device verification for `validated`. Equivalent verification is allowed for resource-only, build-only, packaging-only, static config, or documentation changes when the package records method, reason, coverage, and remaining risk.
 
-### V2 Light Daily
+### Current Daily Trace
 
 ```text
 manifest.json
@@ -140,7 +140,7 @@ Minimal manifest:
 }
 ```
 
-### V2 Strict Patch Contribution
+### Current Strict Patch Contribution
 
 ```text
 manifest.json
@@ -181,7 +181,7 @@ Patch item:
 
 ## Patch Analysis Evidence
 
-Patch files are evidence, not opaque attachments. Intake and server normalization may inspect patch content to fill missing facts and improve search.
+Patch files are evidence, not opaque attachments. Member-side intake should do the primary patch understanding while it still has Codex session context. Server normalization may do deterministic patch parsing to fill missing direct facts and improve search, but it should not be treated as the main AI inference step.
 
 Direct facts belong in `patch_diff_facts`:
 

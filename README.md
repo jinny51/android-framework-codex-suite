@@ -34,7 +34,7 @@
 | 阶段 | 负责 skill | 职责 |
 | --- | --- | --- |
 | 源码接入 / 路径映射 | `android-wsl-source-access` / `android-windows-source-access` | 把服务器 Android 源码连接到当前 Codex 环境，并记录本地路径、远程路径、SSH 主机映射 |
-| 开工前查知识库 | `android-knowledge-search` | 搜索历史日报、周报、补丁、代码标识、验证证据，判断是否有可复用方案 |
+| 开工前查知识库 | `android-knowledge-search` | 搜索历史报告、补丁、检索锚点、验证证据，判断是否有可复用方案 |
 | 需求分析 / 代码修改 | `android-framework-change-workflow` | 分析需求或 bug，查源码，改代码，加必要调试日志，判断风险和回滚路径 |
 | 远程命令执行 | `android-remote-channel` | 管理 SSH/tmux 长会话、命令日志、占用状态和锁，避免多个 Codex 会话互相踩远程环境 |
 | 编译 / 产物定位 / 推送 | `android-wsl-remote-build-deploy` / `android-windows-remote-build-deploy` | 调用服务器编译 Android，定位 jar/apk 等产物，并推送到设备 |
@@ -76,37 +76,25 @@ android-framework-codex-suite/
 
 ## 安装
 
-### WSL / Linux
+成员通过 Codex 插件市场安装和更新本仓库，不需要手工复制或同步 skill 到本地技能目录。
 
-```bash
-repo="$HOME/Documents/Codex/plugins/android-framework-codex-suite"
-git clone https://github.com/jinny51/android-framework-codex-suite.git "$repo"
-```
-
-然后在支持本地 marketplace 的 Codex 环境中选择：
+在 Codex 插件市场添加 marketplace：
 
 ```text
-$HOME/Documents/Codex/plugins/android-framework-codex-suite/.agents/plugins/marketplace.json
+来源：jinny51/android-framework-codex-suite
+Git 引用：main
+稀疏路径：留空
 ```
 
-### Windows PowerShell
-
-```powershell
-$repo = Join-Path $HOME "Documents\Codex\plugins\android-framework-codex-suite"
-git clone https://github.com/jinny51/android-framework-codex-suite.git $repo
-```
-
-然后在 Codex 中选择：
-
-```text
-%USERPROFILE%\Documents\Codex\plugins\android-framework-codex-suite\.agents\plugins\marketplace.json
-```
+安装后，Android Framework 相关 skill 来自 Codex 插件缓存。旧的手工同步链路不再作为成员分发方式。
 
 推荐安装顺序：
 
 1. 需要 Android Framework 工程能力：安装 `android-framework-ops`。
 2. 需要 Jinny 团队代码风格和 review 规则：额外安装 `jinny-android-practices`。
 3. 需要处理 Codex 本地历史或交接上下文：额外安装 `codex-workspace-care`。
+
+维护者本地开发插件时才需要 clone 本仓库并运行校验脚本。
 
 ## 配置
 

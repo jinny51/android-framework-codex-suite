@@ -1,12 +1,12 @@
 # android-knowledge-intake
 
-成员端日报、周报和维护者补丁包自动汇总提交 skill。
+成员端 incoming 自动汇总提交 skill。
 
 ## 用途
 
 该 skill 用于在成员本机自动汇总 Codex 会话、源码改动记录、patch、readme 和验证结果，先生成本地 `pending`（待检查包），再提交到私有知识库服务器 Git 仓库的 `incoming` 提交目录。
 
-服务端收到 `incoming` 后，再统一生成正式日报、周报、补丁保存目录和搜索索引。
+成员端 Codex 是知识生成主体。它负责从会话、git、patch 和验证记录里整理知识资产；服务器收到 `incoming` 后只做验收、归档、索引和展示。
 
 普通成员使用 `daily/weekly` 自动化；维护者 `jinny/吴金雨` 只在需要保存有价值补丁时使用 `patch` 模式，服务端只保存补丁并重建索引，不生成日报或周报。
 
@@ -52,10 +52,10 @@ python3 "scripts/android_knowledge_intake.py" --profile jinny patch --prepare --
 python3 "scripts/android_knowledge_intake.py" --profile jinny patch --submit-latest
 ```
 
-如果补丁由 `android-framework-patch-capture` 生成，优先传整个 capture 输出目录，这样 patch、readme、验证结果和开发前知识库检索证据都会一起进入 v2 incoming：
+如果补丁由 `android-framework-patch-capture` 生成，优先传整个 capture 输出目录，这样 patch、readme、验证结果和开发前知识库检索证据都会一起进入 incoming：
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile jinny patch --prepare --schema-version 2.0 --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "Android Framework" --summary "功能补丁摘要" --status validated
+python3 "scripts/android_knowledge_intake.py" --profile jinny patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "Android Framework" --summary "功能补丁摘要" --status validated
 ```
 
 只有历史散落补丁才继续用 `--patch /path/to/*.patch`。

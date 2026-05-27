@@ -14,15 +14,15 @@ index/
 └── evidence-index.jsonl
 ```
 
-`knowledge.sqlite` is preferred because it keeps reports, patches, report items, symbols, v2 knowledge events, and evidence in one structured file. JSONL files are the fallback for read-only or partially generated repositories.
+`knowledge.sqlite` is preferred because it keeps reports, patches, report items, search anchors, knowledge events, and evidence in one structured file. JSONL files are the fallback for read-only or partially generated repositories.
 
 ## Result Types
 
-- `patch`: archived patch assets, readme path, status hints, modified files, modules, symbols, patch-derived inference, validation notes, and rollback hint.
-- `report`: daily, weekly, team daily, or team weekly report entries and report item summaries.
-- `symbol`: reverse index from modified files, SystemProperties, Settings keys, string/resource keys, FrameworkLog keys, modules, and patch-derived symbols to patch IDs.
-- `event`: v2 knowledge events such as `framework_change`, `patch_contribution`, `daily_trace`, or `weekly_trace`, including channel and quality.
-- `evidence`: v2 evidence records such as source metadata, changed files, patch diff facts, patch problem inference, risk surface, build result, device/equivalent verification, search-before-change, and package checks.
+- `patch`: archived patch assets, readme path, status hints, modified files, modules, search anchors, patch-derived inference, validation notes, and rollback hint.
+- `report`: member daily or weekly report entries and report item summaries.
+- `symbol`: reverse index from modified files, SystemProperties, Settings keys, string/resource keys, FrameworkLog keys, modules, and patch-derived anchors to patch IDs.
+- `event`: knowledge events such as `framework_change`, `patch_contribution`, `daily_trace`, or `weekly_trace`, including channel and quality.
+- `evidence`: evidence records such as source metadata, changed files, patch diff facts, patch problem inference, risk surface, build result, device/equivalent verification, search-before-change, and package checks.
 
 ## Judgment Boundary
 
@@ -39,7 +39,7 @@ Do not treat these fields as absolute truth:
 - channel
 - evidence result
 
-They are useful hints. The consuming workflow must compare the current requirement with stored facts such as modified files, modules, patch-derived symbols, affected artifacts, touched keys, readme details, build evidence, device verification, inference confidence, inference basis, inference limits, and rollback notes.
+They are useful hints. The consuming workflow must compare the current requirement with stored facts such as modified files, modules, patch-derived anchors, affected artifacts, touched keys, readme details, build evidence, device verification, inference confidence, inference basis, inference limits, and rollback notes.
 
 ## Recommended Query Terms
 
@@ -76,7 +76,7 @@ The CLI must support:
 android_knowledge_search.py <query> [--root PATH] [--type all|patch|report|symbol] [--limit N] [--json] [--refresh]
 ```
 
-V2-aware type filter:
+Full type filter:
 
 ```text
 --type all|patch|report|symbol|event|evidence

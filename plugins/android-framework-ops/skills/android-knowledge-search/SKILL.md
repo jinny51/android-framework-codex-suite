@@ -1,13 +1,13 @@
 ---
 name: android-knowledge-search
-description: Search the team knowledge repository for reusable daily reports, weekly reports, archived patches, modified files, symbols, validation notes, and prior Android Framework solutions. Use before re-implementing a feature, during Android Framework requirement triage, or when a user asks to find existing patches or team knowledge.
+description: Search the team knowledge repository for reusable reports, archived patches, search anchors, validation notes, and prior Android Framework solutions. Use before re-implementing a feature, during Android Framework requirement triage, or when a user asks to find existing patches or team knowledge.
 ---
 
 # Android Knowledge Search
 
 Use this skill to search the team knowledge repository before starting new analysis or implementation. It is the read-side entry for the knowledge system: `android-knowledge-intake` and `android-framework-patch-capture` produce assets; this skill retrieves them.
 
-This skill does not submit reports, create patches, edit source, or decide correctness by itself. It returns prior facts so Codex or the user can judge whether a patch or report is relevant to the current requirement.
+This skill does not submit reports, create patches, edit source, or decide correctness by itself. It returns prior facts so Codex can judge whether a patch or report is relevant to the current requirement.
 
 ## Quick Command
 
@@ -49,7 +49,7 @@ Pass `--refresh` only when using a local Git clone and the latest server content
 
 When handling a new Android Framework requirement:
 
-1. Search with feature words, affected module, likely class name, property key, Settings key, resource key, and artifact name.
+1. Search with feature words, affected module, likely class name, property key, Settings key, resource key, search anchor, and artifact name.
 2. Read the top matching patch readme or report before deciding whether to reuse.
 3. Treat `status`, `reusable`, platform, and validation fields as hints, not truth.
 4. Compare facts: modified files, touched symbols, artifact, risk notes, build evidence, device verification, rollback path.

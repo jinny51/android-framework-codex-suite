@@ -7,7 +7,7 @@ Android Framework 开发、问题分析和验证主流程 skill。
 该 skill 用于处理 Android Framework 开发、行为变更、bug 问题分析、风险判断、调试日志/监控和最终验收报告。
 
 它负责框架改动本身的工程流程；源码访问和远程构建部署由其他 skill 配合完成。
-进入源码分析前，历史报告、补丁和代码标识检索由 `android-knowledge-search` 配合完成。
+进入源码分析前，历史报告、补丁、检索锚点和验证证据由 `android-knowledge-search` 配合检索。
 当修改需要进入团队知识库时，补丁资料整理由 `android-framework-patch-capture` 负责。
 
 ## 典型场景

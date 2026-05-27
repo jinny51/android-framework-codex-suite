@@ -1,5 +1,7 @@
 # Android Knowledge V2 Rebuild Implementation Plan
 
+> Historical implementation plan. This plan is retained for traceability and is no longer the current execution baseline. Current work should follow the foundation in the server knowledge repository: `docs/system-foundation.md`.
+
 **Goal:** Rebuild the Android team knowledge system around V2 knowledge events, evidence, patch analysis, generated views, and plugin-marketplace member workflows.
 
 **Architecture:** The server knowledge repository remains the authority. `knowledge-events/` becomes the durable source of truth; `daily/`, `weekly/`, `patches/by-id/`, `index/`, and `site/` become generated views. Member and maintainer tools come from the `android-framework-ops` Codex marketplace plugin.

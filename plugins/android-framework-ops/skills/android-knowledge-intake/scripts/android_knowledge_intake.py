@@ -54,7 +54,7 @@ CONFIG_DEFAULTS = {
     "git_user_email": "",
     "codex_home": "$CODEX_HOME",
     "out_dir": "$CODEX_HOME/artifacts/android-knowledge-intake",
-    "incoming_schema_version": "1.0",
+    "incoming_schema_version": "2.0",
     "include_patches": "true",
     "max_attachment_mb": "5",
     "push_retries": "3",
@@ -444,8 +444,10 @@ def should_skip_session(work: SessionWork) -> bool:
         normalized = work.cwd.replace("\\", "/")
         if "/.codex/plugins/cache/" in normalized or "/.codex/skills/android-knowledge-intake/" in normalized:
             return True
-    skip_names = ("日报上传测试", "周报上传测试", "小组日报汇总", "小组周报汇总")
-    return any(name in work.thread_name for name in skip_names)
+    skip_names = ("日报上传测试", "周报上传测试")
+    if any(name in work.thread_name for name in skip_names):
+        return True
+    return "汇总" in work.thread_name and ("日报" in work.thread_name or "周报" in work.thread_name)
 
 
 def git_root(path: str) -> Path | None:

@@ -1,5 +1,7 @@
 # Android Knowledge V2 Architecture
 
+> Historical design note. This document records an earlier rebuild direction and is no longer the current architecture baseline. Current work should follow the foundation in the server knowledge repository: `docs/system-foundation.md`.
+
 ## Purpose
 
 The knowledge system should be rebuilt around one authoritative model instead of growing as a report directory plus a patch archive plus a later incoming pipeline.

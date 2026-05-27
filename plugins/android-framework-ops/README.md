@@ -1,6 +1,6 @@
 # Android Framework Ops
 
-Android Framework Ops 是本套件的核心工程插件。它负责 Android Framework 需求从源码接入、历史检索、诊断修改、远程构建、设备推送、验收证据、补丁归档到知识入库的闭环。
+Android Framework Ops 是本套件的核心工程插件。它负责让成员端 Codex 完成 Android Framework 需求从源码接入、历史检索、诊断修改、远程构建、设备推送、验收证据、补丁归档到 incoming 入库的闭环。
 
 这个插件只提供中立工程能力，不内置个人代码风格，不替代项目本地规范，也不强制接管 review workflow。
 
@@ -10,8 +10,8 @@ Android Framework Ops 是本套件的核心工程插件。它负责 Android Fram
 | --- | --- | --- |
 | Framework 工作流 | [android-framework-change-workflow](skills/android-framework-change-workflow/README.md) | 统筹需求分析、问题诊断、源码修改、风险判断、验证验收和最终报告 |
 | Framework 工作流 | [android-framework-patch-capture](skills/android-framework-patch-capture/README.md) | 将已完成或阶段性 Framework 修改整理成标准 patch、说明和验证材料补丁包 |
-| 知识系统 | [android-knowledge-search](skills/android-knowledge-search/README.md) | 搜索团队知识库中的历史日报、周报、补丁、代码标识、验证记录和 v2 事件 |
-| 知识系统 | [android-knowledge-intake](skills/android-knowledge-intake/README.md) | 生成、检查并提交日报、周报或维护者补丁贡献包到团队知识库 incoming 协议 |
+| 知识系统 | [android-knowledge-search](skills/android-knowledge-search/README.md) | 搜索团队知识库中的历史报告、补丁、检索锚点、验证记录和知识事件 |
+| 知识系统 | [android-knowledge-intake](skills/android-knowledge-intake/README.md) | 从会话、git、patch 和验证结果生成 incoming 包并提交到团队知识库 |
 | 远程执行 | [android-remote-channel](skills/android-remote-channel/README.md) | 统一管理 Android 构建服务器 SSH/tmux 长会话、命令日志、占用状态和锁 |
 | WSL 源码接入 | [android-wsl-source-access](skills/android-wsl-source-access/README.md) | 在 WSL 中挂载或恢复 Android 服务器源码，并记录本地路径、远程路径和 SSH 主机映射 |
 | WSL 构建交付 | [android-wsl-remote-build-deploy](skills/android-wsl-remote-build-deploy/README.md) | 在 WSL 源码接入场景下调用服务器完成 Android 编译、产物定位和设备推送 |
@@ -26,8 +26,8 @@ Android Framework Ops 是本套件的核心工程插件。它负责 Android Fram
 4. `android-remote-channel` 提供稳定远程会话，避免重复 SSH、重复 tmux、重复锁逻辑。
 5. `android-wsl-remote-build-deploy` 或 `android-windows-remote-build-deploy` 负责服务器构建、产物定位、设备推送。
 6. `android-framework-change-workflow` 根据需求和设备证据给最终验收结论。
-7. `android-framework-patch-capture` 把可复用修改整理成补丁资料包。
-8. `android-knowledge-intake` 把日报、周报或补丁包提交到团队知识库。
+7. `android-framework-patch-capture` 把可复用修改整理成补丁、readme 和 evidence。
+8. `android-knowledge-intake` 把成员端 Codex 生成的知识资产打成 incoming 包并提交到团队知识库。
 
 ## 和其他 skill 的兼容方式
 
