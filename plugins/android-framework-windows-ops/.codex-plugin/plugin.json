@@ -1,0 +1,41 @@
+{
+  "name": "android-framework-windows-ops",
+  "version": "1.0.0",
+  "description": "Optional Windows-native operational workflows for Android Framework engineering with Codex.",
+  "author": {
+    "name": "Jinny Android Framework Team",
+    "url": "https://github.com/jinny51"
+  },
+  "homepage": "https://github.com/jinny51/android-framework-codex-suite",
+  "repository": "https://github.com/jinny51/android-framework-codex-suite",
+  "license": "MIT",
+  "keywords": [
+    "android",
+    "framework",
+    "windows",
+    "powershell",
+    "smb",
+    "remote-build",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Android Framework Windows Ops",
+    "shortDescription": "Windows 原生 Android Framework 源码接入、远程会话和构建推送兼容层",
+    "longDescription": "面向 Windows 原生 Codex 智能体的可选 Android Framework 工作流，覆盖 SMB/UNC 源码映射、PowerShell/ssh.exe 远程会话、远程构建产物定位和本地 adb.exe 推送。团队主推荐链路仍是 WSL 版 Android Framework Ops。",
+    "developerName": "Jinny Android Framework Team",
+    "category": "Coding",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "帮我在 Windows 原生 Codex 中识别 Android SMB 源码映射",
+      "用 Windows 远程通道检查 Android 构建服务器会话",
+      "在 Windows 原生环境下远程构建并用 adb.exe 推送产物"
+    ],
+    "brandColor": "#1D4ED8",
+    "screenshots": []
+  }
+}

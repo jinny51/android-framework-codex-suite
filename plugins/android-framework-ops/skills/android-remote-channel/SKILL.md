@@ -1,6 +1,6 @@
 ---
 name: android-remote-channel
-description: Provide a shared remote execution channel for Android build servers using SSH and persistent remote tmux sessions. Use when WSL or Windows Android skills need to create/reuse a remote session, run repeated remote source/git/build commands, tail logs, check busy state, keep long builds recoverable, or avoid duplicating remote-session logic across android-wsl-remote-build-deploy and android-windows-remote-build-deploy.
+description: Provide a WSL/Linux remote execution channel for Android build servers using SSH and persistent remote tmux sessions. Use when WSL Android skills need to create/reuse a remote session, run repeated remote source/git/build commands, tail logs, check busy state, keep long builds recoverable, or avoid duplicating remote-session logic.
 ---
 
 # Android Remote Channel
@@ -9,15 +9,12 @@ Use this skill as the shared remote channel layer for Android build-server workf
 
 ## Boundary
 
-Use this skill from:
-
-- `android-wsl-remote-build-deploy` when a WSL agent needs repeated remote Linux commands.
-- `android-windows-remote-build-deploy` when a Windows native agent needs repeated remote Linux commands.
+Use this skill from `android-wsl-remote-build-deploy` when a WSL agent needs repeated remote Linux commands.
 
 Do not use this skill as a replacement for:
 
-- `android-wsl-source-access` or `android-windows-source-access`: they own local source mapping and registry.
-- `android-wsl-remote-build-deploy` or `android-windows-remote-build-deploy`: they own Android build/deploy semantics.
+- `android-wsl-source-access`: it owns local source mapping and registry.
+- `android-wsl-remote-build-deploy`: it owns Android build/deploy semantics.
 - `android-framework-change-workflow`: it owns diagnosis, implementation discipline, risk, and final behavior verification.
 
 ## Protocol
@@ -38,7 +35,7 @@ Remote state is stored on the build server:
 
 The session key is `SSH_HOST|REMOTE_ROOT`. Commands always run from `REMOTE_ROOT`.
 
-Use `--lock exclusive` or `-Lock exclusive` for source edits, git writes, `repo` operations, and builds. Read-only searches can use the default `none` lock.
+Use `--lock exclusive` for source edits, git writes, `repo` operations, and builds. Read-only searches can use the default `none` lock.
 
 ## WSL/Linux Entry
 
@@ -88,40 +85,6 @@ If `tmux` is missing, install it only through the explicit action:
 ```
 
 `install-tmux` first tries passwordless sudo, then `CODEX_REMOTE_SUDO_PASSWORD`, then credentials already saved by `android-wsl-source-access`. It does not save new passwords. If no usable password exists, it prints `REMOTE_SUDO_PASSWORD_REQUIRED env=CODEX_REMOTE_SUDO_PASSWORD action=install_tmux`; stop and ask the user for the remote sudo password, then rerun with the env var set.
-
-## Windows Entry
-
-```powershell
-$ChannelDir = "$env:USERPROFILE\.codex\skills\android-remote-channel"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ChannelDir\scripts\Invoke-AndroidRemoteChannel.ps1" `
-  -SshHost "$SSH_HOST" `
-  -RemoteRoot "$REMOTE_ROOT" `
-  -Action check
-```
-
-Run a command:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ChannelDir\scripts\Invoke-AndroidRemoteChannel.ps1" `
-  -SshHost "$SSH_HOST" `
-  -RemoteRoot "$REMOTE_ROOT" `
-  -Action run `
-  -Lock exclusive `
-  -Command "source .codex/build-session.sh && codex_session_init && codex_session_build --profile services"
-```
-
-Windows uses `ssh.exe` and the same remote `tmux` protocol. Do not depend on Windows SSH ControlMaster behavior.
-
-Windows also supports the explicit install action:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ChannelDir\scripts\Invoke-AndroidRemoteChannel.ps1" `
-  -SshHost "$SSH_HOST" `
-  -RemoteRoot "$REMOTE_ROOT" `
-  -Action install-tmux
-```
-
-It uses the same priority: passwordless sudo, `CODEX_REMOTE_SUDO_PASSWORD`, then saved `android-windows-source-access` credentials as candidates. It never writes credentials.
 
 ## Failure Handling
 

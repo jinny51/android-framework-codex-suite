@@ -6,10 +6,12 @@ Codex Workspace Care 是独立的本地工作区维护插件，用于检查、�
 
 ## 包含的 skill
 
+每个 skill 的详细说明放在 GitHub 源仓库的 `docs/skills/codex-workspace-care/` 下。插件安装后的 runtime skill 目录只保留 Codex 执行需要的文件，不放 `README.md`。
+
 | Skill | 职责 |
 | --- | --- |
-| [codex-chat-history-cleaner](skills/codex-chat-history-cleaner/README.md) | 检查、修复和清理本地 Codex 历史记录、归档残留、搜索索引痕迹和 SQLite 一致性问题 |
-| [codex-chat-history-context-extractor](skills/codex-chat-history-context-extractor/README.md) | 从本地 Codex 历史中提取隐私友好的上下文交接材料，让新窗口可以继续旧任务 |
+| [codex-chat-history-cleaner](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/codex-workspace-care/codex-chat-history-cleaner) | 检查、修复和清理本地 Codex 历史记录、归档残留、搜索索引痕迹和 SQLite 一致性问题 |
+| [codex-chat-history-context-extractor](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/codex-workspace-care/codex-chat-history-context-extractor) | 从本地 Codex 历史中提取隐私友好的上下文交接材料，让新窗口可以继续旧任务 |
 
 ## 使用边界
 

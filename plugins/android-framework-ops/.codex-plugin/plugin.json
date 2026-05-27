@@ -1,7 +1,7 @@
 {
   "name": "android-framework-ops",
-  "version": "1.0.0",
-  "description": "Composable operational workflows for Android Framework engineering with Codex.",
+  "version": "1.0.1",
+  "description": "WSL-first operational workflows for Android Framework engineering with Codex.",
   "author": {
     "name": "Jinny Android Framework Team",
     "url": "https://github.com/jinny51"
@@ -21,8 +21,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Android Framework Ops",
-    "shortDescription": "Android Framework 团队源码接入、远程构建、验证验收和知识复用工作流",
-    "longDescription": "面向 Android Framework 团队的可组合 Codex 工作流，覆盖源码接入、远程执行、构建推送、验证验收、补丁归档和团队知识复用。设计上保留用户自己的代码风格 skill、项目本地规范和 review workflow。",
+    "shortDescription": "Android Framework 团队 WSL 源码接入、远程构建、验证验收和知识复用工作流",
+    "longDescription": "面向 Android Framework 团队的 WSL-first 可组合 Codex 工作流，覆盖源码接入、远程执行、构建推送、验证验收、补丁归档和团队知识复用。Windows 原生 SMB/PowerShell 兼容能力拆分到可选插件 android-framework-windows-ops。",
     "developerName": "Jinny Android Framework Team",
     "category": "Coding",
     "capabilities": [

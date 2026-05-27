@@ -1,5 +1,7 @@
 # Codex Chat History Cleaner
 
+> GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/codex-workspace-care/skills/codex-chat-history-cleaner](../../../../plugins/codex-workspace-care/skills/codex-chat-history-cleaner)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...`、`references/...` 指向该 runtime skill 目录。
+
 这是一个用于检查、修复和清理本地 Codex 聊天历史状态的 Codex skill。它适用于排查和清理归档会话、搜索索引残留、聊天记录文件、SQLite 外键孤儿记录、重复 workspace root，以及“清理过程本身又被当前会话记录下来，后续又被搜出来”的情况。
 
 ## 典型场景

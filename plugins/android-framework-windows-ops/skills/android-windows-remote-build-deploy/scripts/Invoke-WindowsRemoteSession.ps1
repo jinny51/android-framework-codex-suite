@@ -26,13 +26,13 @@ param(
 $ErrorActionPreference = "Stop"
 
 $candidatePaths = @(
-    (Join-Path $env:USERPROFILE ".codex\skills\android-remote-channel\scripts\Invoke-AndroidRemoteChannel.ps1"),
-    (Join-Path $PSScriptRoot "..\..\android-remote-channel\scripts\Invoke-AndroidRemoteChannel.ps1")
+    (Join-Path $env:USERPROFILE ".codex\skills\android-windows-remote-channel\scripts\Invoke-AndroidRemoteChannel.ps1"),
+    (Join-Path $PSScriptRoot "..\..\android-windows-remote-channel\scripts\Invoke-AndroidRemoteChannel.ps1")
 )
 
 $channelScript = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (-not $channelScript) {
-    Write-Error "android-remote-channel is not installed or not found. Expected one of: $($candidatePaths -join '; ')"
+    Write-Error "android-windows-remote-channel is not installed or not found. Expected one of: $($candidatePaths -join '; ')"
     exit 127
 }
 

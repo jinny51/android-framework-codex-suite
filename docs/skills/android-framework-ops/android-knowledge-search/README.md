@@ -1,5 +1,7 @@
 # android-knowledge-search
 
+> GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-framework-ops/skills/android-knowledge-search](../../../../plugins/android-framework-ops/skills/android-knowledge-search)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...`、`references/...` 指向该 runtime skill 目录。
+
 团队知识库检索 skill。
 
 ## 用途
@@ -70,6 +72,6 @@ android-framework-change-workflow
 
 ## 文件入口
 
-- [SKILL.md](SKILL.md)：给 Codex 自动加载的执行说明。
-- [references/search-contract.md](references/search-contract.md)：知识库检索输入、输出和判断边界。
-- [scripts/android_knowledge_search.py](scripts/android_knowledge_search.py)：本地检索脚本。
+- [SKILL.md](../../../../plugins/android-framework-ops/skills/android-knowledge-search/SKILL.md)：给 Codex 自动加载的执行说明。
+- [references/search-contract.md](../../../../plugins/android-framework-ops/skills/android-knowledge-search/references/search-contract.md)：知识库检索输入、输出和判断边界。
+- [scripts/android_knowledge_search.py](../../../../plugins/android-framework-ops/skills/android-knowledge-search/scripts/android_knowledge_search.py)：本地检索脚本。

@@ -1,6 +1,6 @@
 ---
 name: android-framework-change-workflow
-description: "Use when implementing requirements, modifying, diagnosing, or verifying Android platform/framework code such as frameworks/base, system_server services, WindowManager, ActivityTaskManager, PackageManager, SystemUI, Launcher3 integration, input, resources/overlays, surfaces, boot/runtime services, or OEM/system-level behavior. Orchestrates requirement contracts, evidence-backed diagnosis, targeted instrumentation, scoped framework changes, failure recovery, final acceptance verification, diagnostic log lifecycle cleanup, and concise reporting. Use WSL source/build skills on WSL agents and Windows source/build skills on Windows native agents."
+description: "Use when implementing requirements, modifying, diagnosing, or verifying Android platform/framework code such as frameworks/base, system_server services, WindowManager, ActivityTaskManager, PackageManager, SystemUI, Launcher3 integration, input, resources/overlays, surfaces, boot/runtime services, or OEM/system-level behavior. Orchestrates requirement contracts, evidence-backed diagnosis, targeted instrumentation, scoped framework changes, failure recovery, final acceptance verification, diagnostic log lifecycle cleanup, and concise reporting. Use WSL source/build skills from android-framework-ops for the default team workflow."
 ---
 
 # Android Framework Change Workflow
@@ -18,8 +18,7 @@ Use it for both direct requirement implementation and bug/regression work. Do no
 It coordinates with adjacent Android skills:
 
 - `android-knowledge-search` searches prior reports, archived patches, search anchors, and validation evidence before re-analysis or re-implementation. Use it as the pre-analysis knowledge gate when the team knowledge repository is available.
-- WSL agents: `android-wsl-source-access` proves the source tree is mounted and usable; `android-wsl-remote-build-deploy` proves artifacts were built and delivered.
-- Windows native agents: `android-windows-source-access` proves the SMB mapping and local-to-remote registry are usable; `android-windows-remote-build-deploy` proves artifacts were built remotely, picked up through the Windows mapping, and delivered with `adb.exe`.
+- `android-wsl-source-access` proves the source tree is mounted and usable; `android-wsl-remote-build-deploy` proves artifacts were built and delivered.
 - Build/deploy executors may use `android-remote-channel` internally for reusable SSH/tmux remote sessions; this workflow should still call the platform build/deploy executor rather than the channel directly.
 - `android-framework-patch-capture` turns an implemented or stage-worthy Framework change into a patch/readme/evidence package after this workflow has produced a concrete change. Use it before `android-knowledge-intake` when the result should enter the team knowledge base.
 - This skill proves the framework change satisfies the requirement or diagnosis outcome on device.
@@ -32,13 +31,13 @@ Follow this ownership boundary:
 android-knowledge-search
   -> search prior reports/patches/search anchors/validation evidence before reimplementing
 
-android-wsl-source-access OR android-windows-source-access
+android-wsl-source-access
   -> access/recover/identify source tree handoff
 
 android-framework-change-workflow
   -> specify requirement or diagnose issue -> instrument if needed -> change -> define verification
 
-android-wsl-remote-build-deploy OR android-windows-remote-build-deploy
+android-wsl-remote-build-deploy
   -> build -> push/deploy -> return delivery evidence
 
 android-framework-change-workflow
@@ -60,7 +59,7 @@ Keep this file as the orchestrator. Load only the reference needed for the curre
 - `references/subsystem-playbooks.md`: read after identifying the likely owner subsystem.
 - `references/verification-matrix.md`: read before build/deploy verification and again before final reporting.
 - `references/failure-signatures.md`: read when build, boot, deploy, logcat, or behavior verification fails.
-- `references/build-deploy-contract.md`: read when coordinating with `android-wsl-remote-build-deploy` or `android-windows-remote-build-deploy`.
+- `references/build-deploy-contract.md`: read when coordinating with `android-wsl-remote-build-deploy`.
 - `references/capability-capture.md`: read near final reporting only when the task produced reusable process knowledge, exposed a skill gap, or the user asks to remember/summarize a lesson.
 
 Use scripts in `scripts/` as optional helpers. Prefer them for log slicing, health scans, artifact probing, diagnostic log audits, dumpsys capture, and video frame extraction when the matching artifact exists.
@@ -75,7 +74,7 @@ Before editing behavior:
 4. For bugs or regressions, capture visible symptom, reproduction, expected behavior, and evidence source.
 5. Identify likely owner process and subsystem: app, SystemUI, launcher, system_server, WM/ATM, PMS, input, resources/overlays, display/surface/compositor, native service, or build config.
 6. Identify affected artifact: `framework.jar`, `services.jar`, `framework-res.apk`, `SystemUI.apk`, Launcher APK, permission/config XML, overlay APK, native binary, or mixed artifacts.
-7. Check source/build/deploy readiness. On WSL, use `android-wsl-source-access` first if source access is broken and `android-wsl-remote-build-deploy` later for build/delivery. On Windows native agents, use `android-windows-source-access` for SMB mapping/registry and `android-windows-remote-build-deploy` later for remote build and local `adb.exe` delivery.
+7. Check source/build/deploy readiness. Use `android-wsl-source-access` first if source access is broken and `android-wsl-remote-build-deploy` later for build/delivery.
 8. Check dirty files before editing and preserve unrelated user work.
 9. Choose mode: direct requirement, analysis only, diagnostics, behavior change, build/deploy coordination, final verification, or failure recovery.
 
@@ -149,14 +148,12 @@ Change with framework discipline:
 - Preserve lock ordering, Binder identity, handler/thread affinity, lifecycle timing, transaction ordering, resource precedence, and multi-user/profile semantics.
 - Keep edits scoped to the responsible subsystem.
 - Avoid unrelated refactors, formatting churn, and unrelated dirty files.
-- On Windows native agents, do not search, read, edit, patch, format, or run `git`/`repo`/build commands against Windows SMB mapped paths. Run source operations on the remote Linux `REMOTE_ROOT` over SSH. Use the Windows SMB mapping only for artifact pickup after remote builds.
 
 ## Gate 4: Build And Delivery
 
 Use the platform-appropriate build/deploy executor for remote build and push mechanics:
 
 - WSL: `android-wsl-remote-build-deploy`.
-- Windows native: `android-windows-remote-build-deploy`.
 
 Require it to return:
 

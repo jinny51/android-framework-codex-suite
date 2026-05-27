@@ -63,14 +63,6 @@ On WSL, source-access candidates come from:
 
 The channel prefers `SAVED_REMOTE_SUDO_PASSWORD`, then `SAVED_SSH_PASSWORD`, then `SAVED_SAMBA_PASSWORD`, and finally the Samba `.cred` password for the matched project. These are only tried as candidates; failures do not overwrite local files.
 
-On Windows, source-access candidates come from `android-windows-source-access` project records and their saved Samba `.cred` files under:
-
-```text
-%USERPROFILE%\.codex\android-windows-source-access-info\
-```
-
-Windows source-access does not currently store a separate remote sudo password, so the saved Samba password is only a fallback candidate.
-
 ## Locking
 
 The `busy` file prevents concurrent command dispatch through the same channel. The `project.lock` file is an additional `flock` used when a command is run with `exclusive`.
@@ -100,8 +92,6 @@ This avoids editing `~/.ssh/config`. Disable with:
 ```bash
 CODEX_REMOTE_CHANNEL_SSH_MUX=0
 ```
-
-The Windows entry does not rely on ControlMaster. It uses `ssh.exe` for transport and relies on remote `tmux` for persistence.
 
 ## Build Skill Contract
 

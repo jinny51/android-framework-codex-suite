@@ -3,7 +3,6 @@
 Read this when handing off to or receiving results from the platform build/deploy executor:
 
 - WSL agents: `android-wsl-remote-build-deploy`.
-- Windows native agents: `android-windows-remote-build-deploy`.
 
 ## Responsibility Split
 

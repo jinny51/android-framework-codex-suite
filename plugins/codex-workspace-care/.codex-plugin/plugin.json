@@ -1,6 +1,6 @@
 {
   "name": "codex-workspace-care",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local Codex history cleanup and context handoff workflows.",
   "author": {
     "name": "Jinny Android Framework Team",

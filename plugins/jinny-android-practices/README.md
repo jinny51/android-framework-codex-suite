@@ -10,6 +10,8 @@ Jinny Android Practices 是可选实践插件，用于放置 Jinny 团队的 And
 
 保留这个插件边界是为了避免把个人或小团队偏好混进 `android-framework-ops`。后续如果要加入代码风格、review、项目规范、提交规范或验收偏好，应放在这里，而不是放进核心工程插件。
 
+新增实践 skill 后，对应的人类说明放在 GitHub 源仓库的 `docs/skills/jinny-android-practices/<skill-name>/README.md`。插件安装后的 runtime skill 目录只保留 Codex 执行需要的文件，不放 `README.md`。
+
 ## 适合放进这里的内容
 
 | 类型 | 示例 |
@@ -31,6 +33,7 @@ Jinny Android Practices 是可选实践插件，用于放置 Jinny 团队的 And
 
 ```text
 plugins/jinny-android-practices/skills/<skill-name>/
+docs/skills/jinny-android-practices/<skill-name>/README.md
 manifests/jinny-android-practices.toml
 plugins/jinny-android-practices/README.md
 README.md

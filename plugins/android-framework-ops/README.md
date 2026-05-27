@@ -1,30 +1,32 @@
 # Android Framework Ops
 
-Android Framework Ops 是本套件的核心工程插件。它负责让成员端 Codex 完成 Android Framework 需求从源码接入、历史检索、诊断修改、远程构建、设备推送、验收证据、补丁归档到 incoming 入库的闭环。
+Android Framework Ops 是本套件的 WSL 主链路核心工程插件。它负责让成员端 Codex 完成 Android Framework 需求从 WSL 源码接入、历史检索、诊断修改、远程构建、设备推送、验收证据、补丁归档到 incoming 入库的闭环。
 
 这个插件只提供中立工程能力，不内置个人代码风格，不替代项目本地规范，也不强制接管 review workflow。
 
+Windows 原生 Codex 的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力不放在本核心插件中；需要时额外安装 `android-framework-windows-ops`。
+
 ## 包含的 skill
+
+每个 skill 的详细说明放在 GitHub 源仓库的 `docs/skills/android-framework-ops/` 下。插件安装后的 runtime skill 目录只保留 Codex 执行需要的文件，不放 `README.md`。
 
 | 分类 | Skill | 职责 |
 | --- | --- | --- |
-| Framework 工作流 | [android-framework-change-workflow](skills/android-framework-change-workflow/README.md) | 统筹需求分析、问题诊断、源码修改、风险判断、验证验收和最终报告 |
-| Framework 工作流 | [android-framework-patch-capture](skills/android-framework-patch-capture/README.md) | 将已完成或阶段性 Framework 修改整理成标准 patch、说明和验证材料补丁包 |
-| 知识系统 | [android-knowledge-search](skills/android-knowledge-search/README.md) | 搜索团队知识库中的历史报告、补丁、检索锚点、验证记录和知识事件 |
-| 知识系统 | [android-knowledge-intake](skills/android-knowledge-intake/README.md) | 从会话、git、patch 和验证结果生成 incoming 包并提交到团队知识库 |
-| 远程执行 | [android-remote-channel](skills/android-remote-channel/README.md) | 统一管理 Android 构建服务器 SSH/tmux 长会话、命令日志、占用状态和锁 |
-| WSL 源码接入 | [android-wsl-source-access](skills/android-wsl-source-access/README.md) | 在 WSL 中挂载或恢复 Android 服务器源码，并记录本地路径、远程路径和 SSH 主机映射 |
-| WSL 构建交付 | [android-wsl-remote-build-deploy](skills/android-wsl-remote-build-deploy/README.md) | 在 WSL 源码接入场景下调用服务器完成 Android 编译、产物定位和设备推送 |
-| Windows 源码接入 | [android-windows-source-access](skills/android-windows-source-access/README.md) | 在 Windows 中识别 SMB/UNC 源码路径，并记录本地路径、远程路径和 SSH 主机映射 |
-| Windows 构建交付 | [android-windows-remote-build-deploy](skills/android-windows-remote-build-deploy/README.md) | 在 Windows SMB/UNC 场景下调用服务器完成 Android 编译、产物定位和本地 `adb.exe` 推送 |
+| Framework 工作流 | [android-framework-change-workflow](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-framework-change-workflow) | 统筹需求分析、问题诊断、源码修改、风险判断、验证验收和最终报告 |
+| Framework 工作流 | [android-framework-patch-capture](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-framework-patch-capture) | 将已完成或阶段性 Framework 修改整理成标准 patch、说明和验证材料补丁包 |
+| 知识系统 | [android-knowledge-search](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-knowledge-search) | 搜索团队知识库中的历史报告、补丁、检索锚点、验证记录和知识事件 |
+| 知识系统 | [android-knowledge-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-knowledge-intake) | 从会话、git、patch 和验证结果生成 incoming 包并提交到团队知识库 |
+| 远程执行 | [android-remote-channel](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-remote-channel) | 统一管理 Android 构建服务器 SSH/tmux 长会话、命令日志、占用状态和锁 |
+| WSL 源码接入 | [android-wsl-source-access](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-wsl-source-access) | 在 WSL 中挂载或恢复 Android 服务器源码，并记录本地路径、远程路径和 SSH 主机映射 |
+| WSL 构建交付 | [android-wsl-remote-build-deploy](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-wsl-remote-build-deploy) | 在 WSL 源码接入场景下调用服务器完成 Android 编译、产物定位和设备推送 |
 
 ## 推荐工作流
 
-1. `android-wsl-source-access` 或 `android-windows-source-access` 先确认源码路径和远程映射。
+1. `android-wsl-source-access` 先确认源码路径和远程映射。
 2. `android-knowledge-search` 在正式分析前检索历史方案、补丁和验证证据。
 3. `android-framework-change-workflow` 负责需求分析、源码修改、调试日志、风险判断和验收口径。
 4. `android-remote-channel` 提供稳定远程会话，避免重复 SSH、重复 tmux、重复锁逻辑。
-5. `android-wsl-remote-build-deploy` 或 `android-windows-remote-build-deploy` 负责服务器构建、产物定位、设备推送。
+5. `android-wsl-remote-build-deploy` 负责服务器构建、产物定位、设备推送。
 6. `android-framework-change-workflow` 根据需求和设备证据给最终验收结论。
 7. `android-framework-patch-capture` 把可复用修改整理成补丁、readme 和 evidence。
 8. `android-knowledge-intake` 把成员端 Codex 生成的知识资产打成 incoming 包并提交到团队知识库。

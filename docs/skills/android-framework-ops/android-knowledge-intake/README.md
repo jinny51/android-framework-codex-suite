@@ -1,5 +1,7 @@
 # android-knowledge-intake
 
+> GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-framework-ops/skills/android-knowledge-intake](../../../../plugins/android-framework-ops/skills/android-knowledge-intake)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...`、`references/...` 指向该 runtime skill 目录。
+
 成员端 incoming 自动汇总提交 skill。
 
 ## 用途
@@ -64,9 +66,9 @@ python3 "scripts/android_knowledge_intake.py" --profile jinny patch --prepare --
 
 ## 文件入口
 
-- [SKILL.md](SKILL.md)：给 Codex 自动加载的执行说明。
-- [config.example.toml](config.example.toml)：成员本机配置示例。
-- [references/incoming-package-protocol.md](references/incoming-package-protocol.md)：`incoming` 提交目录规则。
-- [references/patch-maturity-rules.md](references/patch-maturity-rules.md)：补丁成熟度和上传策略。
-- [references/android-framework-patch-rules.md](references/android-framework-patch-rules.md)：Android Framework patch 规范。
-- [scripts/android_knowledge_intake.py](scripts/android_knowledge_intake.py)：日报、周报、维护者补丁包生成和提交脚本。
+- [SKILL.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/SKILL.md)：给 Codex 自动加载的执行说明。
+- [config.example.toml](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/config.example.toml)：成员本机配置示例。
+- [references/incoming-package-protocol.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/incoming-package-protocol.md)：`incoming` 提交目录规则。
+- [references/patch-maturity-rules.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/patch-maturity-rules.md)：补丁成熟度和上传策略。
+- [references/android-framework-patch-rules.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/android-framework-patch-rules.md)：Android Framework patch 规范。
+- [scripts/android_knowledge_intake.py](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py)：日报、周报、维护者补丁包生成和提交脚本。

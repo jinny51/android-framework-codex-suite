@@ -15,8 +15,6 @@ Use it after `android-framework-change-workflow` has produced a concrete change,
 - `android-framework-patch-capture`: owns patch/readme/evidence packaging for existing changes.
 - `android-knowledge-intake`: owns daily/weekly/patch package submission to the knowledge repository.
 
-On Windows native agents, do not package from a Windows SMB source path. Run packaging in the authoritative remote Linux source tree over SSH, then copy the generated package path or patch file reference into the report flow.
-
 ## Quick Command
 
 From the Android source git repository with local changes:

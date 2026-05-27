@@ -9,7 +9,7 @@ Use this skill for Windows-native access to Android source trees shared from a r
 
 It owns the local mapping registry, optional Samba credential memory, and source access handoff. It does not run Android builds, push artifacts, or diagnose framework behavior.
 
-Build/deploy skills consume this skill's `sshHost` and `remoteRoot` handoff and may then call `android-remote-channel`; this source-access skill should not create long-running remote sessions itself.
+Build/deploy skills consume this skill's `sshHost` and `remoteRoot` handoff and may then call `android-windows-remote-channel`; this source-access skill should not create long-running remote sessions itself.
 
 ## Runtime Registry
 

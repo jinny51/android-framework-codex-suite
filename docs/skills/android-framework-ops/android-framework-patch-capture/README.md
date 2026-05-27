@@ -1,5 +1,7 @@
 # android-framework-patch-capture
 
+> GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-framework-ops/skills/android-framework-patch-capture](../../../../plugins/android-framework-ops/skills/android-framework-patch-capture)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...`、`references/...` 指向该 runtime skill 目录。
+
 Android Framework 补丁包生成 skill。
 
 ## 用途
@@ -38,6 +40,6 @@ python3 "scripts/capture_framework_patch.py" \
 
 ## 文件入口
 
-- [SKILL.md](SKILL.md)：给 Codex 自动加载的执行说明。
-- [references/package-contract.md](references/package-contract.md)：补丁包结构和修改内容字段约定。
-- [scripts/capture_framework_patch.py](scripts/capture_framework_patch.py)：补丁包生成脚本。
+- [SKILL.md](../../../../plugins/android-framework-ops/skills/android-framework-patch-capture/SKILL.md)：给 Codex 自动加载的执行说明。
+- [references/package-contract.md](../../../../plugins/android-framework-ops/skills/android-framework-patch-capture/references/package-contract.md)：补丁包结构和修改内容字段约定。
+- [scripts/capture_framework_patch.py](../../../../plugins/android-framework-ops/skills/android-framework-patch-capture/scripts/capture_framework_patch.py)：补丁包生成脚本。

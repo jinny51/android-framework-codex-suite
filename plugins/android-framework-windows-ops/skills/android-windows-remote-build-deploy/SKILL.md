@@ -13,7 +13,7 @@ It consumes an SMB mapping recorded by `android-windows-source-access`, runs all
 
 On Windows native agents, do not search, read, edit, patch, run `git`, run `repo`, or build against `X:\...` or `\\server\share\...` source paths.
 
-Use the remote Linux source tree for all source operations. Prefer `android-remote-channel` for repeated work; this skill's session helper is a compatibility wrapper around that shared channel:
+Use the remote Linux source tree for all source operations. Prefer `android-windows-remote-channel` for repeated work; this skill's session helper is a compatibility wrapper around that channel:
 
 ```powershell
 $SkillDir = "$env:USERPROFILE\.codex\skills\android-windows-remote-build-deploy"
@@ -134,7 +134,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$SkillDir\scripts\Invok
 - Treat `REMOTE_ROOT` as source-authoritative.
 - Treat `LOCAL_REPO` as artifact-pickup-only.
 - Do not run local Windows `rg`, `git`, `repo`, Android scripts, or builds on SMB mapped source.
-- Use `Invoke-WindowsRemoteSession.ps1` for repeated source search/read/write/patch/git/repo/build; it delegates to `android-remote-channel`. Use short `ssh.exe` only as a fallback or for one-off diagnostics.
+- Use `Invoke-WindowsRemoteSession.ps1` for repeated source search/read/write/patch/git/repo/build; it delegates to `android-windows-remote-channel`. Use short `ssh.exe` only as a fallback or for one-off diagnostics.
 - Use bundled PowerShell helpers for multi-line remote scripts; they send stdin as UTF-8 without BOM and decode remote output as UTF-8. Do not pipe ad hoc PowerShell here-strings directly into Bash.
 - Use `adb.exe` locally because the device is attached to Windows.
 - Keep project `.codex` build/deploy memory in the repo, but edit it through the remote Linux path.
@@ -165,7 +165,7 @@ Do not modify `SKILL.md`, `references/`, or `scripts/` for capture after ordinar
 
 - `mapping-missing`: resolve through `android-windows-source-access`; ask only for missing values.
 - `mapping-conflict`: report registry and project `.codex` values; prefer exact Windows mapping registry unless overridden.
-- `remote-session-missing`: create or reuse the persistent session; if `tmux` is missing, run `android-remote-channel` `install-tmux`, or report `REMOTE_SUDO_PASSWORD_REQUIRED` and use short SSH only as a fallback.
+- `remote-session-missing`: create or reuse the persistent session; if `tmux` is missing, run `android-windows-remote-channel` `install-tmux`, or report `REMOTE_SUDO_PASSWORD_REQUIRED` and use short SSH only as a fallback.
 - `build-session-missing`: run `Ensure-WindowsRemoteBuildSession.ps1`; if bootstrap fails and `.codex/build-push.sh` exists, fall back to short SSH wrapper commands.
 - `profile-missing`: infer or create a project-local profile, then rerun `plan`.
 - `build-failed`: report wrapper `BUILD_FAIL`, `KEY_ERRORS`, and saved log path.
@@ -194,7 +194,7 @@ If capability capture is triggered, append the candidate after the executor repo
 ## Scripts
 
 - `scripts/Resolve-WindowsRemoteMapping.ps1`: resolve `LOCAL_REPO`, `SSH_HOST`, `REMOTE_ROOT`, SMB path, and registry evidence from `android-windows-source-access-info\projects\*.env`.
-- `scripts/Invoke-WindowsRemoteSession.ps1`: compatibility wrapper that delegates to `android-remote-channel` for persistent remote `tmux` sessions keyed by `SSH_HOST` and `REMOTE_ROOT`.
+- `scripts/Invoke-WindowsRemoteSession.ps1`: compatibility wrapper that delegates to `android-windows-remote-channel` for persistent remote `tmux` sessions keyed by `SSH_HOST` and `REMOTE_ROOT`.
 - `scripts/Ensure-WindowsRemoteBuildSession.ps1`: check or remotely bootstrap `.codex/build-session.sh` before using the persistent build session.
 - `scripts/remote-generate-build-push.sh`: Bash payload uploaded by `Ensure-WindowsRemoteBuildSession.ps1` and executed only on remote Linux to generate project `.codex` wrappers.
 - `scripts/Invoke-WindowsAdbPush.ps1`: push one local artifact path with `adb.exe`, performing `wait-for-device`, `root`, `remount`, `push`, and `sync`.
@@ -202,5 +202,5 @@ If capability capture is triggered, append the candidate after the executor repo
 ## Related Skills
 
 - `android-windows-source-access`: creates and restores Windows SMB mappings and account-level registry files.
-- `android-remote-channel`: provides the shared remote SSH/tmux channel used by this executor.
+- `android-windows-remote-channel`: provides the Windows-native remote SSH/tmux channel used by this executor.
 - `android-framework-change-workflow`: owns Android framework diagnosis, change discipline, risk, final verification, and final reporting.

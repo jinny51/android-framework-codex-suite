@@ -1,5 +1,7 @@
 # android-wsl-remote-build-deploy
 
+> GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-framework-ops/skills/android-wsl-remote-build-deploy](../../../../plugins/android-framework-ops/skills/android-wsl-remote-build-deploy)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...`、`references/...` 指向该 runtime skill 目录。
+
 WSL 源码接入场景下的 Android 远程编译和推送 skill。
 
 ## 用途
@@ -18,6 +20,6 @@ WSL 源码接入场景下的 Android 远程编译和推送 skill。
 
 ## 文件入口
 
-- [SKILL.md](SKILL.md)：给 Codex 自动加载的执行说明。
-- [references/capability-capture.md](references/capability-capture.md)：Skill 改进建议记录规则。
-- [scripts/](scripts/)：远程构建、编译产物定位、adb 推送和验证记录采集脚本。
+- [SKILL.md](../../../../plugins/android-framework-ops/skills/android-wsl-remote-build-deploy/SKILL.md)：给 Codex 自动加载的执行说明。
+- [references/capability-capture.md](../../../../plugins/android-framework-ops/skills/android-wsl-remote-build-deploy/references/capability-capture.md)：Skill 改进建议记录规则。
+- [scripts/](../../../../plugins/android-framework-ops/skills/android-wsl-remote-build-deploy/scripts/)：远程构建、编译产物定位、adb 推送和验证记录采集脚本。
