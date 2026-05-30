@@ -13,15 +13,15 @@ Rules:
 - `YYYYMMDD` is the package date.
 - `member_alias` must exist in the repository `config/team.yaml`.
 - `run_id` must start with `YYYYMMDD-HHMMSS`.
-- `schema_version` is an internal compatibility field. Do not expose it as a user-facing workflow name, and do not use it to name an incoming generation.
+- `schema_version` is an internal protocol field. Do not expose it as a user-facing workflow name, and do not use it to name an incoming generation.
 
-## Deprecated Local Format
+## Accepted Package Shape
 
-The old report-package format with top-level `daily.md`, `weekly.md`, `type=daily`, or `type=weekly` is no longer accepted by the knowledge repository. Current member automation must generate the package shape below.
+The repository accepts only `incoming/YYYYMMDD/member_alias/run_id/` packages with a `manifest.json` plus referenced `reports/`, `patches/`, and `evidence/` assets. Local draft artifacts, capture outputs, or source-material rebuilds must be converted into this package shape before push.
 
-## Current Incoming Packages
+## Incoming Packages
 
-Current incoming treats packages as Codex-generated knowledge and evidence packages, not manual report uploads.
+Incoming treats packages as Codex-generated knowledge and evidence packages, not manual report uploads.
 
 Channels:
 
@@ -30,7 +30,7 @@ Channels:
 
 Quality:
 
-- `imported`: historical or reconstructed material without modern validation evidence.
+- `imported`: source material converted into the current evidence model without validation evidence.
 - `trace`: only proves work happened.
 - `candidate`: useful assets exist, but verification is incomplete or limited.
 - `validated`: suitable as a first-class reuse candidate.
@@ -39,7 +39,7 @@ Quality:
 
 Runtime behavior changes in the modified module require device verification for `validated`. Equivalent verification is allowed for resource-only, build-only, packaging-only, static config, or documentation changes when the package records method, reason, coverage, and remaining risk.
 
-### Current Daily Trace
+### Daily Trace
 
 ```text
 manifest.json
@@ -97,7 +97,7 @@ Minimal manifest:
 }
 ```
 
-### Current Strict Patch Contribution
+### Strict Patch Contribution
 
 ```text
 manifest.json
@@ -167,7 +167,7 @@ Rules:
 - Patch explanation fields improve search and reuse judgment.
 - Patch explanation fields must not be presented as verified facts.
 - Patch explanation alone cannot upgrade `quality` to `validated`.
-- Historical imports may use patch analysis to recover missing title, summary, module, files, keywords, likely problem, likely solution, and risk surface.
-- New incoming packages may use patch analysis as a consistency check against the human readme.
+- Source-material rebuilds may use patch analysis to recover missing title, summary, module, files, keywords, likely problem, likely solution, and risk surface before creating incoming-shaped assets.
+- Member-side incoming packages should use patch analysis as a consistency check against readme, session context, and verification evidence.
 
 When importing an `android-framework-patch-capture` output directory with `--patch-package`, intake preserves its evidence entries under `evidence/capture-*.json`. A strict patch contribution may claim `quality=validated` only when it carries PASS device verification or accepted equivalent verification evidence. Strict patch contributions without verification evidence should stay `candidate`, even if the human-facing patch status is `validated`.
