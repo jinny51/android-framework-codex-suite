@@ -81,7 +81,7 @@ Skill 改进建议:
 - 模式: <可复用的能力/经验>
 - 建议存放: <SKILL.md、references/file.md、scripts/script.ps1，或新建 reference>
 - 原因: <为什么未来会复用，或为什么忘记会有风险>
-- 置信度: high|medium|low
+- 依据完整度: high|medium|low
 - 是否固化: 等用户明确确认后再修改 skill。
 ```
 
