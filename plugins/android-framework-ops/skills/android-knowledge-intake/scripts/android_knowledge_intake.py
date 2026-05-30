@@ -37,8 +37,34 @@ V2_LIGHT_KINDS = {"daily_trace", "weekly_trace", "session_trace"}
 V2_STRICT_KINDS = {"framework_change", "patch_contribution", "reuse_decision"}
 V2_LIGHT_QUALITIES = {"imported", "trace", "candidate"}
 V2_STRICT_QUALITIES = {"imported", "candidate", "validated", "released", "buggy"}
+V2_PATCH_README_QUALITIES = {"candidate", "validated", "released", "buggy"}
+V2_VERIFIED_QUALITIES = {"validated", "released"}
 V2_INFERENCE_EVIDENCE_KINDS = {"patch_problem_inference", "risk_surface"}
+V2_REQUIRED_PATCH_EXPLANATION_KINDS = {"patch_problem_inference", "risk_surface"}
 V2_CONFIDENCE_VALUES = {"low", "medium", "high"}
+V2_REPORT_KINDS = {"daily", "weekly", "summary", "session"}
+V2_EVIDENCE_KINDS = {
+    "source",
+    "codex_sessions",
+    "changed_files",
+    "patch_diff_facts",
+    "patch_problem_inference",
+    "risk_surface",
+    "build_result",
+    "verification_result",
+    "device_verification",
+    "equivalent_verification",
+    "search_before_change",
+    "package_check",
+    "summary",
+}
+V2_EVIDENCE_RESULTS = {"PASS", "WARN", "FAIL", "INFO", "SKIPPED"}
+V2_PATCH_STATUSES = {"imported", "candidate", "validated", "released", "buggy", "failed"}
+V2_RELATION_TYPES = {"described_by", "verified_by", "reported_in", "originated_from", "generated_from"}
+V2_VERIFICATION_EVIDENCE_KINDS = {"verification_result", "device_verification", "equivalent_verification"}
+DATE_KEY_RE = re.compile(r"^\d{8}$")
+DATE_DISPLAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+RUN_ID_RE = re.compile(r"^\d{8}-\d{6}(-[A-Za-z0-9_.-]+)?$")
 
 
 CONFIG_DEFAULTS = {
@@ -588,7 +614,7 @@ def synthetic_patch_info(package_dir: Path, date: dt.date, project: str, config:
 
 ## 功能描述
 
-合成测试补丁，用于验证 incoming 协议、服务端解析、索引构建和可视化展示流程，不来自真实源码仓库。
+合成测试补丁，用于验证 incoming 协议、服务器解析、索引构建和可视化展示流程，不来自真实源码仓库。
 
 ## 修改点
 
@@ -1084,6 +1110,7 @@ def plugin_commit() -> str:
 def source_metadata(config: dict[str, str], skill: str) -> dict[str, Any]:
     return {
         "source": "android-framework-ops",
+        "tool": skill,
         "skill": skill,
         "skill_version": "",
         "plugin_commit": plugin_commit(),
@@ -1119,6 +1146,7 @@ def v2_report_manifest(
         "channel": "light",
         "quality": "trace",
         "member": config["member_alias"],
+        "member_name": config["member_name"],
         "date": date.isoformat(),
         "run_id": run_id,
         "project": "全局项目",
@@ -1203,6 +1231,184 @@ def v2_read_referenced_json(package_dir: Path, rel: str) -> dict[str, Any] | Non
     return payload if isinstance(payload, dict) else None
 
 
+def v2_validate_source(manifest: dict[str, Any], errors: list[str]) -> None:
+    source = manifest.get("source")
+    if not isinstance(source, dict):
+        errors.append("manifest.source 必须是对象")
+        return
+    tool = source.get("tool")
+    if not isinstance(tool, str) or not tool.strip():
+        errors.append("manifest.source.tool 必须提供生成工具名")
+
+
+def v2_validate_asset_identity(manifest: dict[str, Any], errors: list[str]) -> None:
+    for section in ("reports", "evidence", "patches"):
+        rows = manifest.get(section, [])
+        if not isinstance(rows, list):
+            continue
+        seen_ids: dict[str, int] = {}
+        seen_paths: dict[str, int] = {}
+        for index, item in enumerate(rows):
+            if not isinstance(item, dict):
+                continue
+            asset_id = str(item.get("id") or "").strip()
+            if not asset_id:
+                errors.append(f"{section}[{index}].id 不能为空")
+            elif asset_id in seen_ids:
+                errors.append(f"{section}[{index}].id 与 {section}[{seen_ids[asset_id]}] 重复: {asset_id}")
+            else:
+                seen_ids[asset_id] = index
+
+            path = str(item.get("path") or "").strip()
+            if path and path in seen_paths:
+                errors.append(f"{section}[{index}].path 与 {section}[{seen_paths[path]}] 重复: {path}")
+            elif path:
+                seen_paths[path] = index
+
+
+def v2_validate_evidence_result(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
+    result = item.get("result")
+    if result not in V2_EVIDENCE_RESULTS:
+        errors.append("evidence.result 必须是 PASS、WARN、FAIL、INFO 或 SKIPPED")
+        return
+
+    rel = item.get("path")
+    if not isinstance(rel, str) or not rel:
+        return
+    payload = v2_read_referenced_json(package_dir, rel)
+    if payload is None or payload.get("result") is None:
+        return
+    payload_result = payload.get("result")
+    if payload_result not in V2_EVIDENCE_RESULTS:
+        errors.append(f"{rel} result 必须是 PASS、WARN、FAIL、INFO 或 SKIPPED")
+    elif payload_result != result:
+        errors.append(f"{rel} result 必须与 manifest.evidence.result 一致")
+
+
+def v2_validate_verification_evidence(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
+    if item.get("kind") not in V2_VERIFICATION_EVIDENCE_KINDS or item.get("result") != "PASS":
+        return
+    rel = item.get("path")
+    if not isinstance(rel, str) or not rel:
+        return
+    payload = v2_read_referenced_json(package_dir, rel)
+    if payload is None or payload.get("result") != "PASS":
+        return
+    method = payload.get("method")
+    if method not in {"device", "equivalent"}:
+        errors.append(f"{rel} method 必须是 device 或 equivalent")
+        return
+    if item.get("kind") == "device_verification" and method != "device":
+        errors.append(f"{rel} device_verification 必须使用 method=device")
+    if item.get("kind") == "equivalent_verification" and method != "equivalent":
+        errors.append(f"{rel} equivalent_verification 必须使用 method=equivalent")
+    if method == "equivalent" and not (payload.get("reason") and payload.get("coverage") and "remaining_risk" in payload):
+        errors.append(f"{rel} 等价验证必须包含 reason、coverage 和 remaining_risk")
+
+
+def v2_evidence_covers_patch(item: dict[str, Any], payload: dict[str, Any] | None, patch: dict[str, Any], patch_count: int) -> bool:
+    if patch_count == 1:
+        return True
+    patch_id = str(patch.get("id") or "")
+    patch_path = str(patch.get("path") or "")
+    values = [item.get("patch_id"), item.get("patch"), item.get("source_patch")]
+    if isinstance(payload, dict):
+        values.extend([payload.get("patch_id"), payload.get("patch"), payload.get("source_patch"), payload.get("patch_path")])
+    normalized = {str(value) for value in values if value}
+    return bool((patch_id and patch_id in normalized) or (patch_path and patch_path in normalized))
+
+
+def v2_explanation_kinds_for_patch(package_dir: Path, manifest: dict[str, Any], patch: dict[str, Any], patch_count: int) -> set[str]:
+    kinds: set[str] = set()
+    rows = manifest.get("evidence", [])
+    if not isinstance(rows, list):
+        return kinds
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("kind")
+        if kind not in V2_REQUIRED_PATCH_EXPLANATION_KINDS:
+            continue
+        rel = item.get("path")
+        payload = v2_read_referenced_json(package_dir, rel) if isinstance(rel, str) else None
+        if v2_evidence_covers_patch(item, payload, patch, patch_count):
+            kinds.add(str(kind))
+    return kinds
+
+
+def v2_relation_value(item: dict[str, Any], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        if key not in item:
+            continue
+        value = item.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def v2_relation_endpoint_index(manifest: dict[str, Any], errors: list[str]) -> dict[str, str]:
+    endpoints: dict[str, tuple[str, str]] = {}
+    duplicate_refs: set[str] = set()
+
+    def add_ref(raw: Any, item_type: str, asset_key: str) -> None:
+        text = str(raw or "").strip()
+        if not text:
+            return
+        existing = endpoints.get(text)
+        if existing and existing != (item_type, asset_key):
+            duplicate_refs.add(text)
+            return
+        endpoints[text] = (item_type, asset_key)
+
+    for section, item_type in (("reports", "report"), ("evidence", "evidence"), ("patches", "patch")):
+        rows = manifest.get(section, [])
+        if not isinstance(rows, list):
+            continue
+        for item in rows:
+            if not isinstance(item, dict):
+                continue
+            asset_key = str(item.get("path") or item.get("id") or "")
+            add_ref(item.get("id"), item_type, asset_key)
+            add_ref(item.get("path"), item_type, asset_key)
+
+    for ref in sorted(duplicate_refs):
+        errors.append(f"relation endpoint 存在歧义: {ref}")
+        endpoints.pop(ref, None)
+    return {key: value[0] for key, value in endpoints.items()}
+
+
+def v2_validate_relations(manifest: dict[str, Any], errors: list[str]) -> None:
+    rows = manifest.get("relations", [])
+    if not isinstance(rows, list):
+        errors.append("relations 必须是数组")
+        return
+
+    endpoints = v2_relation_endpoint_index(manifest, errors)
+    for index, item in enumerate(rows):
+        if not isinstance(item, dict):
+            errors.append(f"relations[{index}] 必须是对象")
+            continue
+        source = v2_relation_value(item, ("from", "source", "source_id"))
+        target = v2_relation_value(item, ("to", "target", "target_id"))
+        relation = v2_relation_value(item, ("type", "relation"))
+        if not source or not target or not relation:
+            errors.append(f"relations[{index}] 必须提供 from、to 和 type")
+            continue
+        if relation not in V2_RELATION_TYPES:
+            errors.append(f"relations[{index}].type 非法: {relation}")
+        if source not in endpoints:
+            errors.append(f"relations[{index}].from 找不到对应资产: {source}")
+        if target not in endpoints:
+            errors.append(f"relations[{index}].to 找不到对应资产: {target}")
+        if "confidence" in item:
+            confidence = v2_relation_value(item, ("confidence",))
+            if not confidence or confidence not in V2_CONFIDENCE_VALUES:
+                errors.append(f"relations[{index}].confidence 必须是 low、medium 或 high")
+
+
 def v2_patch_diff_modified_files(package_dir: Path, rel: str) -> list[str]:
     try:
         path = v2_reference_path(package_dir, rel)
@@ -1228,7 +1434,7 @@ def v2_patch_diff_modified_files(package_dir: Path, rel: str) -> list[str]:
 def v2_validate_inference_evidence(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
     rel = item.get("path")
     if not isinstance(rel, str) or not rel:
-        errors.append("反推 evidence 必须引用 JSON 文件")
+        errors.append("补丁解释 evidence 必须引用 JSON 文件")
         return
     payload = v2_read_referenced_json(package_dir, rel)
     if payload is None:
@@ -1242,6 +1448,13 @@ def v2_validate_inference_evidence(package_dir: Path, item: dict[str, Any], erro
         errors.append(f"{rel} basis 必须是非空数组")
     if not isinstance(limits, list) or not limits:
         errors.append(f"{rel} limits 必须是非空数组")
+    if item.get("kind") == "patch_problem_inference":
+        if not payload.get("inferred_problem") or not payload.get("inferred_solution"):
+            errors.append(f"{rel} 必须包含 inferred_problem 和 inferred_solution")
+    if item.get("kind") == "risk_surface":
+        risk_areas = payload.get("risk_areas")
+        if not isinstance(risk_areas, list) or not risk_areas:
+            errors.append(f"{rel} risk_areas 必须是非空数组")
 
 
 def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str, Any]:
@@ -1267,6 +1480,11 @@ def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str
         errors.append(f"manifest 缺少必填字段: {field}")
     if manifest.get("schema_version") != "2.0":
         errors.append("schema_version 必须是 2.0")
+    if not (DATE_KEY_RE.fullmatch(str(manifest.get("date") or "")) or DATE_DISPLAY_RE.fullmatch(str(manifest.get("date") or ""))):
+        errors.append("manifest.date 必须是 YYYYMMDD 或 YYYY-MM-DD")
+    if not RUN_ID_RE.fullmatch(str(manifest.get("run_id") or "")):
+        errors.append("manifest.run_id 必须是 YYYYMMDD-HHMMSS 或 YYYYMMDD-HHMMSS-suffix")
+    v2_validate_source(manifest, errors)
 
     channel = manifest.get("channel")
     quality = manifest.get("quality")
@@ -1283,6 +1501,26 @@ def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str
             errors.append(f"strict channel 不能使用 quality={quality}")
     else:
         errors.append("channel 必须是 light 或 strict")
+
+    reports = manifest.get("reports", [])
+    if not isinstance(reports, list):
+        errors.append("reports 必须是数组")
+        reports = []
+    for item in reports:
+        if not isinstance(item, dict):
+            errors.append("reports 中每一项必须是对象")
+            continue
+        if item.get("kind") not in V2_REPORT_KINDS:
+            errors.append("report.kind 必须是 daily、weekly、summary 或 session")
+    if package_kind in {"daily_trace", "weekly_trace"}:
+        expected_kind = "daily" if package_kind == "daily_trace" else "weekly"
+        if not reports:
+            errors.append(f"{package_kind} 必须包含 {expected_kind} 报告资产")
+        for item in reports:
+            if isinstance(item, dict) and item.get("kind") != expected_kind:
+                errors.append(f"{package_kind} report.kind 必须是 {expected_kind}")
+        if package_kind == "weekly_trace" and not manifest.get("week_range") and not any(isinstance(item, dict) and item.get("week_range") for item in reports):
+            errors.append("weekly_trace 必须提供 week_range")
 
     for rel in v2_referenced_paths(manifest):
         try:
@@ -1301,39 +1539,61 @@ def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str
         if not isinstance(item, dict):
             errors.append("evidence 中每一项必须是对象")
             continue
+        if item.get("kind") not in V2_EVIDENCE_KINDS:
+            errors.append(f"evidence.kind 非法: {item.get('kind')}")
+        v2_validate_evidence_result(package_dir, item, errors)
+        v2_validate_verification_evidence(package_dir, item, errors)
         if item.get("kind") in V2_INFERENCE_EVIDENCE_KINDS:
             v2_validate_inference_evidence(package_dir, item, errors)
+
+    v2_validate_asset_identity(manifest, errors)
 
     patches = manifest.get("patches", [])
     if not isinstance(patches, list):
         errors.append("patches 必须是数组")
         patches = []
+    patch_count = len([item for item in patches if isinstance(item, dict)])
+    if package_kind in {"framework_change", "patch_contribution"} and patch_count == 0:
+        errors.append(f"{package_kind} 必须至少包含一个 patch 资产")
     for item in patches:
         if not isinstance(item, dict):
             errors.append("patches 中每一项必须是对象")
             continue
+        status = item.get("status")
+        if status not in V2_PATCH_STATUSES:
+            errors.append(f"patch.status 非法: {status}")
+        if "reusable" in item and not isinstance(item.get("reusable"), bool):
+            errors.append("patch.reusable 必须是 JSON boolean")
+        if item.get("reusable") is True and (quality == "buggy" or status in {"buggy", "failed"}):
+            errors.append("buggy 或 failed patch 不能标记 reusable=true")
         facts = item.get("facts", {})
         modified_files = facts.get("modified_files") if isinstance(facts, dict) else None
         if not modified_files:
             patch_rel = item.get("path")
             if isinstance(patch_rel, str) and v2_patch_diff_modified_files(package_dir, patch_rel):
-                warnings.append(f"patch facts.modified_files 已从补丁 diff 反推: {patch_rel}")
+                warnings.append(f"patch facts.modified_files 已从补丁 diff 补齐: {patch_rel}")
             else:
-                errors.append("patch 必须提供 facts.modified_files，或可从补丁 diff 反推")
-        if quality in {"candidate", "validated"}:
+                errors.append("patch 必须提供 facts.modified_files，或可从补丁 diff 补齐")
+        if quality in V2_PATCH_README_QUALITIES:
             readme = item.get("readme")
             if not isinstance(readme, str) or not readme:
-                errors.append("candidate/validated patch 必须提供 readme")
+                errors.append(f"{quality} patch 必须提供 readme")
+        if channel == "strict" and package_kind in {"framework_change", "patch_contribution", "reuse_decision"}:
+            present = v2_explanation_kinds_for_patch(package_dir, manifest, item, patch_count)
+            for kind in sorted(V2_REQUIRED_PATCH_EXPLANATION_KINDS - present):
+                errors.append(f"strict patch incoming 必须提供成员端 {kind} evidence")
 
-    if quality == "validated":
+    v2_validate_relations(manifest, errors)
+
+    if quality in V2_VERIFIED_QUALITIES:
         claims = manifest.get("quality_claims", {})
         if not isinstance(claims, dict):
             claims = {}
         for field in ("risk_notes", "rollback_notes", "scope"):
             if not claims.get(field):
-                errors.append(f"validated 必须提供 quality_claims.{field}")
+                errors.append(f"{quality} 必须提供 quality_claims.{field}")
         if not v2_has_pass_verification(package_dir, manifest):
-            errors.append("validated 必须提供 PASS 的设备验证或合格等价验证 evidence")
+            errors.append(f"{quality} 必须提供 PASS 的设备验证或合格等价验证 evidence")
     return {"status": "FAIL" if errors else "PASS", "errors": errors, "warnings": warnings}
 
 
@@ -1386,30 +1646,269 @@ def patch_modified_files(path: Path) -> list[str]:
     return files
 
 
+def patch_added_lines(text: str) -> list[str]:
+    return [line[1:] for line in text.splitlines() if line.startswith("+") and not line.startswith("+++")]
+
+
+def patch_modules_from_files(files: list[str]) -> list[str]:
+    modules: list[str] = []
+    for path in files:
+        if "/com/android/server/wm/" in path:
+            modules.append("WindowManager")
+        if "ActivityTaskManager" in path or "ActivityRecord" in path:
+            modules.append("ActivityTaskManager")
+        if "PhoneWindowManager" in path or "/com/android/server/policy/" in path:
+            modules.append("Policy")
+        if "PackageManager" in path or "/com/android/server/pm/" in path:
+            modules.append("PackageManager")
+        if "SystemUI" in path:
+            modules.append("SystemUI")
+        if "Launcher" in path:
+            modules.append("Launcher")
+        if "/input/" in path:
+            modules.append("Input")
+        if "frameworks/base/core/res/" in path:
+            modules.append("FrameworkResources")
+    if not modules and files:
+        parts = files[0].split("/")
+        modules.append("-".join(parts[:2]) if len(parts) >= 2 else parts[0])
+    return sorted(set(modules))
+
+
+def patch_symbols_from_text(text: str) -> list[str]:
+    symbols: list[str] = []
+    current_class = ""
+    for raw in text.splitlines():
+        if raw.startswith("+++ "):
+            path = raw.removeprefix("+++ ").strip()
+            if path.startswith("b/"):
+                path = path[2:]
+            current_class = Path(path).stem if path and path != "/dev/null" else ""
+            continue
+        if not raw.startswith("@@") or not current_class:
+            continue
+        match = re.match(r"^@@ .* @@\s*(.*)$", raw)
+        context = match.group(1).strip() if match else ""
+        methods = re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", context)
+        method = next((item for item in reversed(methods) if item not in {"if", "for", "while", "switch"}), "")
+        if method:
+            symbols.append(f"{current_class}.{method}")
+    return sorted(set(symbols))
+
+
+def patch_facts_from_text(text: str) -> dict[str, Any]:
+    files = []
+    for match in re.finditer(r"^diff --git a/(.+?) b/(.+)$", text, re.M):
+        path = match.group(2)
+        if path != "/dev/null" and path not in files:
+            files.append(path)
+    added = "\n".join(patch_added_lines(text))
+    return {
+        "modified_files": files,
+        "symbols": patch_symbols_from_text(text),
+        "system_properties": sorted(set(re.findall(r"\b(?:persist|ro|sys|debug|vendor)\.[A-Za-z0-9_.-]+", text))),
+        "settings_keys": sorted(set(re.findall(r"Settings\.(?:System|Secure|Global)\.([A-Za-z0-9_.-]+)", text))),
+        "resource_keys": sorted(set([*re.findall(r"R\.string\.([A-Za-z0-9_]+)", text), *re.findall(r"@string/([A-Za-z0-9_]+)", text)])),
+        "framework_log_keys": sorted(set(re.findall(r"FrameworkLog\.([A-Za-z0-9_]+)", text))),
+        "modules": patch_modules_from_files(files),
+        "banned_log_hits": sorted(pattern for pattern in BANNED_LOG_PATTERNS if pattern in added),
+        "author_date_marker_present": bool(AUTHOR_DATE_RE.search(text)),
+    }
+
+
+def patch_problem_and_risk_payloads(patch_id: str, source_patch: str, summary: str, facts: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    files = facts.get("modified_files") or []
+    modules = facts.get("modules") or patch_modules_from_files(files)
+    joined = " ".join([summary, " ".join(files), " ".join(modules)]).lower()
+    keywords = sorted(
+        {
+            *modules,
+            *[Path(path).stem for path in files],
+            *[item for item in ["focus", "launcher", "power", "policy", "package", "input"] if item in joined],
+        }
+    )
+    basis = [f"补丁修改文件: {path}" for path in files]
+    basis.extend(f"根据路径归属到模块: {module}" for module in modules)
+    basis.extend(f"根据 diff hunk 识别符号: {symbol}" for symbol in facts.get("symbols", []))
+    if summary:
+        basis.append("提交时提供了补丁摘要")
+    if not basis:
+        basis = ["补丁文件存在，但缺少可解析的 diff 路径"]
+
+    if "focus" in joined and any(module in modules for module in ("WindowManager", "ActivityTaskManager")):
+        problem = "窗口或 Activity 焦点行为需要按产品需求调整。"
+        solution = "修改 WindowManager 或 ActivityTaskManager 相关路径中的焦点处理逻辑。"
+        confidence = "medium"
+    elif "power" in joined or "Policy" in modules:
+        problem = "按键、策略或电源相关行为需要按产品需求调整。"
+        solution = "修改 Framework policy 路径中的策略处理逻辑。"
+        confidence = "medium"
+    elif modules:
+        problem = f"{'、'.join(modules)} 相关行为需要按产品需求调整。"
+        solution = "结合需求、修改文件和验证记录复核对应逻辑。"
+        confidence = "low"
+    else:
+        problem = "补丁对应的具体问题需要结合原始需求和会话记录确认。"
+        solution = "先阅读补丁 diff、readme 和验证记录，再决定是否复用或适配。"
+        confidence = "low"
+
+    risks = sorted(
+        {
+            *("窗口焦点/显示层级" for _ in [0] if "focus" in joined or "WindowManager" in modules),
+            *("Activity 启动/恢复" for _ in [0] if "ActivityTaskManager" in modules),
+            *("按键/电源/策略行为" for _ in [0] if "power" in joined or "Policy" in modules),
+            *("包安装/包状态" for _ in [0] if "PackageManager" in modules),
+            *("资源覆盖/配置优先级" for _ in [0] if "FrameworkResources" in modules),
+        }
+    )
+    if not risks:
+        risks = ["修改路径需要按当前项目需求重新验证"]
+
+    limits = [
+        "补丁内容不能单独证明原始需求文字",
+        "补丁内容不能单独证明设备验证结果",
+        "补丁内容不能单独证明发布状态",
+    ]
+    return (
+        {
+            "kind": "patch_problem_inference",
+            "patch_id": patch_id,
+            "source_patch": source_patch,
+            "confidence": confidence,
+            "inferred_problem": problem,
+            "inferred_solution": solution,
+            "inferred_keywords": keywords,
+            "basis": basis,
+            "limits": limits,
+        },
+        {
+            "kind": "risk_surface",
+            "patch_id": patch_id,
+            "source_patch": source_patch,
+            "confidence": confidence,
+            "risk_areas": risks,
+            "basis": basis,
+            "limits": limits,
+        },
+    )
+
+
+def existing_explanation_kinds_for_entry(package_dir: Path, evidence_entries: list[dict[str, Any]], entry: dict[str, Any], patch_count: int) -> set[str]:
+    patch = {"id": Path(str(entry.get("path", ""))).stem, "path": entry.get("path", "")}
+    kinds: set[str] = set()
+    for item in evidence_entries:
+        if item.get("kind") not in V2_REQUIRED_PATCH_EXPLANATION_KINDS:
+            continue
+        rel = item.get("path")
+        payload = v2_read_referenced_json(package_dir, rel) if isinstance(rel, str) else None
+        if v2_evidence_covers_patch(item, payload, patch, patch_count):
+            kinds.add(str(item.get("kind")))
+    return kinds
+
+
+def ensure_patch_analysis_evidence(package_dir: Path, patch_entries: list[dict[str, Any]], evidence_entries: list[dict[str, Any]], summary: str) -> None:
+    evidence_dir = package_dir / "evidence"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    patch_count = len(patch_entries)
+    for entry in patch_entries:
+        rel = str(entry.get("path") or "")
+        if not rel:
+            continue
+        patch_path = package_dir / rel
+        if not patch_path.is_file():
+            continue
+        text = patch_path.read_text(encoding="utf-8", errors="ignore")
+        facts = patch_facts_from_text(text)
+        captured_facts = entry.get("facts") if isinstance(entry.get("facts"), dict) else {}
+        merged_facts = {**facts, **{key: value for key, value in captured_facts.items() if value}}
+        entry["facts"] = merged_facts
+
+        existing = existing_explanation_kinds_for_entry(package_dir, evidence_entries, entry, patch_count)
+        patch_id = Path(rel).stem
+        safe_patch_id = safe_id(patch_id)
+        source_patch = rel
+
+        diff_facts_payload = {
+            "kind": "patch_diff_facts",
+            "patch_id": patch_id,
+            "source_patch": source_patch,
+            "modified_files": merged_facts.get("modified_files", []),
+            "modules": merged_facts.get("modules", []),
+            "symbols": merged_facts.get("symbols", []),
+            "system_properties": merged_facts.get("system_properties", []),
+            "settings_keys": merged_facts.get("settings_keys", []),
+            "resource_keys": merged_facts.get("resource_keys", []),
+            "framework_log_keys": merged_facts.get("framework_log_keys", []),
+        }
+        diff_facts_path = evidence_dir / f"{safe_patch_id}-patch-diff-facts.json"
+        if not diff_facts_path.exists():
+            write_json(diff_facts_path, diff_facts_payload)
+            evidence_entries.append(
+                {
+                    "id": f"{safe_patch_id}-patch-diff-facts",
+                    "kind": "patch_diff_facts",
+                    "patch_id": patch_id,
+                    "path": f"evidence/{diff_facts_path.name}",
+                    "result": "INFO",
+                    "summary": "patch facts from member-side package generation",
+                }
+            )
+
+        problem_payload, risk_payload = patch_problem_and_risk_payloads(patch_id, source_patch, summary, merged_facts)
+        if "patch_problem_inference" not in existing:
+            problem_path = evidence_dir / f"{safe_patch_id}-patch-problem.json"
+            write_json(problem_path, problem_payload)
+            evidence_entries.append(
+                {
+                    "id": f"{safe_patch_id}-patch-problem",
+                    "kind": "patch_problem_inference",
+                    "patch_id": patch_id,
+                    "path": f"evidence/{problem_path.name}",
+                    "result": "INFO",
+                    "summary": "member-side patch problem explanation",
+                }
+            )
+        if "risk_surface" not in existing:
+            risk_path = evidence_dir / f"{safe_patch_id}-risk-surface.json"
+            write_json(risk_path, risk_payload)
+            evidence_entries.append(
+                {
+                    "id": f"{safe_patch_id}-risk-surface",
+                    "kind": "risk_surface",
+                    "patch_id": patch_id,
+                    "path": f"evidence/{risk_path.name}",
+                    "result": "INFO",
+                    "summary": "member-side patch risk surface",
+                }
+            )
+
+
 def v2_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[str, Any]:
     patch_path = package_dir / str(patch_entry["path"])
     captured_facts = patch_entry.get("facts") if isinstance(patch_entry.get("facts"), dict) else {}
     facts = {
         "modified_files": captured_facts.get("modified_files") or patch_modified_files(patch_path),
+        "modules": captured_facts.get("modules") or [],
         "symbols": captured_facts.get("symbols") or [],
         "system_properties": captured_facts.get("system_properties") or [],
         "settings_keys": captured_facts.get("settings_keys") or [],
         "resource_keys": captured_facts.get("resource_keys") or [],
         "framework_log_keys": captured_facts.get("framework_log_keys") or [],
     }
+    reusable = patch_entry.get("reusable", False)
     return {
         "id": Path(str(patch_entry["path"])).stem,
         "path": patch_entry["path"],
         "readme": patch_entry.get("readme", ""),
         "status": patch_entry.get("status", "candidate"),
-        "reusable": bool(patch_entry.get("reusable", False)),
+        "reusable": reusable if isinstance(reusable, bool) else reusable,
         "repo_path": "",
         "artifact": "",
         "facts": facts,
     }
 
 
-def prepare_package(report_type: str, date: dt.date, config: dict[str, str], run_id: str | None = None, schema_version: str = "1.0") -> Path:
+def prepare_package(report_type: str, date: dt.date, config: dict[str, str], run_id: str | None = None, schema_version: str = "2.0") -> Path:
     require_config(config)
     dates, start, end, week_key = report_dates(report_type, date)
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}"
@@ -1482,7 +1981,7 @@ def prepare_patch_package(
     project: str = "Android Framework",
     summary: str = "管理员手动归档补丁",
     status: str = "validated",
-    schema_version: str = "1.0",
+    schema_version: str = "2.0",
 ) -> Path:
     require_config(config)
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}-patch"
@@ -1514,7 +2013,7 @@ def prepare_patch_package(
     elif synthetic_mode(config):
         patches = [synthetic_patch_info(package_dir, date, project, config)]
         summary = summary if summary != "管理员手动归档补丁" else "合成测试补丁包"
-        status = "draft" if status == "validated" else status
+        status = "candidate" if status == "validated" else status
     elif not patch_entries:
         patches = discover_patches_from_cwd(project, date)
     else:
@@ -1525,8 +2024,6 @@ def prepare_patch_package(
     else:
         patch_entries.extend(copy_patch_assets(package_dir, patches, config, status=status, reusable=status in {"validated", "released"}, note="管理员手动归档补丁"))
         patch_sources.extend([{"name": item.name, "source": str(item.path), "project": item.project} for item in patches])
-    has_validated_patch = any(str(item.get("status", "")) in {"validated", "released"} for item in patch_entries)
-
     write_json(
         package_dir / "evidence" / "patch-contribution.json",
         {
@@ -1539,14 +2036,33 @@ def prepare_patch_package(
         },
     )
     if schema_version == "2.0":
+        ensure_patch_analysis_evidence(package_dir, patch_entries, capture_evidence_entries, summary)
+        if not has_pass_verification:
+            for item in patch_entries:
+                if item.get("status") in {"validated", "released"}:
+                    item["status"] = "candidate"
+                    item["reusable"] = False
+                    item["note"] = "未携带 PASS 设备验证或合格等价验证，已按 candidate 提交"
+        for item in patch_entries:
+            if item.get("status") in {"buggy", "failed"}:
+                item["reusable"] = False
+        statuses = {str(item.get("status", "")) for item in patch_entries}
         source = write_v2_source(package_dir, config, "android-knowledge-intake")
-        quality = "validated" if has_validated_patch and has_pass_verification else "candidate"
+        if has_pass_verification and "released" in statuses:
+            quality = "released"
+        elif has_pass_verification and "validated" in statuses:
+            quality = "validated"
+        elif statuses and statuses <= {"buggy", "failed"}:
+            quality = "buggy"
+        else:
+            quality = "candidate"
         manifest = {
             "schema_version": "2.0",
             "package_kind": "patch_contribution",
             "channel": "strict",
             "quality": quality,
             "member": config["member_alias"],
+            "member_name": config["member_name"],
             "date": date.isoformat(),
             "run_id": run_id,
             "project": project,
@@ -1564,7 +2080,7 @@ def prepare_patch_package(
                 },
                 {
                     "id": "patch-contribution",
-                    "kind": "manual_note",
+                    "kind": "summary",
                     "path": "evidence/patch-contribution.json",
                     "result": "INFO",
                     "summary": "manual patch contribution facts",
@@ -1744,7 +2260,7 @@ def parse_args() -> argparse.Namespace:
         sub.set_defaults(report_type=report_type)
         sub.add_argument("--date", help="YYYY-MM-DD, defaults to today")
         sub.add_argument("--run-id", help="override run id, format YYYYMMDD-HHMMSS[-suffix]")
-        sub.add_argument("--schema-version", choices=["1.0", "2.0"], default="", help="incoming package schema version")
+        sub.add_argument("--schema-version", choices=["2.0"], default="", help="incoming package schema version")
         if report_type == "patch":
             sub.add_argument("--patch", dest="patches", action="append", default=[], help="patch file to include; repeatable")
             sub.add_argument("--patch-package", dest="patch_packages", action="append", default=[], help="android-framework-patch-capture package directory to include; repeatable")
@@ -1780,7 +2296,7 @@ def main() -> int:
     if args.prepare or args.submit_latest or args.upload:
         enforce_mode_allowed(config, args.report_type)
     if args.prepare:
-        schema_version = args.schema_version or config.get("incoming_schema_version", "1.0")
+        schema_version = args.schema_version or config.get("incoming_schema_version", "2.0")
         if args.report_type == "patch":
             package_dir = prepare_patch_package(date, config, args.run_id, args.patches, args.patch_packages, args.project, args.summary, args.status, schema_version)
         else:
@@ -1794,7 +2310,7 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.upload:
-        schema_version = args.schema_version or config.get("incoming_schema_version", "1.0")
+        schema_version = args.schema_version or config.get("incoming_schema_version", "2.0")
         if args.report_type == "patch":
             package_dir = prepare_patch_package(date, config, args.run_id, args.patches, args.patch_packages, args.project, args.summary, args.status, schema_version)
         else:

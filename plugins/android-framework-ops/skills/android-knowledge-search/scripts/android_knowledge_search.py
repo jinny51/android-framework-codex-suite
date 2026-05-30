@@ -462,15 +462,14 @@ def format_patch(root: Path, row: dict[str, Any], index: int) -> str:
         lines.append(f"   - modules: {compact_list(row.get('modules'))}")
     if row.get("inferred_problem") or row.get("inferred_solution"):
         lines.append(
-            "   - inferred_problem: "
+            "   - 补丁问题线索: "
             f"{row.get('inferred_problem') or ''}"
-            f" / confidence={row.get('inference_confidence') or 'unknown'}"
         )
         if row.get("inferred_solution"):
-            lines.append(f"   - inferred_solution: {row.get('inferred_solution')}")
+            lines.append(f"   - 补丁方案线索: {row.get('inferred_solution')}")
     if row.get("inferred_keywords") or row.get("risk_areas"):
         lines.append(
-            "   - inferred_keywords/risk: "
+            "   - 关键词/风险面: "
             f"{compact_list(row.get('inferred_keywords'))}"
             f" / {compact_list(row.get('risk_areas'))}"
         )

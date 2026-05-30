@@ -7,7 +7,7 @@ description: Generate, review, and submit member-side Codex incoming packages in
 
 Use this skill for member-side knowledge intake automation and maintainer patch contribution. The skill does not write final `daily/`, `weekly/`, `patches/`, or `index/` directories. It creates a local pending incoming package first, then submits that package to `incoming/YYYYMMDD/member_alias/run_id/` in the team knowledge Git repository.
 
-The member-side Codex agent is the knowledge producer. It should collect session context, git diff, patch diff, build results, verification records, and optional human notes, then generate incoming. The server validates, archives, indexes, and renders; it does not perform heavy AI inference.
+The member-side Codex agent is the knowledge producer. It should collect session context, git diff, patch diff, build results, verification records, and optional human notes, then generate incoming. The knowledge repository server validates, archives, indexes, and renders; it does not perform heavy AI reasoning.
 
 Ordinary members use `daily` and `weekly`. The maintainer alias `jinny` uses `patch` only when manually contributing valuable patches; it must not generate daily or weekly reports for that maintainer flow.
 

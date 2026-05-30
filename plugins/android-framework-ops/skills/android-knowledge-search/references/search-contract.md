@@ -14,15 +14,15 @@ index/
 └── evidence-index.jsonl
 ```
 
-`knowledge.sqlite` is preferred because it keeps reports, patches, report items, search anchors, knowledge events, and evidence in one structured file. JSONL files are the fallback for read-only or partially generated repositories.
+`knowledge.sqlite` is preferred because it keeps reports, patches, report items, search anchors, archived records, and evidence in one structured file. JSONL files are the fallback for read-only or partially generated repositories.
 
 ## Result Types
 
-- `patch`: archived patch assets, readme path, status hints, modified files, modules, search anchors, patch-derived inference, validation notes, and rollback hint.
+- `patch`: archived patch assets, readme path, status hints, modified files, modules, search anchors, patch-derived explanation, validation notes, and rollback hint.
 - `report`: member daily or weekly report entries and report item summaries.
 - `symbol`: reverse index from modified files, SystemProperties, Settings keys, string/resource keys, FrameworkLog keys, modules, and patch-derived anchors to patch IDs.
-- `event`: knowledge events such as `framework_change`, `patch_contribution`, `daily_trace`, or `weekly_trace`, including channel and quality.
-- `evidence`: evidence records such as source metadata, changed files, patch diff facts, patch problem inference, risk surface, build result, device/equivalent verification, search-before-change, and package checks.
+- `event`: archived records such as `framework_change`, `patch_contribution`, `daily_trace`, or `weekly_trace`, including channel and quality.
+- `evidence`: evidence records such as source metadata, changed files, patch diff facts, patch problem explanation, risk surface, build result, device/equivalent verification, search-before-change, and package checks.
 
 ## Judgment Boundary
 
@@ -39,7 +39,7 @@ Do not treat these fields as absolute truth:
 - channel
 - evidence result
 
-They are useful hints. The consuming workflow must compare the current requirement with stored facts such as modified files, modules, patch-derived anchors, affected artifacts, touched keys, readme details, build evidence, device verification, inference confidence, inference basis, inference limits, and rollback notes.
+They are useful hints. The consuming workflow must compare the current requirement with stored facts such as modified files, modules, patch-derived anchors, affected artifacts, touched keys, readme details, build evidence, device verification, explanation basis, explanation limits, and rollback notes.
 
 ## Recommended Query Terms
 
@@ -53,20 +53,20 @@ Use several searches when needed:
 - Settings key
 - resource or string key
 - visible log keyword
-- inferred problem keyword from old patch analysis
+- patch problem keyword from old patch analysis
 
-## Patch Inference Boundary
+## Patch Explanation Boundary
 
-Historical patches may be searchable even when their old readme is weak or missing because the server can parse patch content and infer likely problem, likely solution, keywords, and risk surface.
+Historical patches may be searchable even when their old readme is weak or missing because patch content can provide problem/solution leads, keywords, and risk surface.
 
-Search output must label these as inference. A consuming workflow must not treat inferred problem or inferred solution as proof of:
+Human-facing search output should present these as patch problem/solution leads, not as verified facts. A consuming workflow must not treat them as proof of:
 
 - original customer requirement
 - device verification
 - release state
 - final acceptance
 
-Use inferred results as strong leads for reuse analysis, not as final conclusions.
+Use these leads for reuse analysis, not as final conclusions.
 
 ## Output Contract
 

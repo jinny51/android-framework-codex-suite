@@ -196,6 +196,47 @@ def create_v2_patch_incoming(
                 "result": "INFO",
             }
         ]
+    else:
+        write_json(
+            package / "evidence" / "patch-problem.json",
+            {
+                "kind": "patch_problem_inference",
+                "patch_id": "patch-main",
+                "source_patch": "patches/rk14-frameworks-base@nav-policy-toggle.patch",
+                "confidence": "medium",
+                "inferred_problem": "Navigation policy may need adjustment",
+                "inferred_solution": "Adjust framework policy path",
+                "inferred_keywords": ["navigation", "policy"],
+                "basis": ["patch modifies frameworks/base/services/core/java/X.java"],
+                "limits": ["device verification is separate"],
+            },
+        )
+        write_json(
+            package / "evidence" / "risk-surface.json",
+            {
+                "kind": "risk_surface",
+                "patch_id": "patch-main",
+                "source_patch": "patches/rk14-frameworks-base@nav-policy-toggle.patch",
+                "confidence": "medium",
+                "risk_areas": ["policy behavior"],
+                "basis": ["patch modifies frameworks/base/services/core/java/X.java"],
+                "limits": ["nearby regressions require separate verification"],
+            },
+        )
+        evidence = [
+            {
+                "id": "patch-problem",
+                "kind": "patch_problem_inference",
+                "path": "evidence/patch-problem.json",
+                "result": "INFO",
+            },
+            {
+                "id": "risk-surface",
+                "kind": "risk_surface",
+                "path": "evidence/risk-surface.json",
+                "result": "INFO",
+            },
+        ]
     manifest = {
         "schema_version": "2.0",
         "package_kind": "patch_contribution",
@@ -206,13 +247,15 @@ def create_v2_patch_incoming(
         "run_id": "20260526-120000-patch",
         "project": "Android Framework",
         "summary": "Allow nav policy toggle",
-        "source": {},
+        "source": {"tool": "android-knowledge-intake"},
         "reports": [],
         "patches": [
             {
                 "id": "patch-main",
                 "path": "patches/rk14-frameworks-base@nav-policy-toggle.patch",
                 "readme": "patches/rk14-frameworks-base@nav-policy-toggle.readme.md",
+                "status": "candidate",
+                "reusable": False,
                 "facts": facts if facts is not None else {"modified_files": ["frameworks/base/services/core/java/X.java"]},
             }
         ],
@@ -285,7 +328,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "run_id": "20260526-120000-patch",
                 "project": "Android Framework",
                 "summary": "Allow nav policy toggle",
-                "source": {},
+                "source": {"tool": "android-knowledge-intake"},
                 "reports": [],
                 "patches": [
                     {
@@ -331,7 +374,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             result = intake.validate_v2_package(package, manifest)
 
             self.assertEqual(result["status"], "PASS")
-            self.assertTrue(any("反推" in warning for warning in result["warnings"]))
+            self.assertTrue(any("补齐" in warning for warning in result["warnings"]))
 
     def test_local_v2_validation_rejects_inference_without_basis_or_limits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -381,6 +424,73 @@ class PatchCaptureIngestTests(unittest.TestCase):
 
             self.assertEqual(manifest["patches"][0]["status"], "candidate")
             self.assertEqual(manifest["quality"], "candidate")
+
+    def test_local_v2_validation_rejects_missing_source_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package, manifest = create_v2_patch_incoming(Path(tmp), quality="candidate")
+            manifest["source"] = {}
+
+            result = intake.validate_v2_package(package, manifest)
+
+            self.assertEqual(result["status"], "FAIL")
+            self.assertTrue(any("source.tool" in error for error in result["errors"]))
+
+    def test_standalone_patch_package_generates_required_explanation_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patch = root / "rk14-frameworks-base@nav-policy-toggle.patch"
+            patch.write_text(
+                "diff --git a/frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java "
+                "b/frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java\n"
+                "--- a/frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java\n"
+                "+++ b/frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java\n"
+                "@@ -1 +1,2 @@\n"
+                "+//gyf 20260526@ nav policy toggle\n"
+                '+static final String KEY = "persist.sys.nav_policy";\n',
+                encoding="utf-8",
+            )
+            (root / "rk14-frameworks-base@nav-policy-toggle.readme.md").write_text(
+                "# nav policy toggle\n\n"
+                "## 功能描述\n\nOK\n\n"
+                "## 修改点\n\nOK\n\n"
+                "## 日志控制\n\nOK\n\n"
+                "## SystemProperties\n\nOK\n\n"
+                "## 字符串国际化\n\nOK\n\n"
+                "## 可回滚性\n\nOK\n",
+                encoding="utf-8",
+            )
+            config = {
+                "member_alias": "jinny",
+                "member_name": "吴金雨",
+                "out_dir": str(root / "out"),
+                "repo_url": "test35:/home/test35/work/knowledge/remote.git",
+                "max_attachment_mb": "5",
+                "timezone": "Asia/Shanghai",
+                "synthetic_data": "false",
+            }
+
+            package_dir = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                config,
+                run_id="20260526-120000-patch",
+                patch_paths=[str(patch)],
+                patch_package_paths=[],
+                project="Android Framework",
+                summary="Allow nav policy toggle",
+                status="validated",
+                schema_version="2.0",
+            )
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+            check = json.loads((package_dir / "local-check.json").read_text(encoding="utf-8"))
+            evidence_kinds = {item["kind"] for item in manifest["evidence"]}
+
+            self.assertEqual(check["status"], "PASS")
+            self.assertEqual(manifest["quality"], "candidate")
+            self.assertEqual(manifest["patches"][0]["status"], "candidate")
+            self.assertFalse(manifest["patches"][0]["reusable"])
+            self.assertIn("patch_problem_inference", evidence_kinds)
+            self.assertIn("risk_surface", evidence_kinds)
+            self.assertIn("patch_diff_facts", evidence_kinds)
 
 
 if __name__ == "__main__":

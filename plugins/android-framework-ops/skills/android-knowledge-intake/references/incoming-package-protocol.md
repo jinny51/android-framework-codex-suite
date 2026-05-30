@@ -1,6 +1,6 @@
 # Incoming Work Package Protocol
 
-Member-side automation and maintainer patch contribution must submit only `incoming` work packages. Server-side scripts generate final `daily/`, `weekly/`, `patches/by-id/`, `knowledge-events/`, `index/`, and `site/`.
+Member-side automation and maintainer patch contribution must submit only `incoming` work packages. The knowledge repository hook validates accepted packages and generates final `daily/`, `weekly/`, `patches/by-id/`, `knowledge-events/`, `index/`, and `site/`.
 
 The path layout is stable:
 
@@ -11,59 +11,13 @@ incoming/YYYYMMDD/member_alias/run_id/
 Rules:
 
 - `YYYYMMDD` is the package date.
-- `member_alias` must exist in the server `config/team.yaml`.
+- `member_alias` must exist in the repository `config/team.yaml`.
 - `run_id` must start with `YYYYMMDD-HHMMSS`.
-- `schema_version` is an internal compatibility field. Do not expose it as a user-facing workflow name.
+- `schema_version` is an internal compatibility field. Do not expose it as a user-facing workflow name, and do not use it to name an incoming generation.
 
-## Legacy Schema Compatibility
+## Deprecated Local Format
 
-The legacy report-package schema is kept only for compatibility.
-
-Allowed `type` values:
-
-- `daily`: member daily report plus optional patches.
-- `weekly`: member weekly report plus optional patches.
-- `patch`: maintainer patch contribution only.
-
-Daily:
-
-```text
-manifest.json
-daily.md
-patches/
-evidence/
-```
-
-Weekly:
-
-```text
-manifest.json
-weekly.md
-patches/
-evidence/
-```
-
-Patch contribution:
-
-```text
-manifest.json
-patches/
-evidence/
-```
-
-Minimal legacy manifest:
-
-```json
-{
-  "schema_version": "1.0",
-  "type": "daily",
-  "member": "member_alias",
-  "date": "2026-05-26",
-  "project": "全局项目",
-  "summary": "今日工作摘要",
-  "patches": []
-}
-```
+The old report-package format with top-level `daily.md`, `weekly.md`, `type=daily`, or `type=weekly` is no longer accepted by the knowledge repository. Current member automation must generate the package shape below.
 
 ## Current Incoming Packages
 
@@ -105,11 +59,14 @@ Minimal manifest:
   "channel": "light",
   "quality": "trace",
   "member": "member_alias",
+  "member_name": "成员姓名",
   "date": "2026-05-26",
   "run_id": "20260526-210000",
   "project": "全局项目",
   "summary": "今日工作摘要",
-  "source": {},
+  "source": {
+    "tool": "android-knowledge-intake"
+  },
   "reports": [
     {
       "id": "report-daily",
@@ -181,7 +138,7 @@ Patch item:
 
 ## Patch Analysis Evidence
 
-Patch files are evidence, not opaque attachments. Member-side intake should do the primary patch understanding while it still has Codex session context. Server normalization may do deterministic patch parsing to fill missing direct facts and improve search, but it should not be treated as the main AI inference step.
+Patch files are evidence, not opaque attachments. Member-side intake should do the primary patch understanding while it still has Codex session context. Repository normalization may do deterministic patch parsing to fill missing direct facts and improve search, but it should not be treated as the main AI reasoning step.
 
 Direct facts belong in `patch_diff_facts`:
 
@@ -195,21 +152,21 @@ framework_log_keys
 modules
 ```
 
-Likely problem, likely solution, keywords, applicability, and risks belong in `patch_problem_inference` or `risk_surface`. These are inferred conclusions and must include:
+Problem explanation, solution explanation, keywords, applicability, and risks belong in `patch_problem_inference` or `risk_surface`. These are reasoning outputs and must include:
 
 ```json
 {
   "confidence": "medium",
-  "basis": ["patch modifies frameworks/base/..."],
-  "limits": ["original issue text was not found"]
+  "basis": ["补丁修改文件: frameworks/base/..."],
+  "limits": ["补丁内容不能单独证明原始需求文字"]
 }
 ```
 
 Rules:
 
-- Inferred fields improve search and reuse judgment.
-- Inferred fields must not be presented as verified facts.
-- Inference alone cannot upgrade `quality` to `validated`.
+- Patch explanation fields improve search and reuse judgment.
+- Patch explanation fields must not be presented as verified facts.
+- Patch explanation alone cannot upgrade `quality` to `validated`.
 - Historical imports may use patch analysis to recover missing title, summary, module, files, keywords, likely problem, likely solution, and risk surface.
 - New incoming packages may use patch analysis as a consistency check against the human readme.
 

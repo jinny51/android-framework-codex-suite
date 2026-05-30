@@ -151,9 +151,8 @@ class AndroidKnowledgeSearchV2Tests(unittest.TestCase):
         text = search.format_markdown(root, "Launcher focus", results, None)
 
         self.assertEqual(results[0]["id"], "patch-focus")
-        self.assertIn("inferred_problem", text)
+        self.assertIn("补丁问题线索", text)
         self.assertIn("window focus", text)
-        self.assertIn("medium", text)
 
 
 if __name__ == "__main__":

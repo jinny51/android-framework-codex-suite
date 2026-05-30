@@ -242,40 +242,40 @@ def patch_analysis_from_diff(diff_text: str, facts: dict[str, Any], patch_name: 
             *[item for item in ["focus", "launcher", "power", "policy", "package", "input"] if item in joined],
         }
     )
-    basis = [f"patch modifies {path}" for path in files]
-    basis.extend(f"module inferred from path: {module}" for module in modules)
-    basis.extend(f"symbol inferred from hunk context: {symbol}" for symbol in symbols)
+    basis = [f"补丁修改文件: {path}" for path in files]
+    basis.extend(f"根据路径归属到模块: {module}" for module in modules)
+    basis.extend(f"根据 diff hunk 识别符号: {symbol}" for symbol in symbols)
     if args.summary:
-        basis.append("capture summary was provided by the operator")
+        basis.append("提交时提供了补丁摘要")
 
     if "focus" in joined and ("WindowManager" in modules or "ActivityTaskManager" in modules):
-        inferred_problem = "Window or activity focus behavior may not match the requirement"
-        inferred_solution = "Adjust WindowManager or ActivityTaskManager focus handling in the modified path"
+        inferred_problem = "窗口或 Activity 焦点行为需要按产品需求调整。"
+        inferred_solution = "修改 WindowManager 或 ActivityTaskManager 相关路径中的焦点处理逻辑。"
         confidence = "medium"
     elif "power" in joined or "Policy" in modules:
-        inferred_problem = "Policy or power behavior may not match the requirement"
-        inferred_solution = "Adjust policy handling in the modified Framework path"
+        inferred_problem = "按键、策略或电源相关行为需要按产品需求调整。"
+        inferred_solution = "修改 Framework policy 路径中的策略处理逻辑。"
         confidence = "medium"
     else:
-        inferred_problem = f"Behavior in {', '.join(modules) if modules else 'modified Framework files'} may need correction"
-        inferred_solution = "Review the changed code path against the captured requirement and verification evidence"
+        inferred_problem = f"{'、'.join(modules) if modules else '修改文件'} 相关行为需要按产品需求调整。"
+        inferred_solution = "结合需求、修改文件和验证记录复核对应逻辑。"
         confidence = "low"
 
     risks = sorted(
         {
-            *("window focus" for _ in [0] if "focus" in joined or "WindowManager" in modules),
-            *("activity launch/resume" for _ in [0] if "ActivityTaskManager" in modules),
-            *("power or policy behavior" for _ in [0] if "power" in joined or "Policy" in modules),
-            *("package install or package state" for _ in [0] if "PackageManager" in modules),
+            *("窗口焦点/显示层级" for _ in [0] if "focus" in joined or "WindowManager" in modules),
+            *("Activity 启动/恢复" for _ in [0] if "ActivityTaskManager" in modules),
+            *("按键/电源/策略行为" for _ in [0] if "power" in joined or "Policy" in modules),
+            *("包安装/包状态" for _ in [0] if "PackageManager" in modules),
         }
     )
     if not risks:
-        risks = ["modified code path requires requirement-specific verification"]
+        risks = ["修改路径需要按当前项目需求重新验证"]
 
     limits = [
-        "patch content does not prove the original customer wording",
-        "patch content does not prove device verification",
-        "patch content does not prove release acceptance",
+        "补丁内容不能单独证明原始需求文字",
+        "补丁内容不能单独证明设备验证结果",
+        "补丁内容不能单独证明发布状态",
     ]
     source_patch = f"patches/{patch_name}"
     return {
@@ -532,21 +532,21 @@ def main() -> int:
             "kind": "patch_diff_facts",
             "path": "evidence/patch-diff-facts.json",
             "result": "INFO",
-            "summary": "facts parsed directly from patch content",
+            "summary": "补丁 diff 中解析出的客观事实",
         },
         {
             "id": "patch-problem-inference",
             "kind": "patch_problem_inference",
             "path": "evidence/patch-problem-inference.json",
             "result": "INFO",
-            "summary": "likely problem and solution inferred from patch content",
+            "summary": "补丁对应的问题与方案说明",
         },
         {
             "id": "risk-surface",
             "kind": "risk_surface",
             "path": "evidence/risk-surface.json",
             "result": "INFO",
-            "summary": "risk surface inferred from changed files and symbols",
+            "summary": "补丁风险面说明",
         },
         {
             "id": "search-before-change",

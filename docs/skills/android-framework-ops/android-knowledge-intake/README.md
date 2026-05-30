@@ -10,9 +10,9 @@
 
 成员端 Codex 是知识生成主体。它负责从会话、git、patch 和验证记录里整理知识资产；服务器收到 `incoming` 后只做验收、归档、索引和展示。
 
-普通成员使用 `daily/weekly` 自动化；维护者 `jinny/吴金雨` 只在需要保存有价值补丁时使用 `patch` 模式，服务端只保存补丁并重建索引，不生成日报或周报。
+普通成员使用 `daily/weekly` 自动化；维护者 `jinny/吴金雨` 只在需要保存有价值补丁时使用 `patch` 模式，服务器只保存补丁并重建索引，不生成日报或周报。
 
-需要联调协议或服务端链路时，单独创建合成数据 profile；合成 profile 不读取真实 Codex 会话、不扫描真实源码、不上传真实 patch。
+需要联调协议或服务器链路时，单独创建合成数据 profile；合成 profile 不读取真实 Codex 会话、不扫描真实源码、不上传真实 patch。
 
 ## 典型场景
 
@@ -62,7 +62,7 @@ python3 "scripts/android_knowledge_intake.py" --profile jinny patch --prepare --
 
 只有历史散落补丁才继续用 `--patch /path/to/*.patch`。
 
-维护者需要验证协议和服务端链路时，才使用临时合成测试 profile。普通成员不要用测试 profile 提交日报、周报或 patch。
+维护者需要验证协议和服务器链路时，才使用临时合成测试 profile。普通成员不要用测试 profile 提交日报、周报或 patch。
 
 ## 文件入口
 
