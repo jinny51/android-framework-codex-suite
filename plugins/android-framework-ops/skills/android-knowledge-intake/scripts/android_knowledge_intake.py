@@ -22,7 +22,7 @@ except ImportError:  # pragma: no cover
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_VERSION = "1.0"
+INCOMING_SCHEMA_VERSION = "2.0"
 ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
 PATCH_FILENAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
@@ -33,17 +33,17 @@ REPORT_HEADINGS = {
 }
 PACKAGE_TYPES = {"daily", "weekly", "patch"}
 PATCH_README_HEADINGS = ("功能描述", "修改点", "日志控制", "SystemProperties", "字符串国际化", "可回滚性")
-V2_LIGHT_KINDS = {"daily_trace", "weekly_trace", "session_trace"}
-V2_STRICT_KINDS = {"framework_change", "patch_contribution", "reuse_decision"}
-V2_LIGHT_QUALITIES = {"imported", "trace", "candidate"}
-V2_STRICT_QUALITIES = {"imported", "candidate", "validated", "released", "buggy"}
-V2_PATCH_README_QUALITIES = {"candidate", "validated", "released", "buggy"}
-V2_VERIFIED_QUALITIES = {"validated", "released"}
-V2_INFERENCE_EVIDENCE_KINDS = {"patch_problem_inference", "risk_surface"}
-V2_REQUIRED_PATCH_EXPLANATION_KINDS = {"patch_problem_inference", "risk_surface"}
-V2_CONFIDENCE_VALUES = {"low", "medium", "high"}
-V2_REPORT_KINDS = {"daily", "weekly", "summary", "session"}
-V2_EVIDENCE_KINDS = {
+INCOMING_LIGHT_KINDS = {"daily_trace", "weekly_trace", "session_trace"}
+INCOMING_STRICT_KINDS = {"framework_change", "patch_contribution", "reuse_decision"}
+INCOMING_LIGHT_QUALITIES = {"imported", "trace", "candidate"}
+INCOMING_STRICT_QUALITIES = {"imported", "candidate", "validated", "released", "buggy"}
+PATCH_README_REQUIRED_QUALITIES = {"candidate", "validated", "released", "buggy"}
+VERIFIED_QUALITIES = {"validated", "released"}
+INFERENCE_EVIDENCE_KINDS = {"patch_problem_inference", "risk_surface"}
+REQUIRED_PATCH_EXPLANATION_KINDS = {"patch_problem_inference", "risk_surface"}
+EVIDENCE_CONFIDENCE_VALUES = {"low", "medium", "high"}
+REPORT_KINDS = {"daily", "weekly", "summary", "session"}
+EVIDENCE_KINDS = {
     "source",
     "codex_sessions",
     "changed_files",
@@ -58,10 +58,10 @@ V2_EVIDENCE_KINDS = {
     "package_check",
     "summary",
 }
-V2_EVIDENCE_RESULTS = {"PASS", "WARN", "FAIL", "INFO", "SKIPPED"}
-V2_PATCH_STATUSES = {"imported", "candidate", "validated", "released", "buggy", "failed"}
-V2_RELATION_TYPES = {"described_by", "verified_by", "reported_in", "originated_from", "generated_from"}
-V2_VERIFICATION_EVIDENCE_KINDS = {"verification_result", "device_verification", "equivalent_verification"}
+EVIDENCE_RESULTS = {"PASS", "WARN", "FAIL", "INFO", "SKIPPED"}
+PATCH_STATUSES = {"imported", "candidate", "validated", "released", "buggy", "failed"}
+RELATION_TYPES = {"described_by", "verified_by", "reported_in", "originated_from", "generated_from"}
+VERIFICATION_EVIDENCE_KINDS = {"verification_result", "device_verification", "equivalent_verification"}
 DATE_KEY_RE = re.compile(r"^\d{8}$")
 DATE_DISPLAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RUN_ID_RE = re.compile(r"^\d{8}-\d{6}(-[A-Za-z0-9_.-]+)?$")
@@ -1043,56 +1043,10 @@ def validate_package(package_dir: Path) -> dict[str, Any]:
         errors.append(f"manifest.json 解析失败: {exc}")
         return {"status": "FAIL", "errors": errors, "warnings": warnings}
 
-    if manifest.get("schema_version") == "2.0":
-        return validate_v2_package(package_dir, manifest)
-
-    report_type = str(manifest.get("type", ""))
-    for field in ("schema_version", "type", "member", "date", "project", "summary", "patches"):
-        if field not in manifest:
-            errors.append(f"manifest 缺少必填字段: {field}")
-    if manifest.get("schema_version") != SCHEMA_VERSION:
-        errors.append(f"schema_version 必须是 {SCHEMA_VERSION}")
-    if report_type not in PACKAGE_TYPES:
-        errors.append("type 必须是 daily、weekly 或 patch")
-    if report_type == "weekly" and not re.fullmatch(r"\d{8}-\d{8}", str(manifest.get("week_range", ""))):
-        errors.append("weekly 工作包必须提供 week_range: YYYYMMDD-YYYYMMDD")
-
-    if report_type in REPORT_HEADINGS:
-        report = package_dir / f"{report_type}.md"
-        if not report.is_file():
-            errors.append(f"缺少 {report_type}.md")
-        else:
-            text = report.read_text(encoding="utf-8", errors="ignore")
-            for heading in REPORT_HEADINGS.get(report_type, ()):
-                if not has_heading(text, heading):
-                    errors.append(f"{report.name} 缺少必填章节: ## {heading}")
-
-    patches = manifest.get("patches")
-    if not isinstance(patches, list):
-        errors.append("manifest.patches 必须是数组")
-        patches = []
-    if report_type == "patch" and not patches:
-        errors.append("patch 工作包必须至少包含一个补丁")
-    listed = set()
-    for item in patches:
-        rel = item.get("path") if isinstance(item, dict) else item
-        if not isinstance(rel, str) or not rel:
-            errors.append("manifest.patches 中每一项必须是路径字符串，或包含 path 的对象")
-            continue
-        listed.add(rel)
-        path = package_dir / rel
-        if not path.is_file():
-            errors.append(f"manifest.patches 指向的文件不存在: {rel}")
-            continue
-        errors.extend(validate_patch_file(path))
-        readme = paired_readme(path)
-        if readme and "TODO:" in readme.read_text(encoding="utf-8", errors="ignore"):
-            warnings.append(f"{readme.name} 仍包含 TODO 模板内容，建议成员提交前补全")
-    for patch in sorted((package_dir / "patches").glob("*.patch")) if (package_dir / "patches").is_dir() else []:
-        rel = patch.relative_to(package_dir).as_posix()
-        if rel not in listed:
-            errors.append(f"patches/ 下存在未写入 manifest.patches 的 patch: {patch.name}")
-    return {"status": "FAIL" if errors else "PASS", "errors": errors, "warnings": warnings}
+    if manifest.get("schema_version") != INCOMING_SCHEMA_VERSION:
+        errors.append(f"schema_version 必须是 {INCOMING_SCHEMA_VERSION}")
+        return {"status": "FAIL", "errors": errors, "warnings": warnings}
+    return validate_incoming_package(package_dir, manifest)
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -1121,13 +1075,13 @@ def source_metadata(config: dict[str, str], skill: str) -> dict[str, Any]:
     }
 
 
-def write_v2_source(package_dir: Path, config: dict[str, str], skill: str) -> dict[str, Any]:
+def write_package_source(package_dir: Path, config: dict[str, str], skill: str) -> dict[str, Any]:
     source = source_metadata(config, skill)
     write_json(package_dir / "evidence" / "source.json", source)
     return source
 
 
-def v2_report_manifest(
+def incoming_report_manifest(
     report_type: str,
     date: dt.date,
     week_key: str,
@@ -1191,7 +1145,7 @@ def v2_report_manifest(
     return manifest
 
 
-def v2_referenced_paths(manifest: dict[str, Any]) -> list[str]:
+def referenced_paths(manifest: dict[str, Any]) -> list[str]:
     paths: list[str] = []
     for section in ("reports", "evidence", "patches"):
         rows = manifest.get(section, [])
@@ -1209,7 +1163,7 @@ def v2_referenced_paths(manifest: dict[str, Any]) -> list[str]:
     return paths
 
 
-def v2_reference_path(package_dir: Path, rel: str) -> Path:
+def reference_path(package_dir: Path, rel: str) -> Path:
     path = (package_dir / rel).resolve()
     root = package_dir.resolve()
     if path != root and root not in path.parents:
@@ -1217,9 +1171,9 @@ def v2_reference_path(package_dir: Path, rel: str) -> Path:
     return path
 
 
-def v2_read_referenced_json(package_dir: Path, rel: str) -> dict[str, Any] | None:
+def read_referenced_json(package_dir: Path, rel: str) -> dict[str, Any] | None:
     try:
-        path = v2_reference_path(package_dir, rel)
+        path = reference_path(package_dir, rel)
     except ValueError:
         return None
     if not path.is_file():
@@ -1231,7 +1185,7 @@ def v2_read_referenced_json(package_dir: Path, rel: str) -> dict[str, Any] | Non
     return payload if isinstance(payload, dict) else None
 
 
-def v2_validate_source(manifest: dict[str, Any], errors: list[str]) -> None:
+def validate_source(manifest: dict[str, Any], errors: list[str]) -> None:
     source = manifest.get("source")
     if not isinstance(source, dict):
         errors.append("manifest.source 必须是对象")
@@ -1241,7 +1195,7 @@ def v2_validate_source(manifest: dict[str, Any], errors: list[str]) -> None:
         errors.append("manifest.source.tool 必须提供生成工具名")
 
 
-def v2_validate_asset_identity(manifest: dict[str, Any], errors: list[str]) -> None:
+def validate_asset_identity(manifest: dict[str, Any], errors: list[str]) -> None:
     for section in ("reports", "evidence", "patches"):
         rows = manifest.get(section, [])
         if not isinstance(rows, list):
@@ -1266,32 +1220,32 @@ def v2_validate_asset_identity(manifest: dict[str, Any], errors: list[str]) -> N
                 seen_paths[path] = index
 
 
-def v2_validate_evidence_result(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
+def validate_evidence_result(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
     result = item.get("result")
-    if result not in V2_EVIDENCE_RESULTS:
+    if result not in EVIDENCE_RESULTS:
         errors.append("evidence.result 必须是 PASS、WARN、FAIL、INFO 或 SKIPPED")
         return
 
     rel = item.get("path")
     if not isinstance(rel, str) or not rel:
         return
-    payload = v2_read_referenced_json(package_dir, rel)
+    payload = read_referenced_json(package_dir, rel)
     if payload is None or payload.get("result") is None:
         return
     payload_result = payload.get("result")
-    if payload_result not in V2_EVIDENCE_RESULTS:
+    if payload_result not in EVIDENCE_RESULTS:
         errors.append(f"{rel} result 必须是 PASS、WARN、FAIL、INFO 或 SKIPPED")
     elif payload_result != result:
         errors.append(f"{rel} result 必须与 manifest.evidence.result 一致")
 
 
-def v2_validate_verification_evidence(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
-    if item.get("kind") not in V2_VERIFICATION_EVIDENCE_KINDS or item.get("result") != "PASS":
+def validate_verification_evidence(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
+    if item.get("kind") not in VERIFICATION_EVIDENCE_KINDS or item.get("result") != "PASS":
         return
     rel = item.get("path")
     if not isinstance(rel, str) or not rel:
         return
-    payload = v2_read_referenced_json(package_dir, rel)
+    payload = read_referenced_json(package_dir, rel)
     if payload is None or payload.get("result") != "PASS":
         return
     method = payload.get("method")
@@ -1306,7 +1260,7 @@ def v2_validate_verification_evidence(package_dir: Path, item: dict[str, Any], e
         errors.append(f"{rel} 等价验证必须包含 reason、coverage 和 remaining_risk")
 
 
-def v2_evidence_covers_patch(item: dict[str, Any], payload: dict[str, Any] | None, patch: dict[str, Any], patch_count: int) -> bool:
+def evidence_covers_patch(item: dict[str, Any], payload: dict[str, Any] | None, patch: dict[str, Any], patch_count: int) -> bool:
     if patch_count == 1:
         return True
     patch_id = str(patch.get("id") or "")
@@ -1318,7 +1272,7 @@ def v2_evidence_covers_patch(item: dict[str, Any], payload: dict[str, Any] | Non
     return bool((patch_id and patch_id in normalized) or (patch_path and patch_path in normalized))
 
 
-def v2_explanation_kinds_for_patch(package_dir: Path, manifest: dict[str, Any], patch: dict[str, Any], patch_count: int) -> set[str]:
+def explanation_kinds_for_patch(package_dir: Path, manifest: dict[str, Any], patch: dict[str, Any], patch_count: int) -> set[str]:
     kinds: set[str] = set()
     rows = manifest.get("evidence", [])
     if not isinstance(rows, list):
@@ -1327,16 +1281,16 @@ def v2_explanation_kinds_for_patch(package_dir: Path, manifest: dict[str, Any], 
         if not isinstance(item, dict):
             continue
         kind = item.get("kind")
-        if kind not in V2_REQUIRED_PATCH_EXPLANATION_KINDS:
+        if kind not in REQUIRED_PATCH_EXPLANATION_KINDS:
             continue
         rel = item.get("path")
-        payload = v2_read_referenced_json(package_dir, rel) if isinstance(rel, str) else None
-        if v2_evidence_covers_patch(item, payload, patch, patch_count):
+        payload = read_referenced_json(package_dir, rel) if isinstance(rel, str) else None
+        if evidence_covers_patch(item, payload, patch, patch_count):
             kinds.add(str(kind))
     return kinds
 
 
-def v2_relation_value(item: dict[str, Any], keys: tuple[str, ...]) -> str:
+def relation_value(item: dict[str, Any], keys: tuple[str, ...]) -> str:
     for key in keys:
         if key not in item:
             continue
@@ -1349,7 +1303,7 @@ def v2_relation_value(item: dict[str, Any], keys: tuple[str, ...]) -> str:
     return ""
 
 
-def v2_relation_endpoint_index(manifest: dict[str, Any], errors: list[str]) -> dict[str, str]:
+def relation_endpoint_index(manifest: dict[str, Any], errors: list[str]) -> dict[str, str]:
     endpoints: dict[str, tuple[str, str]] = {}
     duplicate_refs: set[str] = set()
 
@@ -1380,38 +1334,38 @@ def v2_relation_endpoint_index(manifest: dict[str, Any], errors: list[str]) -> d
     return {key: value[0] for key, value in endpoints.items()}
 
 
-def v2_validate_relations(manifest: dict[str, Any], errors: list[str]) -> None:
+def validate_relations(manifest: dict[str, Any], errors: list[str]) -> None:
     rows = manifest.get("relations", [])
     if not isinstance(rows, list):
         errors.append("relations 必须是数组")
         return
 
-    endpoints = v2_relation_endpoint_index(manifest, errors)
+    endpoints = relation_endpoint_index(manifest, errors)
     for index, item in enumerate(rows):
         if not isinstance(item, dict):
             errors.append(f"relations[{index}] 必须是对象")
             continue
-        source = v2_relation_value(item, ("from", "source", "source_id"))
-        target = v2_relation_value(item, ("to", "target", "target_id"))
-        relation = v2_relation_value(item, ("type", "relation"))
+        source = relation_value(item, ("from", "source", "source_id"))
+        target = relation_value(item, ("to", "target", "target_id"))
+        relation = relation_value(item, ("type", "relation"))
         if not source or not target or not relation:
             errors.append(f"relations[{index}] 必须提供 from、to 和 type")
             continue
-        if relation not in V2_RELATION_TYPES:
+        if relation not in RELATION_TYPES:
             errors.append(f"relations[{index}].type 非法: {relation}")
         if source not in endpoints:
             errors.append(f"relations[{index}].from 找不到对应资产: {source}")
         if target not in endpoints:
             errors.append(f"relations[{index}].to 找不到对应资产: {target}")
         if "confidence" in item:
-            confidence = v2_relation_value(item, ("confidence",))
-            if not confidence or confidence not in V2_CONFIDENCE_VALUES:
+            confidence = relation_value(item, ("confidence",))
+            if not confidence or confidence not in EVIDENCE_CONFIDENCE_VALUES:
                 errors.append(f"relations[{index}].confidence 必须是 low、medium 或 high")
 
 
-def v2_patch_diff_modified_files(package_dir: Path, rel: str) -> list[str]:
+def patch_diff_modified_files(package_dir: Path, rel: str) -> list[str]:
     try:
-        path = v2_reference_path(package_dir, rel)
+        path = reference_path(package_dir, rel)
     except ValueError:
         return []
     if not path.is_file():
@@ -1431,18 +1385,18 @@ def v2_patch_diff_modified_files(package_dir: Path, rel: str) -> list[str]:
     return files
 
 
-def v2_validate_inference_evidence(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
+def validate_inference_evidence(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
     rel = item.get("path")
     if not isinstance(rel, str) or not rel:
         errors.append("补丁解释 evidence 必须引用 JSON 文件")
         return
-    payload = v2_read_referenced_json(package_dir, rel)
+    payload = read_referenced_json(package_dir, rel)
     if payload is None:
         return
     confidence = payload.get("confidence")
     basis = payload.get("basis")
     limits = payload.get("limits")
-    if confidence not in V2_CONFIDENCE_VALUES:
+    if confidence not in EVIDENCE_CONFIDENCE_VALUES:
         errors.append(f"{rel} confidence 必须是 low、medium 或 high")
     if not isinstance(basis, list) or not basis:
         errors.append(f"{rel} basis 必须是非空数组")
@@ -1457,7 +1411,7 @@ def v2_validate_inference_evidence(package_dir: Path, item: dict[str, Any], erro
             errors.append(f"{rel} risk_areas 必须是非空数组")
 
 
-def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str, Any]:
+def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
     required = {
@@ -1484,20 +1438,20 @@ def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str
         errors.append("manifest.date 必须是 YYYYMMDD 或 YYYY-MM-DD")
     if not RUN_ID_RE.fullmatch(str(manifest.get("run_id") or "")):
         errors.append("manifest.run_id 必须是 YYYYMMDD-HHMMSS 或 YYYYMMDD-HHMMSS-suffix")
-    v2_validate_source(manifest, errors)
+    validate_source(manifest, errors)
 
     channel = manifest.get("channel")
     quality = manifest.get("quality")
     package_kind = manifest.get("package_kind")
     if channel == "light":
-        if package_kind not in V2_LIGHT_KINDS:
+        if package_kind not in INCOMING_LIGHT_KINDS:
             errors.append(f"light channel 不能使用 package_kind={package_kind}")
-        if quality not in V2_LIGHT_QUALITIES:
+        if quality not in INCOMING_LIGHT_QUALITIES:
             errors.append(f"light channel 不能使用 quality={quality}")
     elif channel == "strict":
-        if package_kind not in V2_STRICT_KINDS:
+        if package_kind not in INCOMING_STRICT_KINDS:
             errors.append(f"strict channel 不能使用 package_kind={package_kind}")
-        if quality not in V2_STRICT_QUALITIES:
+        if quality not in INCOMING_STRICT_QUALITIES:
             errors.append(f"strict channel 不能使用 quality={quality}")
     else:
         errors.append("channel 必须是 light 或 strict")
@@ -1510,7 +1464,7 @@ def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str
         if not isinstance(item, dict):
             errors.append("reports 中每一项必须是对象")
             continue
-        if item.get("kind") not in V2_REPORT_KINDS:
+        if item.get("kind") not in REPORT_KINDS:
             errors.append("report.kind 必须是 daily、weekly、summary 或 session")
     if package_kind in {"daily_trace", "weekly_trace"}:
         expected_kind = "daily" if package_kind == "daily_trace" else "weekly"
@@ -1522,9 +1476,9 @@ def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str
         if package_kind == "weekly_trace" and not manifest.get("week_range") and not any(isinstance(item, dict) and item.get("week_range") for item in reports):
             errors.append("weekly_trace 必须提供 week_range")
 
-    for rel in v2_referenced_paths(manifest):
+    for rel in referenced_paths(manifest):
         try:
-            path = v2_reference_path(package_dir, rel)
+            path = reference_path(package_dir, rel)
         except ValueError as exc:
             errors.append(str(exc))
             continue
@@ -1539,14 +1493,14 @@ def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str
         if not isinstance(item, dict):
             errors.append("evidence 中每一项必须是对象")
             continue
-        if item.get("kind") not in V2_EVIDENCE_KINDS:
+        if item.get("kind") not in EVIDENCE_KINDS:
             errors.append(f"evidence.kind 非法: {item.get('kind')}")
-        v2_validate_evidence_result(package_dir, item, errors)
-        v2_validate_verification_evidence(package_dir, item, errors)
-        if item.get("kind") in V2_INFERENCE_EVIDENCE_KINDS:
-            v2_validate_inference_evidence(package_dir, item, errors)
+        validate_evidence_result(package_dir, item, errors)
+        validate_verification_evidence(package_dir, item, errors)
+        if item.get("kind") in INFERENCE_EVIDENCE_KINDS:
+            validate_inference_evidence(package_dir, item, errors)
 
-    v2_validate_asset_identity(manifest, errors)
+    validate_asset_identity(manifest, errors)
 
     patches = manifest.get("patches", [])
     if not isinstance(patches, list):
@@ -1560,7 +1514,7 @@ def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str
             errors.append("patches 中每一项必须是对象")
             continue
         status = item.get("status")
-        if status not in V2_PATCH_STATUSES:
+        if status not in PATCH_STATUSES:
             errors.append(f"patch.status 非法: {status}")
         if "reusable" in item and not isinstance(item.get("reusable"), bool):
             errors.append("patch.reusable 必须是 JSON boolean")
@@ -1570,34 +1524,34 @@ def validate_v2_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str
         modified_files = facts.get("modified_files") if isinstance(facts, dict) else None
         if not modified_files:
             patch_rel = item.get("path")
-            if isinstance(patch_rel, str) and v2_patch_diff_modified_files(package_dir, patch_rel):
+            if isinstance(patch_rel, str) and patch_diff_modified_files(package_dir, patch_rel):
                 warnings.append(f"patch facts.modified_files 已从补丁 diff 补齐: {patch_rel}")
             else:
                 errors.append("patch 必须提供 facts.modified_files，或可从补丁 diff 补齐")
-        if quality in V2_PATCH_README_QUALITIES:
+        if quality in PATCH_README_REQUIRED_QUALITIES:
             readme = item.get("readme")
             if not isinstance(readme, str) or not readme:
                 errors.append(f"{quality} patch 必须提供 readme")
         if channel == "strict" and package_kind in {"framework_change", "patch_contribution", "reuse_decision"}:
-            present = v2_explanation_kinds_for_patch(package_dir, manifest, item, patch_count)
-            for kind in sorted(V2_REQUIRED_PATCH_EXPLANATION_KINDS - present):
+            present = explanation_kinds_for_patch(package_dir, manifest, item, patch_count)
+            for kind in sorted(REQUIRED_PATCH_EXPLANATION_KINDS - present):
                 errors.append(f"strict patch incoming 必须提供成员端 {kind} evidence")
 
-    v2_validate_relations(manifest, errors)
+    validate_relations(manifest, errors)
 
-    if quality in V2_VERIFIED_QUALITIES:
+    if quality in VERIFIED_QUALITIES:
         claims = manifest.get("quality_claims", {})
         if not isinstance(claims, dict):
             claims = {}
         for field in ("risk_notes", "rollback_notes", "scope"):
             if not claims.get(field):
                 errors.append(f"{quality} 必须提供 quality_claims.{field}")
-        if not v2_has_pass_verification(package_dir, manifest):
+        if not has_pass_verification(package_dir, manifest):
             errors.append(f"{quality} 必须提供 PASS 的设备验证或合格等价验证 evidence")
     return {"status": "FAIL" if errors else "PASS", "errors": errors, "warnings": warnings}
 
 
-def v2_has_pass_verification(package_dir: Path, manifest: dict[str, Any]) -> bool:
+def has_pass_verification(package_dir: Path, manifest: dict[str, Any]) -> bool:
     evidence = manifest.get("evidence", [])
     if not isinstance(evidence, list):
         return False
@@ -1903,11 +1857,11 @@ def existing_explanation_kinds_for_entry(package_dir: Path, evidence_entries: li
     patch = {"id": Path(str(entry.get("path", ""))).stem, "path": entry.get("path", "")}
     kinds: set[str] = set()
     for item in evidence_entries:
-        if item.get("kind") not in V2_REQUIRED_PATCH_EXPLANATION_KINDS:
+        if item.get("kind") not in REQUIRED_PATCH_EXPLANATION_KINDS:
             continue
         rel = item.get("path")
-        payload = v2_read_referenced_json(package_dir, rel) if isinstance(rel, str) else None
-        if v2_evidence_covers_patch(item, payload, patch, patch_count):
+        payload = read_referenced_json(package_dir, rel) if isinstance(rel, str) else None
+        if evidence_covers_patch(item, payload, patch, patch_count):
             kinds.add(str(item.get("kind")))
     return kinds
 
@@ -1989,7 +1943,7 @@ def ensure_patch_analysis_evidence(package_dir: Path, patch_entries: list[dict[s
             )
 
 
-def v2_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[str, Any]:
+def incoming_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[str, Any]:
     patch_path = package_dir / str(patch_entry["path"])
     captured_facts = patch_entry.get("facts") if isinstance(patch_entry.get("facts"), dict) else {}
     facts = {
@@ -2016,6 +1970,8 @@ def v2_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[str, A
 
 def prepare_package(report_type: str, date: dt.date, config: dict[str, str], run_id: str | None = None, schema_version: str = "2.0") -> Path:
     require_config(config)
+    if schema_version != INCOMING_SCHEMA_VERSION:
+        raise SystemExit(f"incoming 只支持 schema_version={INCOMING_SCHEMA_VERSION}")
     dates, start, end, week_key = report_dates(report_type, date)
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}"
     out_dir = expanded_path(config["out_dir"])
@@ -2053,25 +2009,11 @@ def prepare_package(report_type: str, date: dt.date, config: dict[str, str], run
         ],
     }
     write_json(package_dir / "evidence" / "codex-sessions.json", evidence)
-    if schema_version == "2.0":
-        reports_dir = package_dir / "reports"
-        reports_dir.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(package_dir / f"{report_type}.md"), reports_dir / f"{report_type}.md")
-        source = write_v2_source(package_dir, config, "android-knowledge-intake")
-        manifest = v2_report_manifest(report_type, date, week_key, config, summary, source, run_id)
-    else:
-        manifest = {
-            "schema_version": SCHEMA_VERSION,
-            "type": report_type,
-            "member": config["member_alias"],
-            "date": date.isoformat(),
-            "project": "全局项目" if "全局项目" in items else (next(iter(items)) if items else "全局项目"),
-            "summary": summary,
-            "patches": patch_entries,
-            "synthetic_data": synthetic_mode(config),
-        }
-        if report_type == "weekly":
-            manifest["week_range"] = week_key
+    reports_dir = package_dir / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(package_dir / f"{report_type}.md"), reports_dir / f"{report_type}.md")
+    source = write_package_source(package_dir, config, "android-knowledge-intake")
+    manifest = incoming_report_manifest(report_type, date, week_key, config, summary, source, run_id)
     write_json(package_dir / "manifest.json", manifest)
     check = validate_package(package_dir)
     write_json(package_dir / "local-check.json", check)
@@ -2090,6 +2032,8 @@ def prepare_patch_package(
     schema_version: str = "2.0",
 ) -> Path:
     require_config(config)
+    if schema_version != INCOMING_SCHEMA_VERSION:
+        raise SystemExit(f"incoming 只支持 schema_version={INCOMING_SCHEMA_VERSION}")
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}-patch"
     out_dir = expanded_path(config["out_dir"])
     package_dir = out_dir / "pending" / ymd(date) / config["member_alias"] / run_id
@@ -2141,76 +2085,64 @@ def prepare_patch_package(
             "capture_package_count": len(patch_package_paths or []),
         },
     )
-    if schema_version == "2.0":
-        ensure_patch_analysis_evidence(package_dir, patch_entries, capture_evidence_entries, summary)
-        if not has_pass_verification:
-            for item in patch_entries:
-                if item.get("status") in {"validated", "released"}:
-                    item["status"] = "candidate"
-                    item["reusable"] = False
-                    item["note"] = "未携带 PASS 设备验证或合格等价验证，已按 candidate 提交"
+    ensure_patch_analysis_evidence(package_dir, patch_entries, capture_evidence_entries, summary)
+    if not has_pass_verification:
         for item in patch_entries:
-            if item.get("status") in {"buggy", "failed"}:
+            if item.get("status") in {"validated", "released"}:
+                item["status"] = "candidate"
                 item["reusable"] = False
-        statuses = {str(item.get("status", "")) for item in patch_entries}
-        source = write_v2_source(package_dir, config, "android-knowledge-intake")
-        if has_pass_verification and "released" in statuses:
-            quality = "released"
-        elif has_pass_verification and "validated" in statuses:
-            quality = "validated"
-        elif statuses and statuses <= {"buggy", "failed"}:
-            quality = "buggy"
-        else:
-            quality = "candidate"
-        manifest = {
-            "schema_version": "2.0",
-            "package_kind": "patch_contribution",
-            "channel": "strict",
-            "quality": quality,
-            "member": config["member_alias"],
-            "member_name": config["member_name"],
-            "date": date.isoformat(),
-            "run_id": run_id,
-            "project": project,
-            "summary": summary,
-            "source": source,
-            "reports": [],
-            "patches": [v2_patch_item(package_dir, item) for item in patch_entries],
-            "evidence": [
-                {
-                    "id": "source",
-                    "kind": "source",
-                    "path": "evidence/source.json",
-                    "result": "INFO",
-                    "summary": "package source metadata",
-                },
-                {
-                    "id": "patch-contribution",
-                    "kind": "summary",
-                    "path": "evidence/patch-contribution.json",
-                    "result": "INFO",
-                    "summary": "manual patch contribution facts",
-                },
-                *capture_evidence_entries,
-            ],
-            "relations": [],
-            "quality_claims": {
-                "risk_notes": "手动补丁贡献，风险以配套 readme 为准。",
-                "rollback_notes": "回滚对应 patch 并重新编译相关模块。",
-                "scope": project,
-            },
-        }
+                item["note"] = "未携带 PASS 设备验证或合格等价验证，已按 candidate 提交"
+    for item in patch_entries:
+        if item.get("status") in {"buggy", "failed"}:
+            item["reusable"] = False
+    statuses = {str(item.get("status", "")) for item in patch_entries}
+    source = write_package_source(package_dir, config, "android-knowledge-intake")
+    if has_pass_verification and "released" in statuses:
+        quality = "released"
+    elif has_pass_verification and "validated" in statuses:
+        quality = "validated"
+    elif statuses and statuses <= {"buggy", "failed"}:
+        quality = "buggy"
     else:
-        manifest = {
-            "schema_version": SCHEMA_VERSION,
-            "type": "patch",
-            "member": config["member_alias"],
-            "date": date.isoformat(),
-            "project": project,
-            "summary": summary,
-            "patches": patch_entries,
-            "synthetic_data": synthetic_mode(config),
-        }
+        quality = "candidate"
+    manifest = {
+        "schema_version": INCOMING_SCHEMA_VERSION,
+        "package_kind": "patch_contribution",
+        "channel": "strict",
+        "quality": quality,
+        "member": config["member_alias"],
+        "member_name": config["member_name"],
+        "date": date.isoformat(),
+        "run_id": run_id,
+        "project": project,
+        "summary": summary,
+        "source": source,
+        "reports": [],
+        "patches": [incoming_patch_item(package_dir, item) for item in patch_entries],
+        "evidence": [
+            {
+                "id": "source",
+                "kind": "source",
+                "path": "evidence/source.json",
+                "result": "INFO",
+                "summary": "package source metadata",
+            },
+            {
+                "id": "patch-contribution",
+                "kind": "summary",
+                "path": "evidence/patch-contribution.json",
+                "result": "INFO",
+                "summary": "manual patch contribution facts",
+            },
+            *capture_evidence_entries,
+        ],
+        "relations": [],
+        "quality_claims": {
+            "risk_notes": "手动补丁贡献，风险以配套 readme 为准。",
+            "rollback_notes": "回滚对应 patch 并重新编译相关模块。",
+            "scope": project,
+        },
+    }
     write_json(package_dir / "manifest.json", manifest)
     check = validate_package(package_dir)
     write_json(package_dir / "local-check.json", check)
@@ -2289,9 +2221,7 @@ def git_submit_package(package_dir: Path, config: dict[str, str]) -> dict[str, A
         return {"committed": False, "pushed": False, "message": "no changes", "repo": str(repo), "path": rel}
 
     manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
-    manifest_type = manifest.get("type")
-    if not manifest_type and manifest.get("schema_version") == "2.0":
-        manifest_type = manifest.get("package_kind", "knowledge_event")
+    manifest_type = manifest.get("package_kind", "incoming")
     msg = f"incoming({manifest_type}): {manifest['member']} {manifest['date']}"
     cp = git_run(repo, ["commit", "-m", msg], check=False)
     if cp.returncode != 0 and "nothing to commit" not in (cp.stdout + cp.stderr):
@@ -2317,10 +2247,8 @@ def latest_pending(report_type: str, config: dict[str, str], date: dt.date | Non
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except Exception:
             continue
-        manifest_type = manifest.get("type")
-        if not manifest_type and manifest.get("schema_version") == "2.0":
-            kind = str(manifest.get("package_kind", ""))
-            manifest_type = "daily" if kind == "daily_trace" else "weekly" if kind == "weekly_trace" else "patch" if kind == "patch_contribution" else ""
+        kind = str(manifest.get("package_kind", ""))
+        manifest_type = "daily" if kind == "daily_trace" else "weekly" if kind == "weekly_trace" else "patch" if kind == "patch_contribution" else ""
         if manifest_type != report_type:
             continue
         if manifest.get("member") != config.get("member_alias"):

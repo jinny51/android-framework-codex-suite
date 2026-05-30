@@ -74,7 +74,7 @@ Recommended member-side automations:
 
 Maintainer patch contribution is manual by default. Use it when a patch is worth entering the team knowledge base but should not create personal daily or weekly output.
 
-Prefer `--patch-package` for Framework changes packaged by `android-framework-patch-capture`; it carries patch, readme, verification evidence, and pre-change knowledge search evidence together. Use `--patch` only for legacy standalone patch files.
+Prefer `--patch-package` for Framework changes packaged by `android-framework-patch-capture`; it carries patch, readme, verification evidence, and pre-change knowledge search evidence together. Use `--patch` only when directly packaging a single patch file into the current incoming protocol.
 
 For successful automation runs, launch `scripts/archive_automation_runs.py` with `setsid -f` and a short delay so the automation conversation is archived after Codex marks the run complete.
 

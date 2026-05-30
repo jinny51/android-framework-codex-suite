@@ -164,7 +164,7 @@ def create_capture_package(root: Path, status: str = "validated") -> Path:
     return package
 
 
-def create_v2_patch_incoming(
+def create_current_patch_incoming(
     root: Path,
     *,
     quality: str = "candidate",
@@ -267,7 +267,7 @@ def create_v2_patch_incoming(
 
 
 class PatchCaptureIngestTests(unittest.TestCase):
-    def test_v2_patch_package_preserves_capture_evidence_and_quality(self) -> None:
+    def test_current_patch_package_preserves_capture_evidence_and_quality(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture = create_capture_package(root)
@@ -309,7 +309,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertTrue((package / "evidence" / "capture-patch-problem-inference.json").is_file())
             self.assertTrue((package / "evidence" / "capture-risk-surface.json").is_file())
 
-    def test_local_v2_validation_rejects_validated_without_pass_verification(self) -> None:
+    def test_current_validation_rejects_validated_without_pass_verification(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             package = root / "incoming"
@@ -354,31 +354,31 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 },
             }
 
-            result = intake.validate_v2_package(package, manifest)
+            result = intake.validate_incoming_package(package, manifest)
 
             self.assertEqual(result["status"], "FAIL")
             self.assertTrue(any("PASS" in error for error in result["errors"]))
 
-    def test_local_v2_validation_accepts_imported_strict_patch(self) -> None:
+    def test_current_validation_accepts_imported_strict_patch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            package, manifest = create_v2_patch_incoming(Path(tmp), quality="imported")
+            package, manifest = create_current_patch_incoming(Path(tmp), quality="imported")
 
-            result = intake.validate_v2_package(package, manifest)
+            result = intake.validate_incoming_package(package, manifest)
 
             self.assertEqual(result["status"], "PASS")
 
-    def test_local_v2_validation_derives_missing_modified_files_from_patch_diff(self) -> None:
+    def test_current_validation_derives_missing_modified_files_from_patch_diff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            package, manifest = create_v2_patch_incoming(Path(tmp), facts={})
+            package, manifest = create_current_patch_incoming(Path(tmp), facts={})
 
-            result = intake.validate_v2_package(package, manifest)
+            result = intake.validate_incoming_package(package, manifest)
 
             self.assertEqual(result["status"], "PASS")
             self.assertTrue(any("补齐" in warning for warning in result["warnings"]))
 
-    def test_local_v2_validation_rejects_inference_without_basis_or_limits(self) -> None:
+    def test_current_validation_rejects_inference_without_basis_or_limits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            package, manifest = create_v2_patch_incoming(
+            package, manifest = create_current_patch_incoming(
                 Path(tmp),
                 evidence_payload={
                     "kind": "patch_problem_inference",
@@ -389,7 +389,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 },
             )
 
-            result = intake.validate_v2_package(package, manifest)
+            result = intake.validate_incoming_package(package, manifest)
 
             self.assertEqual(result["status"], "FAIL")
             self.assertTrue(any("confidence" in error for error in result["errors"]))
@@ -425,12 +425,12 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(manifest["patches"][0]["status"], "candidate")
             self.assertEqual(manifest["quality"], "candidate")
 
-    def test_local_v2_validation_rejects_missing_source_tool(self) -> None:
+    def test_current_validation_rejects_missing_source_tool(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            package, manifest = create_v2_patch_incoming(Path(tmp), quality="candidate")
+            package, manifest = create_current_patch_incoming(Path(tmp), quality="candidate")
             manifest["source"] = {}
 
-            result = intake.validate_v2_package(package, manifest)
+            result = intake.validate_incoming_package(package, manifest)
 
             self.assertEqual(result["status"], "FAIL")
             self.assertTrue(any("source.tool" in error for error in result["errors"]))

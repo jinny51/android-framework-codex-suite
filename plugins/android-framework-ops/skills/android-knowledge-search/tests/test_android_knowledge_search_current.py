@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import android_knowledge_search as search
 
 
-class AndroidKnowledgeSearchV2Tests(unittest.TestCase):
+class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
     def make_root(self) -> Path:
         root = Path(tempfile.mkdtemp())
         index = root / "index"

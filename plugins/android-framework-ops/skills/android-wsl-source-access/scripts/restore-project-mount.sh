@@ -343,7 +343,7 @@ restore_project_mount() {
     return 0
   fi
 
-  local registry_file share remembered_user remembered_vers requested_vers remembered_credentials cred_file base_opts versions vers last_err using_temp_cred file i found passwords_file local_sudo_file legacy_account_local_sudo_password saved_local_sudo_password
+  local registry_file share remembered_user remembered_vers requested_vers remembered_credentials cred_file base_opts versions vers last_err using_temp_cred file i found passwords_file local_sudo_file account_level_local_sudo_password saved_local_sudo_password
   requested_vers="$PREFERRED_VERS"
   found=false
   shopt -s nullglob
@@ -380,13 +380,13 @@ restore_project_mount() {
   [[ -n "$share" ]] || die "remembered mount is missing SAMBA_PROJECT_SHARE: $registry_file"
   passwords_file="$(passwords_file_for_account "$SMB_USER" "$share")"
   load_saved_passwords "$passwords_file"
-  legacy_account_local_sudo_password="$SAVED_LOCAL_SUDO_PASSWORD"
+  account_level_local_sudo_password="$SAVED_LOCAL_SUDO_PASSWORD"
   local_sudo_file="$(local_sudo_password_file)"
   load_saved_local_sudo_password "$local_sudo_file"
   if [[ -z "$SMB_PASSWORD" && -n "$SAVED_SAMBA_PASSWORD" ]]; then
     SMB_PASSWORD="$SAVED_SAMBA_PASSWORD"
   fi
-  saved_local_sudo_password="${SAVED_LOCAL_SUDO_PASSWORD:-$legacy_account_local_sudo_password}"
+  saved_local_sudo_password="${SAVED_LOCAL_SUDO_PASSWORD:-$account_level_local_sudo_password}"
 
   if [[ -n "$remembered_credentials" && -f "$remembered_credentials" ]]; then
     cred_file="$remembered_credentials"

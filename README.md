@@ -94,7 +94,7 @@ Git 引用：main
 稀疏路径：留空
 ```
 
-安装后，Android Framework 相关 skill 来自 Codex 插件缓存。旧的手工同步链路不再作为成员分发方式。
+安装后，Android Framework 相关 skill 来自 Codex 插件缓存。成员不需要额外维护手工同步链路。
 
 推荐安装顺序：
 
@@ -117,7 +117,7 @@ $CODEX_HOME/<skill-name>.toml
 <project>/.codex/report.toml
 ```
 
-知识库和产物目录建议放在 Codex 工作区数据目录，而不是旧的 `$CODEX_HOME/report/knowledge-*` 或 `$CODEX_HOME/android-knowledge-intake/out`：
+知识库和产物目录建议放在 Codex 工作区数据目录：
 
 ```text
 <Codex documents>/worktrees/knowledge-<member_alias>

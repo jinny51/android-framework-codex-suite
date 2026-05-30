@@ -61,6 +61,6 @@ python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" --clean-stale
 
 这个工具操作的是本地 Codex 状态文件。建议总是先运行 `--dry-run`，确认将要处理的范围后再执行。默认会在修改数据库、索引或全局状态前创建备份，除非你明确传入 `--no-backup`。
 
-清理 `.codex-global-state.json` 前最好完全退出 Codex，否则运行中的 Codex 可能把旧的内存状态重新写回文件。
+清理 `.codex-global-state.json` 前最好完全退出 Codex，否则运行中的 Codex 可能把运行中的内存状态重新写回文件。
 
 如果目标是清掉搜索残留，尽量不要在新的清理对话里打印私密聊天标题、完整 thread ID 或本机绝对路径，否则当前清理对话可能会变成新的搜索命中。

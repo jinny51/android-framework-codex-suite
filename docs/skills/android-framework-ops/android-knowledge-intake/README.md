@@ -60,7 +60,7 @@ python3 "scripts/android_knowledge_intake.py" --profile jinny patch --submit-lat
 python3 "scripts/android_knowledge_intake.py" --profile jinny patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "Android Framework" --summary "功能补丁摘要" --status validated
 ```
 
-只有历史散落补丁才继续用 `--patch /path/to/*.patch`。
+只有直接指定单个 patch 文件时才使用 `--patch /path/to/*.patch`。
 
 维护者需要验证协议和服务器链路时，才使用临时合成测试 profile。普通成员不要用测试 profile 提交日报、周报或 patch。
 

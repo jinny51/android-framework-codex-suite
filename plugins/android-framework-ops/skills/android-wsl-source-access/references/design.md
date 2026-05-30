@@ -122,7 +122,7 @@ Keep remote account secrets and local WSL secrets scoped separately.
 - A bare `密码...` is a runtime fallback, not a persisted server field. Each role resolves explicit typed password, then saved typed password, then the runtime fallback.
 - If the runtime fallback succeeds for a role, save it as that role's typed password. Runtime bare passwords may be used for local sudo only when no saved local sudo password exists.
 - A role counts as succeeded only when the workflow observes role-specific evidence: `SSH_KEY_INSTALLED` for SSH password bootstrap, `SAMBA_AUTH mode=password` after a CIFS mount for Samba, `REMOTE_SUDO_AUTH mode=password` during Samba auto-config for remote sudo, and `LOCAL_SUDO_AUTH mode=password` during local CIFS mount setup for WSL sudo.
-- For compatibility, restore and mount flows may read legacy `SAVED_LOCAL_SUDO_PASSWORD` values from account-level `.passwords.env` files, but new writes should use only `local-sudo.env`.
+- Restore and mount flows may read account-level `SAVED_LOCAL_SUDO_PASSWORD` values from `.passwords.env` files; new writes use only `local-sudo.env`.
 
 ## Module Boundaries
 
