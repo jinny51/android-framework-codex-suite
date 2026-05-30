@@ -142,6 +142,30 @@ class AndroidKnowledgeSearchV2Tests(unittest.TestCase):
                     "candidate",
                 ),
             )
+            conn.execute(
+                """
+                INSERT INTO patches
+                (id, title, summary, modules, inferred_problem, inferred_solution, inferred_keywords,
+                 inference_confidence, inference_basis, inference_limits, risk_areas, modified_files, patch_files, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "patch-policy",
+                    "Policy fix",
+                    "",
+                    '["Policy"]',
+                    "Behavior in Policy may need correction",
+                    "Patch changes Policy code paths and should be reviewed against the target requirement",
+                    '["Policy"]',
+                    "low",
+                    '["patch modifies PhoneWindowManager.java"]',
+                    '["device verification is separate"]',
+                    '["power or policy behavior"]',
+                    '["frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java"]',
+                    '["patches/by-id/patch-policy/patch.patch"]',
+                    "candidate",
+                ),
+            )
             conn.commit()
         finally:
             conn.close()
@@ -153,6 +177,13 @@ class AndroidKnowledgeSearchV2Tests(unittest.TestCase):
         self.assertEqual(results[0]["id"], "patch-focus")
         self.assertIn("补丁问题线索", text)
         self.assertIn("window focus", text)
+
+        policy_results = search.search(rows, "Policy", "patch", 5, include_synthetic=False)
+        policy_text = search.format_markdown(root, "Policy", policy_results, None)
+
+        self.assertIn("Policy 相关行为需要核对和修正", policy_text)
+        self.assertIn("补丁修改了 Policy 相关代码路径", policy_text)
+        self.assertIn("按键/电源/策略行为", policy_text)
 
 
 if __name__ == "__main__":

@@ -432,10 +432,51 @@ def compact_list(value: Any, limit: int = 4) -> str:
     items = parse_json(value, value)
     if not isinstance(items, list):
         items = [items] if items else []
-    text_items = [str(item) for item in items if str(item)]
+    text_items = [localized_analysis_text(str(item)) for item in items if str(item)]
     if len(text_items) > limit:
         return ", ".join(text_items[:limit]) + f" ... (+{len(text_items) - limit})"
     return ", ".join(text_items)
+
+
+def localized_analysis_text(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    exact = {
+        "Launcher or activity launch path may leave window focus in an unexpected state": "Launcher 或 Activity 启动链路可能导致窗口焦点状态异常",
+        "Adjust ActivityTaskManager or WindowManager focus update behavior around resumed activity or visible windows": "调整 ActivityTaskManager 或 WindowManager 中恢复 Activity、可见窗口相关的焦点更新逻辑",
+        "Power or policy behavior may not match the product requirement": "电源或策略行为可能与产品需求不一致",
+        "Adjust policy or power handling code in the modified Framework path": "调整修改路径中的策略或电源处理逻辑",
+        "Problem cannot be confidently inferred from patch paths alone": "需要结合修改文件和说明确认问题场景",
+        "Review the changed files and readme before reuse": "复用前先核对修改文件和说明",
+        "power or policy behavior": "按键/电源/策略行为",
+        "activity launch/resume": "Activity 启动/恢复",
+        "window focus": "窗口焦点/显示层级",
+        "input dispatch": "输入分发",
+        "system UI behavior": "SystemUI 行为",
+        "package install or package state": "包安装/包状态",
+        "keyguard or password flow": "锁屏/密码流程",
+        "recovery or factory reset flow": "Recovery/恢复出厂流程",
+        "split screen behavior": "分屏行为",
+        "screenshot behavior": "截屏行为",
+        "media sound behavior": "媒体声音行为",
+        "settings provider defaults": "Settings 默认值",
+        "permission grant state": "权限授权状态",
+        "resource overlay or string display": "资源覆盖/字符串显示",
+        "wallpaper settings": "壁纸设置",
+        "font rendering": "字体显示",
+        "locale or language display": "语言/地区显示",
+        "settings regulatory info": "法规信息设置",
+    }
+    if raw in exact:
+        return exact[raw]
+    match = re.match(r"^Behavior in (.+) may need correction$", raw)
+    if match:
+        return f"{match.group(1)} 相关行为需要核对和修正"
+    match = re.match(r"^Patch changes (.+) code paths and should be reviewed against the target requirement$", raw)
+    if match:
+        return f"补丁修改了 {match.group(1)} 相关代码路径，复用前需要按目标需求核对"
+    return raw
 
 
 def format_patch(root: Path, row: dict[str, Any], index: int) -> str:
@@ -463,10 +504,10 @@ def format_patch(root: Path, row: dict[str, Any], index: int) -> str:
     if row.get("inferred_problem") or row.get("inferred_solution"):
         lines.append(
             "   - 补丁问题线索: "
-            f"{row.get('inferred_problem') or ''}"
+            f"{localized_analysis_text(row.get('inferred_problem') or '')}"
         )
         if row.get("inferred_solution"):
-            lines.append(f"   - 补丁方案线索: {row.get('inferred_solution')}")
+            lines.append(f"   - 补丁方案线索: {localized_analysis_text(row.get('inferred_solution') or '')}")
     if row.get("inferred_keywords") or row.get("risk_areas"):
         lines.append(
             "   - 关键词/风险面: "
