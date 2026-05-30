@@ -132,11 +132,11 @@ class AndroidKnowledgeSearchV2Tests(unittest.TestCase):
                     '["WindowManager"]',
                     "Launcher launch may leave window focus stale",
                     "Adjust WindowManager focus update",
-                    '["focus", "Launcher"]',
+                    '["focus", "Launcher", "audio route/volume", "usb/device permission"]',
                     "medium",
                     '["patch modifies WindowState.java"]',
                     '["device verification is separate"]',
-                    '["window focus"]',
+                    '["window focus", "audio route or volume behavior", "usb or device permission"]',
                     '["frameworks/base/services/core/java/com/android/server/wm/WindowState.java"]',
                     '["patches/by-id/patch-focus/patch.patch"]',
                     "candidate",
@@ -177,6 +177,8 @@ class AndroidKnowledgeSearchV2Tests(unittest.TestCase):
         self.assertEqual(results[0]["id"], "patch-focus")
         self.assertIn("补丁问题线索", text)
         self.assertIn("window focus", text)
+        self.assertIn("音频路由/音量", text)
+        self.assertIn("USB/设备权限", text)
 
         policy_results = search.search(rows, "Policy", "patch", 5, include_synthetic=False)
         policy_text = search.format_markdown(root, "Policy", policy_results, None)

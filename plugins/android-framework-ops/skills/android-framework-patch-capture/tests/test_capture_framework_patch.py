@@ -44,6 +44,33 @@ def create_repo(root: Path) -> None:
     )
 
 
+def create_audio_camera_repo(root: Path) -> None:
+    run(["git", "init"], root)
+    run(["git", "config", "user.email", "codex@example.invalid"], root)
+    run(["git", "config", "user.name", "Codex Test"], root)
+    audio = root / "frameworks" / "base" / "services" / "core" / "java" / "com" / "android" / "server" / "audio"
+    camera = root / "frameworks" / "av" / "services" / "camera" / "libcameraservice"
+    audio.mkdir(parents=True)
+    camera.mkdir(parents=True)
+    (audio / "AudioService.java").write_text("class AudioService {}\n", encoding="utf-8")
+    (camera / "CameraService.cpp").write_text("class CameraService {};\n", encoding="utf-8")
+    run(["git", "add", "."], root)
+    run(["git", "commit", "-m", "initial"], root)
+    (audio / "AudioService.java").write_text(
+        "class AudioService {\n"
+        "  //gyf 20260530@ adjust microphone route fallback\n"
+        "  static final String MIC_POLICY = \"persist.sys.mic_policy\";\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (camera / "CameraService.cpp").write_text(
+        "class CameraService {\n"
+        "  //gyf 20260530@ align camera permission fallback\n"
+        "};\n",
+        encoding="utf-8",
+    )
+
+
 class CaptureFrameworkPatchTests(unittest.TestCase):
     def test_writes_verification_and_search_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -107,6 +134,42 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("risk-surface", evidence_ids)
             self.assertIn("verification-result", evidence_ids)
             self.assertIn("search-before-change", evidence_ids)
+
+    def test_common_framework_paths_produce_specific_patch_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_audio_camera_repo(root)
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260530-120000-patch",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "microphone-camera-permission",
+                    "--summary",
+                    "调整麦克风和相机权限回退策略",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+            package_dir = Path(json.loads(result.stdout)["package"])
+            diff_facts = json.loads((package_dir / "evidence" / "patch-diff-facts.json").read_text(encoding="utf-8"))
+            problem_inference = json.loads((package_dir / "evidence" / "patch-problem-inference.json").read_text(encoding="utf-8"))
+            risk_surface = json.loads((package_dir / "evidence" / "risk-surface.json").read_text(encoding="utf-8"))
+
+            self.assertIn("Audio", diff_facts["modules"])
+            self.assertIn("Camera", diff_facts["modules"])
+            self.assertIn("音频录制", problem_inference["inferred_problem"])
+            self.assertIn("音频路由/音量行为", risk_surface["risk_areas"])
+            self.assertIn("相机行为", risk_surface["risk_areas"])
 
     def test_validated_equivalent_verification_requires_reason_coverage_and_risk(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

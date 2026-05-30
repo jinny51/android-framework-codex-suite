@@ -492,6 +492,28 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("risk_surface", evidence_kinds)
             self.assertIn("patch_diff_facts", evidence_kinds)
 
+    def test_generated_explanation_handles_common_relative_framework_paths(self) -> None:
+        files = [
+            "services/core/java/com/android/server/audio/AudioService.java",
+            "frameworks/av/services/camera/libcameraservice/CameraService.cpp",
+            "modules/rockchip_apps.mk",
+        ]
+        modules = intake.patch_modules_from_files(files)
+        problem, risk = intake.patch_problem_and_risk_payloads(
+            "patch-main",
+            "patches/rk14-frameworks-base@media-camera.patch",
+            "调整麦克风、相机权限和预置应用策略",
+            {"modified_files": files, "modules": modules, "symbols": []},
+        )
+
+        self.assertIn("Audio", modules)
+        self.assertIn("Camera", modules)
+        self.assertIn("ProductConfig", modules)
+        self.assertIn("音频录制", problem["inferred_problem"])
+        self.assertIn("音频路由/音量行为", risk["risk_areas"])
+        self.assertIn("相机行为", risk["risk_areas"])
+        self.assertIn("产品配置/预置应用", risk["risk_areas"])
+
 
 if __name__ == "__main__":
     unittest.main()
