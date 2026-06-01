@@ -126,16 +126,7 @@ $CODEX_HOME/<skill-name>.toml
 <Codex documents>/artifacts/android-knowledge-intake
 ```
 
-当前维护者本机使用的迁移后路径是：
-
-```text
-/mnt/c/Users/jinny/Documents/Codex/worktrees/knowledge-jinny
-/mnt/c/Users/jinny/Documents/Codex/worktrees/knowledge-test
-/mnt/c/Users/jinny/Documents/Codex/artifacts/android-knowledge-intake
-/mnt/c/Users/jinny/.codex/report/config.toml
-```
-
-这些路径是维护者配置，不是插件对所有成员的硬编码要求。团队成员应在自己的 `config.toml` profile 中设置实际路径。
+这些路径是模板，不是插件硬编码要求。团队成员应在自己的 `config.toml` profile 中设置实际路径；管理员本机路径也只应该存在于管理员自己的私有配置中。
 
 ## 维护
 

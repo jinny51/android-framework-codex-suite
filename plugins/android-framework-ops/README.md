@@ -59,16 +59,7 @@ $CODEX_HOME/<skill-name>.toml
 <Codex documents>/artifacts/android-knowledge-intake
 ```
 
-维护者当前本机迁移后路径：
-
-```text
-/mnt/c/Users/jinny/Documents/Codex/worktrees/knowledge-jinny
-/mnt/c/Users/jinny/Documents/Codex/worktrees/knowledge-test
-/mnt/c/Users/jinny/Documents/Codex/artifacts/android-knowledge-intake
-/mnt/c/Users/jinny/.codex/report/config.toml
-```
-
-这些路径应写在本机配置里，不应作为团队成员的通用默认值。
+这些路径是模板，不是插件硬编码要求。成员端和管理员端都应通过各自私有配置指定实际路径。
 
 ## 验证
 

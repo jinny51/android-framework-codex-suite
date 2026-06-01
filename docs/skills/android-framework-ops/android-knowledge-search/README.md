@@ -66,6 +66,8 @@ python3 "scripts/android_knowledge_search.py" \
   --root /path/to/knowledge/worktree
 ```
 
+未显式指定 `--root` 时，脚本会优先使用 `CODEX_KNOWLEDGE_ROOT`、报告配置里的当前 profile `repo_worktree`，再尝试当前目录父级和通用 `worktrees/knowledge` 路径。成员端应通过自己的 `config.toml` 或环境变量指向知识库副本，不依赖维护者本机路径。
+
 ## 和其他 skill 的关系
 
 ```text

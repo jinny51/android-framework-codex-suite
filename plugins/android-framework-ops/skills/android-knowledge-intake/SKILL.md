@@ -9,7 +9,7 @@ Use this skill for member-side knowledge intake automation. The skill does not w
 
 The member-side Codex agent is the knowledge producer. It should collect session context, git activity, patch diff, build results, verification records, failed paths, blocked paths, and optional human notes, then generate incoming. The knowledge repository server validates, archives, indexes, and renders; it does not perform heavy AI reasoning.
 
-Ordinary members use `daily` and `weekly` automation as the baseline and use `patch` when a Framework change should be converted into a `framework_change` incoming package. The maintainer alias `jinny` uses `patch` only when manually contributing valuable patches; it must not generate daily or weekly reports for that maintainer flow.
+Ordinary members use `daily` and `weekly` automation as the baseline and use `patch` when a Framework change should be converted into a `framework_change` incoming package. Administrator profiles are for occasional manual patch contribution only; they must not generate personal daily or weekly reports.
 
 Default policy: preserve automatically first, rank by maturity later. Lack of manual confirmation is not a reason to drop knowledge. Daily and weekly traces must preserve `work_findings`; Framework changes use `maturity` values `validated`, `candidate`, `draft`, `failed`, or `blocked`.
 
@@ -120,15 +120,15 @@ role = "member"
 allowed_modes = ["daily", "weekly", "patch"]
 repo_worktree = "$CODEX_HOME/worktrees/knowledge-member_alias"
 
-[profiles.jinny]
-member_alias = "jinny"
-member_name = "吴金雨"
-role = "maintainer"
+[profiles.admin_alias]
+member_alias = "admin_alias"
+member_name = "管理员姓名"
+role = "admin"
 allowed_modes = ["patch"]
-repo_worktree = "$CODEX_HOME/worktrees/knowledge-jinny"
+repo_worktree = "$CODEX_HOME/worktrees/knowledge-admin_alias"
 ```
 
-`allowed_modes` is enforced before prepare/upload/submit. For `jinny`, `daily` and `weekly` must fail.
+`allowed_modes` is enforced before prepare/upload/submit. For administrator profiles, `daily` and `weekly` must fail.
 
 ## Protocol
 

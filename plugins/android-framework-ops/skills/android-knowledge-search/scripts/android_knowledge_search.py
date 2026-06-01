@@ -21,14 +21,163 @@ ROOT_MARKERS = (
     Path("index") / "symbol-index.jsonl",
     Path("index") / "search-docs.jsonl",
 )
+ENV_PREFIXES = ("CODEX_KNOWLEDGE_", "CODEX_REPORT_", "CODEX_WORK_REPORT_")
 
 
 def expand_path(value: str | os.PathLike[str]) -> Path:
-    return Path(os.path.expandvars(os.path.expanduser(str(value)))).resolve()
+    codex_home_value = os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))
+    text = str(value).replace("${CODEX_HOME}", codex_home_value).replace("$CODEX_HOME", codex_home_value)
+    return Path(os.path.expandvars(os.path.expanduser(text))).resolve()
 
 
 def codex_home() -> Path:
     return expand_path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
+
+
+def parse_toml_scalar(value: str) -> Any:
+    value = value.strip()
+    if value.startswith("[") and value.endswith("]"):
+        body = value[1:-1].strip()
+        if not body:
+            return []
+        items: list[Any] = []
+        current = ""
+        quote = ""
+        for char in body:
+            if quote:
+                current += char
+                if char == quote:
+                    quote = ""
+            elif char in {"'", '"'}:
+                quote = char
+                current += char
+            elif char == ",":
+                items.append(parse_toml_scalar(current))
+                current = ""
+            else:
+                current += char
+        if current.strip():
+            items.append(parse_toml_scalar(current))
+        return items
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    lowered = value.lower()
+    if lowered in {"true", "false"}:
+        return lowered == "true"
+    return value
+
+
+def parse_simple_toml(text: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    current: dict[str, Any] = payload
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            current = payload
+            for part in line[1:-1].split("."):
+                key = part.strip().strip('"').strip("'")
+                nested = current.setdefault(key, {})
+                if not isinstance(nested, dict):
+                    nested = {}
+                    current[key] = nested
+                current = nested
+            continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        current[key.strip()] = parse_toml_scalar(value)
+    return payload
+
+
+def read_toml(path: Path) -> dict[str, Any]:
+    try:
+        try:
+            import tomllib
+
+            return tomllib.loads(path.read_text(encoding="utf-8"))
+        except ModuleNotFoundError:
+            return parse_simple_toml(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def find_project_report_config(start: Path | None = None) -> Path | None:
+    try:
+        current = (start or Path.cwd()).resolve()
+    except OSError:
+        return None
+    if current.is_file():
+        current = current.parent
+    for directory in [current, *current.parents]:
+        candidate = directory / ".codex" / "report.toml"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def selected_profile(payload: dict[str, Any]) -> str:
+    for prefix in ENV_PREFIXES:
+        value = os.environ.get(f"{prefix}PROFILE")
+        if value:
+            return value
+    value = payload.get("default_profile", "")
+    return str(value).strip() if value else ""
+
+
+def configured_worktree_values(payload: dict[str, Any]) -> list[str]:
+    values: list[str] = []
+
+    def add(value: Any) -> None:
+        if isinstance(value, str) and value.strip():
+            values.append(value.strip())
+
+    add(payload.get("repo_worktree"))
+    server = payload.get("server")
+    if isinstance(server, dict):
+        add(server.get("worktree"))
+        add(server.get("repo_worktree"))
+    paths = payload.get("paths")
+    if isinstance(paths, dict):
+        add(paths.get("worktree"))
+        add(paths.get("repo_worktree"))
+    profiles = payload.get("profiles")
+    profile = selected_profile(payload)
+    if profile and isinstance(profiles, dict):
+        profile_payload = profiles.get(profile)
+        if isinstance(profile_payload, dict):
+            add(profile_payload.get("repo_worktree"))
+            add(profile_payload.get("worktree"))
+    return values
+
+
+def configured_roots() -> list[Path]:
+    roots: list[Path] = []
+    for env_key in (
+        "CODEX_REPORT_REPO_WORKTREE",
+        "CODEX_REPORT_WORKTREE",
+        "CODEX_WORK_REPORT_REPO_WORKTREE",
+        "CODEX_WORK_REPORT_WORKTREE",
+    ):
+        if os.environ.get(env_key):
+            roots.append(expand_path(os.environ[env_key]))
+
+    home = codex_home()
+    config_paths = [
+        home / "android-knowledge-search.toml",
+        home / "report" / "config.toml",
+    ]
+    project_config = find_project_report_config()
+    if project_config:
+        config_paths.append(project_config)
+
+    for path in config_paths:
+        if not path.exists():
+            continue
+        for value in configured_worktree_values(read_toml(path)):
+            roots.append(expand_path(value))
+    return roots
 
 
 def codex_documents_roots() -> list[Path]:
@@ -72,6 +221,7 @@ def candidate_roots(explicit_root: str | None) -> list[Path]:
     env_root = os.environ.get("CODEX_KNOWLEDGE_ROOT")
     if env_root:
         candidates.append(expand_path(env_root))
+    candidates.extend(configured_roots())
 
     try:
         candidates.extend(parent_candidates(Path.cwd().resolve()))
@@ -82,16 +232,12 @@ def candidate_roots(explicit_root: str | None) -> list[Path]:
     for documents in codex_documents_roots():
         candidates.extend(
             [
-                documents / "worktrees" / "knowledge-jinny",
                 documents / "worktrees" / "knowledge",
-                documents / "worktrees" / "knowledge-test",
             ]
         )
     candidates.extend(
         [
-            home / "worktrees" / "knowledge-jinny",
             home / "worktrees" / "knowledge",
-            home / "worktrees" / "knowledge-test",
             home / "knowledge",
             Path("/mnt/z/knowledge/worktree"),
             Path("/mnt/z/knowledge"),
@@ -120,7 +266,7 @@ def find_root(explicit_root: str | None) -> Path:
         if is_knowledge_root(root):
             return root
     raise SystemExit(
-        "knowledge root not found. Pass --root <path> or set CODEX_KNOWLEDGE_ROOT. Checked:\n"
+        "knowledge root not found. Pass --root <path>, set CODEX_KNOWLEDGE_ROOT, or configure repo_worktree. Checked:\n"
         + "\n".join(f" - {item}" for item in checked[:16])
     )
 

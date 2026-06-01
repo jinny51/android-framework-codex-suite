@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -91,6 +93,46 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         kinds = {row["kind"] for row in rows}
         self.assertIn("event", kinds)
         self.assertIn("evidence", kinds)
+
+    def test_find_root_uses_configured_member_worktree_without_jinny_defaults(self):
+        temp = Path(tempfile.mkdtemp())
+        codex_home = temp / ".codex"
+        knowledge_root = codex_home / "worktrees" / "knowledge-member01"
+        (knowledge_root / "index").mkdir(parents=True)
+        write_jsonl(knowledge_root / "index" / "case-index.jsonl", [])
+        config_dir = codex_home / "report"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text(
+            """
+            default_profile = "member01"
+
+            [profiles.member01]
+            member_alias = "member01"
+            member_name = "成员一"
+            repo_worktree = "$CODEX_HOME/worktrees/knowledge-member01"
+            """,
+            encoding="utf-8",
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "CODEX_HOME": str(codex_home),
+                "CODEX_REPORT_PROFILE": "member01",
+                "CODEX_KNOWLEDGE_ROOT": "",
+                "CODEX_REPORT_REPO_WORKTREE": "",
+                "CODEX_REPORT_WORKTREE": "",
+                "CODEX_WORK_REPORT_REPO_WORKTREE": "",
+                "CODEX_WORK_REPORT_WORKTREE": "",
+            },
+        ):
+            candidates = search.candidate_roots(None)
+            root = search.find_root(None)
+
+        candidate_text = "\n".join(str(item) for item in candidates)
+        self.assertEqual(root, knowledge_root.resolve())
+        self.assertNotIn("knowledge-jinny", candidate_text)
+        self.assertNotIn("knowledge-test", candidate_text)
 
     def test_search_can_filter_event_and_evidence(self):
         root = self.make_root()

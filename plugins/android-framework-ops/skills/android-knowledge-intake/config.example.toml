@@ -22,11 +22,11 @@ repo_worktree = "$CODEX_HOME/worktrees/knowledge-member_alias"
 git_user_name = "成员姓名"
 git_user_email = "member_alias@codex.local"
 
-[profiles.jinny]
-member_alias = "jinny"
-member_name = "吴金雨"
-role = "maintainer"
+[profiles.admin_alias]
+member_alias = "admin_alias"
+member_name = "管理员姓名"
+role = "admin"
 allowed_modes = ["patch"]
-repo_worktree = "$CODEX_HOME/worktrees/knowledge-jinny"
-git_user_name = "吴金雨"
-git_user_email = "jinny@codex.local"
+repo_worktree = "$CODEX_HOME/worktrees/knowledge-admin_alias"
+git_user_name = "管理员姓名"
+git_user_email = "admin_alias@codex.local"
