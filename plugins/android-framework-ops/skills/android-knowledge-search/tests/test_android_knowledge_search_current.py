@@ -23,7 +23,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             conn.executescript(
                 """
                 CREATE TABLE knowledge_events(
-                  id TEXT PRIMARY KEY, package_id TEXT, package_kind TEXT, channel TEXT, quality TEXT,
+                  id TEXT PRIMARY KEY, package_id TEXT, package_kind TEXT, maturity TEXT,
                   member TEXT, date TEXT, project TEXT, platform TEXT, summary TEXT, path TEXT, payload TEXT
                 );
                 CREATE TABLE evidence(
@@ -34,14 +34,13 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             conn.execute(
                 """
                 INSERT INTO knowledge_events
-                (id, package_id, package_kind, channel, quality, member, date, project, platform, summary, path, payload)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, package_id, package_kind, maturity, member, date, project, platform, summary, path, payload)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     "event-power",
                     "20260526/testuser/20260526-213000-framework-change",
                     "framework_change",
-                    "strict",
                     "validated",
                     "testuser",
                     "2026-05-26",
@@ -49,7 +48,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                     "rk3576",
                     "修改电源键策略以满足产品需求",
                     "knowledge-events/20260526/testuser/event-power/event.json",
-                    '{"quality_claims":{"scope":"services.jar"}}',
+                    '{"scope":"services.jar"}',
                 ),
             )
             conn.execute(

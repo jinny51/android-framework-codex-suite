@@ -296,11 +296,10 @@ def row_text(row: dict[str, Any]) -> str:
         "repo_path",
         "feature_slug",
         "original_patch_name",
-        "filename_quality",
+        "filename_confidence",
         "module",
         "status",
-        "quality",
-        "channel",
+        "maturity",
         "package_kind",
         "validation_status",
         "result",
@@ -353,7 +352,7 @@ def score_row(row: dict[str, Any], terms: list[str]) -> tuple[int, list[str]]:
         (8, "summary"),
         (7, "scope"),
         (7, "symbol"),
-        (7, "quality"),
+        (7, "maturity"),
         (6, "modified_files"),
         (6, "modules"),
         (6, "inferred_keywords"),
@@ -373,7 +372,6 @@ def score_row(row: dict[str, Any], terms: list[str]) -> tuple[int, list[str]]:
         (2, "author"),
         (2, "status"),
         (2, "result"),
-        (2, "channel"),
         (2, "package_kind"),
         (2, "evidence_kind"),
         (2, "note"),
@@ -521,8 +519,8 @@ def format_patch(root: Path, row: dict[str, Any], index: int) -> str:
             "   - scope/repo/feature: "
             f"{row.get('scope') or 'unknown'} / {row.get('repo_path') or 'unknown'} / {row.get('feature_slug') or 'unknown'}"
         )
-    if row.get("filename_quality") or row.get("original_patch_name"):
-        lines.append(f"   - filename: {row.get('filename_quality') or 'unknown'} / {row.get('original_patch_name') or ''}")
+    if row.get("filename_confidence") or row.get("original_patch_name"):
+        lines.append(f"   - filename: {row.get('filename_confidence') or 'unknown'} / {row.get('original_patch_name') or ''}")
     if row.get("summary") and row.get("summary") != title:
         lines.append(f"   - summary: {row.get('summary')}")
     if row.get("modified_files"):
@@ -601,7 +599,7 @@ def format_event(root: Path, row: dict[str, Any], index: int) -> str:
     lines = [
         f"{index}. [event] {title}",
         f"   - id: {row.get('id', '')}",
-        f"   - kind/channel/quality: {row.get('package_kind', '')} / {row.get('channel', '')} / {row.get('quality', '')}",
+        f"   - kind/maturity: {row.get('package_kind', '')} / {row.get('maturity', '')}",
         f"   - member/date/platform: {row.get('member', '')} / {result_date(row)} / {row.get('platform', '')}",
     ]
     if row.get("project"):
@@ -620,8 +618,8 @@ def format_evidence(root: Path, row: dict[str, Any], index: int) -> str:
         f"   - id: {row.get('id', '')}",
         f"   - event/kind/result: {row.get('event_id', '')} / {row.get('evidence_kind', '')} / {row.get('result', '')}",
     ]
-    if row.get("quality") or row.get("project") or row.get("platform"):
-        lines.append(f"   - context: {row.get('quality', '')} / {row.get('project', '')} / {row.get('platform', '')}")
+    if row.get("maturity") or row.get("project") or row.get("platform"):
+        lines.append(f"   - context: {row.get('maturity', '')} / {row.get('project', '')} / {row.get('platform', '')}")
     if row.get("path"):
         lines.append(f"   - evidence: {rel_or_empty(root, row.get('path'))}")
     if row.get("_matched_terms"):

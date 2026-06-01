@@ -121,15 +121,15 @@ These judgments should still happen at search/use time:
 - whether a newer patch replaces this one
 - whether to apply, adapt, or only reference
 
-## Status Is A Hint
+## Maturity Is A Hint
 
 Allowed statuses:
 
 - `draft`: generated or unfinished, not enough validation
 - `candidate`: implemented, waiting for broader validation
 - `validated`: compiled and device-verified for the original scope
-- `released`: delivered or merged
-- `buggy`: retained as failure/process evidence
+- `failed`: retained as failed verification or failed implementation evidence
+- `blocked`: retained as blocked work evidence
 
 Status helps ranking, but it must not be used as the only reuse decision.
 

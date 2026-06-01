@@ -100,9 +100,9 @@ Stop before upload when:
 - the patch lacks the required author/date marker such as `//gyf 20251016@`, unless the user explicitly accepts a local-only draft
 - new added lines contain direct `Log.d/i/w` or `Slog.d/i/w`
 - readme facts are unknown but presented as verified
-- build or device verification is missing but status is `validated` or `released`
+- build or device verification is missing but status is `validated`
 
-For `validated` or `released`, device verification is required by default. Use `--verification-method equivalent` only when device interaction is not the right proof, and provide `--equivalent-type`, `--equivalent-reason`, at least one `--equivalent-coverage`, and `--remaining-risk`.
+For `validated`, device verification is required by default. Use `--verification-method equivalent` only when device interaction is not the right proof, and provide `--equivalent-type`, `--equivalent-reason`, at least one `--equivalent-coverage`, and `--remaining-risk`.
 
 ## References
 

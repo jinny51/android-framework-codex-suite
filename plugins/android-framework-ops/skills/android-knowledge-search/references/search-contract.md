@@ -21,7 +21,7 @@ index/
 - `patch`: archived patch assets, readme path, status hints, modified files, modules, search anchors, patch-derived explanation, validation notes, and rollback hint.
 - `report`: member daily or weekly report entries and report item summaries.
 - `symbol`: reverse index from modified files, SystemProperties, Settings keys, string/resource keys, FrameworkLog keys, modules, and patch-derived anchors to patch IDs.
-- `event`: archived records such as `framework_change`, `patch_contribution`, `daily_trace`, or `weekly_trace`, including channel and quality.
+- `event`: archived records such as `framework_change`, `daily_trace`, or `weekly_trace`, including member, date, project, platform, and maturity when applicable.
 - `evidence`: evidence records such as source metadata, changed files, patch diff facts, patch problem explanation, risk surface, build result, device/equivalent verification, search-before-change, and package checks.
 
 ## Judgment Boundary
@@ -35,8 +35,7 @@ Do not treat these fields as absolute truth:
 - platform labels
 - author notes
 - validation status
-- quality
-- channel
+- maturity
 - evidence result
 
 They are useful hints. The consuming workflow must compare the current requirement with stored facts such as modified files, modules, patch-derived anchors, affected artifacts, touched keys, readme details, build evidence, device verification, explanation basis, explanation limits, and rollback notes.

@@ -4,18 +4,20 @@ Daily work is always recorded. Patch upload is maturity-based.
 
 ## Status
 
-- `draft`: unfinished or unverified; process evidence only, not recommended for reuse.
-- `candidate`: implemented, waiting for device/customer validation.
-- `validated`: compiled and verified; can be reused with caveats.
-- `released`: delivered or merged; preferred reuse candidate.
-- `buggy`: known bug; retained for history but not recommended.
+- `validated`: clear scope, clean diff, build pass, and device or accepted equivalent verification pass.
+- `candidate`: clear implementation evidence, but validation or acceptance evidence is incomplete.
+- `draft`: partial or WIP implementation evidence.
+- `failed`: failed implementation or failed verification retained as negative evidence.
+- `blocked`: blocked work retained with cause, checked paths, and missing external condition.
 
 ## Default Policy
 
-- No patch or only messy local experiment: record work, do not upload patch.
-- Patch without validation evidence: upload as `draft` with `reusable=false`.
-- Patch with compile or verification evidence: upload as `candidate` or `validated`.
-- Patch with known failure: upload as `buggy` only if it is useful as process evidence.
+- No completed patch: record daily/weekly trace with `work_findings`.
+- Clear patch without validation evidence: upload as `candidate` or `draft`.
+- Patch with build and accepted device/equivalent verification: upload as `validated`.
+- Known failure: upload as `failed` when it helps future AI avoid repeating the path.
+- Blocked work: record as `blocked` when the missing condition is explicit.
+- Stop patch upload only for sensitive material, mixed unrelated diffs, unclear task boundaries, or high-risk misleading reuse.
 
 ## Evidence Keywords
 
@@ -27,4 +29,3 @@ Treat these as validation signals when found in Codex sessions:
 - 已交付
 - 已合入
 - 客户复测通过
-

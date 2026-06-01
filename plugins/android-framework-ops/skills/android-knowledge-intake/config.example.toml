@@ -8,7 +8,7 @@ codex_home = "$CODEX_HOME"
 out_dir = "$CODEX_HOME/artifacts/android-knowledge-intake"
 
 include_patches = true
-incoming_schema_version = "2.0"
+incoming_schema_version = "1"
 max_attachment_mb = 5
 push_retries = 3
 timezone = "Asia/Shanghai"
@@ -17,7 +17,7 @@ timezone = "Asia/Shanghai"
 member_alias = "member_alias"
 member_name = "成员姓名"
 role = "member"
-allowed_modes = ["daily", "weekly"]
+allowed_modes = ["daily", "weekly", "patch"]
 repo_worktree = "$CODEX_HOME/worktrees/knowledge-member_alias"
 git_user_name = "成员姓名"
 git_user_email = "member_alias@codex.local"

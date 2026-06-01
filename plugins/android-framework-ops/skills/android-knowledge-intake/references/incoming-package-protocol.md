@@ -1,8 +1,10 @@
-# Incoming Work Package Protocol
+# Incoming Package Protocol
 
-Member-side automation and maintainer patch contribution must submit only `incoming` work packages. The knowledge repository hook validates accepted packages and generates final `daily/`, `weekly/`, `patches/by-id/`, `knowledge-events/`, `index/`, and `site/`.
+Member-side Codex submits only `incoming` packages. It does not write final knowledge views such as reports, patches, index, or site. The server validates the package and materializes case, variant, patch, report, evidence, event, search index, and admin site.
 
-The path layout is stable:
+The server does not run Codex and must not be the main AI reasoning layer. Project inference, patch problem inference, risk, verification status, and search-before-change evidence are produced by member-side Codex.
+
+## Path
 
 ```text
 incoming/YYYYMMDD/member_alias/run_id/
@@ -10,164 +12,198 @@ incoming/YYYYMMDD/member_alias/run_id/
 
 Rules:
 
-- `YYYYMMDD` is the package date.
-- `member_alias` must exist in the repository `config/team.yaml`.
-- `run_id` must start with `YYYYMMDD-HHMMSS`.
-- `schema_version` is an internal protocol field. Do not expose it as a user-facing workflow name, and do not use it to name an incoming generation.
+- path date uses `YYYYMMDD`
+- manifest date uses `YYYY-MM-DD`
+- `member_alias` in path must match manifest
+- `run_id` must start with `YYYYMMDD-HHMMSS`
+- `schema_version` is internal and must not be used as a workflow name
 
-## Accepted Package Shape
-
-The repository accepts only `incoming/YYYYMMDD/member_alias/run_id/` packages with a `manifest.json` plus referenced `reports/`, `patches/`, and `evidence/` assets. Local draft artifacts, capture outputs, or source-material rebuilds must be converted into this package shape before push.
-
-## Incoming Packages
-
-Incoming treats packages as Codex-generated knowledge and evidence packages, not manual report uploads.
-
-Channels:
-
-- `light`: daily/weekly/session traces. Allowed quality: `imported`, `trace`, `candidate`.
-- `strict`: Framework changes, patch contributions, reuse decisions. Allowed quality: `imported`, `candidate`, `validated`, `released`, `buggy`.
-
-Quality:
-
-- `imported`: source material converted into the current evidence model without validation evidence.
-- `trace`: only proves work happened.
-- `candidate`: useful assets exist, but verification is incomplete or limited.
-- `validated`: suitable as a first-class reuse candidate.
-- `released`: validated and known to have shipped or entered a release baseline.
-- `buggy`: known-bad or failed attempt retained as learning evidence.
-
-Runtime behavior changes in the modified module require device verification for `validated`. Equivalent verification is allowed for resource-only, build-only, packaging-only, static config, or documentation changes when the package records method, reason, coverage, and remaining risk.
-
-### Daily Trace
-
-```text
-manifest.json
-reports/
-└── daily.md
-evidence/
-├── source.json
-└── codex-sessions.json
-```
-
-Minimal manifest:
+## Common Manifest Fields
 
 ```json
 {
-  "schema_version": "2.0",
-  "package_kind": "daily_trace",
-  "channel": "light",
-  "quality": "trace",
-  "member": "member_alias",
-  "member_name": "成员姓名",
-  "date": "2026-05-26",
-  "run_id": "20260526-210000",
-  "project": "全局项目",
-  "summary": "今日工作摘要",
-  "source": {
-    "tool": "android-knowledge-intake"
-  },
-  "reports": [
-    {
-      "id": "report-daily",
-      "kind": "daily",
-      "path": "reports/daily.md",
-      "title": "20260526_成员_日报"
-    }
-  ],
-  "patches": [],
-  "evidence": [
-    {
-      "id": "source",
-      "kind": "source",
-      "path": "evidence/source.json",
-      "result": "INFO",
-      "summary": "package source metadata"
-    },
-    {
-      "id": "codex-sessions",
-      "kind": "codex_sessions",
-      "path": "evidence/codex-sessions.json",
-      "result": "INFO",
-      "summary": "Codex session trace evidence"
-    }
-  ],
-  "relations": [],
-  "quality_claims": {}
+  "schema": "knowledge-incoming-package",
+  "schema_version": "1",
+  "package_kind": "framework_change",
+  "member_alias": "lincong",
+  "member_name": "林聪",
+  "date": "2026-06-01",
+  "run_id": "20260601-213000-framework-change",
+  "tool": "android-knowledge-intake",
+  "summary": "..."
 }
 ```
 
-### Strict Patch Contribution
+Allowed `package_kind`:
+
+```text
+daily_trace
+weekly_trace
+framework_change
+```
+
+## Default Automation Policy
+
+The default policy is:
+
+```text
+preserve automatically first
+rank by maturity later
+```
+
+Daily and weekly automation should run even when no patch is complete. It must preserve session facts, git activity, discovered patch files, build or verification signals, WIP state, failed paths, blocked paths, and missing evidence.
+
+Patch upload is maturity-based:
+
+```text
+validated
+  Clear scope, clean diff, build pass, and device or accepted equivalent verification pass.
+
+candidate
+  Clear implementation evidence, but validation or acceptance evidence is incomplete.
+
+draft
+  Partial or WIP implementation evidence.
+
+failed
+  Failed implementation or verification retained as negative evidence.
+
+blocked
+  Blocked work retained with cause and checked paths.
+```
+
+Only sensitive material, mixed unrelated diffs, unclear task boundaries, or high-risk misleading reuse should stop patch upload. Even then, daily or weekly trace should record what happened and why it was blocked.
+
+## Daily Or Weekly Trace
+
+Required shape:
 
 ```text
 manifest.json
-patches/
-├── <patch-name>.patch
-└── <patch-name>.readme.md
-evidence/
-├── source.json
-├── patch-contribution.json
-├── patch-diff-facts.json
-├── patch-problem-inference.json
-├── risk-surface.json
-├── capture-verification-result.json
-└── capture-search-before-change.json
+reports/daily.md or reports/weekly.md
+knowledge/evidence/source.json
+knowledge/evidence/work_findings.json
 ```
 
-Patch item:
+Manifest excerpt:
 
 ```json
 {
-  "id": "patch-id",
-  "path": "patches/xxx.patch",
-  "readme": "patches/xxx.readme.md",
-  "status": "candidate",
-  "reusable": false,
-  "repo_path": "frameworks/base",
-  "artifact": "services.jar",
-  "facts": {
-    "modified_files": [],
-    "symbols": [],
-    "system_properties": [],
-    "settings_keys": [],
-    "resource_keys": [],
-    "framework_log_keys": []
+  "package_kind": "daily_trace",
+  "report_type": "daily",
+  "report_path": "reports/daily.md",
+  "files": {
+    "evidence": [
+      "knowledge/evidence/source.json",
+      "knowledge/evidence/codex_sessions.json",
+      "knowledge/evidence/work_findings.json"
+    ]
   }
 }
 ```
 
-## Patch Analysis Evidence
+Report traces must not carry `case_id` or `variant_id`. They preserve context and evidence only.
 
-Patch files are evidence, not opaque attachments. Member-side intake should do the primary patch understanding while it still has Codex session context. Repository normalization may do deterministic patch parsing to fill missing direct facts and improve search, but it should not be treated as the main AI reasoning step.
-
-Direct facts belong in `patch_diff_facts`:
-
-```text
-modified_files
-symbols
-system_properties
-settings_keys
-resource_keys
-framework_log_keys
-modules
-```
-
-Problem explanation, solution explanation, keywords, applicability, and risks belong in `patch_problem_inference` or `risk_surface`. These are reasoning outputs and must include:
+`work_findings` is required:
 
 ```json
 {
-  "confidence": "medium",
-  "basis": ["补丁修改文件: frameworks/base/..."],
-  "limits": ["补丁内容不能单独证明原始需求文字"]
+  "kind": "work_findings",
+  "payload": {
+    "scanned_sources": ["codex_sessions", "git_activity", "patch_files", "build_or_verification_records"],
+    "items": [
+      {
+        "title": "锁屏永不休眠策略调整",
+        "kind": "possible_framework_change",
+        "maturity": "candidate",
+        "basis": ["会话提到修复锁屏永不休眠", "frameworks/base 存在 diff"],
+        "missing_evidence": ["缺少设备或等价验证"],
+        "recommended_action": "补验证后可升级为 framework_change"
+      }
+    ],
+    "blocked_or_failed": []
+  }
 }
 ```
 
-Rules:
+## Framework Change
 
-- Patch explanation fields improve search and reuse judgment.
-- Patch explanation fields must not be presented as verified facts.
-- Patch explanation alone cannot upgrade `quality` to `validated`.
-- Source-material rebuilds may use patch analysis to recover missing title, summary, module, files, keywords, likely problem, likely solution, and risk surface before creating incoming-shaped assets.
-- Member-side incoming packages should use patch analysis as a consistency check against readme, session context, and verification evidence.
+Required shape:
 
-When importing an `android-framework-patch-capture` output directory with `--patch-package`, intake preserves its evidence entries under `evidence/capture-*.json`. A strict patch contribution may claim `quality=validated` only when it carries PASS device verification or accepted equivalent verification evidence. Strict patch contributions without verification evidence should stay `candidate`, even if the human-facing patch status is `validated`.
+```text
+manifest.json
+knowledge/case.json
+knowledge/variant.json
+knowledge/evidence/source.json
+knowledge/evidence/patch_diff_facts.json
+knowledge/evidence/project_inference.json
+knowledge/evidence/patch_problem_inference.json
+knowledge/evidence/risk_surface.json
+knowledge/evidence/verification_result.json
+knowledge/evidence/search_before_change.json
+patches/*.patch
+```
+
+Manifest excerpt:
+
+```json
+{
+  "package_kind": "framework_change",
+  "case_id": "case-...",
+  "variant_id": "variant-...",
+  "maturity": "candidate",
+  "platform": "mtk",
+  "android_version": "15",
+  "project": "TVE8402",
+  "files": {
+    "case": "knowledge/case.json",
+    "variant": "knowledge/variant.json",
+    "patches": ["patches/example.patch"],
+    "evidence": [
+      "knowledge/evidence/source.json",
+      "knowledge/evidence/patch_diff_facts.json",
+      "knowledge/evidence/project_inference.json",
+      "knowledge/evidence/patch_problem_inference.json",
+      "knowledge/evidence/risk_surface.json",
+      "knowledge/evidence/verification_result.json",
+      "knowledge/evidence/search_before_change.json"
+    ]
+  }
+}
+```
+
+`maturity` must match `knowledge/variant.json` `status`.
+
+`validated` requires `verification_result.payload.result = PASS`.
+
+`candidate`, `draft`, `failed`, and `blocked` may enter the knowledge base, but must not be presented as directly reusable validated solutions.
+
+## Project Inference
+
+Project must come from traceable evidence:
+
+```text
+explicit incoming project
+patch readme or handover notes
+daily or weekly context
+attachment or directory name
+patch filename
+```
+
+Current automatic project recognition scope:
+
+```text
+TVE
+TVA
+TVI
+```
+
+If the project cannot be identified from traceable evidence, use:
+
+```json
+{
+  "project": "unknown"
+}
+```
+
+and explain checked sources and limits in `project_inference`.

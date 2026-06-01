@@ -422,30 +422,30 @@ def patch_analysis_from_diff(diff_text: str, facts: dict[str, Any], patch_name: 
 
 
 def validate_verification_for_status(args: argparse.Namespace, payload: dict[str, Any]) -> list[str]:
-    if args.status not in {"validated", "released"}:
+    if args.status != "validated":
         return []
 
     errors: list[str] = []
     method = payload.get("method")
     if payload.get("result") != "PASS":
-        errors.append("status 是 validated/released 时 verification-result.result 必须是 PASS")
+        errors.append("status 是 validated 时 verification-result.result 必须是 PASS")
 
     if method == "device":
         if not args.verification:
-            errors.append("status 是 validated/released 且 method=device 时必须提供 --verification 构建验证")
+            errors.append("status 是 validated 且 method=device 时必须提供 --verification 构建验证")
         if not args.device_verification:
-            errors.append("status 是 validated/released 且 method=device 时必须提供 --device-verification 真机验证")
+            errors.append("status 是 validated 且 method=device 时必须提供 --device-verification 真机验证")
     elif method == "equivalent":
         if not args.equivalent_type:
-            errors.append("status 是 validated/released 且 method=equivalent 时必须提供 --equivalent-type")
+            errors.append("status 是 validated 且 method=equivalent 时必须提供 --equivalent-type")
         if not args.equivalent_reason:
-            errors.append("status 是 validated/released 且 method=equivalent 时必须提供 --equivalent-reason")
+            errors.append("status 是 validated 且 method=equivalent 时必须提供 --equivalent-reason")
         if not args.equivalent_coverage:
-            errors.append("status 是 validated/released 且 method=equivalent 时必须提供 --equivalent-coverage")
+            errors.append("status 是 validated 且 method=equivalent 时必须提供 --equivalent-coverage")
         if not args.remaining_risk:
-            errors.append("status 是 validated/released 且 method=equivalent 时必须提供 --remaining-risk")
+            errors.append("status 是 validated 且 method=equivalent 时必须提供 --remaining-risk")
     else:
-        errors.append("status 是 validated/released 时必须提供 device 或 equivalent 验证证据")
+        errors.append("status 是 validated 时必须提供 device 或 equivalent 验证证据")
 
     return errors
 
@@ -552,7 +552,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--feature", required=True, help="Feature slug for filename, for example allow-powerkey-to-user.")
     parser.add_argument("--summary", required=True, help="Human-readable requirement or patch summary.")
     parser.add_argument("--project", default="Android Framework", help="Project name for manifest/readme.")
-    parser.add_argument("--status", choices=["draft", "candidate", "validated", "released", "buggy"], default="draft")
+    parser.add_argument("--status", choices=["draft", "candidate", "validated", "failed", "blocked"], default="draft")
     parser.add_argument("--verification", action="append", default=[], help="Build verification fact. Repeatable.")
     parser.add_argument("--verification-result", choices=["PASS", "FAIL", "WARN", "INFO", "SKIPPED"], help="Overall verification result. Default: PASS when evidence is present, otherwise INFO.")
     parser.add_argument("--verification-method", choices=["device", "equivalent", "not_provided"], help="Verification method. Default inferred from verification arguments.")

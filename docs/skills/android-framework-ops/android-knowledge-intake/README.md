@@ -10,14 +10,17 @@
 
 成员端 Codex 是知识生成主体。它负责从会话、git、patch 和验证记录里整理知识资产；服务器收到 `incoming` 后只做验收、归档、索引和展示。
 
-普通成员使用 `daily/weekly` 自动化；维护者 `jinny/吴金雨` 只在需要保存有价值补丁时使用 `patch` 模式，服务器只保存补丁并重建索引，不生成日报或周报。
+普通成员使用 `daily/weekly` 自动化作为保底沉淀；完成或阶段性完成 Framework 修改时，通过 `patch` 模式生成 `framework_change` incoming。维护者 `jinny/吴金雨` 只在需要手动保存有价值补丁时使用 `patch` 模式，不生成日报或周报。
+
+默认策略是先自动沉淀，再按成熟度排序。没有人工确认不等于丢弃；不满足 `validated` 时也应尽量按 `candidate`、`draft`、`failed` 或 `blocked` 保存证据。
 
 需要联调协议或服务器链路时，单独创建合成数据 profile；合成 profile 不读取真实 Codex 会话、不扫描真实源码、不上传真实 patch。
 
 ## 典型场景
 
-- 每天下班前，Codex 自动汇总当天会话、源码改动、patch 和验证结果，生成 `pending`（待检查包）。
+- 每天下班前，Codex 自动汇总当天会话、源码改动、候选 patch、失败路径、阻塞点和验证结果，生成 `pending`（待检查包）。
 - 成员在检查窗口内补充或修正内容；到点后自动提交到团队知识库 `incoming`。
+- Framework 修改满足条件时，成员端 Codex 自动通过 `patch-capture -> intake` 生成 `framework_change` incoming。
 - 维护者只想保存一个有价值补丁时，使用 `patch` 模式提交补丁包，不生成个人日报或周报。
 
 ## 常用命令
@@ -47,17 +50,17 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --s
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --prepare
 ```
 
-维护者手动提交补丁：
+生成 Framework change incoming：
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile jinny patch --prepare --patch /path/to/jinny001-feature@framework.patch --project "Android Framework" --summary "功能补丁摘要" --status validated
-python3 "scripts/android_knowledge_intake.py" --profile jinny patch --submit-latest
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch /path/to/rk14-frameworks-base@feature.patch --project "TVE8402" --summary "功能补丁摘要" --status candidate
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --submit-latest
 ```
 
 如果补丁由 `android-framework-patch-capture` 生成，优先传整个 capture 输出目录，这样 patch、readme、验证结果和开发前知识库检索证据都会一起进入 incoming：
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile jinny patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "Android Framework" --summary "功能补丁摘要" --status validated
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "TVE8402" --summary "功能补丁摘要" --status validated
 ```
 
 只有直接指定单个 patch 文件时才使用 `--patch /path/to/*.patch`。
