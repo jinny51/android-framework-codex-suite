@@ -92,6 +92,41 @@ def write_member_config(root: Path, remote: Path) -> dict[str, str]:
     return env
 
 
+def write_admin_config(root: Path, remote: Path) -> dict[str, str]:
+    codex_home = root / "codex-home-admin"
+    config_dir = codex_home / "report"
+    config_dir.mkdir(parents=True)
+    (config_dir / "config.toml").write_text(
+        textwrap.dedent(
+            f"""
+            default_profile = "jinny"
+            incoming_schema_version = "1"
+
+            [server]
+            repo_url = "{remote.as_posix()}"
+
+            [paths]
+            out_dir = "{(root / "artifacts" / "android-knowledge-intake-admin").as_posix()}"
+
+            [profiles.jinny]
+            member_alias = "jinny"
+            member_name = "吴金雨"
+            role = "admin"
+            allowed_modes = ["patch"]
+            repo_worktree = "{(root / "worktrees" / "knowledge-jinny").as_posix()}"
+            git_user_name = "吴金雨"
+            git_user_email = "jinny@example.invalid"
+            synthetic_data = false
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(codex_home)
+    return env
+
+
 def create_framework_repo(root: Path) -> Path:
     source_root = root / "android-source"
     run(["git", "init", str(source_root)], root)
@@ -296,6 +331,95 @@ class MemberAutomationFlowTests(unittest.TestCase):
             ]
             for path in expected:
                 self.assertTrue(path.is_file(), path)
+
+    def test_member_upload_rejects_outgoing_non_incoming_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote)
+            repo = root / "worktrees" / "knowledge-member01"
+            run(["git", "clone", str(remote), str(repo)], root)
+            run(["git", "config", "user.email", "member01@example.invalid"], repo)
+            run(["git", "config", "user.name", "成员甲"], repo)
+            (repo / "site").mkdir()
+            (repo / "site" / "index.html").write_text("member should not push generated site\n", encoding="utf-8")
+            run(["git", "add", "site/index.html"], repo)
+            run(["git", "commit", "-m", "bad local site edit"], repo)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "daily",
+                    "--date",
+                    "2026-06-01",
+                    "--run-id",
+                    "20260601-210000-daily",
+                    "--upload",
+                ],
+                SUITE_ROOT,
+                env,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("非 incoming 路径", result.stderr + result.stdout)
+
+    def test_admin_upload_does_not_apply_member_incoming_only_guard(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_admin_config(root, remote)
+            repo = root / "worktrees" / "knowledge-jinny"
+            run(["git", "clone", str(remote), str(repo)], root)
+            run(["git", "config", "user.email", "jinny@example.invalid"], repo)
+            run(["git", "config", "user.name", "吴金雨"], repo)
+            (repo / "docs").mkdir()
+            (repo / "docs" / "admin-note.md").write_text("admin maintenance change\n", encoding="utf-8")
+            run(["git", "add", "docs/admin-note.md"], repo)
+            run(["git", "commit", "-m", "admin maintenance note"], repo)
+            patch_file = root / "mtk15-frameworks-base@statusbar-policy.patch"
+            patch_file.write_text(
+                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+                "--- a/frameworks/base/services/core/java/X.java\n"
+                "+++ b/frameworks/base/services/core/java/X.java\n"
+                "@@ -1 +1,2 @@\n"
+                "+//gyf 20260601@ statusbar policy\n",
+                encoding="utf-8",
+            )
+
+            result = run_json(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "jinny",
+                    "patch",
+                    "--date",
+                    "2026-06-01",
+                    "--run-id",
+                    "20260601-231000-patch",
+                    "--patch",
+                    str(patch_file),
+                    "--project",
+                    "TVE8402M",
+                    "--summary",
+                    "状态栏策略调整",
+                    "--status",
+                    "candidate",
+                    "--upload",
+                ],
+                SUITE_ROOT,
+                env,
+            )
+
+            clone = root / "admin-remote-checkout"
+            run(["git", "clone", str(remote), str(clone)], root)
+            self.assertTrue((clone / "docs" / "admin-note.md").is_file())
+            self.assertTrue((clone / "incoming" / "20260601" / "jinny" / "20260601-231000-patch" / "manifest.json").is_file())
+            self.assertTrue(result["submit"]["pushed"])
 
     def test_non_company_project_is_not_preserved_as_project_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

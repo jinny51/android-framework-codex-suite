@@ -2666,6 +2666,33 @@ def pull_rebase(repo: Path, branch: str) -> None:
     git_run(repo, ["pull", "--rebase", "origin", branch])
 
 
+def outgoing_paths(repo: Path, branch: str) -> list[str]:
+    cp = git_run(repo, ["diff", "--name-only", f"origin/{branch}..HEAD"], check=False)
+    if cp.returncode != 0:
+        return []
+    return [line.strip() for line in cp.stdout.splitlines() if line.strip()]
+
+
+def non_incoming_paths(paths: list[str]) -> list[str]:
+    return [path for path in paths if not (path == "incoming" or path.startswith("incoming/"))]
+
+
+def ensure_outgoing_only_incoming(repo: Path, branch: str, config: dict[str, str]) -> None:
+    if config.get("role") == "admin":
+        return
+    paths = outgoing_paths(repo, branch)
+    bad = non_incoming_paths(paths)
+    if bad:
+        preview = "\n".join(f"- {path}" for path in bad[:20])
+        extra = f"\n... 另有 {len(bad) - 20} 个路径" if len(bad) > 20 else ""
+        raise SystemExit(
+            "本地待 push 提交包含非 incoming 路径，已停止提交。成员端只能上传 incoming 包；"
+            "cases/variants/patches/reports/evidence/events/index/site/docs/scripts 等只能由服务器或管理员维护。\n"
+            + preview
+            + extra
+        )
+
+
 def copy_package_to_repo(package_dir: Path, repo: Path) -> Path:
     manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
     date_key = str(manifest["date"]).replace("-", "")
@@ -2705,6 +2732,7 @@ def git_submit_package(package_dir: Path, config: dict[str, str]) -> dict[str, A
     retries = max(1, int(config.get("push_retries", "3")))
     last_error = ""
     for _ in range(retries):
+        ensure_outgoing_only_incoming(repo, branch, config)
         push = git_run(repo, ["push", "origin", branch], check=False)
         if push.returncode == 0:
             commit = git_run(repo, ["rev-parse", "--short", "HEAD"]).stdout.strip()
@@ -2821,6 +2849,16 @@ def doctor_strict_checks(
         dirty = git_run(repo, ["status", "--porcelain"], check=False)
         if dirty.returncode == 0 and dirty.stdout.strip():
             error(f"repo_worktree 存在未提交改动，自动化提交前必须清理: {repo}")
+        if role == "member":
+            branch = git_run(repo, ["rev-parse", "--abbrev-ref", "HEAD"], check=False)
+            fetch = git_run(repo, ["fetch", "origin"], check=False)
+            if branch.returncode == 0 and fetch.returncode == 0:
+                branch_name = branch.stdout.strip()
+                bad_paths = non_incoming_paths(outgoing_paths(repo, branch_name))
+                if bad_paths:
+                    error("member profile 存在待 push 的非 incoming 提交路径: " + ", ".join(bad_paths[:10]))
+            else:
+                warn("无法检查待 push 路径；提交时仍会强制限制 member profile 只能 push incoming/**。")
     elif repo.exists():
         error(f"repo_worktree 已存在但不是 Git 仓库: {repo}")
     else:

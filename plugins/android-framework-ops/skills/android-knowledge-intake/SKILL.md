@@ -85,6 +85,8 @@ Recommended member-side automations:
 
 Before enabling member-side automations, run `doctor --strict --check-remote` for the exact profile used by the automation. Strict doctor must pass before scheduled runs are enabled. It verifies identity, role, allowed modes, repository paths, Git availability, clean repository state, and optional remote reachability.
 
+Member profiles can read the cloned knowledge worktree for search, but their intake pushes must contain only `incoming/**` paths. The intake script checks outgoing commits before push and stops if a member profile has staged or committed generated objects, docs, scripts, site, index, or other non-incoming paths. Administrator profiles are not subject to this member-only outgoing-path guard.
+
 Synthetic profiles are only for protocol and gray-flow testing. Use `doctor --strict --allow-synthetic` only in tests; real member automations must keep `synthetic_data = false`.
 
 Framework change submission is automatic when the member-side Codex can identify a clean change, enough evidence, and a safe maturity level. If validation evidence is missing, submit as `candidate` or `draft`; do not discard the work. Administrator patch contribution remains manual by default.
