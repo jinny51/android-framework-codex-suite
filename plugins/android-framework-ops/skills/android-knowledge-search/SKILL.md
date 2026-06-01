@@ -49,7 +49,7 @@ The script searches the first valid knowledge root it can find:
 2. `CODEX_KNOWLEDGE_ROOT`
 3. `CODEX_REPORT_REPO_WORKTREE`, `CODEX_REPORT_WORKTREE`, `CODEX_WORK_REPORT_REPO_WORKTREE`, or `CODEX_WORK_REPORT_WORKTREE`
 4. `repo_worktree` or `worktree` from the selected profile in `$CODEX_HOME/report/config.toml`, `$CODEX_HOME/android-knowledge-search.toml`, or the nearest `.codex/report.toml`
-5. current directory or its parents, when they contain `index/knowledge.sqlite` or `index/*.jsonl`
+5. current directory or its parents, when they contain current `index/*.jsonl` knowledge indexes
 6. generic Codex worktrees such as `$CODEX_HOME/worktrees/knowledge`, `CODEX_DOCUMENTS/worktrees/knowledge`, or detected Windows `Documents/Codex/worktrees/knowledge`
 7. common mapped server locations such as `/mnt/z/knowledge/worktree`
 

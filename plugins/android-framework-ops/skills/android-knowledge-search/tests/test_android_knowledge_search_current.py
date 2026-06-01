@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 import sys
 import tempfile
 import unittest
@@ -29,60 +28,40 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
 class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
     def make_root(self) -> Path:
         root = Path(tempfile.mkdtemp())
-        index = root / "index"
-        index.mkdir()
-        conn = sqlite3.connect(index / "knowledge.sqlite")
-        try:
-            conn.executescript(
-                """
-                CREATE TABLE knowledge_events(
-                  id TEXT PRIMARY KEY, package_id TEXT, package_kind TEXT, maturity TEXT,
-                  member TEXT, date TEXT, project TEXT, platform TEXT, summary TEXT, path TEXT, payload TEXT
-                );
-                CREATE TABLE evidence(
-                  id TEXT, event_id TEXT, kind TEXT, result TEXT, summary TEXT, path TEXT, payload TEXT
-                );
-                """
-            )
-            conn.execute(
-                """
-                INSERT INTO knowledge_events
-                (id, package_id, package_kind, maturity, member, date, project, platform, summary, path, payload)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "event-power",
-                    "20260526/testuser/20260526-213000-framework-change",
-                    "framework_change",
-                    "validated",
-                    "testuser",
-                    "2026-05-26",
-                    "TVE8402M",
-                    "rk3576",
-                    "修改电源键策略以满足产品需求",
-                    "knowledge-events/20260526/testuser/event-power/event.json",
-                    '{"scope":"services.jar"}',
-                ),
-            )
-            conn.execute(
-                """
-                INSERT INTO evidence
-                (id, event_id, kind, result, summary, path, payload)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "verification-result",
-                    "event-power",
-                    "verification_result",
-                    "PASS",
-                    "rk3576 真机验证电源键行为通过",
-                    "knowledge-events/20260526/testuser/event-power/evidence/verification-result.json",
-                    '{"method":"device","device":"rk3576"}',
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        write_jsonl(root / "index" / "case-index.jsonl", [])
+        write_jsonl(root / "index" / "variant-index.jsonl", [])
+        write_jsonl(root / "index" / "symbol-index.jsonl", [])
+        write_jsonl(root / "index" / "evidence-index.jsonl", [])
+        write_json(
+            root / "events" / "by-id" / "event-power.json",
+            {
+                "schema": "knowledge-event",
+                "event_id": "event-power",
+                "event_type": "incoming",
+                "source_type": "incoming_package",
+                "package_kind": "framework_change",
+                "maturity": "validated",
+                "member_alias": "testuser",
+                "member_name": "测试成员",
+                "date": "2026-05-26",
+                "project": "TVE8402M",
+                "platform": "rk3576",
+                "summary": "修改电源键策略以满足产品需求",
+            },
+        )
+        write_json(
+            root / "evidence" / "by-id" / "verification-result.json",
+            {
+                "schema": "knowledge-evidence",
+                "evidence_id": "verification-result",
+                "case_id": "case-power-key",
+                "variant_id": "variant-rk3576-tve8402m-power-key",
+                "kind": "verification_result",
+                "result": "PASS",
+                "summary": "rk3576 真机验证电源键行为通过",
+                "payload": {"method": "device", "device": "rk3576"},
+            },
+        )
         return root
 
     def test_load_rows_includes_knowledge_events_and_evidence(self):
@@ -131,8 +110,8 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
 
         candidate_text = "\n".join(str(item) for item in candidates)
         self.assertEqual(root, knowledge_root.resolve())
-        self.assertNotIn("knowledge-jinny", candidate_text)
-        self.assertNotIn("knowledge-test", candidate_text)
+        self.assertNotIn("knowledge-" + "jinny", candidate_text)
+        self.assertNotIn("knowledge-" + "test", candidate_text)
 
     def test_search_can_filter_event_and_evidence(self):
         root = self.make_root()
@@ -187,6 +166,19 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                 }
             ],
         )
+        write_jsonl(
+            root / "index" / "search-docs.jsonl",
+            [
+                {
+                    "type": "case",
+                    "case_id": "case-volume-dialog",
+                    "title": "通知音量弹窗位置适配",
+                    "source_priority": 120,
+                    "text": "通知音量弹窗位置适配\nSystemUI\nTVE8402M\nVolumeDialogImpl.java",
+                    "variant_ids": ["variant-mtk15-tve8402m-volume-dialog"],
+                }
+            ],
+        )
         write_jsonl(root / "index" / "evidence-index.jsonl", [])
         write_jsonl(root / "index" / "symbol-index.jsonl", [])
         write_json(
@@ -211,81 +203,100 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         case_results = search.search(rows, "通知音量 SystemUI", "case", 5, include_synthetic=False)
         variant_results = search.search(rows, "TVE8402M VolumeDialogImpl", "variant", 5, include_synthetic=False)
         patch_results = search.search(rows, "volume-dialog-position", "patch", 5, include_synthetic=False)
+        case_by_variant_terms = search.search(rows, "TVE8402M VolumeDialogImpl", "case", 5, include_synthetic=False)
         text = search.format_markdown(root, "TVE8402M VolumeDialogImpl", variant_results, None)
 
         self.assertEqual(case_results[0]["case_id"], "case-volume-dialog")
+        self.assertEqual(case_by_variant_terms[0]["case_id"], "case-volume-dialog")
+        self.assertEqual(case_by_variant_terms[0]["source_priority"], 120)
         self.assertEqual(variant_results[0]["variant_id"], "variant-mtk15-tve8402m-volume-dialog")
         self.assertEqual(patch_results[0]["patch_id"], "patch-abc")
         self.assertIn("[variant]", text)
         self.assertIn("平台/Android/项目", text)
 
+    def test_search_docs_priority_breaks_case_ties(self):
+        root = Path(tempfile.mkdtemp())
+        write_jsonl(
+            root / "index" / "case-index.jsonl",
+            [
+                {"case_id": "case-low", "title": "音量弹窗位置适配", "problem": "通知音量弹窗位置不符合要求"},
+                {"case_id": "case-high", "title": "音量弹窗位置适配", "problem": "通知音量弹窗位置不符合要求"},
+            ],
+        )
+        write_jsonl(root / "index" / "variant-index.jsonl", [])
+        write_jsonl(root / "index" / "symbol-index.jsonl", [])
+        write_jsonl(root / "index" / "evidence-index.jsonl", [])
+        write_jsonl(
+            root / "index" / "search-docs.jsonl",
+            [
+                {
+                    "type": "case",
+                    "case_id": "case-low",
+                    "title": "音量弹窗位置适配",
+                    "source_priority": 30,
+                    "text": "TVE8402M VolumeDialogImpl 通知音量",
+                    "variant_ids": [],
+                },
+                {
+                    "type": "case",
+                    "case_id": "case-high",
+                    "title": "音量弹窗位置适配",
+                    "source_priority": 120,
+                    "text": "TVE8402M VolumeDialogImpl 通知音量",
+                    "variant_ids": [],
+                },
+            ],
+        )
+
+        rows = search.load_rows(root)
+        results = search.search(rows, "TVE8402M VolumeDialogImpl", "case", 5, include_synthetic=False)
+
+        self.assertEqual([item["case_id"] for item in results[:2]], ["case-high", "case-low"])
+
     def test_patch_analysis_fields_are_searchable_and_formatted(self):
         root = Path(tempfile.mkdtemp())
-        index = root / "index"
-        index.mkdir()
-        conn = sqlite3.connect(index / "knowledge.sqlite")
-        try:
-            conn.executescript(
-                """
-                CREATE TABLE patches(
-                  id TEXT PRIMARY KEY, title TEXT, summary TEXT, modules TEXT, inferred_problem TEXT,
-                  inferred_solution TEXT, inferred_keywords TEXT, inference_confidence TEXT,
-                  inference_basis TEXT, inference_limits TEXT, risk_areas TEXT, modified_files TEXT,
-                  patch_files TEXT, status TEXT
-                );
-                """
-            )
-            conn.execute(
-                """
-                INSERT INTO patches
-                (id, title, summary, modules, inferred_problem, inferred_solution, inferred_keywords,
-                 inference_confidence, inference_basis, inference_limits, risk_areas, modified_files, patch_files, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "patch-focus",
-                    "Focus fix",
-                    "",
-                    '["WindowManager"]',
-                    "Launcher launch may leave window focus stale",
-                    "Adjust WindowManager focus update",
-                    '["focus", "Launcher", "audio route/volume", "usb/device permission"]',
-                    "medium",
-                    '["patch modifies WindowState.java"]',
-                    '["device verification is separate"]',
-                    '["window focus", "audio route or volume behavior", "usb or device permission"]',
-                    '["frameworks/base/services/core/java/com/android/server/wm/WindowState.java"]',
-                    '["patches/by-id/patch-focus/patch.patch"]',
-                    "candidate",
-                ),
-            )
-            conn.execute(
-                """
-                INSERT INTO patches
-                (id, title, summary, modules, inferred_problem, inferred_solution, inferred_keywords,
-                 inference_confidence, inference_basis, inference_limits, risk_areas, modified_files, patch_files, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "patch-policy",
-                    "Policy fix",
-                    "",
-                    '["Policy"]',
-                    "Behavior in Policy may need correction",
-                    "Patch changes Policy code paths and should be reviewed against the target requirement",
-                    '["Policy"]',
-                    "low",
-                    '["patch modifies PhoneWindowManager.java"]',
-                    '["device verification is separate"]',
-                    '["power or policy behavior"]',
-                    '["frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java"]',
-                    '["patches/by-id/patch-policy/patch.patch"]',
-                    "candidate",
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        write_jsonl(root / "index" / "case-index.jsonl", [])
+        write_jsonl(root / "index" / "variant-index.jsonl", [])
+        write_jsonl(root / "index" / "symbol-index.jsonl", [])
+        write_jsonl(root / "index" / "evidence-index.jsonl", [])
+        write_json(
+            root / "patches" / "by-id" / "patch-focus" / "patch.json",
+            {
+                "patch_id": "patch-focus",
+                "title": "Focus fix",
+                "summary": "",
+                "modules": ["WindowManager"],
+                "inferred_problem": "Launcher launch may leave window focus stale",
+                "inferred_solution": "Adjust WindowManager focus update",
+                "inferred_keywords": ["focus", "Launcher", "audio route/volume", "usb/device permission"],
+                "inference_confidence": "medium",
+                "inference_basis": ["patch modifies WindowState.java"],
+                "inference_limits": ["device verification is separate"],
+                "risk_areas": ["window focus", "audio route or volume behavior", "usb or device permission"],
+                "modified_files": ["frameworks/base/services/core/java/com/android/server/wm/WindowState.java"],
+                "patch_files": ["patches/by-id/patch-focus/patch.patch"],
+                "status": "candidate",
+            },
+        )
+        write_json(
+            root / "patches" / "by-id" / "patch-policy" / "patch.json",
+            {
+                "patch_id": "patch-policy",
+                "title": "Policy fix",
+                "summary": "",
+                "modules": ["Policy"],
+                "inferred_problem": "Behavior in Policy may need correction",
+                "inferred_solution": "Patch changes Policy code paths and should be reviewed against the target requirement",
+                "inferred_keywords": ["Policy"],
+                "inference_confidence": "low",
+                "inference_basis": ["patch modifies PhoneWindowManager.java"],
+                "inference_limits": ["device verification is separate"],
+                "risk_areas": ["power or policy behavior"],
+                "modified_files": ["frameworks/base/services/core/java/com/android/server/policy/PhoneWindowManager.java"],
+                "patch_files": ["patches/by-id/patch-policy/patch.patch"],
+                "status": "candidate",
+            },
+        )
 
         rows = search.load_rows(root)
         results = search.search(rows, "Launcher focus", "patch", 5, include_synthetic=False)

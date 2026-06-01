@@ -5,7 +5,6 @@ import argparse
 import json
 import os
 import re
-import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -13,12 +12,10 @@ from typing import Any
 
 
 ROOT_MARKERS = (
-    Path("index") / "knowledge.sqlite",
     Path("index") / "case-index.jsonl",
     Path("index") / "variant-index.jsonl",
-    Path("index") / "patch-index.jsonl",
-    Path("index") / "report-index.jsonl",
     Path("index") / "symbol-index.jsonl",
+    Path("index") / "evidence-index.jsonl",
     Path("index") / "search-docs.jsonl",
 )
 ENV_PREFIXES = ("CODEX_KNOWLEDGE_", "CODEX_REPORT_", "CODEX_WORK_REPORT_")
@@ -323,14 +320,6 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def sqlite_tables(db_path: Path) -> set[str]:
-    conn = sqlite3.connect(db_path)
-    try:
-        return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    finally:
-        conn.close()
-
-
 def evidence_row(item: dict[str, Any]) -> dict[str, Any]:
     row = dict(item)
     row["evidence_kind"] = row.pop("kind", "")
@@ -340,99 +329,50 @@ def evidence_row(item: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def load_from_sqlite(root: Path) -> list[dict[str, Any]]:
-    db_path = root / "index" / "knowledge.sqlite"
-    if not db_path.exists():
-        return []
-    tables = sqlite_tables(db_path)
-    rows: list[dict[str, Any]] = []
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        if "patches" in tables:
-            for item in conn.execute("SELECT * FROM patches"):
-                row = dict(item)
-                for key in (
-                    "patch_files",
-                    "modified_files",
-                    "deleted_files",
-                    "modules",
-                    "symbols",
-                    "resource_keys",
-                    "inferred_keywords",
-                    "inference_basis",
-                    "inference_limits",
-                    "risk_areas",
-                    "framework_log_keys",
-                    "system_properties",
-                    "settings_keys",
-                    "strings",
-                    "keywords",
-                    "filename_parse_confidence",
-                ):
-                    row[key] = parse_json(row.get(key), [])
-                rows.append({"kind": "patch", **row})
-
-        if "reports" in tables:
-            item_map: dict[str, list[dict[str, Any]]] = {}
-            if "report_items" in tables:
-                for item in conn.execute("SELECT * FROM report_items ORDER BY report_id, item_order"):
-                    item_map.setdefault(item["report_id"], []).append(dict(item))
-            for item in conn.execute("SELECT * FROM reports"):
-                row = dict(item)
-                row["items"] = item_map.get(row.get("id", ""), [])
-                rows.append({"kind": "report", **row})
-
-        if "symbols" in tables:
-            for item in conn.execute("SELECT * FROM symbols"):
-                rows.append({"kind": "symbol", **dict(item)})
-
-        if "knowledge_events" in tables:
-            for item in conn.execute("SELECT * FROM knowledge_events"):
-                row = dict(item)
-                row["payload"] = parse_json(row.get("payload"), {})
-                rows.append({"kind": "event", **row})
-
-        if "evidence" in tables:
-            for item in conn.execute("SELECT * FROM evidence"):
-                rows.append(evidence_row(dict(item)))
-    finally:
-        conn.close()
-    return rows
-
-
 def load_from_jsonl(root: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    search_docs = {str(item.get("case_id", "")): item for item in read_jsonl(root / "index" / "search-docs.jsonl")}
     for item in read_jsonl(root / "index" / "case-index.jsonl"):
-        rows.append({"kind": "case", "id": item.get("case_id", ""), **item})
+        case_id = str(item.get("case_id", ""))
+        doc = search_docs.get(case_id, {})
+        rows.append(
+            {
+                **item,
+                "kind": "case",
+                "id": case_id,
+                "source_priority": doc.get("source_priority", item.get("source_priority", 0)),
+                "text": doc.get("text", item.get("text", "")),
+                "variant_ids": doc.get("variant_ids", item.get("variant_ids", [])),
+            }
+        )
     for item in read_jsonl(root / "index" / "variant-index.jsonl"):
         rows.append({"kind": "variant", "id": item.get("variant_id", ""), **item})
-    for item in read_jsonl(root / "index" / "patch-index.jsonl"):
-        rows.append({"kind": "patch", **item})
-    for item in read_jsonl(root / "index" / "report-index.jsonl"):
-        rows.append({"kind": "report", **item})
     for item in read_jsonl(root / "index" / "symbol-index.jsonl"):
         rows.append({"kind": "symbol", "id": item.get("symbol_id", ""), "symbol": item.get("value", ""), **item})
-    for item in read_jsonl(root / "index" / "knowledge-event-index.jsonl"):
-        rows.append({"kind": "event", **item})
     for item in read_jsonl(root / "index" / "evidence-index.jsonl"):
         rows.append(evidence_row(item))
-    if not any(row.get("kind") == "patch" for row in rows):
-        for path in sorted(root.glob("patches/by-id/*/patch.json")):
+    if not any(row.get("kind") == "evidence" for row in rows):
+        for path in sorted(root.glob("evidence/by-id/*.json")):
             item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
             if isinstance(item, dict):
-                rows.append({"kind": "patch", "id": item.get("patch_id", ""), "path": str(path.relative_to(root)), **item})
-    if not any(row.get("kind") == "report" for row in rows):
-        for path in sorted(root.glob("reports/by-id/*.json")):
-            item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
-            if isinstance(item, dict):
-                rows.append({"kind": "report", "id": item.get("report_id", ""), "path": str(path.relative_to(root)), **item})
+                rows.append(evidence_row({**item, "path": str(path.relative_to(root))}))
+    for path in sorted(root.glob("patches/by-id/*/patch.json")):
+        item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
+        if isinstance(item, dict):
+            rows.append({"kind": "patch", "id": item.get("patch_id", ""), "path": str(path.relative_to(root)), **item})
+    for path in sorted(root.glob("reports/by-id/*.json")):
+        item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
+        if isinstance(item, dict):
+            rows.append({"kind": "report", "id": item.get("report_id", ""), "path": str(path.relative_to(root)), **item})
+    for path in sorted(root.glob("events/by-id/*.json")):
+        item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
+        if isinstance(item, dict):
+            rows.append({"kind": "event", "id": item.get("event_id", ""), "path": str(path.relative_to(root)), **item})
     return rows
 
 
 def load_rows(root: Path) -> list[dict[str, Any]]:
-    rows = load_from_sqlite(root)
-    return rows if rows else load_from_jsonl(root)
+    return load_from_jsonl(root)
 
 
 def stringify(value: Any) -> str:
@@ -584,6 +524,26 @@ def score_row(row: dict[str, Any], terms: list[str]) -> tuple[int, list[str]]:
     return score, matched
 
 
+def result_priority(row: dict[str, Any]) -> int:
+    priority = 0
+    try:
+        priority += int(row.get("source_priority") or 0)
+    except (TypeError, ValueError):
+        pass
+    status = str(row.get("status") or row.get("maturity") or "").lower()
+    priority += {
+        "validated": 50,
+        "candidate": 30,
+        "draft": 20,
+        "failed": 10,
+        "blocked": 5,
+    }.get(status, 0)
+    verification = row.get("verification") if isinstance(row.get("verification"), dict) else {}
+    if str(verification.get("status", "")).lower() in {"pass", "passed"}:
+        priority += 20
+    return priority
+
+
 def result_date(row: dict[str, Any]) -> str:
     return str(row.get("date") or row.get("week_range") or "")
 
@@ -607,6 +567,7 @@ def search(rows: list[dict[str, Any]], q: str, result_type: str, limit: int, inc
     results.sort(
         key=lambda item: (
             int(item.get("_score", 0)),
+            result_priority(item),
             result_date(item),
             str(item.get("id") or item.get("case_id") or item.get("variant_id") or item.get("patch_id") or ""),
         ),

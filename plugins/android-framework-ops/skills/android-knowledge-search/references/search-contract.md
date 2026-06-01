@@ -13,7 +13,7 @@ index/
 └── evidence-index.jsonl
 ```
 
-Current rebuilt repositories are case/variant first. `case-index.jsonl` and `variant-index.jsonl` are the primary search sources. Older `knowledge.sqlite`, `patch-index.jsonl`, and `report-index.jsonl` are still readable as fallback formats for older local test data.
+Current rebuilt repositories are case/variant first. `case-index.jsonl` and `variant-index.jsonl` are the primary search sources. Search also reads authoritative `patches/by-id`, `reports/by-id`, `events/by-id`, and `evidence/by-id` objects. It must not read old generated SQLite or legacy patch/report indexes.
 
 ## Result Types
 
@@ -53,7 +53,7 @@ Use several searches when needed:
 - Settings key
 - resource or string key
 - visible log keyword
-- patch problem keyword from old patch analysis
+- patch-derived problem keyword
 
 ## Patch Explanation Boundary
 
