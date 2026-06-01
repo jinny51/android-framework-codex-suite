@@ -26,6 +26,7 @@ INCOMING_SCHEMA_VERSION = "1"
 ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
 PATCH_FILENAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
+PROJECT_MODEL_RE = re.compile(r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{5}(?:_[A-Z0-9]+)?(?![A-Z0-9])", re.I)
 BANNED_LOG_PATTERNS = ("Log.d(", "Log.i(", "Log.w(", "Slog.d(", "Slog.i(", "Slog.w(")
 REPORT_HEADINGS = {
     "daily": ("今日概览", "项目事项"),
@@ -562,7 +563,7 @@ def synthetic_sessions(config: dict[str, str], dates: set[dt.date]) -> list[Sess
         count = max(1, min(6, int(config.get("synthetic_item_count", "3"))))
     except ValueError:
         count = 3
-    projects = ["合成测试项目-A", "合成测试项目-B", "合成测试项目-C"]
+    projects = ["TVE8402M", "TVA1001A", "TVI2010M"]
     tasks = [
         "模拟设置项开关需求分析",
         "模拟 SystemUI 状态同步问题排查",
@@ -598,7 +599,7 @@ def synthetic_patch_info(package_dir: Path, date: dt.date, project: str, config:
     token = uuid.uuid4().hex[:8]
     patch_dir = package_dir / "evidence" / "synthetic"
     patch_dir.mkdir(parents=True, exist_ok=True)
-    patch_name = f"test001-synthetic-{token}@framework.patch"
+    patch_name = f"mtk15-frameworks-base@synthetic-settings-{token}.patch"
     patch_path = patch_dir / patch_name
     readme_path = patch_dir / f"{patch_path.stem}.readme.md"
     patch_path.write_text(
@@ -609,7 +610,7 @@ def synthetic_patch_info(package_dir: Path, date: dt.date, project: str, config:
                 "+++ b/frameworks/base/core/java/android/provider/Settings.java",
                 "@@ -1,3 +1,4 @@",
                 f"+//synthetic {ymd(date)}@ synthetic test patch, not from real source code",
-                "+// synthetic setting key: persist.sys.codex.synthetic_demo",
+                "+// synthetic setting key: persist.sys.codex.synthetic_flag",
             ]
         )
         + "\n",
@@ -625,7 +626,7 @@ def synthetic_patch_info(package_dir: Path, date: dt.date, project: str, config:
 ## 修改点
 
 - 合成一条注释级 diff，避免引入真实业务代码。
-- 合成系统属性 `persist.sys.codex.synthetic_demo`，用于验证 symbol 索引。
+- 合成系统属性 `persist.sys.codex.synthetic_flag`，用于验证 symbol 索引。
 
 ## 日志控制
 
@@ -633,7 +634,7 @@ def synthetic_patch_info(package_dir: Path, date: dt.date, project: str, config:
 
 ## SystemProperties
 
-`persist.sys.codex.synthetic_demo`，仅作为合成测试索引样例。
+`persist.sys.codex.synthetic_flag`，仅作为合成测试索引样例。
 
 ## 字符串国际化
 
@@ -2090,40 +2091,79 @@ def first_evidence_payload(package_dir: Path, entries: list[dict[str, Any]], kin
     return read_json_file(package_dir / rel)
 
 
-def normalize_project(project: str) -> tuple[str, dict[str, Any]]:
-    project = (project or "unknown").strip()
+def parse_company_project(value: str) -> dict[str, Any]:
+    base = value[:8]
+    return {
+        "base_model": base,
+        "product_prefix": base[:2],
+        "form_code": base[2],
+        "mold_code": base[3:7],
+        "soc_code": base[7],
+        "suffix": value[8:].lstrip("_"),
+        "recognition_scope": "TVE/TVA/TVI",
+        "company_rule_match": bool(re.fullmatch(r"TV[EAI][A-Z0-9]{5}", base)),
+    }
+
+
+def find_company_project(text: str) -> str:
+    match = PROJECT_MODEL_RE.search(text.upper())
+    return match.group(0) if match else ""
+
+
+def project_inference_payload(
+    project: str,
+    basis: list[str],
+    checked_sources: list[str],
+    raw_inputs: list[str],
+    limits: list[str] | None = None,
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "project": project or "unknown",
-        "recognized": project not in {"", "unknown"},
-        "basis": ["命令参数或 capture package 显式提供 project"] if project and project != "unknown" else [],
-        "limits": [],
+        "project": project,
+        "recognized": project != "unknown",
+        "basis": basis,
+        "checked_sources": checked_sources,
+        "raw_inputs": raw_inputs[:20],
+        "limits": limits or [],
         "company_rule_match": False,
     }
-    match = re.search(r"\bTV[EAI][A-Z0-9]{5,}(?:_[A-Z0-9]+)?\b", project)
-    if match:
-        value = match.group(0)
-        base = value[:8]
-        payload.update(
-            {
-                "project": project,
-                "base_model": base,
-                "product_prefix": base[:2],
-                "form_code": base[2],
-                "mold_code": base[3:7],
-                "soc_code": base[7],
-                "suffix": value[8:].lstrip("_"),
-                "recognition_scope": "TVE/TVA/TVI",
-                "company_rule_match": bool(re.match(r"^TV[EAI][A-Z0-9]{5}$", base)),
-            }
-        )
-        return project, payload
-    if not project or project == "unknown":
-        payload["project"] = "unknown"
-        payload["recognized"] = False
-        payload["limits"] = ["未从命令参数、capture package 或 patch 名称中识别到 TVE/TVA/TVI 项目型号"]
-        return "unknown", payload
-    payload["limits"] = ["该 project 不是 TVE/TVA/TVI 公司型号，作为显式字符串保留"]
-    return project, payload
+    if project != "unknown":
+        payload.update(parse_company_project(project))
+    return payload
+
+
+def infer_project(
+    explicit_project: str,
+    patch_entries: list[dict[str, Any]],
+    patch_sources: list[dict[str, Any]],
+    summary: str,
+) -> tuple[str, dict[str, Any]]:
+    clues: list[tuple[str, str]] = []
+    if explicit_project and explicit_project.strip() != "unknown":
+        clues.append(("命令参数 project", explicit_project.strip()))
+    for item in patch_entries:
+        for key, label in (("project", "capture package project"), ("path", "补丁路径"), ("readme", "补丁说明路径")):
+            value = item.get(key)
+            if isinstance(value, str) and value:
+                clues.append((label, value))
+    for item in patch_sources:
+        for key, label in (("project", "补丁来源 project"), ("name", "补丁名称"), ("source", "补丁来源路径")):
+            value = item.get(key)
+            if isinstance(value, str) and value:
+                clues.append((label, value))
+    if summary:
+        clues.append(("补丁摘要", summary))
+
+    checked_sources = sorted(dict.fromkeys(label for label, _ in clues))
+    raw_inputs = [f"{label}: {value}" for label, value in clues]
+    for label, value in clues:
+        project = find_company_project(value)
+        if project:
+            return project, project_inference_payload(project, [f"{label}: {value}"], checked_sources, raw_inputs)
+
+    limits = ["未从命令参数、capture package、补丁名称、补丁路径或补丁摘要中识别到 TVE/TVA/TVI 项目型号"]
+    if explicit_project and explicit_project.strip() not in {"", "unknown"}:
+        limits.append("命令参数 project 未匹配公司项目型号规范，未作为项目名入库")
+    return "unknown", project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
 
 
 def write_default_evidence(package_dir: Path, rel: str, payload: dict[str, Any]) -> str:
@@ -2137,7 +2177,7 @@ def prepare_patch_package(
     run_id: str | None = None,
     patch_paths: list[str] | None = None,
     patch_package_paths: list[str] | None = None,
-    project: str = "Android Framework",
+    project: str = "unknown",
     summary: str = "管理员手动归档补丁",
     status: str = "validated",
     schema_version: str = INCOMING_SCHEMA_VERSION,
@@ -2218,7 +2258,7 @@ def prepare_patch_package(
         maturity = "candidate"
 
     platform, android_version = parse_platform_token(patch_entries)
-    project, project_payload = normalize_project(project)
+    project, project_payload = infer_project(project, patch_entries, patch_sources, summary)
     all_patch_items = [incoming_patch_item(package_dir, item) for item in patch_entries]
     modified_files = sorted(
         {

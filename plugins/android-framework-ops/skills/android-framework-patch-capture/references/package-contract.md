@@ -27,7 +27,7 @@ This package is a local handoff artifact. `android-knowledge-intake` can later s
 {
   "schema_version": "1.0",
   "package_type": "framework_patch",
-  "project": "Android Framework",
+  "project": "TVE8402M",
   "summary": "功能摘要",
   "status": "candidate",
   "evidence": [

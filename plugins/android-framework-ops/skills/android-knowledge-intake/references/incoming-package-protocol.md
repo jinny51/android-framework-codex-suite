@@ -154,7 +154,7 @@ Manifest excerpt:
   "maturity": "candidate",
   "platform": "mtk",
   "android_version": "15",
-  "project": "TVE8402",
+  "project": "TVE8402M",
   "files": {
     "case": "knowledge/case.json",
     "variant": "knowledge/variant.json",

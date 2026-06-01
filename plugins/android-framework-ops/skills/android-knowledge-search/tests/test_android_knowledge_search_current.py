@@ -44,7 +44,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                     "validated",
                     "testuser",
                     "2026-05-26",
-                    "Android Framework",
+                    "TVE8402M",
                     "rk3576",
                     "修改电源键策略以满足产品需求",
                     "knowledge-events/20260526/testuser/event-power/event.json",

@@ -24,6 +24,7 @@ python3 "scripts/capture_framework_patch.py" \
   --platform rk14 \
   --feature allow-powerkey-to-user \
   --summary "允许用户态控制电源键行为" \
+  --project "TVE8402M" \
   --status candidate \
   --verification "framework 编译通过" \
   --device rk3576 \
@@ -54,7 +55,7 @@ search-before-change, verification, and package-check evidence are preserved:
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" \
   --profile jinny patch --prepare \
   --patch-package .codex/patch-packages/<run-id>/ \
-  --project "Android Framework" \
+  --project "TVE8402M" \
   --summary "补丁摘要" \
   --status candidate
 ```

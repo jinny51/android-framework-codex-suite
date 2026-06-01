@@ -551,7 +551,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--module", help="Patch module name. Default inferred from changed files.")
     parser.add_argument("--feature", required=True, help="Feature slug for filename, for example allow-powerkey-to-user.")
     parser.add_argument("--summary", required=True, help="Human-readable requirement or patch summary.")
-    parser.add_argument("--project", default="Android Framework", help="Project name for manifest/readme.")
+    parser.add_argument("--project", default="unknown", help="Project name for manifest/readme.")
     parser.add_argument("--status", choices=["draft", "candidate", "validated", "failed", "blocked"], default="draft")
     parser.add_argument("--verification", action="append", default=[], help="Build verification fact. Repeatable.")
     parser.add_argument("--verification-result", choices=["PASS", "FAIL", "WARN", "INFO", "SKIPPED"], help="Overall verification result. Default: PASS when evidence is present, otherwise INFO.")
