@@ -3,12 +3,12 @@
 [[skills]]
 name = "android-framework-change-workflow"
 category = "Framework Workflow"
-summary = "统筹 Android Framework 需求分析、诊断、修改、风险判断、验证验收和最终报告"
+summary = "统筹 Android Framework 开工前检索、需求分析、诊断修改、验证验收、成熟度判断和知识沉淀交接"
 
 [[skills]]
 name = "android-framework-patch-capture"
 category = "Framework Workflow"
-summary = "将已完成或阶段性 Framework 修改整理成标准 patch、说明和验证材料补丁包"
+summary = "将已完成、阶段性、失败或阻塞但有价值的 Framework 修改整理成标准 patch、说明和验证材料补丁包"
 
 [[skills]]
 name = "android-knowledge-search"

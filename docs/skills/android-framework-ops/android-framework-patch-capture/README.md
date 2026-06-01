@@ -6,14 +6,15 @@ Android Framework 补丁包生成 skill。
 
 ## 用途
 
-该 skill 用于把一次已完成或阶段性的 Android Framework 修改整理成可保存、可搜索的补丁资料：`patch`、配套 `readme`、修改内容记录和验证结果，供 `android-knowledge-intake` 打包成 incoming。
+该 skill 用于把一次已完成、阶段性、失败或阻塞但有价值的 Android Framework 修改整理成可保存、可搜索的补丁资料：`patch`、配套 `readme`、修改内容记录和验证结果，供 `android-knowledge-intake` 打包成 incoming。
 
 它不负责分析需求、不负责改代码、不负责构建部署；这些仍由 `android-framework-change-workflow` 和构建交付类 skill 负责。
 
 ## 典型场景
 
 - Framework 需求已经完成，需要生成可以保存到知识库、可以搜索、方便以后判断能不能复用的补丁包。
-- 阶段性修改需要作为 `draft/candidate`（草稿/待验证）进入知识库，但必须带清楚的验证结果和风险说明。
+- 阶段性修改需要作为 `draft/candidate`（草稿/候选）进入知识库，但必须带清楚的验证结果和风险说明。
+- 失败路径或阻塞路径有复用价值，需要作为 `failed/blocked` 证据进入知识库，避免别人重复踩坑。
 - 维护者或成员端 Codex 想把一个高价值补丁提交给 `android-knowledge-intake` 的 `patch` 模式。
 
 ## 常用命令

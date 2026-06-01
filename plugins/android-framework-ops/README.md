@@ -27,9 +27,11 @@ Windows 原生 Codex 的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力�
 3. `android-framework-change-workflow` 负责需求分析、源码修改、调试日志、风险判断和验收口径。
 4. `android-remote-channel` 提供稳定远程会话，避免重复 SSH、重复 tmux、重复锁逻辑。
 5. `android-wsl-remote-build-deploy` 负责服务器构建、产物定位、设备推送。
-6. `android-framework-change-workflow` 根据需求和设备证据给最终验收结论。
-7. `android-framework-patch-capture` 把可复用修改整理成补丁、readme 和 evidence。
+6. `android-framework-change-workflow` 根据需求和设备证据给最终验收结论，并决定 `validated`、`candidate`、`draft`、`failed` 或 `blocked` 成熟度。
+7. `android-framework-patch-capture` 把已完成、阶段性、失败或阻塞但有价值的 Framework 修改整理成补丁、readme 和 evidence。
 8. `android-knowledge-intake` 把成员端 Codex 生成的知识资产打成 incoming 包并提交到团队知识库。
+
+默认原则：能自动沉淀就先沉淀，再按成熟度排序和复用。没有人工确认不等于丢弃知识；只有敏感信息、混杂无关 diff、高风险误导或身份/配置不可用时才停止入库，并在最终报告中说明。
 
 ## 和其他 skill 的兼容方式
 

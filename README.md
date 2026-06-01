@@ -40,11 +40,13 @@
 | 需求分析 / 代码修改 | `android-framework-change-workflow` | 分析需求或 bug，查源码，改代码，加必要调试日志，判断风险和回滚路径 |
 | 远程命令执行 | `android-remote-channel` | 管理 SSH/tmux 长会话、命令日志、占用状态和锁，避免多个 Codex 会话互相踩远程环境 |
 | 编译 / 产物定位 / 推送 | `android-wsl-remote-build-deploy` | 调用服务器编译 Android，定位 jar/apk 等产物，并推送到设备 |
-| 功能验证 / 验收结论 | `android-framework-change-workflow` | 根据需求、日志、设备行为、风险矩阵判断任务是否完成 |
-| 补丁资料整理 | `android-framework-patch-capture` | 把已完成或阶段性 Framework 修改整理成 patch、说明、修改文件证据、符号事实和验证材料 |
+| 功能验证 / 验收结论 | `android-framework-change-workflow` | 根据需求、日志、设备行为、风险矩阵判断任务是否完成，并决定知识成熟度 |
+| 补丁资料整理 | `android-framework-patch-capture` | 把已完成、阶段性、失败或阻塞但有价值的 Framework 修改整理成 patch、说明、修改文件证据、符号事实和验证材料 |
 | 知识入库 | `android-knowledge-intake` | 把日报、周报或补丁包提交到团队知识库 incoming 协议 |
 
 `remote-build-deploy` 只证明产物是否编出、是否推上设备；最终能不能算需求完成，由 `android-framework-change-workflow` 结合需求和验证证据判断。
+
+Framework 需求默认闭环是：开工前查知识库，开发和验证后通过 `patch-capture` 与 `knowledge-intake` 生成 incoming。验证通过的修改按 `validated`，需要复验的修改按 `candidate`，未完成但有价值的修改按 `draft`，失败或阻塞路径按 `failed` / `blocked` 保留。这样知识不会因为成员没有手动整理而只留在本机或会话里。
 
 Windows 原生 Codex 场景不属于团队默认主链路。确实需要 SMB/UNC、PowerShell 和本地 `adb.exe` 交付时，额外安装 `android-framework-windows-ops`。
 

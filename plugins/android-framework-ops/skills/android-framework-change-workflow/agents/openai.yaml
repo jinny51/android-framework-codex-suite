@@ -1,4 +1,4 @@
 interface:
   display_name: "Android Framework Change Workflow"
-  short_description: "Framework engineering workflow toolbox"
-  default_prompt: "Use $android-framework-change-workflow to implement, diagnose, build-coordinate, and verify Android framework behavior."
+  short_description: "Framework engineering workflow with search, verification, and incoming handoff"
+  default_prompt: "Use $android-framework-change-workflow to search prior knowledge, implement or diagnose Android Framework behavior, verify it, and hand off useful results to patch capture and incoming."

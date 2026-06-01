@@ -1,11 +1,11 @@
 ---
 name: android-framework-patch-capture
-description: "Use after Android Framework code changes are implemented or staged and need to be turned into a reusable engineering asset: generate a standards-compliant patch file, paired readme, changed-file evidence, symbol facts, log/property checks, and a package manifest for later android-knowledge-intake submission and team knowledge indexing."
+description: "Use after Android Framework code changes are implemented, staged, failed, or blocked but need to be turned into a reusable or cautionary engineering asset: generate a standards-compliant patch file, paired readme, changed-file evidence, symbol facts, log/property checks, and a package manifest for later android-knowledge-intake submission and team knowledge indexing."
 ---
 
 # Android Framework Patch Capture
 
-Use this skill when a Framework change is ready to be packaged as a reusable or reviewable patch asset. It does not implement requirements, diagnose root cause, build, deploy, or decide final correctness. It packages existing source changes into `patch + readme + evidence` so `android-knowledge-intake` can submit them as incoming.
+Use this skill when a Framework change is ready to be packaged as a reusable, reviewable, or cautionary patch asset. It does not implement requirements, diagnose root cause, build, deploy, or decide final correctness. It packages existing source changes into `patch + readme + evidence` so `android-knowledge-intake` can submit them as incoming.
 
 Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-knowledge-intake` uploads a valuable patch to the team knowledge repository.
 
@@ -89,7 +89,15 @@ The generated readme should contain facts first. Do not overclaim reuse, platfor
 - build and device verification evidence
 - risk and rollback notes
 
-`validated`, `reusable`, and platform labels are useful hints, not final truth. Future `android-framework-change-workflow` or knowledge-search skills should dynamically judge applicability from the stored facts.
+`validated`, `candidate`, `draft`, `failed`, `blocked`, and platform labels are useful hints, not final truth. Future `android-framework-change-workflow` or knowledge-search skills should dynamically judge applicability from the stored facts.
+
+Status meaning:
+
+- `validated`: verified for the original project scope.
+- `candidate`: coherent change with partial or incomplete verification.
+- `draft`: unfinished but useful Framework work.
+- `failed`: failed implementation or verification path worth preserving.
+- `blocked`: blocked work evidence worth preserving.
 
 ## Hard Stops
 
