@@ -31,6 +31,7 @@
 ```bash
 python3 "scripts/android_knowledge_intake.py" doctor
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor --strict --check-remote
 ```
 
 生成当天 pending 包：
@@ -64,7 +65,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --s
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "TVE8402M" --summary "功能补丁摘要" --status validated
 ```
 
-如果这个 Framework change 明确来自某次日报或周报自动化上下文，显式带上 run id，服务器会用它做确定性关联：
+如果这个 Framework change 明确来自某个 `daily_trace` 或 `weekly_trace` incoming 包，显式带上 run id，服务器会用它做确定性关联：
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --summary "功能补丁摘要" --status candidate --related-report-run-id 20260601-210000-daily
@@ -81,4 +82,4 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 - [references/incoming-package-protocol.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/incoming-package-protocol.md)：`incoming` 提交目录规则。
 - [references/patch-maturity-rules.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/patch-maturity-rules.md)：补丁成熟度和上传策略。
 - [references/android-framework-patch-rules.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/android-framework-patch-rules.md)：Android Framework patch 规范。
-- [scripts/android_knowledge_intake.py](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py)：日报、周报、管理员补丁包生成和提交脚本。
+- [scripts/android_knowledge_intake.py](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py)：生成并提交 `daily_trace`、`weekly_trace`、`framework_change` incoming 包。

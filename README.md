@@ -42,7 +42,7 @@
 | 编译 / 产物定位 / 推送 | `android-wsl-remote-build-deploy` | 调用服务器编译 Android，定位 jar/apk 等产物，并推送到设备 |
 | 功能验证 / 验收结论 | `android-framework-change-workflow` | 根据需求、日志、设备行为、风险矩阵判断任务是否完成，并决定知识成熟度 |
 | 补丁资料整理 | `android-framework-patch-capture` | 把已完成、阶段性、失败或阻塞但有价值的 Framework 修改整理成 patch、说明、修改文件证据、符号事实和验证材料 |
-| 知识入库 | `android-knowledge-intake` | 把日报、周报或补丁包提交到团队知识库 incoming 协议 |
+| 知识入库 | `android-knowledge-intake` | 生成并提交 `daily_trace`、`weekly_trace` 或 `framework_change` incoming 包 |
 
 `remote-build-deploy` 只证明产物是否编出、是否推上设备；最终能不能算需求完成，由 `android-framework-change-workflow` 结合需求和验证证据判断。
 

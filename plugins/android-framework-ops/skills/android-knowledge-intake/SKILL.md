@@ -71,6 +71,7 @@ Check configuration:
 ```bash
 python3 "scripts/android_knowledge_intake.py" doctor
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor --strict --check-remote
 ```
 
 ## Automation
@@ -81,6 +82,10 @@ Recommended member-side automations:
 - 22:30 daily submit: submit the latest pending package.
 - Saturday 22:00 weekly prepare.
 - Saturday 22:30 weekly submit.
+
+Before enabling member-side automations, run `doctor --strict --check-remote` for the exact profile used by the automation. Strict doctor must pass before scheduled runs are enabled. It verifies identity, role, allowed modes, repository paths, Git availability, clean repository state, and optional remote reachability.
+
+Synthetic profiles are only for protocol and gray-flow testing. Use `doctor --strict --allow-synthetic` only in tests; real member automations must keep `synthetic_data = false`.
 
 Framework change submission is automatic when the member-side Codex can identify a clean change, enough evidence, and a safe maturity level. If validation evidence is missing, submit as `candidate` or `draft`; do not discard the work. Administrator patch contribution remains manual by default.
 

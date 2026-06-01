@@ -73,6 +73,7 @@ VERIFICATION_EVIDENCE_KINDS = {"verification_result", "device_verification", "eq
 DATE_KEY_RE = re.compile(r"^\d{8}$")
 DATE_DISPLAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RUN_ID_RE = re.compile(r"^\d{8}-\d{6}(-[A-Za-z0-9_.-]+)?$")
+MEMBER_ALIAS_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 
 
 CONFIG_DEFAULTS = {
@@ -659,7 +660,7 @@ def synthetic_patch_info(package_dir: Path, date: dt.date, project: str, config:
 def summarize_session(work: SessionWork) -> str:
     text = " ".join([work.thread_name, *work.messages]).lower()
     if all(keyword in text for keyword in ("codex", "日报")) and any(keyword in text for keyword in ("自动化", "skill", "插件", "知识库")):
-        return "搭建codex日报周报自动化与知识库提交能力"
+        return "搭建 Codex incoming 自动沉淀与知识库提交能力"
     name = work.thread_name.strip()
     if name and not re.fullmatch(r"[0-9a-f-]{20,}", name):
         return compact_text(name, 80)
@@ -2683,9 +2684,123 @@ def latest_pending(report_type: str, config: dict[str, str], date: dt.date | Non
     return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
-def doctor(config: dict[str, str], loaded: list[Path]) -> dict[str, Any]:
-    repo = expanded_path(config["repo_worktree"])
+def nearest_existing_parent(path: Path) -> Path:
+    current = path
+    while not current.exists() and current.parent != current:
+        current = current.parent
+    return current
+
+
+def doctor_strict_checks(
+    config: dict[str, str],
+    loaded: list[Path],
+    check_remote: bool,
+    allow_synthetic: bool,
+) -> dict[str, Any]:
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    def error(message: str) -> None:
+        errors.append(message)
+
+    def warn(message: str) -> None:
+        warnings.append(message)
+
+    profile = config.get("profile", "").strip()
+    alias = config.get("member_alias", "").strip()
+    name = config.get("member_name", "").strip()
+    role = config.get("role", "").strip()
+    repo_url = config.get("repo_url", "").strip()
+    repo = expanded_path(config.get("repo_worktree", ""))
+    out_dir = expanded_path(config.get("out_dir", ""))
+
+    if not loaded:
+        warn("未加载任何配置文件，仅依赖默认值或环境变量；成员端自动化建议使用显式 profile 配置。")
+    if not profile:
+        error("必须显式选择 profile，避免自动化误用默认身份。")
+    if not alias:
+        error("member_alias 不能为空。")
+    elif alias in {"member_alias", "admin_alias", "unknown"}:
+        error(f"member_alias 仍是占位值: {alias}")
+    elif not MEMBER_ALIAS_RE.fullmatch(alias):
+        error("member_alias 只能使用小写字母、数字、点、下划线或横线，且必须以小写字母或数字开头。")
+    if not name:
+        error("member_name 不能为空，UI 和索引必须显示真实姓名。")
+    elif name in {"成员姓名", "管理员姓名", "unknown", "未知"}:
+        error(f"member_name 仍是占位值: {name}")
+
+    if role not in {"member", "admin"}:
+        error("role 必须是 member 或 admin。")
+        modes: set[str] = set()
+    else:
+        try:
+            modes = allowed_modes(config)
+        except SystemExit as exc:
+            error(str(exc))
+            modes = set()
+        if role == "member":
+            missing = {"daily", "weekly", "patch"} - modes
+            if missing:
+                error("member profile 必须允许 daily、weekly、patch，缺少: " + ", ".join(sorted(missing)))
+        if role == "admin" and ({"daily", "weekly"} & modes):
+            error("admin profile 只能用于手动 patch 贡献，不允许 daily/weekly 自动化。")
+
+    if synthetic_mode(config) and not allow_synthetic:
+        error("synthetic_data=true 只能用于协议/灰度测试，成员端正式自动化必须关闭。")
+
+    if not repo_url:
+        error("repo_url 不能为空。")
+    if ".codex/plugins/cache" in repo.as_posix():
+        error("repo_worktree 不能放在插件缓存目录下。")
+    if ".codex/plugins/cache" in out_dir.as_posix():
+        error("out_dir 不能放在插件缓存目录下。")
+
+    git_version = run(["git", "--version"])
+    if git_version.returncode != 0:
+        error("找不到 git，无法提交 incoming。")
+
+    if (repo / ".git").exists():
+        origin = git_run(repo, ["config", "--get", "remote.origin.url"], check=False)
+        origin_url = origin.stdout.strip()
+        if not origin_url:
+            error(f"repo_worktree 缺少 origin remote: {repo}")
+        elif repo_url and origin_url != repo_url:
+            error(f"repo_worktree origin 与 repo_url 不一致: origin={origin_url}, repo_url={repo_url}")
+        dirty = git_run(repo, ["status", "--porcelain"], check=False)
+        if dirty.returncode == 0 and dirty.stdout.strip():
+            error(f"repo_worktree 存在未提交改动，自动化提交前必须清理: {repo}")
+    elif repo.exists():
+        error(f"repo_worktree 已存在但不是 Git 仓库: {repo}")
+    else:
+        parent = nearest_existing_parent(repo.parent)
+        if not os.access(parent, os.W_OK):
+            error(f"repo_worktree 父目录不可写，无法自动 clone: {parent}")
+
+    out_parent = nearest_existing_parent(out_dir.parent)
+    if not os.access(out_parent, os.W_OK):
+        error(f"out_dir 父目录不可写，无法生成 pending 包: {out_parent}")
+
+    if check_remote and repo_url:
+        remote = run(["git", "ls-remote", "--heads", repo_url])
+        if remote.returncode != 0:
+            error("repo_url 无法访问，请先配置 SSH/Git 权限: " + (remote.stderr.strip() or remote.stdout.strip()))
+
     return {
+        "status": "FAIL" if errors else "PASS",
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+
+def doctor(
+    config: dict[str, str],
+    loaded: list[Path],
+    strict: bool = False,
+    check_remote: bool = False,
+    allow_synthetic: bool = False,
+) -> dict[str, Any]:
+    repo = expanded_path(config["repo_worktree"])
+    payload: dict[str, Any] = {
         "skill_root": str(PLUGIN_ROOT),
         "codex_home": default_codex_home(),
         "loaded_config": [str(path) for path in loaded],
@@ -2701,6 +2816,10 @@ def doctor(config: dict[str, str], loaded: list[Path]) -> dict[str, Any]:
         "out_dir": str(expanded_path(config["out_dir"])),
         "git": run(["git", "--version"]).stdout.strip(),
     }
+    if strict:
+        payload["strict"] = doctor_strict_checks(config, loaded, check_remote, allow_synthetic)
+        payload["status"] = payload["strict"]["status"]
+    return payload
 
 
 def parse_args() -> argparse.Namespace:
@@ -2709,6 +2828,9 @@ def parse_args() -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     doctor_parser = subparsers.add_parser("doctor")
+    doctor_parser.add_argument("--strict", action="store_true", help="fail when the selected profile is unsafe for member-side automation")
+    doctor_parser.add_argument("--check-remote", action="store_true", help="also verify repo_url is reachable with git ls-remote")
+    doctor_parser.add_argument("--allow-synthetic", action="store_true", help="allow synthetic_data=true for protocol or gray-flow testing")
     doctor_parser.set_defaults(report_type="")
 
     for report_type in ("daily", "weekly", "patch"):
@@ -2742,8 +2864,9 @@ def main() -> int:
     config, loaded = load_config(args.profile)
 
     if args.command == "doctor":
-        print(json.dumps(doctor(config, loaded), ensure_ascii=False, indent=2))
-        return 0
+        result = doctor(config, loaded, args.strict, args.check_remote, args.allow_synthetic)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if not args.strict or result.get("status") == "PASS" else 1
 
     date = parse_date_arg(args.date, config)
     if args.validate:

@@ -114,6 +114,55 @@ def create_framework_repo(root: Path) -> Path:
 
 
 class MemberAutomationFlowTests(unittest.TestCase):
+    def test_doctor_strict_passes_for_gray_profile_when_synthetic_is_explicitly_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote)
+
+            result = run_json(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "doctor",
+                    "--strict",
+                    "--check-remote",
+                    "--allow-synthetic",
+                ],
+                SUITE_ROOT,
+                env,
+            )
+
+            self.assertEqual(result["status"], "PASS")
+            self.assertEqual(result["strict"]["errors"], [])
+
+    def test_doctor_strict_rejects_synthetic_profile_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "doctor",
+                    "--strict",
+                ],
+                SUITE_ROOT,
+                env,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["status"], "FAIL")
+            self.assertTrue(any("synthetic_data=true" in item for item in payload["strict"]["errors"]))
+
     def test_daily_weekly_and_patch_upload_to_simulated_incoming_remote(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
