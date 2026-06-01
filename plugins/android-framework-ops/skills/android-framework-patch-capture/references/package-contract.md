@@ -30,6 +30,7 @@ This package is a local handoff artifact. `android-knowledge-intake` can later s
   "project": "TVE8402M",
   "summary": "功能摘要",
   "status": "candidate",
+  "related_report_run_ids": ["20260601-210000-daily"],
   "evidence": [
     {
       "id": "verification-result",
@@ -71,7 +72,9 @@ This package is a local handoff artifact. `android-knowledge-intake` can later s
     {
       "path": "patches/rk14-frameworks-base@feature.patch",
       "readme": "patches/rk14-frameworks-base@feature.readme.md",
+      "content_sha1": "40-hex-sha1",
       "facts": {
+        "content_sha1": "40-hex-sha1",
         "modified_files": [],
         "system_properties": [],
         "settings_keys": [],
@@ -90,6 +93,7 @@ Store objective evidence. Do not force permanent AI judgments into the package.
 Good facts:
 
 - modified files
+- patch content sha1
 - added/deleted symbols
 - property keys
 - Settings keys
@@ -132,6 +136,18 @@ Allowed statuses:
 - `blocked`: retained as blocked work evidence
 
 Status helps ranking, but it must not be used as the only reuse decision.
+
+## Report Link
+
+When the patch came from a known daily or weekly automation run, include the run id:
+
+```json
+{
+  "related_report_run_ids": ["20260601-210000-daily"]
+}
+```
+
+This is an explicit deterministic link for the server. Do not invent report links from fuzzy similarity.
 
 ## Verification Evidence
 

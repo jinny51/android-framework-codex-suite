@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import random
@@ -849,6 +850,7 @@ def copy_patch_assets(
             {
                 "path": f"patches/{target.name}",
                 "readme": f"patches/{readme_target.name}",
+                "content_sha1": sha1_file(target),
                 "status": status,
                 "reusable": reusable,
                 "project": patch.project,
@@ -873,6 +875,26 @@ def patch_infos_from_paths(paths: list[str], project: str) -> list[PatchInfo]:
 def safe_id(value: str) -> str:
     value = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip()).strip("-._")
     return value or "item"
+
+
+def sha1_file(path: Path) -> str:
+    digest = hashlib.sha1()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def list_string_values(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if value:
+        return [str(value).strip()]
+    return []
+
+
+def unique_strings(values: list[str]) -> list[str]:
+    return sorted(dict.fromkeys(item for item in values if item))
 
 
 def read_json_file(path: Path) -> dict[str, Any]:
@@ -921,7 +943,7 @@ def copy_patch_capture_packages(
     package_paths: list[str],
     default_project: str,
     default_status: str,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], bool]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], bool, list[str]]:
     patch_dir = package_dir / "patches"
     evidence_dir = package_dir / "knowledge" / "evidence" / "capture"
     patch_dir.mkdir(parents=True, exist_ok=True)
@@ -931,12 +953,14 @@ def copy_patch_capture_packages(
     evidence_entries: list[dict[str, Any]] = []
     sources: list[dict[str, Any]] = []
     has_pass_verification = False
+    related_report_run_ids: list[str] = []
 
     for raw in package_paths:
         capture_dir = Path(raw).expanduser().resolve()
         manifest = read_json_file(capture_dir / "manifest.json")
         if manifest.get("package_type") != "framework_patch":
             raise SystemExit(f"不是 android-framework-patch-capture 工作包: {capture_dir}")
+        related_report_run_ids.extend(list_string_values(manifest.get("related_report_run_ids")))
         capture_id = safe_id(capture_dir.name)
         patches = manifest.get("patches", [])
         if not isinstance(patches, list) or not patches:
@@ -957,10 +981,12 @@ def copy_patch_capture_packages(
             copy_capture_file(capture_dir, patch_rel, patch_dir / patch_name)
             copy_capture_file(capture_dir, readme_rel, patch_dir / readme_name)
             entry_status = item.get("status") or default_status
+            copied_patch = patch_dir / patch_name
             patch_entries.append(
                 {
                     "path": f"patches/{patch_name}",
                     "readme": f"patches/{readme_name}",
+                    "content_sha1": item.get("content_sha1") or sha1_file(copied_patch),
                     "status": entry_status,
                     "reusable": bool(item.get("reusable", entry_status == "validated")),
                     "project": item.get("project") or manifest.get("project") or default_project,
@@ -991,7 +1017,7 @@ def copy_patch_capture_packages(
             if verification_payload_passes(capture_dir, item):
                 has_pass_verification = True
 
-    return patch_entries, evidence_entries, sources, has_pass_verification
+    return patch_entries, evidence_entries, sources, has_pass_verification, unique_strings(related_report_run_ids)
 
 
 def discover_patches_from_cwd(project: str, date: dt.date) -> list[PatchInfo]:
@@ -1494,6 +1520,14 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         maturity = str(manifest.get("maturity", ""))
         if maturity not in MATURITY_VALUES:
             errors.append(f"maturity 非法: {maturity}")
+        if "related_report_run_ids" in manifest:
+            related = manifest.get("related_report_run_ids")
+            if not isinstance(related, list):
+                errors.append("related_report_run_ids 必须是数组")
+            else:
+                for item in related:
+                    if not RUN_ID_RE.fullmatch(str(item or "")):
+                        errors.append(f"related_report_run_ids 包含非法 run_id: {item}")
         files = manifest.get("files")
         if not isinstance(files, dict):
             errors.append("framework_change files 必须是对象")
@@ -1887,6 +1921,7 @@ def ensure_patch_analysis_evidence(package_dir: Path, patch_entries: list[dict[s
             "kind": "patch_diff_facts",
             "patch_id": patch_id,
             "source_patch": source_patch,
+            "content_sha1": merged_facts.get("content_sha1") or sha1_file(patch_path),
             "modified_files": merged_facts.get("modified_files", []),
             "modules": merged_facts.get("modules", []),
             "symbols": merged_facts.get("symbols", []),
@@ -1941,7 +1976,9 @@ def ensure_patch_analysis_evidence(package_dir: Path, patch_entries: list[dict[s
 def incoming_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[str, Any]:
     patch_path = package_dir / str(patch_entry["path"])
     captured_facts = patch_entry.get("facts") if isinstance(patch_entry.get("facts"), dict) else {}
+    content_sha1 = str(patch_entry.get("content_sha1") or sha1_file(patch_path))
     facts = {
+        "content_sha1": content_sha1,
         "modified_files": captured_facts.get("modified_files") or patch_modified_files(patch_path),
         "modules": captured_facts.get("modules") or [],
         "symbols": captured_facts.get("symbols") or [],
@@ -1955,12 +1992,52 @@ def incoming_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[
         "id": Path(str(patch_entry["path"])).stem,
         "path": patch_entry["path"],
         "readme": patch_entry.get("readme", ""),
+        "content_sha1": content_sha1,
         "status": patch_entry.get("status", "candidate"),
         "reusable": reusable if isinstance(reusable, bool) else reusable,
         "repo_path": "",
         "artifact": "",
         "facts": facts,
     }
+
+
+def aggregate_patch_diff_facts(patch_items: list[dict[str, Any]]) -> dict[str, Any]:
+    aggregate: dict[str, list[str]] = {
+        "modified_files": [],
+        "modules": [],
+        "symbols": [],
+        "system_properties": [],
+        "settings_keys": [],
+        "resource_keys": [],
+        "framework_log_keys": [],
+    }
+    patches: list[dict[str, Any]] = []
+    content_hashes: list[str] = []
+    for item in patch_items:
+        facts = item.get("facts", {}) if isinstance(item.get("facts"), dict) else {}
+        content_sha1 = str(item.get("content_sha1") or facts.get("content_sha1") or "")
+        if content_sha1:
+            content_hashes.append(content_sha1)
+        for key in aggregate:
+            aggregate[key].extend(list_string_values(facts.get(key)))
+        patches.append(
+            {
+                "id": item.get("id", ""),
+                "path": item.get("path", ""),
+                "readme": item.get("readme", ""),
+                "content_sha1": content_sha1,
+                "status": item.get("status", "candidate"),
+                "modified_files": list_string_values(facts.get("modified_files")),
+                "modules": list_string_values(facts.get("modules")),
+            }
+        )
+    payload: dict[str, Any] = {
+        "patch_count": len(patch_items),
+        "patches": patches,
+        "content_sha1": content_hashes[0] if len(content_hashes) == 1 else "",
+    }
+    payload.update({key: unique_strings(values) for key, values in aggregate.items()})
+    return payload
 
 
 def work_findings_payload(sessions: list[SessionWork], patches: list[PatchInfo]) -> dict[str, Any]:
@@ -2110,6 +2187,15 @@ def find_company_project(text: str) -> str:
     return match.group(0) if match else ""
 
 
+def read_text_sample(path: Path, limit: int = 12000) -> str:
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore")[:limit]
+    except OSError:
+        return ""
+
+
 def project_inference_payload(
     project: str,
     basis: list[str],
@@ -2136,6 +2222,7 @@ def infer_project(
     patch_entries: list[dict[str, Any]],
     patch_sources: list[dict[str, Any]],
     summary: str,
+    package_dir: Path | None = None,
 ) -> tuple[str, dict[str, Any]]:
     clues: list[tuple[str, str]] = []
     if explicit_project and explicit_project.strip() != "unknown":
@@ -2145,6 +2232,10 @@ def infer_project(
             value = item.get(key)
             if isinstance(value, str) and value:
                 clues.append((label, value))
+            if package_dir and key in {"path", "readme"} and isinstance(value, str) and value:
+                sample = read_text_sample(package_dir / value)
+                if sample:
+                    clues.append((label.replace("路径", "内容"), sample))
     for item in patch_sources:
         for key, label in (("project", "补丁来源 project"), ("name", "补丁名称"), ("source", "补丁来源路径")):
             value = item.get(key)
@@ -2171,6 +2262,21 @@ def write_default_evidence(package_dir: Path, rel: str, payload: dict[str, Any])
     return rel
 
 
+def framework_maturity_from_patch_statuses(statuses: set[str], has_pass_verification: bool) -> str:
+    clean = {item for item in statuses if item in MATURITY_VALUES}
+    if has_pass_verification and "validated" in clean:
+        return "validated"
+    if "candidate" in clean or ("validated" in clean and not has_pass_verification):
+        return "candidate"
+    if "draft" in clean:
+        return "draft"
+    if "failed" in clean:
+        return "failed"
+    if "blocked" in clean:
+        return "blocked"
+    return "candidate"
+
+
 def prepare_patch_package(
     date: dt.date,
     config: dict[str, str],
@@ -2181,6 +2287,7 @@ def prepare_patch_package(
     summary: str = "管理员手动归档补丁",
     status: str = "validated",
     schema_version: str = INCOMING_SCHEMA_VERSION,
+    related_report_run_ids: list[str] | None = None,
 ) -> Path:
     require_config(config)
     if schema_version != INCOMING_SCHEMA_VERSION:
@@ -2196,9 +2303,10 @@ def prepare_patch_package(
     capture_evidence_entries: list[dict[str, Any]] = []
     patch_sources: list[dict[str, Any]] = []
     has_pass_verification = False
+    all_related_report_run_ids = list_string_values(related_report_run_ids)
 
     if patch_package_paths:
-        capture_entries, evidence_entries, source_entries, capture_has_pass = copy_patch_capture_packages(
+        capture_entries, evidence_entries, source_entries, capture_has_pass, capture_related_report_run_ids = copy_patch_capture_packages(
             package_dir,
             patch_package_paths,
             project,
@@ -2208,6 +2316,7 @@ def prepare_patch_package(
         capture_evidence_entries.extend(evidence_entries)
         patch_sources.extend(source_entries)
         has_pass_verification = has_pass_verification or capture_has_pass
+        all_related_report_run_ids.extend(capture_related_report_run_ids)
 
     if patch_paths:
         patches = patch_infos_from_paths(patch_paths, project)
@@ -2248,17 +2357,10 @@ def prepare_patch_package(
             item["reusable"] = False
     statuses = {str(item.get("status", "")) for item in patch_entries}
     source = write_package_source(package_dir, config, "android-knowledge-intake")
-    if has_pass_verification and "validated" in statuses:
-        maturity = "validated"
-    elif statuses and statuses <= {"failed", "blocked"}:
-        maturity = "failed"
-    elif "draft" in statuses:
-        maturity = "draft"
-    else:
-        maturity = "candidate"
+    maturity = framework_maturity_from_patch_statuses(statuses, has_pass_verification)
 
     platform, android_version = parse_platform_token(patch_entries)
-    project, project_payload = infer_project(project, patch_entries, patch_sources, summary)
+    project, project_payload = infer_project(project, patch_entries, patch_sources, summary, package_dir)
     all_patch_items = [incoming_patch_item(package_dir, item) for item in patch_entries]
     modified_files = sorted(
         {
@@ -2272,6 +2374,7 @@ def prepare_patch_package(
     case_id = "case-" + slug_id(summary, "framework-change")[:80]
     variant_id = "variant-" + slug_id("-".join([platform, android_version, project, summary]), "framework-change")[:100]
     patch_rel_paths = [str(item["path"]) for item in all_patch_items]
+    all_related_report_run_ids = unique_strings(all_related_report_run_ids)
 
     case_path = "knowledge/case.json"
     variant_path = "knowledge/variant.json"
@@ -2351,7 +2454,16 @@ def prepare_patch_package(
         },
     )
 
-    patch_diff_path = first_evidence_path(capture_evidence_entries, "patch_diff_facts")
+    patch_diff_path = write_default_evidence(
+        package_dir,
+        "knowledge/evidence/patch_diff_facts.json",
+        {
+            "kind": "patch_diff_facts",
+            "case_id": case_id,
+            "variant_id": variant_id,
+            "payload": aggregate_patch_diff_facts(all_patch_items),
+        },
+    )
     patch_problem_path = first_evidence_path(capture_evidence_entries, "patch_problem_inference")
     risk_path = first_evidence_path(capture_evidence_entries, "risk_surface")
     required_generated = {
@@ -2383,6 +2495,7 @@ def prepare_patch_package(
             "android_version": android_version,
             "project": project,
             "repo_paths": repo_paths,
+            "related_report_run_ids": all_related_report_run_ids,
             "status": maturity,
         },
     )
@@ -2417,6 +2530,8 @@ def prepare_patch_package(
             ],
         },
     }
+    if all_related_report_run_ids:
+        manifest["related_report_run_ids"] = all_related_report_run_ids
     write_json(package_dir / "manifest.json", manifest)
     check = validate_package(package_dir)
     write_json(package_dir / "local-check.json", check)
@@ -2574,6 +2689,7 @@ def parse_args() -> argparse.Namespace:
             sub.add_argument("--patch-package", dest="patch_packages", action="append", default=[], help="android-framework-patch-capture package directory to include; repeatable")
             sub.add_argument("--project", default="unknown", help="project name for framework_change incoming")
             sub.add_argument("--summary", default="Framework 修改沉淀", help="summary for framework_change incoming")
+            sub.add_argument("--related-report-run-id", dest="related_report_run_ids", action="append", default=[], help="daily/weekly incoming run_id related to this framework_change; repeatable")
             sub.add_argument(
                 "--status",
                 choices=["draft", "candidate", "validated", "failed", "blocked"],
@@ -2606,7 +2722,7 @@ def main() -> int:
     if args.prepare:
         schema_version = args.schema_version or config.get("incoming_schema_version", INCOMING_SCHEMA_VERSION)
         if args.report_type == "patch":
-            package_dir = prepare_patch_package(date, config, args.run_id, args.patches, args.patch_packages, args.project, args.summary, args.status, schema_version)
+            package_dir = prepare_patch_package(date, config, args.run_id, args.patches, args.patch_packages, args.project, args.summary, args.status, schema_version, args.related_report_run_ids)
         else:
             package_dir = prepare_package(args.report_type, date, config, args.run_id, schema_version)
         result = json.loads((package_dir / "local-check.json").read_text(encoding="utf-8"))
@@ -2620,7 +2736,7 @@ def main() -> int:
     if args.upload:
         schema_version = args.schema_version or config.get("incoming_schema_version", INCOMING_SCHEMA_VERSION)
         if args.report_type == "patch":
-            package_dir = prepare_patch_package(date, config, args.run_id, args.patches, args.patch_packages, args.project, args.summary, args.status, schema_version)
+            package_dir = prepare_patch_package(date, config, args.run_id, args.patches, args.patch_packages, args.project, args.summary, args.status, schema_version, args.related_report_run_ids)
         else:
             package_dir = prepare_package(args.report_type, date, config, args.run_id, schema_version)
         result = git_submit_package(package_dir, config)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -49,6 +50,10 @@ def slug(value: str, *, lower: bool = True) -> str:
     return value or "unnamed"
 
 
+def sha1_text(value: str) -> str:
+    return hashlib.sha1(value.encode("utf-8", errors="replace")).hexdigest()
+
+
 def changed_files_from_diff(diff_text: str) -> list[str]:
     files: list[str] = []
     for match in re.finditer(r"^diff --git a/(.+?) b/(.+)$", diff_text, re.M):
@@ -90,6 +95,7 @@ def facts_from_diff(diff_text: str) -> dict[str, Any]:
     added = "\n".join(added_lines(diff_text))
     all_text = diff_text
     return {
+        "content_sha1": sha1_text(diff_text),
         "modified_files": files,
         "system_properties": sorted(set(re.findall(r"\b(?:persist|ro|sys|debug|vendor)\.[A-Za-z0-9_.-]+", all_text))),
         "settings_keys": sorted(set(re.findall(r"Settings\.(?:System|Secure|Global)\.([A-Za-z0-9_.-]+)", all_text))),
@@ -392,6 +398,7 @@ def patch_analysis_from_diff(diff_text: str, facts: dict[str, Any], patch_name: 
         "patch_diff_facts": {
             "kind": "patch_diff_facts",
             "source_patch": source_patch,
+            "content_sha1": facts["content_sha1"],
             "modified_files": files,
             "modules": modules,
             "symbols": symbols,
@@ -567,6 +574,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--search-query", action="append", default=[], help="Knowledge-base query performed before development. Repeatable.")
     parser.add_argument("--search-result", action="append", default=[], help="Search result or reuse decision from the pre-change search. Repeatable.")
     parser.add_argument("--search-summary", default="", help="Short summary of pre-change knowledge search.")
+    parser.add_argument("--related-report-run-id", action="append", default=[], help="daily/weekly incoming run_id related to this patch package. Repeatable.")
     parser.add_argument("--risk", default="", help="Risk note for readme.")
     parser.add_argument("--rollback", default="", help="Rollback note for readme.")
     parser.add_argument("--allow-missing-author-date", action="store_true", help="Allow package even when patch lacks //name YYYYMMDD@ marker.")
@@ -677,6 +685,7 @@ def main() -> int:
     patch_item = {
         "path": f"patches/{patch_path.name}",
         "readme": f"patches/{readme_path.name}",
+        "content_sha1": facts["content_sha1"],
         "status": args.status,
         "project": args.project,
         "facts": facts,
@@ -688,6 +697,7 @@ def main() -> int:
         "summary": args.summary,
         "status": args.status,
         "created_at": now.isoformat(timespec="seconds"),
+        "related_report_run_ids": args.related_report_run_id or [],
         "source_root": str(source_root),
         "git": git_info,
         "patches": [patch_item],

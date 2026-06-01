@@ -198,7 +198,7 @@ After Gate 5 or a terminal failure/blocked state:
    - `failed`: an attempted change or diagnosis path failed and the failure teaches a reusable constraint.
    - `blocked`: work could not continue because required environment, source, device, credentials, or acceptance evidence was unavailable.
 2. If local source changes exist and are not unrelated dirty files, invoke `android-framework-patch-capture` to package the intended change set with:
-   - platform/version token, project, feature slug, summary, maturity, modified files, artifacts, risk notes, verification evidence, and search-before-change evidence.
+   - platform/version token, project, feature slug, summary, maturity, modified files, artifacts, risk notes, verification evidence, search-before-change evidence, and explicit `related_report_run_ids` when a daily/weekly run id is known.
 3. Invoke `android-knowledge-intake` with the capture package so it generates a `framework_change` incoming package. Use the member profile, not the maintainer profile, unless the maintainer is manually contributing a patch.
 4. If no patch package can be made, do not pretend the knowledge was captured. Record exactly why, and rely on the daily/weekly automation to preserve the work as `work_findings`.
 5. Do not upload unrelated diffs, credentials, logs with sensitive data, mixed task changes, or a `validated` package without qualifying verification.

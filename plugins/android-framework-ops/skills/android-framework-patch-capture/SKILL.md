@@ -9,6 +9,8 @@ Use this skill when a Framework change is ready to be packaged as a reusable, re
 
 Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-knowledge-intake` uploads a valuable patch to the team knowledge repository.
 
+The generated package includes patch content `sha1` for server-side deduplication. If a known daily/weekly automation run produced the work context, pass `--related-report-run-id <run_id>` so intake can preserve an explicit report link.
+
 ## Boundary
 
 - `android-framework-change-workflow`: owns requirement analysis, source changes, risk, build/deploy coordination, and final verification.

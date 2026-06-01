@@ -22,7 +22,7 @@ def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def create_capture_package(root: Path, status: str = "validated") -> Path:
+def create_capture_package(root: Path, status: str = "validated", related_report_run_ids: list[str] | None = None) -> Path:
     package = root / "capture"
     patch = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
     readme = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.readme.md"
@@ -68,33 +68,33 @@ def create_capture_package(root: Path, status: str = "validated") -> Path:
             "limits": ["nearby regressions require verification"],
         },
     )
-    write_json(
-        package / "manifest.json",
-        {
-            "schema_version": "1.0",
-            "package_type": "framework_patch",
-            "project": "TVE1234A",
-            "summary": "Allow nav policy toggle",
-            "status": status,
-            "patches": [
-                {
-                    "path": "patches/rk14-frameworks-base@nav-policy-toggle.patch",
-                    "readme": "patches/rk14-frameworks-base@nav-policy-toggle.readme.md",
-                    "status": status,
-                    "reusable": status == "validated",
-                    "project": "TVE1234A",
-                    "facts": {"modified_files": ["frameworks/base/services/core/java/X.java"]},
-                }
-            ],
-            "evidence": [
-                {"id": "verification-result", "kind": "verification_result", "path": "evidence/verification-result.json", "result": "PASS"},
-                {"id": "search-before-change", "kind": "search_before_change", "path": "evidence/search-before-change.json", "result": "INFO"},
-                {"id": "patch-diff-facts", "kind": "patch_diff_facts", "path": "evidence/patch-diff-facts.json", "result": "INFO"},
-                {"id": "patch-problem-inference", "kind": "patch_problem_inference", "path": "evidence/patch-problem-inference.json", "result": "INFO"},
-                {"id": "risk-surface", "kind": "risk_surface", "path": "evidence/risk-surface.json", "result": "INFO"},
-            ],
-        },
-    )
+    manifest = {
+        "schema_version": "1.0",
+        "package_type": "framework_patch",
+        "project": "TVE1234A",
+        "summary": "Allow nav policy toggle",
+        "status": status,
+        "patches": [
+            {
+                "path": "patches/rk14-frameworks-base@nav-policy-toggle.patch",
+                "readme": "patches/rk14-frameworks-base@nav-policy-toggle.readme.md",
+                "status": status,
+                "reusable": status == "validated",
+                "project": "TVE1234A",
+                "facts": {"modified_files": ["frameworks/base/services/core/java/X.java"]},
+            }
+        ],
+        "evidence": [
+            {"id": "verification-result", "kind": "verification_result", "path": "evidence/verification-result.json", "result": "PASS"},
+            {"id": "search-before-change", "kind": "search_before_change", "path": "evidence/search-before-change.json", "result": "INFO"},
+            {"id": "patch-diff-facts", "kind": "patch_diff_facts", "path": "evidence/patch-diff-facts.json", "result": "INFO"},
+            {"id": "patch-problem-inference", "kind": "patch_problem_inference", "path": "evidence/patch-problem-inference.json", "result": "INFO"},
+            {"id": "risk-surface", "kind": "risk_surface", "path": "evidence/risk-surface.json", "result": "INFO"},
+        ],
+    }
+    if related_report_run_ids:
+        manifest["related_report_run_ids"] = related_report_run_ids
+    write_json(package / "manifest.json", manifest)
     return package
 
 
@@ -118,7 +118,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 self.config(root),
                 run_id="20260526-120000-patch",
                 patch_paths=[],
-                patch_package_paths=[str(create_capture_package(root))],
+                patch_package_paths=[str(create_capture_package(root, related_report_run_ids=["20260601-210000-daily"]))],
                 project="TVE1234A",
                 summary="Allow nav policy toggle",
                 status="validated",
@@ -127,6 +127,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
 
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
             check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            diff_facts = json.loads((package / "knowledge" / "evidence" / "patch_diff_facts.json").read_text(encoding="utf-8"))
 
             self.assertEqual(check["status"], "PASS")
             self.assertEqual(manifest["schema"], "knowledge-incoming-package")
@@ -136,10 +137,43 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(manifest["maturity"], "validated")
             self.assertEqual(manifest["platform"], "rk")
             self.assertEqual(manifest["android_version"], "14")
+            self.assertEqual(manifest["related_report_run_ids"], ["20260601-210000-daily"])
+            self.assertRegex(diff_facts["payload"]["content_sha1"], r"^[0-9a-f]{40}$")
+            self.assertEqual(diff_facts["payload"]["content_sha1"], diff_facts["payload"]["patches"][0]["content_sha1"])
             evidence_files = set(manifest["files"]["evidence"])
             self.assertIn("knowledge/evidence/source.json", evidence_files)
             self.assertIn("knowledge/evidence/project_inference.json", evidence_files)
             self.assertIn("knowledge/evidence/verification_result.json", evidence_files)
+
+    def test_blocked_patch_stays_blocked_without_becoming_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patch = root / "mtk15-frameworks-base@blocked-policy.patch"
+            patch.write_text(
+                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+                "--- a/frameworks/base/services/core/java/X.java\n"
+                "+++ b/frameworks/base/services/core/java/X.java\n"
+                "@@ -1 +1,2 @@\n"
+                "+//gyf 20260526@ blocked policy investigation\n",
+                encoding="utf-8",
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-130000-patch",
+                patch_paths=[str(patch)],
+                patch_package_paths=[],
+                project="TVE1234A",
+                summary="Blocked policy investigation",
+                status="blocked",
+                schema_version="1",
+            )
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            variant = json.loads((package / "knowledge" / "variant.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["maturity"], "blocked")
+            self.assertEqual(variant["status"], "blocked")
 
     def test_candidate_capture_package_does_not_become_validated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

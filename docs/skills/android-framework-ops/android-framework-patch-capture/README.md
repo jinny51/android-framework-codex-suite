@@ -16,6 +16,7 @@ Android Framework 补丁包生成 skill。
 - 阶段性修改需要作为 `draft/candidate`（草稿/候选）进入知识库，但必须带清楚的验证结果和风险说明。
 - 失败路径或阻塞路径有复用价值，需要作为 `failed/blocked` 证据进入知识库，避免别人重复踩坑。
 - 维护者或成员端 Codex 想把一个高价值补丁提交给 `android-knowledge-intake` 的 `patch` 模式。
+- 需要给服务器提供 patch 内容 `sha1`，让后续 incoming 合并时按内容去重，而不是按文件名或 run id 去重。
 
 ## 常用命令
 
@@ -27,7 +28,8 @@ python3 "scripts/capture_framework_patch.py" \
   --feature allow-powerkey-to-user \
   --summary "允许用户态控制电源键行为" \
   --status candidate \
-  --verification "framework 编译通过"
+  --verification "framework 编译通过" \
+  --related-report-run-id 20260601-210000-daily
 ```
 
 输出目录：

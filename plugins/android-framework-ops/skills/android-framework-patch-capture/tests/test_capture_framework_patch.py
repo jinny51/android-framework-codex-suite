@@ -104,6 +104,8 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "navigation policy toggle",
                     "--search-result",
                     "No reusable patch found",
+                    "--related-report-run-id",
+                    "20260601-210000-daily",
                 ],
                 root,
             )
@@ -122,6 +124,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(search["result"], "INFO")
             self.assertEqual(search["queries"], ["navigation policy toggle"])
             self.assertEqual(diff_facts["kind"], "patch_diff_facts")
+            self.assertRegex(diff_facts["content_sha1"], r"^[0-9a-f]{40}$")
             self.assertTrue(diff_facts["modified_files"])
             self.assertEqual(problem_inference["kind"], "patch_problem_inference")
             self.assertIn(problem_inference["confidence"], {"low", "medium", "high"})
@@ -134,6 +137,8 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("risk-surface", evidence_ids)
             self.assertIn("verification-result", evidence_ids)
             self.assertIn("search-before-change", evidence_ids)
+            self.assertRegex(manifest["patches"][0]["content_sha1"], r"^[0-9a-f]{40}$")
+            self.assertEqual(manifest["related_report_run_ids"], ["20260601-210000-daily"])
 
     def test_common_framework_paths_produce_specific_patch_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

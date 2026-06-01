@@ -21,6 +21,7 @@
 - 每天下班前，Codex 自动汇总当天会话、源码改动、候选 patch、失败路径、阻塞点和验证结果，生成 `pending`（待检查包）。
 - 成员在检查窗口内补充或修正内容；到点后自动提交到团队知识库 `incoming`。
 - Framework 修改满足条件时，成员端 Codex 自动通过 `patch-capture -> intake` 生成 `framework_change` incoming。
+- `framework_change` 会携带 patch 内容 `sha1`；如果明确来自某次日报或周报上下文，可显式携带 `related_report_run_ids`。
 - 维护者只想保存一个有价值补丁时，使用 `patch` 模式提交补丁包，不生成个人日报或周报。
 
 ## 常用命令
@@ -61,6 +62,12 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --s
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "TVE8402M" --summary "功能补丁摘要" --status validated
+```
+
+如果这个 Framework change 明确来自某次日报或周报自动化上下文，显式带上 run id，服务器会用它做确定性关联：
+
+```bash
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --summary "功能补丁摘要" --status candidate --related-report-run-id 20260601-210000-daily
 ```
 
 只有直接指定单个 patch 文件时才使用 `--patch /path/to/*.patch`。

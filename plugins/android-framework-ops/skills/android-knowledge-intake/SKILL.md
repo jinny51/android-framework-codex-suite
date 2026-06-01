@@ -15,6 +15,8 @@ Default policy: preserve automatically first, rank by maturity later. Lack of ma
 
 Use configuration profiles for identity. Global config stores server/path defaults; each `[profiles.<name>]` stores one member identity, worktree, git author, role, allowed modes, and optional test behavior. Prefer explicit `--profile <name>` in automations so a daily run cannot accidentally use the maintainer identity.
 
+Framework change incoming must carry deterministic merge anchors. Patch content `sha1` is emitted in `patch_diff_facts`; `related_report_run_ids` is used only when the daily/weekly run id is explicitly known. Do not create fuzzy report links on the member side.
+
 Synthetic profiles are for protocol and server testing only. Set `synthetic_data = true` for that temporary profile. In synthetic mode, `daily` and `weekly` generate random synthetic work items instead of reading real Codex sessions or source changes; `patch` can generate a synthetic framework_change package when no `--patch` is provided.
 
 ## Commands
@@ -44,6 +46,12 @@ Prepare a Framework change incoming package without generating a report:
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch /path/to/rk14-frameworks-base@feature.patch --project "TVE8402M" --summary "功能补丁摘要" --status candidate
+```
+
+Attach a known daily or weekly run explicitly:
+
+```bash
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --summary "功能补丁摘要" --status candidate --related-report-run-id 20260601-210000-daily
 ```
 
 When the patch was packaged by `android-framework-patch-capture`, submit the capture package directory so verification and pre-change search evidence are preserved:

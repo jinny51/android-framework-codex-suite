@@ -4,6 +4,18 @@ Member-side Codex submits only `incoming` packages. It does not write final know
 
 The server does not run Codex and must not be the main AI reasoning layer. Project inference, patch problem inference, risk, verification status, and search-before-change evidence are produced by member-side Codex.
 
+## Server Merge Anchors
+
+Member-side packages must provide enough deterministic anchors for the server to merge without AI inference:
+
+- package identity: `date + member_alias + run_id`
+- framework identity: `case_id` and `variant_id`
+- variant natural key: `case_id + platform + android_version + project + repo_paths`
+- patch identity: patch file content `sha1`
+- optional report link: `related_report_run_ids`
+
+The server may merge two framework_change packages into the same variant when the natural key matches, even when the incoming `variant_id` differs. The server must not downgrade a stronger mature variant just because a later package is `failed` or `blocked`; that later package is retained as evidence.
+
 ## Path
 
 ```text
@@ -16,6 +28,7 @@ Rules:
 - manifest date uses `YYYY-MM-DD`
 - `member_alias` in path must match manifest
 - `run_id` must start with `YYYYMMDD-HHMMSS`
+- package identity is `date + member_alias + run_id`
 - `schema_version` is internal and must not be used as a workflow name
 
 ## Common Manifest Fields
@@ -155,6 +168,7 @@ Manifest excerpt:
   "platform": "mtk",
   "android_version": "15",
   "project": "TVE8402M",
+  "related_report_run_ids": ["20260601-210000-daily"],
   "files": {
     "case": "knowledge/case.json",
     "variant": "knowledge/variant.json",
@@ -177,6 +191,24 @@ Manifest excerpt:
 `validated` requires `verification_result.payload.result = PASS`.
 
 `candidate`, `draft`, `failed`, and `blocked` may enter the knowledge base, but must not be presented as directly reusable validated solutions.
+
+`patch_diff_facts` should include the patch content hash. For a single patch, set top-level `content_sha1`; for multiple patches, fill `patches[]`:
+
+```json
+{
+  "kind": "patch_diff_facts",
+  "payload": {
+    "content_sha1": "40-hex-sha1-for-single-patch",
+    "patches": [
+      {
+        "path": "patches/mtk15-frameworks-base@feature.patch",
+        "content_sha1": "40-hex-sha1"
+      }
+    ],
+    "modified_files": ["frameworks/base/services/core/java/..."]
+  }
+}
+```
 
 ## Project Inference
 
