@@ -13,7 +13,7 @@ Ordinary members use `daily` and `weekly` automation as the baseline and use `pa
 
 Default policy: preserve automatically first, rank by maturity later. Lack of manual confirmation is not a reason to drop knowledge. Daily and weekly traces must preserve `work_findings`; Framework changes use `maturity` values `validated`, `candidate`, `draft`, `failed`, or `blocked`.
 
-Use configuration profiles for identity. Global config stores server/path defaults; each `[profiles.<name>]` stores one member identity, worktree, git author, role, allowed modes, and optional test behavior. Prefer explicit `--profile <name>` in automations so a daily run cannot accidentally use the maintainer identity.
+Use configuration profiles for identity. Global config stores server/path defaults; each `[profiles.<name>]` stores one member identity, worktree, git author, role, allowed modes, and optional test behavior. Prefer explicit `--profile <name>` in automations so a daily run cannot accidentally use an administrator identity.
 
 Framework change incoming must carry deterministic merge anchors. Patch content `sha1` is emitted in `patch_diff_facts`; `related_report_run_ids` is used only when the daily/weekly run id is explicitly known. Do not create fuzzy report links on the member side.
 
@@ -63,7 +63,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 Submit the latest prepared patch package:
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile jinny patch --submit-latest
+python3 "scripts/android_knowledge_intake.py" --profile admin_alias patch --submit-latest
 ```
 
 Check configuration:

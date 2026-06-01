@@ -2672,7 +2672,7 @@ def doctor(config: dict[str, str], loaded: list[Path]) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate and submit Codex team knowledge incoming packages.")
-    parser.add_argument("--profile", help="profile name from config, for example jinny or member_alias")
+    parser.add_argument("--profile", help="profile name from config, for example admin_alias or member_alias")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     doctor_parser = subparsers.add_parser("doctor")

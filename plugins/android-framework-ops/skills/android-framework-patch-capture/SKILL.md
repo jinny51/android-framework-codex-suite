@@ -55,7 +55,7 @@ search-before-change, verification, and package-check evidence are preserved:
 
 ```bash
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" \
-  --profile jinny patch --prepare \
+  --profile admin_alias patch --prepare \
   --patch-package .codex/patch-packages/<run-id>/ \
   --project "TVE8402M" \
   --summary "补丁摘要" \

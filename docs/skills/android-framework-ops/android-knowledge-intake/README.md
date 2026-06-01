@@ -10,7 +10,7 @@
 
 成员端 Codex 是知识生成主体。它负责从会话、git、patch 和验证记录里整理知识资产；服务器收到 `incoming` 后只做验收、归档、索引和展示。
 
-普通成员使用 `daily/weekly` 自动化作为保底沉淀；完成或阶段性完成 Framework 修改时，通过 `patch` 模式生成 `framework_change` incoming。维护者 `jinny/吴金雨` 只在需要手动保存有价值补丁时使用 `patch` 模式，不生成日报或周报。
+普通成员使用 `daily/weekly` 自动化作为保底沉淀；完成或阶段性完成 Framework 修改时，通过 `patch` 模式生成 `framework_change` incoming。管理员 profile 只在需要手动保存有价值补丁时使用 `patch` 模式，不生成个人日报或周报。
 
 默认策略是先自动沉淀，再按成熟度排序。没有人工确认不等于丢弃；不满足 `validated` 时也应尽量按 `candidate`、`draft`、`failed` 或 `blocked` 保存证据。
 
@@ -22,7 +22,7 @@
 - 成员在检查窗口内补充或修正内容；到点后自动提交到团队知识库 `incoming`。
 - Framework 修改满足条件时，成员端 Codex 自动通过 `patch-capture -> intake` 生成 `framework_change` incoming。
 - `framework_change` 会携带 patch 内容 `sha1`；如果明确来自某次日报或周报上下文，可显式携带 `related_report_run_ids`。
-- 维护者只想保存一个有价值补丁时，使用 `patch` 模式提交补丁包，不生成个人日报或周报。
+- 管理员只想保存一个有价值补丁时，使用 `patch` 模式提交补丁包，不生成个人日报或周报。
 
 ## 常用命令
 
@@ -72,7 +72,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 
 只有直接指定单个 patch 文件时才使用 `--patch /path/to/*.patch`。
 
-维护者需要验证协议和服务器链路时，才使用临时合成测试 profile。普通成员不要用测试 profile 提交日报、周报或 patch。
+管理员需要验证协议和服务器链路时，才使用临时合成测试 profile。普通成员不要用测试 profile 提交日报、周报或 patch。
 
 ## 文件入口
 
@@ -81,4 +81,4 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 - [references/incoming-package-protocol.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/incoming-package-protocol.md)：`incoming` 提交目录规则。
 - [references/patch-maturity-rules.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/patch-maturity-rules.md)：补丁成熟度和上传策略。
 - [references/android-framework-patch-rules.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/android-framework-patch-rules.md)：Android Framework patch 规范。
-- [scripts/android_knowledge_intake.py](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py)：日报、周报、维护者补丁包生成和提交脚本。
+- [scripts/android_knowledge_intake.py](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py)：日报、周报、管理员补丁包生成和提交脚本。

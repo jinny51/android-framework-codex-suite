@@ -101,8 +101,8 @@ def create_capture_package(root: Path, status: str = "validated", related_report
 class PatchCaptureIngestTests(unittest.TestCase):
     def config(self, root: Path) -> dict[str, str]:
         return {
-            "member_alias": "jinny",
-            "member_name": "吴金雨",
+            "member_alias": "admin_alias",
+            "member_name": "管理员姓名",
             "out_dir": str(root / "out"),
             "repo_url": "test35:/home/test35/work/knowledge/remote.git",
             "max_attachment_mb": "5",
@@ -133,7 +133,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(manifest["schema"], "knowledge-incoming-package")
             self.assertEqual(manifest["schema_version"], "1")
             self.assertEqual(manifest["package_kind"], "framework_change")
-            self.assertEqual(manifest["member_alias"], "jinny")
+            self.assertEqual(manifest["member_alias"], "admin_alias")
             self.assertEqual(manifest["maturity"], "validated")
             self.assertEqual(manifest["platform"], "rk")
             self.assertEqual(manifest["android_version"], "14")

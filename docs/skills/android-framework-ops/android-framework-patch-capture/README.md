@@ -15,7 +15,7 @@ Android Framework 补丁包生成 skill。
 - Framework 需求已经完成，需要生成可以保存到知识库、可以搜索、方便以后判断能不能复用的补丁包。
 - 阶段性修改需要作为 `draft/candidate`（草稿/候选）进入知识库，但必须带清楚的验证结果和风险说明。
 - 失败路径或阻塞路径有复用价值，需要作为 `failed/blocked` 证据进入知识库，避免别人重复踩坑。
-- 维护者或成员端 Codex 想把一个高价值补丁提交给 `android-knowledge-intake` 的 `patch` 模式。
+- 管理员或成员端 Codex 想把一个高价值补丁提交给 `android-knowledge-intake` 的 `patch` 模式。
 - 需要给服务器提供 patch 内容 `sha1`，让后续 incoming 合并时按内容去重，而不是按文件名或 run id 去重。
 
 ## 常用命令
