@@ -212,6 +212,19 @@ class PatchCaptureIngestTests(unittest.TestCase):
         self.assertIn("相机行为", risk["risk_areas"])
         self.assertIn("产品配置/预置应用", risk["risk_areas"])
 
+    def test_project_inference_keeps_full_model_and_base_model(self) -> None:
+        project, payload = intake.infer_project(
+            "unknown",
+            [{"project": "TVE1067M1_H031", "path": "patches/mtk16-settings@lockscreen.patch"}],
+            [],
+            "",
+        )
+
+        self.assertEqual(project, "TVE1067M1_H031")
+        self.assertEqual(payload["base_model"], "TVE1067M")
+        self.assertEqual(payload["suffix"], "1_H031")
+        self.assertTrue(payload["company_rule_match"])
+
 
 if __name__ == "__main__":
     unittest.main()

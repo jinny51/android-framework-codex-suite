@@ -26,7 +26,7 @@ INCOMING_SCHEMA_VERSION = "1"
 ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
 PATCH_FILENAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
-PROJECT_MODEL_RE = re.compile(r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{5}(?:_[A-Z0-9]+)?(?![A-Z0-9])", re.I)
+PROJECT_MODEL_RE = re.compile(r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{5}(?:[A-Z0-9_]+)?(?![A-Z0-9])", re.I)
 BANNED_LOG_PATTERNS = ("Log.d(", "Log.i(", "Log.w(", "Slog.d(", "Slog.i(", "Slog.w(")
 REPORT_HEADINGS = {
     "daily": ("今日概览", "项目事项"),
