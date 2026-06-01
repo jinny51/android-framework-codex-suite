@@ -679,6 +679,49 @@ def progress_for_session(work: SessionWork, has_patch: bool) -> str:
     return "已产出 Patch" if has_patch else "进行中"
 
 
+def work_finding_for_session(session: SessionWork) -> dict[str, Any]:
+    text = " ".join([session.thread_name, session.cwd, *session.messages]).lower()
+    blocked = any(word in text for word in ("失败", "报错", "未解决", "阻塞", "blocked", "fail"))
+    framework_like = any(
+        token in text
+        for token in (
+            "framework",
+            "frameworks/base",
+            "systemui",
+            "launcher",
+            "settings",
+            "patch",
+            "补丁",
+            "修复",
+            "验证",
+        )
+    )
+    if blocked:
+        maturity = "blocked"
+    elif framework_like:
+        maturity = "candidate"
+    else:
+        maturity = "draft"
+    basis = [session.thread_name or session.session_id]
+    if session.cwd:
+        basis.append(f"工作目录: {session.cwd}")
+    basis.extend(session.messages[:3])
+    missing_evidence = []
+    if framework_like:
+        missing_evidence.append("需要 patch-capture 判断是否可升级为 framework_change")
+    else:
+        missing_evidence.append("未识别到可直接归档的 Framework patch")
+    return {
+        "title": summarize_session(session),
+        "kind": "possible_framework_change" if framework_like else "work_record",
+        "maturity": maturity,
+        "project": session.project,
+        "basis": basis,
+        "missing_evidence": missing_evidence,
+        "recommended_action": "补齐 diff、构建或验证证据后再判断是否升级为 framework_change",
+    }
+
+
 def discover_patches(config: dict[str, str], sessions: list[SessionWork], start: dt.date, end: dt.date) -> list[PatchInfo]:
     if not parse_bool(config.get("include_patches", "true")):
         return []
@@ -2075,10 +2118,29 @@ def aggregate_patch_diff_facts(patch_items: list[dict[str, Any]]) -> dict[str, A
 def work_findings_payload(sessions: list[SessionWork], patches: list[PatchInfo]) -> dict[str, Any]:
     items: list[dict[str, Any]] = []
     blocked_or_failed: list[dict[str, Any]] = []
+    seen_titles: set[str] = set()
+    for session in sessions:
+        item = work_finding_for_session(session)
+        title = str(item.get("title", ""))
+        if title and title not in seen_titles:
+            seen_titles.add(title)
+            items.append(item)
+        if item.get("maturity") == "blocked":
+            blocked_or_failed.append(
+                {
+                    "title": title,
+                    "maturity": "blocked",
+                    "basis": item.get("basis", []),
+                }
+            )
     for patch in patches:
+        title = patch.name
+        if title in seen_titles:
+            continue
+        seen_titles.add(title)
         items.append(
             {
-                "title": patch.name,
+                "title": title,
                 "kind": "possible_framework_change",
                 "maturity": "candidate",
                 "basis": [f"发现 patch 文件: {patch.name}", f"项目线索: {patch.project}"],
@@ -2086,16 +2148,6 @@ def work_findings_payload(sessions: list[SessionWork], patches: list[PatchInfo])
                 "recommended_action": "满足验证条件后升级为 framework_change",
             }
         )
-    for session in sessions:
-        text = " ".join([session.thread_name, *session.messages])
-        if any(word in text for word in ("失败", "报错", "未解决", "阻塞", "blocked", "fail")):
-            blocked_or_failed.append(
-                {
-                    "title": summarize_session(session),
-                    "maturity": "blocked",
-                    "basis": [session.thread_name or session.session_id],
-                }
-            )
     return {
         "scanned_sources": ["codex_sessions", "git_activity", "patch_files", "build_or_verification_records"],
         "items": items,

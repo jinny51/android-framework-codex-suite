@@ -267,9 +267,17 @@ class MemberAutomationFlowTests(unittest.TestCase):
             weekly_manifest = json.loads((weekly_package / "manifest.json").read_text(encoding="utf-8"))
             patch_manifest = json.loads((patch_package / "manifest.json").read_text(encoding="utf-8"))
             patch_project = json.loads((patch_package / "knowledge" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
+            daily_findings = json.loads((daily_package / "knowledge" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
+            weekly_findings = json.loads((weekly_package / "knowledge" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
 
             self.assertEqual(daily_manifest["package_kind"], "daily_trace")
             self.assertEqual(weekly_manifest["package_kind"], "weekly_trace")
+            for findings in (daily_findings, weekly_findings):
+                self.assertIn("codex_sessions", findings["payload"]["scanned_sources"])
+                self.assertGreaterEqual(len(findings["payload"]["items"]), 1)
+                self.assertTrue(
+                    any(item["kind"] in {"work_record", "possible_framework_change"} for item in findings["payload"]["items"])
+                )
             self.assertEqual(patch_manifest["package_kind"], "framework_change")
             self.assertEqual(patch_manifest["maturity"], "validated")
             self.assertEqual(patch_manifest["platform"], "mtk")
