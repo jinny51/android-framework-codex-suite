@@ -1109,9 +1109,30 @@ def source_metadata(config: dict[str, str], skill: str) -> dict[str, Any]:
 
 
 def write_package_source(package_dir: Path, config: dict[str, str], skill: str) -> dict[str, Any]:
-    source = source_metadata(config, skill)
+    source = {
+        **source_metadata(config, skill),
+        "package_path": str(package_dir),
+        "manifest_path": str(package_dir / "manifest.json"),
+    }
     write_json(package_dir / "knowledge" / "evidence" / "source.json", {"kind": "source", "payload": source})
     return source
+
+
+def bind_framework_evidence(package_dir: Path, rel: str, case_id: str, variant_id: str) -> None:
+    path = package_dir / rel
+    if not path.is_file():
+        return
+    payload = read_json_file(path)
+    payload["case_id"] = case_id
+    payload["variant_id"] = variant_id
+    if payload.get("kind") == "source":
+        source_payload = payload.get("payload")
+        if not isinstance(source_payload, dict):
+            source_payload = {}
+        source_payload.setdefault("package_path", str(package_dir))
+        source_payload.setdefault("manifest_path", str(package_dir / "manifest.json"))
+        payload["payload"] = source_payload
+    write_json(path, payload)
 
 
 def incoming_report_manifest(
@@ -1563,6 +1584,16 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
                 if not variant.get(field):
                     errors.append(f"variant 缺少 {field}")
         evidence_by_kind = load_evidence(evidence_paths)
+        for rel in evidence_paths:
+            if not isinstance(rel, str):
+                continue
+            evidence = read_referenced_json(package_dir, rel)
+            if not isinstance(evidence, dict):
+                continue
+            if evidence.get("case_id") != manifest.get("case_id"):
+                errors.append(f"{rel} evidence.case_id 必须等于 manifest.case_id")
+            if evidence.get("variant_id") != manifest.get("variant_id"):
+                errors.append(f"{rel} evidence.variant_id 必须等于 manifest.variant_id")
         for kind in FRAMEWORK_REQUIRED_EVIDENCE_KINDS:
             if kind not in evidence_by_kind:
                 errors.append(f"framework_change 缺少 {kind} evidence")
@@ -2532,6 +2563,8 @@ def prepare_patch_package(
     }
     if all_related_report_run_ids:
         manifest["related_report_run_ids"] = all_related_report_run_ids
+    for evidence_rel in manifest["files"]["evidence"]:
+        bind_framework_evidence(package_dir, evidence_rel, case_id, variant_id)
     write_json(package_dir / "manifest.json", manifest)
     check = validate_package(package_dir)
     write_json(package_dir / "local-check.json", check)

@@ -82,7 +82,7 @@ Recommended member-side automations:
 - Saturday 22:00 weekly prepare.
 - Saturday 22:30 weekly submit.
 
-Framework change submission is automatic when the member-side Codex can identify a clean change, enough evidence, and a safe maturity level. If validation evidence is missing, submit as `candidate` or `draft`; do not discard the work. Maintainer patch contribution remains manual by default.
+Framework change submission is automatic when the member-side Codex can identify a clean change, enough evidence, and a safe maturity level. If validation evidence is missing, submit as `candidate` or `draft`; do not discard the work. Administrator patch contribution remains manual by default.
 
 Prefer `--patch-package` for Framework changes packaged by `android-framework-patch-capture`; it carries patch, readme, verification evidence, and pre-change knowledge search evidence together. Use `--patch` only when directly packaging a single patch file into the current incoming protocol.
 

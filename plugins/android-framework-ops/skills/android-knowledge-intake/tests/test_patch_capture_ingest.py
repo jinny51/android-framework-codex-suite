@@ -128,6 +128,9 @@ class PatchCaptureIngestTests(unittest.TestCase):
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
             check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
             diff_facts = json.loads((package / "knowledge" / "evidence" / "patch_diff_facts.json").read_text(encoding="utf-8"))
+            source = json.loads((package / "knowledge" / "evidence" / "source.json").read_text(encoding="utf-8"))
+            problem = json.loads((package / "knowledge" / "evidence" / "capture" / "capture-patch-problem-inference.json").read_text(encoding="utf-8"))
+            risk = json.loads((package / "knowledge" / "evidence" / "capture" / "capture-risk-surface.json").read_text(encoding="utf-8"))
 
             self.assertEqual(check["status"], "PASS")
             self.assertEqual(manifest["schema"], "knowledge-incoming-package")
@@ -140,6 +143,11 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(manifest["related_report_run_ids"], ["20260601-210000-daily"])
             self.assertRegex(diff_facts["payload"]["content_sha1"], r"^[0-9a-f]{40}$")
             self.assertEqual(diff_facts["payload"]["content_sha1"], diff_facts["payload"]["patches"][0]["content_sha1"])
+            for evidence in (source, problem, risk):
+                self.assertEqual(evidence["case_id"], manifest["case_id"])
+                self.assertEqual(evidence["variant_id"], manifest["variant_id"])
+            self.assertIn("package_path", source["payload"])
+            self.assertIn("manifest_path", source["payload"])
             evidence_files = set(manifest["files"]["evidence"])
             self.assertIn("knowledge/evidence/source.json", evidence_files)
             self.assertIn("knowledge/evidence/project_inference.json", evidence_files)
