@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import sys
 import tempfile
@@ -11,6 +12,16 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import android_knowledge_search as search
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def write_jsonl(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows), encoding="utf-8")
 
 
 class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
@@ -100,6 +111,71 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
 
         self.assertIn("[event]", text)
         self.assertIn("[evidence]", text)
+
+    def test_current_rebuild_case_and_variant_indexes_are_searchable(self):
+        root = Path(tempfile.mkdtemp())
+        write_jsonl(
+            root / "index" / "case-index.jsonl",
+            [
+                {
+                    "case_id": "case-volume-dialog",
+                    "title": "通知音量弹窗位置适配",
+                    "problem": "通知音量弹窗位置不符合项目要求",
+                    "solution_summary": "调整 SystemUI 音量弹窗位置策略",
+                    "variant_ids": ["variant-mtk15-tve8402m-volume-dialog"],
+                    "source_priority": 100,
+                }
+            ],
+        )
+        write_jsonl(
+            root / "index" / "variant-index.jsonl",
+            [
+                {
+                    "variant_id": "variant-mtk15-tve8402m-volume-dialog",
+                    "case_id": "case-volume-dialog",
+                    "platform": "mtk",
+                    "android_version": "15",
+                    "project": "TVE8402M",
+                    "repo_paths": ["vendor/mediatek/proprietary/packages/apps/SystemUI"],
+                    "modified_files": ["src/com/android/systemui/volume/VolumeDialogImpl.java"],
+                    "patch_ids": ["patch-abc"],
+                    "report_ids": ["report-daily"],
+                    "status": "candidate",
+                    "verification": {"status": "missing", "method": "not_provided", "summary": "未提供验证证据"},
+                }
+            ],
+        )
+        write_jsonl(root / "index" / "evidence-index.jsonl", [])
+        write_jsonl(root / "index" / "symbol-index.jsonl", [])
+        write_json(
+            root / "patches" / "by-id" / "patch-abc" / "patch.json",
+            {
+                "patch_id": "patch-abc",
+                "case_id": "case-volume-dialog",
+                "variant_id": "variant-mtk15-tve8402m-volume-dialog",
+                "patch_name": "mtk15-systemui@volume-dialog-position.patch",
+                "repo_paths": ["vendor/mediatek/proprietary/packages/apps/SystemUI"],
+                "modified_files": ["src/com/android/systemui/volume/VolumeDialogImpl.java"],
+                "status": "candidate",
+            },
+        )
+
+        rows = search.load_rows(root)
+        kinds = {row["kind"] for row in rows}
+        self.assertIn("case", kinds)
+        self.assertIn("variant", kinds)
+        self.assertIn("patch", kinds)
+
+        case_results = search.search(rows, "通知音量 SystemUI", "case", 5, include_synthetic=False)
+        variant_results = search.search(rows, "TVE8402M VolumeDialogImpl", "variant", 5, include_synthetic=False)
+        patch_results = search.search(rows, "volume-dialog-position", "patch", 5, include_synthetic=False)
+        text = search.format_markdown(root, "TVE8402M VolumeDialogImpl", variant_results, None)
+
+        self.assertEqual(case_results[0]["case_id"], "case-volume-dialog")
+        self.assertEqual(variant_results[0]["variant_id"], "variant-mtk15-tve8402m-volume-dialog")
+        self.assertEqual(patch_results[0]["patch_id"], "patch-abc")
+        self.assertIn("[variant]", text)
+        self.assertIn("平台/Android/项目", text)
 
     def test_patch_analysis_fields_are_searchable_and_formatted(self):
         root = Path(tempfile.mkdtemp())

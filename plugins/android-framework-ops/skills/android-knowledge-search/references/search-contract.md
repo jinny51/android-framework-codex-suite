@@ -6,18 +6,19 @@ Search reads generated knowledge indexes from a knowledge repository worktree:
 
 ```text
 index/
-├── knowledge.sqlite
-├── patch-index.jsonl
-├── report-index.jsonl
+├── case-index.jsonl
+├── variant-index.jsonl
 ├── symbol-index.jsonl
-├── knowledge-event-index.jsonl
+├── search-docs.jsonl
 └── evidence-index.jsonl
 ```
 
-`knowledge.sqlite` is preferred because it keeps reports, patches, report items, search anchors, archived records, and evidence in one structured file. JSONL files are the fallback for read-only or partially generated repositories.
+Current rebuilt repositories are case/variant first. `case-index.jsonl` and `variant-index.jsonl` are the primary search sources. Older `knowledge.sqlite`, `patch-index.jsonl`, and `report-index.jsonl` are still readable as fallback formats for older local test data.
 
 ## Result Types
 
+- `case`: primary Android Framework problem, requirement, or engineering scenario.
+- `variant`: one implementation for a platform, Android version, project, branch, source tree, repo path, patch list, reports, and verification status.
 - `patch`: archived patch assets, readme path, status hints, modified files, modules, search anchors, patch-derived explanation, validation notes, and rollback hint.
 - `report`: member daily or weekly report entries and report item summaries.
 - `symbol`: reverse index from modified files, SystemProperties, Settings keys, string/resource keys, FrameworkLog keys, modules, and patch-derived anchors to patch IDs.
@@ -72,13 +73,13 @@ Use these leads for reuse analysis, not as final conclusions.
 The CLI must support:
 
 ```text
-android_knowledge_search.py <query> [--root PATH] [--type all|patch|report|symbol] [--limit N] [--json] [--refresh]
+android_knowledge_search.py <query> [--root PATH] [--type all|case|variant|patch|report|symbol|event|evidence] [--limit N] [--json] [--refresh]
 ```
 
 Full type filter:
 
 ```text
---type all|patch|report|symbol|event|evidence
+--type all|case|variant|patch|report|symbol|event|evidence
 ```
 
 Markdown output is for humans and Codex final reports. JSON output is for other scripts or workflows.

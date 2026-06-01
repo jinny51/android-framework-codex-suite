@@ -14,9 +14,12 @@ from typing import Any
 
 ROOT_MARKERS = (
     Path("index") / "knowledge.sqlite",
+    Path("index") / "case-index.jsonl",
+    Path("index") / "variant-index.jsonl",
     Path("index") / "patch-index.jsonl",
     Path("index") / "report-index.jsonl",
     Path("index") / "symbol-index.jsonl",
+    Path("index") / "search-docs.jsonl",
 )
 
 
@@ -185,6 +188,7 @@ def sqlite_tables(db_path: Path) -> set[str]:
 def evidence_row(item: dict[str, Any]) -> dict[str, Any]:
     row = dict(item)
     row["evidence_kind"] = row.pop("kind", "")
+    row["id"] = row.get("id") or row.get("evidence_id") or ""
     row["payload"] = parse_json(row.get("payload"), {})
     row["kind"] = "evidence"
     return row
@@ -253,16 +257,30 @@ def load_from_sqlite(root: Path) -> list[dict[str, Any]]:
 
 def load_from_jsonl(root: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    for item in read_jsonl(root / "index" / "case-index.jsonl"):
+        rows.append({"kind": "case", "id": item.get("case_id", ""), **item})
+    for item in read_jsonl(root / "index" / "variant-index.jsonl"):
+        rows.append({"kind": "variant", "id": item.get("variant_id", ""), **item})
     for item in read_jsonl(root / "index" / "patch-index.jsonl"):
         rows.append({"kind": "patch", **item})
     for item in read_jsonl(root / "index" / "report-index.jsonl"):
         rows.append({"kind": "report", **item})
     for item in read_jsonl(root / "index" / "symbol-index.jsonl"):
-        rows.append({"kind": "symbol", **item})
+        rows.append({"kind": "symbol", "id": item.get("symbol_id", ""), "symbol": item.get("value", ""), **item})
     for item in read_jsonl(root / "index" / "knowledge-event-index.jsonl"):
         rows.append({"kind": "event", **item})
     for item in read_jsonl(root / "index" / "evidence-index.jsonl"):
         rows.append(evidence_row(item))
+    if not any(row.get("kind") == "patch" for row in rows):
+        for path in sorted(root.glob("patches/by-id/*/patch.json")):
+            item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
+            if isinstance(item, dict):
+                rows.append({"kind": "patch", "id": item.get("patch_id", ""), "path": str(path.relative_to(root)), **item})
+    if not any(row.get("kind") == "report" for row in rows):
+        for path in sorted(root.glob("reports/by-id/*.json")):
+            item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
+            if isinstance(item, dict):
+                rows.append({"kind": "report", "id": item.get("report_id", ""), "path": str(path.relative_to(root)), **item})
     return rows
 
 
@@ -285,17 +303,34 @@ def row_text(row: dict[str, Any]) -> str:
     keys = [
         "id",
         "type",
+        "case_id",
+        "variant_id",
+        "variant_ids",
+        "report_ids",
         "title",
+        "problem",
+        "requirement_or_symptom",
+        "solution_summary",
+        "implementation_scope",
         "summary",
+        "text",
         "overview",
         "author",
+        "member_alias",
+        "member_name",
         "project",
         "scope",
         "platform",
         "android_version",
+        "repo_paths",
         "repo_path",
+        "branch",
+        "source_tree",
         "feature_slug",
         "original_patch_name",
+        "patch_name",
+        "patch_names",
+        "content_sha1",
         "filename_confidence",
         "module",
         "status",
@@ -329,6 +364,7 @@ def row_text(row: dict[str, Any]) -> str:
         "symbol",
         "path",
         "patch_id",
+        "patch_ids",
         "items",
         "payload",
         "package_id",
@@ -347,13 +383,20 @@ def score_row(row: dict[str, Any], terms: list[str]) -> tuple[int, list[str]]:
     weighted_fields = [
         (8, "title"),
         (8, "summary"),
+        (8, "problem"),
+        (8, "requirement_or_symptom"),
+        (8, "solution_summary"),
+        (8, "implementation_scope"),
+        (8, "text"),
         (8, "feature_slug"),
         (8, "repo_path"),
+        (8, "repo_paths"),
         (8, "summary"),
         (7, "scope"),
         (7, "symbol"),
         (7, "maturity"),
         (6, "modified_files"),
+        (6, "patch_ids"),
         (6, "modules"),
         (6, "inferred_keywords"),
         (6, "inferred_problem"),
@@ -369,6 +412,8 @@ def score_row(row: dict[str, Any], terms: list[str]) -> tuple[int, list[str]]:
         (3, "project"),
         (3, "original_patch_name"),
         (3, "id"),
+        (3, "case_id"),
+        (3, "variant_id"),
         (2, "author"),
         (2, "status"),
         (2, "result"),
@@ -413,7 +458,14 @@ def search(rows: list[dict[str, Any]], q: str, result_type: str, limit: int, inc
         normalized["_score"] = score
         normalized["_matched_terms"] = matched
         results.append(normalized)
-    results.sort(key=lambda item: (int(item.get("_score", 0)), result_date(item), str(item.get("id") or item.get("patch_id") or "")), reverse=True)
+    results.sort(
+        key=lambda item: (
+            int(item.get("_score", 0)),
+            result_date(item),
+            str(item.get("id") or item.get("case_id") or item.get("variant_id") or item.get("patch_id") or ""),
+        ),
+        reverse=True,
+    )
     return results[:limit]
 
 
@@ -505,11 +557,57 @@ def localized_analysis_text(value: str) -> str:
     return raw
 
 
+def format_case(root: Path, row: dict[str, Any], index: int) -> str:
+    title = row.get("title") or row.get("case_id") or row.get("id") or "(case)"
+    lines = [
+        f"{index}. [case] {title}",
+        f"   - id: {row.get('case_id') or row.get('id', '')}",
+    ]
+    if row.get("problem") or row.get("requirement_or_symptom"):
+        lines.append(f"   - 问题/需求: {row.get('problem') or row.get('requirement_or_symptom')}")
+    if row.get("solution_summary"):
+        lines.append(f"   - 方案摘要: {row.get('solution_summary')}")
+    if row.get("variant_ids"):
+        lines.append(f"   - variants: {compact_list(row.get('variant_ids'), 6)}")
+    if row.get("source_priority"):
+        lines.append(f"   - source_priority: {row.get('source_priority')}")
+    if row.get("_matched_terms"):
+        lines.append(f"   - matched: {', '.join(row.get('_matched_terms', []))}")
+    return "\n".join(lines)
+
+
+def format_variant(root: Path, row: dict[str, Any], index: int) -> str:
+    title = row.get("implementation_scope") or row.get("variant_id") or row.get("id") or "(variant)"
+    lines = [
+        f"{index}. [variant] {title}",
+        f"   - id: {row.get('variant_id') or row.get('id', '')}",
+        f"   - case/status: {row.get('case_id', '')} / {row.get('status', '')}",
+    ]
+    lines.append(
+        "   - 平台/Android/项目: "
+        f"{row.get('platform') or 'unknown'} / {row.get('android_version') or 'unknown'} / {row.get('project') or 'unknown'}"
+    )
+    if row.get("repo_paths"):
+        lines.append(f"   - 仓库路径: {compact_list(row.get('repo_paths'), 6)}")
+    if row.get("modified_files"):
+        lines.append(f"   - 修改文件: {compact_list(row.get('modified_files'), 6)}")
+    if row.get("patch_ids"):
+        lines.append(f"   - patches: {compact_list(row.get('patch_ids'), 6)}")
+    verification = row.get("verification") if isinstance(row.get("verification"), dict) else {}
+    if verification:
+        lines.append(f"   - 验证: {verification.get('status', '')} / {verification.get('method', '')} / {verification.get('summary', '')}")
+    if row.get("report_ids"):
+        lines.append(f"   - reports: {compact_list(row.get('report_ids'), 6)}")
+    if row.get("_matched_terms"):
+        lines.append(f"   - matched: {', '.join(row.get('_matched_terms', []))}")
+    return "\n".join(lines)
+
+
 def format_patch(root: Path, row: dict[str, Any], index: int) -> str:
-    title = row.get("title") or row.get("summary") or row.get("id") or "(untitled patch)"
+    title = row.get("title") or row.get("summary") or row.get("patch_name") or row.get("id") or row.get("patch_id") or "(untitled patch)"
     lines = [
         f"{index}. [patch] {title}",
-        f"   - id: {row.get('id', '')}",
+        f"   - id: {row.get('id') or row.get('patch_id', '')}",
         f"   - author/date/status: {row.get('author', '')} / {result_date(row)} / {row.get('status', '') or 'unknown'}",
     ]
     if row.get("project"):
@@ -557,6 +655,8 @@ def format_patch(root: Path, row: dict[str, Any], index: int) -> str:
         patch_files = parse_json(row.get("patch_files"), [])
         if patch_files:
             lines.append(f"   - patch: {rel_or_empty(root, patch_files[0])}")
+    elif row.get("path"):
+        lines.append(f"   - patch: {rel_or_empty(root, Path(str(row.get('path'))).parent / 'patch.patch')}")
     if row.get("_matched_terms"):
         lines.append(f"   - matched: {', '.join(row.get('_matched_terms', []))}")
     return "\n".join(lines)
@@ -644,7 +744,11 @@ def format_markdown(root: Path, q: str, results: list[dict[str, Any]], refresh_s
 
     for index, row in enumerate(results, start=1):
         kind = row.get("kind")
-        if kind == "patch":
+        if kind == "case":
+            lines.append(format_case(root, row, index))
+        elif kind == "variant":
+            lines.append(format_variant(root, row, index))
+        elif kind == "patch":
             lines.append(format_patch(root, row, index))
         elif kind == "report":
             lines.append(format_report(root, row, index))
@@ -664,7 +768,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Search the Codex team knowledge repository.")
     parser.add_argument("query", nargs="*", help="Search terms. Use spaces to combine feature words, files, symbols, or project names.")
     parser.add_argument("--root", help="Knowledge repository worktree path.")
-    parser.add_argument("--type", choices=["all", "patch", "report", "symbol", "event", "evidence"], default="all", help="Result type filter.")
+    parser.add_argument("--type", choices=["all", "case", "variant", "patch", "report", "symbol", "event", "evidence"], default="all", help="Result type filter.")
     parser.add_argument("--limit", type=int, default=8, help="Maximum result count.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     parser.add_argument("--refresh", action="store_true", help="Run git pull --ff-only first when root is a clean Git worktree.")

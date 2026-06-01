@@ -34,6 +34,18 @@ python3 "scripts/android_knowledge_search.py" \
   --type patch
 ```
 
+只搜主案例或平台实现：
+
+```bash
+python3 "scripts/android_knowledge_search.py" \
+  "通知音量 SystemUI" \
+  --type case
+
+python3 "scripts/android_knowledge_search.py" \
+  "TVE8402M VolumeDialogImpl" \
+  --type variant
+```
+
 只搜归档记录或验证证据：
 
 ```bash

@@ -20,6 +20,14 @@ python3 "scripts/android_knowledge_search.py" \
 Useful variants:
 
 ```bash
+# Search primary cases.
+python3 "scripts/android_knowledge_search.py" \
+  "通知音量 SystemUI" --type case
+
+# Search platform/project implementations.
+python3 "scripts/android_knowledge_search.py" \
+  "TVE8402M VolumeDialogImpl" --type variant
+
 # Search only patch assets.
 python3 "scripts/android_knowledge_search.py" \
   "persist.sys launcher" --type patch
@@ -52,8 +60,9 @@ When handling a new Android Framework requirement:
 1. Search with feature words, affected module, likely class name, property key, Settings key, resource key, search anchor, and artifact name.
 2. Read the top matching patch readme or report before deciding whether to reuse.
 3. Treat `status`, `reusable`, platform, and validation fields as hints, not truth.
-4. Compare facts: modified files, touched symbols, artifact, risk notes, build evidence, device verification, rollback path.
-5. If a prior patch looks relevant, report the evidence and remaining uncertainty before applying or adapting it.
+4. Prefer case and variant results first; then inspect related patches, reports, evidence, and symbols.
+5. Compare facts: modified files, touched symbols, artifact, risk notes, build evidence, device verification, rollback path.
+6. If a prior patch looks relevant, report the evidence and remaining uncertainty before applying or adapting it.
 
 For `android-framework-change-workflow`, this is the pre-analysis search gate. Search first; if no useful result exists, continue with normal requirement analysis and implementation.
 
