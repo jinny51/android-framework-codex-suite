@@ -56,7 +56,7 @@ Windows 原生 Codex 场景不属于团队默认主链路。确实需要 SMB/UNC
 
 | Skill | 会在服务器源码树上执行的典型命令 |
 | --- | --- |
-| `android-knowledge-search` | 通常不在服务器源码树执行命令，只读取知识库 `index/knowledge.sqlite` 或 `index/*.jsonl` |
+| `android-knowledge-search` | 通常不在服务器源码树执行命令，只读取当前知识库 JSONL 索引和权威对象目录 |
 | `android-framework-change-workflow` | `rg`, `sed`, `git diff`, `git status`，以及必要的源码修改或调试日志/监控 |
 | `android-framework-patch-capture` | `git status`, `git diff HEAD`，读取变更并生成 patch、说明和 evidence 文件 |
 | `android-wsl-remote-build-deploy` | `git status`, `repo status`, `.codex/build-push.sh plan/build`, `.codex/build-session.sh` 中的构建封装 |
