@@ -48,6 +48,7 @@ FRAMEWORK_REQUIRED_EVIDENCE_KINDS = {
     "verification_result",
     "search_before_change",
 }
+FRAMEWORK_OPTIONAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
 INFERENCE_EVIDENCE_KINDS = {"patch_problem_inference", "risk_surface"}
 REQUIRED_PATCH_EXPLANATION_KINDS = {"patch_problem_inference", "risk_surface"}
 EVIDENCE_CONFIDENCE_VALUES = {"low", "medium", "high"}
@@ -1158,17 +1159,11 @@ def source_metadata(config: dict[str, str], skill: str) -> dict[str, Any]:
         "plugin_commit": plugin_commit(),
         "member_alias": config["member_alias"],
         "generated_at": local_now(config).isoformat(),
-        "host": os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or "",
-        "cwd": str(Path.cwd()),
     }
 
 
 def write_package_source(package_dir: Path, config: dict[str, str], skill: str) -> dict[str, Any]:
-    source = {
-        **source_metadata(config, skill),
-        "package_path": str(package_dir),
-        "manifest_path": str(package_dir / "manifest.json"),
-    }
+    source = source_metadata(config, skill)
     write_json(package_dir / "knowledge" / "evidence" / "source.json", {"kind": "source", "payload": source})
     return source
 
@@ -1184,8 +1179,6 @@ def bind_framework_evidence(package_dir: Path, rel: str, case_id: str, variant_i
         source_payload = payload.get("payload")
         if not isinstance(source_payload, dict):
             source_payload = {}
-        source_payload.setdefault("package_path", str(package_dir))
-        source_payload.setdefault("manifest_path", str(package_dir / "manifest.json"))
         payload["payload"] = source_payload
     write_json(path, payload)
 
@@ -2553,6 +2546,12 @@ def prepare_patch_package(
             "payload": search_payload,
         },
     )
+    optional_evidence_paths = [
+        rel
+        for kind in sorted(FRAMEWORK_OPTIONAL_EVIDENCE_KINDS)
+        for rel in [first_evidence_path(capture_evidence_entries, kind)]
+        if rel
+    ]
 
     patch_diff_path = write_default_evidence(
         package_dir,
@@ -2627,6 +2626,7 @@ def prepare_patch_package(
                 required_generated["risk_surface"],
                 verification_path,
                 search_path,
+                *optional_evidence_paths,
             ],
         },
     }

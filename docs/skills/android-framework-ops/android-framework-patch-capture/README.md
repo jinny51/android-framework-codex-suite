@@ -29,6 +29,7 @@ python3 "scripts/capture_framework_patch.py" \
   --summary "允许用户态控制电源键行为" \
   --status candidate \
   --verification "framework 编译通过" \
+  --build-result /path/to/build-result.json \
   --related-report-run-id 20260601-210000-daily
 ```
 
@@ -39,6 +40,9 @@ python3 "scripts/capture_framework_patch.py" \
 ├── manifest.json
 ├── patches/
 └── evidence/
+    ├── build-result.json
+    ├── verification-result.json
+    └── search-before-change.json
 ```
 
 ## 文件入口

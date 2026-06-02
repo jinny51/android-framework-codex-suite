@@ -59,7 +59,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --submit-latest
 ```
 
-如果补丁由 `android-framework-patch-capture` 生成，优先传整个 capture 输出目录，这样 patch、readme、验证结果和开发前知识库检索证据都会一起进入 incoming：
+如果补丁由 `android-framework-patch-capture` 生成，优先传整个 capture 输出目录，这样 patch、readme、构建结果、验证结果和开发前知识库检索证据都会一起进入 incoming：
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "TVE8402M" --summary "功能补丁摘要" --status validated

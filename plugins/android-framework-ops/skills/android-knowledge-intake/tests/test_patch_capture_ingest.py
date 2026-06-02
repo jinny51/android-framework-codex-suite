@@ -40,7 +40,12 @@ def valid_patch_readme(title: str = "nav policy toggle") -> str:
     )
 
 
-def create_capture_package(root: Path, status: str = "validated", related_report_run_ids: list[str] | None = None) -> Path:
+def create_capture_package(
+    root: Path,
+    status: str = "validated",
+    related_report_run_ids: list[str] | None = None,
+    include_build_result: bool = False,
+) -> Path:
     package = root / "capture"
     patch = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
     readme = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.readme.md"
@@ -56,6 +61,16 @@ def create_capture_package(root: Path, status: str = "validated", related_report
     readme.write_text(valid_patch_readme(), encoding="utf-8")
     write_json(package / "evidence" / "verification-result.json", {"result": "PASS", "method": "device", "summary": "device pass"})
     write_json(package / "evidence" / "search-before-change.json", {"result": "INFO", "method": "knowledge_search", "queries": ["nav policy"]})
+    if include_build_result:
+        write_json(
+            package / "evidence" / "build-result.json",
+            {
+                "kind": "build_result",
+                "result": "PASS",
+                "summary": "framework-minus-apex 编译通过",
+                "target": "framework-minus-apex",
+            },
+        )
     write_json(
         package / "evidence" / "patch-diff-facts.json",
         {
@@ -110,6 +125,16 @@ def create_capture_package(root: Path, status: str = "validated", related_report
             {"id": "risk-surface", "kind": "risk_surface", "path": "evidence/risk-surface.json", "result": "INFO"},
         ],
     }
+    if include_build_result:
+        manifest["evidence"].append(
+            {
+                "id": "build-result",
+                "kind": "build_result",
+                "path": "evidence/build-result.json",
+                "result": "PASS",
+                "summary": "framework-minus-apex 编译通过",
+            }
+        )
     if related_report_run_ids:
         manifest["related_report_run_ids"] = related_report_run_ids
     write_json(package / "manifest.json", manifest)
@@ -164,12 +189,39 @@ class PatchCaptureIngestTests(unittest.TestCase):
             for evidence in (source, problem, risk):
                 self.assertEqual(evidence["case_id"], manifest["case_id"])
                 self.assertEqual(evidence["variant_id"], manifest["variant_id"])
-            self.assertIn("package_path", source["payload"])
-            self.assertIn("manifest_path", source["payload"])
+            self.assertNotIn("package_path", source["payload"])
+            self.assertNotIn("manifest_path", source["payload"])
+            self.assertNotIn("cwd", source["payload"])
+            self.assertNotIn("host", source["payload"])
             evidence_files = set(manifest["files"]["evidence"])
             self.assertIn("knowledge/evidence/source.json", evidence_files)
             self.assertIn("knowledge/evidence/project_inference.json", evidence_files)
             self.assertIn("knowledge/evidence/verification_result.json", evidence_files)
+
+    def test_capture_package_preserves_optional_build_result_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-120000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_capture_package(root, include_build_result=True))],
+                project="TVE1234A",
+                summary="Allow nav policy toggle",
+                status="validated",
+                schema_version="1",
+            )
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            evidence_files = set(manifest["files"]["evidence"])
+            self.assertIn("knowledge/evidence/capture/capture-build-result.json", evidence_files)
+
+            build_result = json.loads((package / "knowledge" / "evidence" / "capture" / "capture-build-result.json").read_text(encoding="utf-8"))
+            self.assertEqual(build_result["kind"], "build_result")
+            self.assertEqual(build_result["result"], "PASS")
+            self.assertEqual(build_result["case_id"], manifest["case_id"])
+            self.assertEqual(build_result["variant_id"], manifest["variant_id"])
 
     def test_blocked_patch_stays_blocked_without_becoming_failed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

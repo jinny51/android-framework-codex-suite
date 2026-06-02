@@ -40,6 +40,13 @@ This package is a local handoff artifact. `android-knowledge-intake` can later s
       "summary": "device verification evidence"
     },
     {
+      "id": "build-result",
+      "kind": "build_result",
+      "path": "evidence/build-result.json",
+      "result": "PASS",
+      "summary": "framework build evidence"
+    },
+    {
       "id": "patch-diff-facts",
       "kind": "patch_diff_facts",
       "path": "evidence/patch-diff-facts.json",

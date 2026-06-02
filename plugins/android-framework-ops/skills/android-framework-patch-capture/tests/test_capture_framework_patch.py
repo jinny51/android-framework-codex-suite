@@ -76,6 +76,19 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             create_repo(root)
+            build_result_path = root / "build-result.json"
+            build_result_path.write_text(
+                json.dumps(
+                    {
+                        "result": "PASS",
+                        "summary": "framework-minus-apex 编译通过",
+                        "target": "framework-minus-apex",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             result = run(
                 [
                     sys.executable,
@@ -106,11 +119,14 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "No reusable patch found",
                     "--related-report-run-id",
                     "20260601-210000-daily",
+                    "--build-result",
+                    str(build_result_path),
                 ],
                 root,
             )
             package_dir = Path(json.loads(result.stdout)["package"])
             verification = json.loads((package_dir / "evidence" / "verification-result.json").read_text(encoding="utf-8"))
+            build_result = json.loads((package_dir / "evidence" / "build-result.json").read_text(encoding="utf-8"))
             search = json.loads((package_dir / "evidence" / "search-before-change.json").read_text(encoding="utf-8"))
             diff_facts = json.loads((package_dir / "evidence" / "patch-diff-facts.json").read_text(encoding="utf-8"))
             problem_inference = json.loads((package_dir / "evidence" / "patch-problem-inference.json").read_text(encoding="utf-8"))
@@ -121,6 +137,8 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(verification["result"], "PASS")
             self.assertEqual(verification["method"], "device")
             self.assertEqual(verification["device"], "rk3576")
+            self.assertEqual(build_result["kind"], "build_result")
+            self.assertEqual(build_result["result"], "PASS")
             self.assertEqual(search["result"], "INFO")
             self.assertEqual(search["queries"], ["navigation policy toggle"])
             self.assertEqual(diff_facts["kind"], "patch_diff_facts")
@@ -136,6 +154,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("patch-problem-inference", evidence_ids)
             self.assertIn("risk-surface", evidence_ids)
             self.assertIn("verification-result", evidence_ids)
+            self.assertIn("build-result", evidence_ids)
             self.assertIn("search-before-change", evidence_ids)
             self.assertRegex(manifest["patches"][0]["content_sha1"], r"^[0-9a-f]{40}$")
             self.assertEqual(manifest["related_report_run_ids"], ["20260601-210000-daily"])
@@ -175,6 +194,45 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("音频录制", problem_inference["inferred_problem"])
             self.assertIn("音频路由/音量行为", risk_surface["risk_areas"])
             self.assertIn("相机行为", risk_surface["risk_areas"])
+
+    def test_external_evidence_rejects_unsupported_kind(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+            evidence_dir = root / "external-evidence"
+            evidence_dir.mkdir()
+            (evidence_dir / "random-note.json").write_text(
+                json.dumps({"kind": "random_note", "result": "INFO"}, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260526-120000-patch",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "nav-policy-toggle",
+                    "--summary",
+                    "Allow navigation policy toggle",
+                    "--status",
+                    "candidate",
+                    "--evidence-dir",
+                    str(evidence_dir),
+                ],
+                root,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("外部 evidence kind 不支持", result.stderr or result.stdout)
 
     def test_validated_equivalent_verification_requires_reason_coverage_and_risk(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

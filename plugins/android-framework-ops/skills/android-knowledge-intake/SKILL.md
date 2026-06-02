@@ -54,7 +54,7 @@ Attach a known daily or weekly run explicitly:
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --summary "功能补丁摘要" --status candidate --related-report-run-id 20260601-210000-daily
 ```
 
-When the patch was packaged by `android-framework-patch-capture`, submit the capture package directory so verification and pre-change search evidence are preserved:
+When the patch was packaged by `android-framework-patch-capture`, submit the capture package directory so build, verification, and pre-change search evidence are preserved:
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "TVE8402M" --summary "功能补丁摘要" --status validated
@@ -91,7 +91,7 @@ Synthetic profiles are only for protocol and gray-flow testing. Use `doctor --st
 
 Framework change submission is automatic when the member-side Codex can identify a clean change, enough evidence, and a safe maturity level. If validation evidence is missing, submit as `candidate` or `draft`; do not discard the work. Administrator patch contribution remains manual by default.
 
-Prefer `--patch-package` for Framework changes packaged by `android-framework-patch-capture`; it carries patch, readme, verification evidence, and pre-change knowledge search evidence together. Use `--patch` only when directly packaging a single patch file into the current incoming protocol.
+Prefer `--patch-package` for Framework changes packaged by `android-framework-patch-capture`; it carries patch, readme, build evidence, verification evidence, and pre-change knowledge search evidence together. Use `--patch` only when directly packaging a single patch file into the current incoming protocol.
 
 For successful automation runs, launch `scripts/archive_automation_runs.py` with `setsid -f` and a short delay so the automation conversation is archived after Codex marks the run complete.
 

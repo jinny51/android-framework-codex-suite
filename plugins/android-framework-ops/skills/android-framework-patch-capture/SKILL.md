@@ -32,7 +32,8 @@ python3 "scripts/capture_framework_patch.py" \
   --device rk3576 \
   --device-verification "设备验证通过" \
   --search-query "电源键 用户态 控制" \
-  --search-result "未发现可直接复用补丁"
+  --search-result "未发现可直接复用补丁" \
+  --build-result /path/to/build-result.json
 ```
 
 The script writes:
@@ -45,13 +46,14 @@ The script writes:
 │   └── rk14-frameworks-base@allow-powerkey-to-user.readme.md
 └── evidence/
     ├── changed-files.json
+    ├── build-result.json
     ├── verification-result.json
     ├── search-before-change.json
     └── package-check.json
 ```
 
 To submit later with `android-knowledge-intake`, pass the whole capture package directory so
-search-before-change, verification, and package-check evidence are preserved:
+search-before-change, build, verification, and package-check evidence are preserved:
 
 ```bash
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" \

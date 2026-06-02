@@ -18,6 +18,7 @@ PATCH_NAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patc
 PLATFORM_RE = re.compile(r"^[a-z0-9]+[0-9]+$")
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
 BANNED_LOG_PATTERNS = ("Log.d(", "Log.i(", "Log.w(", "Slog.d(", "Slog.i(", "Slog.w(")
+SUPPORTED_EXTERNAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
 
 
 def run(cmd: list[str], cwd: Path, check: bool = False) -> subprocess.CompletedProcess[str]:
@@ -122,6 +123,89 @@ def git_metadata(root: Path) -> dict[str, str]:
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise SystemExit(f"读取 evidence JSON 失败: {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise SystemExit(f"evidence JSON 必须是对象: {path}")
+    return payload
+
+
+def evidence_kind_from_file(path: Path, payload: dict[str, Any]) -> str:
+    kind = str(payload.get("kind") or "").strip()
+    if kind:
+        return slug(kind)
+    stem = path.stem.lower().replace("-", "_")
+    aliases = {
+        "build": "build_result",
+        "build_result": "build_result",
+        "deploy_result": "deploy_result",
+        "device_health": "device_health",
+        "verification_result": "verification_result",
+        "search_before_change": "search_before_change",
+    }
+    return aliases.get(stem, stem or "external_evidence")
+
+
+def evidence_result(payload: dict[str, Any]) -> str:
+    value = str(payload.get("result") or payload.get("status") or "").upper()
+    if value in {"PASS", "FAIL", "WARN", "INFO", "SKIPPED", "MISSING"}:
+        return value
+    return "INFO"
+
+
+def evidence_file_name(kind: str, source: Path, used_names: set[str]) -> str:
+    base = f"{kind.replace('_', '-')}.json"
+    if base not in used_names:
+        return base
+    return f"{kind.replace('_', '-')}-{sha1_text(str(source))[:8]}.json"
+
+
+def collect_external_evidence(args: argparse.Namespace, evidence_dir: Path) -> list[dict[str, Any]]:
+    sources: list[Path] = []
+    for raw_dir in args.evidence_dir or []:
+        directory = Path(raw_dir).expanduser().resolve()
+        if not directory.is_dir():
+            raise SystemExit(f"--evidence-dir 不是目录: {directory}")
+        sources.extend(sorted(directory.glob("*.json")))
+    for raw_file in args.build_result or []:
+        source = Path(raw_file).expanduser().resolve()
+        if not source.is_file():
+            raise SystemExit(f"--build-result 文件不存在: {source}")
+        sources.append(source)
+
+    entries: list[dict[str, Any]] = []
+    seen: set[Path] = set()
+    used_names: set[str] = set()
+    for source in sources:
+        source = source.resolve()
+        if source in seen:
+            continue
+        seen.add(source)
+        payload = read_json(source)
+        kind = evidence_kind_from_file(source, payload)
+        if kind not in SUPPORTED_EXTERNAL_EVIDENCE_KINDS:
+            allowed = ", ".join(sorted(SUPPORTED_EXTERNAL_EVIDENCE_KINDS))
+            raise SystemExit(f"外部 evidence kind 不支持: {kind} ({source}); 允许: {allowed}")
+        payload.setdefault("kind", kind)
+        target_name = evidence_file_name(kind, source, used_names)
+        used_names.add(target_name)
+        target = evidence_dir / target_name
+        write_json(target, payload)
+        entries.append(
+            {
+                "id": slug(target.stem),
+                "kind": kind,
+                "path": f"evidence/{target.name}",
+                "result": evidence_result(payload),
+                "summary": str(payload.get("summary") or payload.get("message") or f"{kind} evidence"),
+            }
+        )
+    return entries
 
 
 def bullet_list(items: list[str]) -> str:
@@ -575,6 +659,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--search-result", action="append", default=[], help="Search result or reuse decision from the pre-change search. Repeatable.")
     parser.add_argument("--search-summary", default="", help="Short summary of pre-change knowledge search.")
     parser.add_argument("--related-report-run-id", action="append", default=[], help="daily/weekly incoming run_id related to this patch package. Repeatable.")
+    parser.add_argument("--evidence-dir", action="append", default=[], help="Directory containing structured evidence JSON files such as build-result.json. Repeatable.")
+    parser.add_argument("--build-result", action="append", default=[], help="Structured build-result.json to include as build_result evidence. Repeatable.")
     parser.add_argument("--risk", default="", help="Risk note for readme.")
     parser.add_argument("--rollback", default="", help="Rollback note for readme.")
     parser.add_argument("--allow-missing-author-date", action="store_true", help="Allow package even when patch lacks //name YYYYMMDD@ marker.")
@@ -681,6 +767,7 @@ def main() -> int:
             "summary": "local patch package checks",
         },
     ]
+    evidence_items.extend(collect_external_evidence(args, evidence_dir))
 
     patch_item = {
         "path": f"patches/{patch_path.name}",
