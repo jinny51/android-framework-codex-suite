@@ -35,6 +35,7 @@ REPORT_HEADINGS = {
 }
 PACKAGE_TYPES = {"daily", "weekly", "patch"}
 PATCH_README_HEADINGS = ("功能描述", "修改点", "日志控制", "SystemProperties", "字符串国际化", "可回滚性")
+PATCH_README_PLACEHOLDER_RE = re.compile(r"(?im)^\s*(?:[-*]\s*)?TODO\b|TODO:")
 INCOMING_KINDS = {"daily_trace", "weekly_trace", "framework_change"}
 MATURITY_VALUES = {"validated", "candidate", "draft", "failed", "blocked"}
 TRACE_REQUIRED_EVIDENCE_KINDS = {"source", "work_findings"}
@@ -1084,6 +1085,19 @@ def has_heading(text: str, heading: str) -> bool:
     return re.search(rf"^##\s+{re.escape(heading)}\s*$", text, re.M) is not None
 
 
+def validate_patch_readme(path: Path) -> list[str]:
+    errors: list[str] = []
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    if not text.strip():
+        return [f"{path.name} readme 不能为空"]
+    if PATCH_README_PLACEHOLDER_RE.search(text):
+        errors.append(f"{path.name} readme 仍包含 TODO 模板内容")
+    for heading in PATCH_README_HEADINGS:
+        if not has_heading(text, heading):
+            errors.append(f"{path.name} 缺少必填章节: ## {heading}")
+    return errors
+
+
 def validate_patch_file(path: Path) -> list[str]:
     errors: list[str] = []
     if not PATCH_FILENAME_RE.fullmatch(path.name):
@@ -1100,10 +1114,7 @@ def validate_patch_file(path: Path) -> list[str]:
     if not readme:
         errors.append(f"{path.name} 缺少配套 readme")
     else:
-        readme_text = readme.read_text(encoding="utf-8", errors="ignore")
-        for heading in PATCH_README_HEADINGS:
-            if not has_heading(readme_text, heading):
-                errors.append(f"{readme.name} 缺少必填章节: ## {heading}")
+        errors.extend(validate_patch_readme(readme))
     return errors
 
 
@@ -1611,6 +1622,12 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             path = require_file(patch_path, "patch")
             if path and path.suffix not in {".patch", ".diff"}:
                 errors.append(f"patch 文件必须是 .patch 或 .diff: {patch_path}")
+            if path:
+                readme = paired_readme(path)
+                if not readme:
+                    errors.append(f"{path.name} 缺少配套 readme")
+                else:
+                    errors.extend(validate_patch_readme(readme))
         if case_path:
             case = read_json_file(case_path)
             if case.get("case_id") != manifest.get("case_id"):
@@ -2173,7 +2190,6 @@ def prepare_package(report_type: str, date: dt.date, config: dict[str, str], run
     else:
         sessions = parse_sessions(config, dates)
         patches = discover_patches(config, sessions, start, end)
-    patch_entries = copy_patch_assets(package_dir, patches, config)
     items = items_by_project(sessions, patches)
     write_report(package_dir, report_type, date, week_key, config, items, patches)
     summary = overview_text(report_type, items, patches)

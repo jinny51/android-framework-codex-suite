@@ -22,6 +22,24 @@ def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def valid_patch_readme(title: str = "nav policy toggle") -> str:
+    return (
+        f"# {title}\n\n"
+        "## 功能描述\n\n"
+        "调整 Framework 导航策略开关，适用于项目验证后的策略复用。\n\n"
+        "## 修改点\n\n"
+        "- 修改 frameworks/base/services/core/java/X.java 中的策略判断。\n\n"
+        "## 日志控制\n\n"
+        "无新增运行时日志。\n\n"
+        "## SystemProperties\n\n"
+        "无新增系统属性。\n\n"
+        "## 字符串国际化\n\n"
+        "无新增字符串资源。\n\n"
+        "## 可回滚性\n\n"
+        "回滚该 patch 后恢复原导航策略。\n"
+    )
+
+
 def create_capture_package(root: Path, status: str = "validated", related_report_run_ids: list[str] | None = None) -> Path:
     package = root / "capture"
     patch = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
@@ -35,7 +53,7 @@ def create_capture_package(root: Path, status: str = "validated", related_report
         "+//gyf 20260526@ nav policy toggle\n",
         encoding="utf-8",
     )
-    readme.write_text("# nav policy toggle\n", encoding="utf-8")
+    readme.write_text(valid_patch_readme(), encoding="utf-8")
     write_json(package / "evidence" / "verification-result.json", {"result": "PASS", "method": "device", "summary": "device pass"})
     write_json(package / "evidence" / "search-before-change.json", {"result": "INFO", "method": "knowledge_search", "queries": ["nav policy"]})
     write_json(
@@ -182,6 +200,72 @@ class PatchCaptureIngestTests(unittest.TestCase):
             variant = json.loads((package / "knowledge" / "variant.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["maturity"], "blocked")
             self.assertEqual(variant["status"], "blocked")
+
+    def test_standalone_patch_with_empty_readme_fails_local_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patch = root / "rk14-frameworks-base@empty-readme.patch"
+            patch.write_text(
+                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+                "--- a/frameworks/base/services/core/java/X.java\n"
+                "+++ b/frameworks/base/services/core/java/X.java\n"
+                "@@ -1 +1,2 @@\n"
+                "+//gyf 20260526@ empty readme case\n",
+                encoding="utf-8",
+            )
+            patch.with_suffix(".readme.md").write_text("", encoding="utf-8")
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-140000-patch",
+                patch_paths=[str(patch)],
+                patch_package_paths=[],
+                project="TVE1234A",
+                summary="Empty readme case",
+                status="candidate",
+                schema_version="1",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            self.assertEqual(check["status"], "FAIL")
+            self.assertTrue(any("readme" in item and "不能为空" in item for item in check["errors"]))
+
+    def test_standalone_patch_with_template_readme_fails_local_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patch = root / "rk14-frameworks-base@template-readme.patch"
+            patch.write_text(
+                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+                "--- a/frameworks/base/services/core/java/X.java\n"
+                "+++ b/frameworks/base/services/core/java/X.java\n"
+                "@@ -1 +1,2 @@\n"
+                "+//gyf 20260526@ template readme case\n",
+                encoding="utf-8",
+            )
+            patch.with_suffix(".readme.md").write_text(
+                intake.patch_readme_template(
+                    intake.PatchInfo(path=patch, name=patch.name, project="TVE1234A"),
+                    self.config(root),
+                ),
+                encoding="utf-8",
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-150000-patch",
+                patch_paths=[str(patch)],
+                patch_package_paths=[],
+                project="TVE1234A",
+                summary="Template readme case",
+                status="candidate",
+                schema_version="1",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            self.assertEqual(check["status"], "FAIL")
+            self.assertTrue(any("readme" in item and "TODO" in item for item in check["errors"]))
 
     def test_candidate_capture_package_does_not_become_validated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

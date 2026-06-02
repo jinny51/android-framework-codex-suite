@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
 import subprocess
@@ -56,7 +57,7 @@ def seed_knowledge_remote(root: Path) -> Path:
     return remote
 
 
-def write_member_config(root: Path, remote: Path) -> dict[str, str]:
+def write_member_config(root: Path, remote: Path, synthetic_data: bool = True) -> dict[str, str]:
     codex_home = root / "codex-home"
     config_dir = codex_home / "report"
     config_dir.mkdir(parents=True)
@@ -80,7 +81,7 @@ def write_member_config(root: Path, remote: Path) -> dict[str, str]:
             repo_worktree = "{(root / "worktrees" / "knowledge-member01").as_posix()}"
             git_user_name = "成员甲"
             git_user_email = "member01@example.invalid"
-            synthetic_data = true
+            synthetic_data = {str(synthetic_data).lower()}
             synthetic_item_count = "2"
             """
         ).strip()
@@ -90,6 +91,35 @@ def write_member_config(root: Path, remote: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["CODEX_HOME"] = str(codex_home)
     return env
+
+
+def write_codex_session(codex_home: Path, session_id: str, cwd: Path, date: dt.date, message: str) -> None:
+    sessions_dir = codex_home / "sessions" / f"{date:%Y}" / f"{date:%m}" / f"{date:%d}"
+    sessions_dir.mkdir(parents=True, exist_ok=True)
+    (codex_home / "session_index.jsonl").write_text(
+        json.dumps({"id": session_id, "thread_name": "SystemUI 状态栏策略修改"}, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    rows = [
+        {
+            "timestamp": f"{date.isoformat()}T10:00:00+08:00",
+            "type": "session_meta",
+            "payload": {"id": session_id, "cwd": str(cwd)},
+        },
+        {
+            "timestamp": f"{date.isoformat()}T10:10:00+08:00",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": message}],
+            },
+        },
+    ]
+    (sessions_dir / f"{session_id}.jsonl").write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+        encoding="utf-8",
+    )
 
 
 def write_admin_config(root: Path, remote: Path) -> dict[str, str]:
@@ -149,6 +179,68 @@ def create_framework_repo(root: Path) -> Path:
 
 
 class MemberAutomationFlowTests(unittest.TestCase):
+    def test_daily_records_discovered_patch_without_formal_patch_assets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            codex_home = Path(env["CODEX_HOME"])
+            workdir = root / "member-work"
+            workdir.mkdir()
+            patch_file = workdir / "mtk15-frameworks-base@statusbar-policy.patch"
+            patch_file.write_text(
+                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+                "--- a/frameworks/base/services/core/java/X.java\n"
+                "+++ b/frameworks/base/services/core/java/X.java\n"
+                "@@ -1 +1,2 @@\n"
+                "+//gyf 20260602@ statusbar policy\n",
+                encoding="utf-8",
+            )
+            patch_file.with_suffix(".readme.md").write_text("", encoding="utf-8")
+            noon = dt.datetime(2026, 6, 2, 12, 0).timestamp()
+            os.utime(patch_file, (noon, noon))
+            os.utime(patch_file.with_suffix(".readme.md"), (noon, noon))
+            write_codex_session(
+                codex_home,
+                "11111111-2222-3333-4444-555555555555",
+                workdir,
+                dt.date(2026, 6, 2),
+                "已完成 SystemUI 状态栏策略修改，后续需要补齐验证和 patch capture。",
+            )
+
+            result = run_json(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "daily",
+                    "--date",
+                    "2026-06-02",
+                    "--run-id",
+                    "20260602-210000-daily",
+                    "--prepare",
+                ],
+                SUITE_ROOT,
+                env,
+            )
+
+            package = Path(result["package"])
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            findings = json.loads((package / "knowledge" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(result["local_check"]["status"], "PASS")
+            self.assertEqual(manifest["package_kind"], "daily_trace")
+            self.assertFalse((package / "patches").exists())
+            self.assertTrue(
+                any(
+                    item["kind"] == "possible_framework_change"
+                    and item["title"] == "mtk15-frameworks-base@statusbar-policy.patch"
+                    and "需要 patch-capture 补齐 case/variant/风险/验证证据" in item["missing_evidence"]
+                    for item in findings["payload"]["items"]
+                )
+            )
+
     def test_doctor_strict_passes_for_gray_profile_when_synthetic_is_explicitly_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -387,6 +479,16 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "+++ b/frameworks/base/services/core/java/X.java\n"
                 "@@ -1 +1,2 @@\n"
                 "+//gyf 20260601@ statusbar policy\n",
+                encoding="utf-8",
+            )
+            patch_file.with_suffix(".readme.md").write_text(
+                "# statusbar policy\n\n"
+                "## 功能描述\n\n状态栏策略调整。\n\n"
+                "## 修改点\n\n- 修改 frameworks/base。\n\n"
+                "## 日志控制\n\n无。\n\n"
+                "## SystemProperties\n\n无。\n\n"
+                "## 字符串国际化\n\n无。\n\n"
+                "## 可回滚性\n\n可回滚。\n",
                 encoding="utf-8",
             )
 
