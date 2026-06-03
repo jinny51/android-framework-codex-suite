@@ -1,0 +1,43 @@
+# Keep plugin marketplace checkouts executable in WSL/Linux even when the
+# installing Windows Git has core.autocrlf=true.
+* text=auto eol=lf
+
+# Runtime scripts and plugin metadata must be deterministic in plugin caches.
+*.sh text eol=lf
+*.bash text eol=lf
+*.zsh text eol=lf
+*.py text eol=lf
+*.ps1 text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.txt text eol=lf
+*.cfg text eol=lf
+*.ini text eol=lf
+*.gitignore text eol=lf
+Dockerfile text eol=lf
+Makefile text eol=lf
+
+# Binary assets and package artifacts must never be line-ending normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.tar binary
+*.7z binary
+*.jar binary
+*.apk binary
+*.dex binary
+*.class binary
+*.so binary
+*.dll binary
+*.exe binary
+*.bin binary
