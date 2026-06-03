@@ -64,7 +64,7 @@ preserve automatically first
 rank by maturity later
 ```
 
-Daily and weekly automation should run even when no patch is complete. It must preserve session facts, git activity, discovered patch files, build or verification signals, WIP state, failed paths, blocked paths, and missing evidence.
+Daily and weekly incoming automation should run even when no patch is complete. It must preserve session facts, git activity, discovered patch files, build or verification signals, WIP state, failed paths, blocked paths, and missing evidence.
 
 Patch upload is maturity-based:
 

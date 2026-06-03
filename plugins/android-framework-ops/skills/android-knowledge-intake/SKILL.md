@@ -9,11 +9,11 @@ Use this skill for member-side knowledge intake automation. The skill does not w
 
 The member-side Codex agent is the knowledge producer. It should collect session context, git activity, patch diff, build results, verification records, failed paths, blocked paths, and optional human notes, then generate incoming. The knowledge repository server validates, archives, indexes, and renders; it does not perform heavy AI reasoning.
 
-Ordinary members use `daily` and `weekly` automation as the baseline and use `patch` when a Framework change should be converted into a `framework_change` incoming package. Administrator profiles are for occasional manual patch contribution only; they must not generate personal daily or weekly reports.
+Ordinary members use `daily` and `weekly` modes to generate member-level incoming packages on schedule, and use `patch` when a Framework change should be converted into a `framework_change` incoming package. Administrator profiles are for occasional manual patch contribution only; they must not generate personal daily or weekly reports.
 
 Default policy: preserve automatically first, rank by maturity later. Lack of manual confirmation is not a reason to drop knowledge. Daily and weekly traces must preserve `work_findings`; Framework changes use `maturity` values `validated`, `candidate`, `draft`, `failed`, or `blocked`.
 
-Use configuration profiles for identity. Global config stores server/path defaults; each `[profiles.<name>]` stores one member identity, worktree, git author, role, allowed modes, and optional test behavior. Prefer explicit `--profile <name>` in automations so a daily run cannot accidentally use an administrator identity.
+Use configuration profiles for identity. Global config stores server/path defaults; each `[profiles.<name>]` stores one member identity, worktree, git author, role, allowed modes, and optional test behavior. Prefer explicit `--profile <name>` in automations so a daily incoming run cannot accidentally use an administrator identity.
 
 Framework change incoming must carry deterministic merge anchors. Patch content `sha1` is emitted in `patch_diff_facts`; `related_report_run_ids` is used only when the daily/weekly run id is explicitly known. Do not create fuzzy report links on the member side.
 
@@ -63,7 +63,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 Submit the latest prepared patch package:
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile admin_alias patch --submit-latest
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --submit-latest
 ```
 
 Check configuration:
@@ -76,18 +76,18 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor --
 
 ## Automation
 
-Recommended member-side automations:
+Recommended member-side incoming automations:
 
 - 21:00 daily prepare: generate pending package for member review.
 - 22:30 daily submit: submit the latest pending package.
 - Saturday 22:00 weekly prepare.
 - Saturday 22:30 weekly submit.
 
-Before enabling member-side automations, run `doctor --strict --check-remote` for the exact profile used by the automation. Strict doctor must pass before scheduled runs are enabled. It verifies identity, role, allowed modes, repository paths, Git availability, clean repository state, and optional remote reachability.
+Before enabling member-side incoming automations, run `doctor --strict --check-remote` for the exact profile used by the automation. Strict doctor must pass before scheduled runs are enabled. It verifies identity, role, allowed modes, repository paths, Git availability, clean repository state, and optional remote reachability.
 
 Member profiles can read the cloned knowledge worktree for search, but their intake pushes must contain only `incoming/**` paths. The intake script checks outgoing commits before push and stops if a member profile has staged or committed generated objects, docs, scripts, site, index, or other non-incoming paths. Administrator profiles are not subject to this member-only outgoing-path guard.
 
-Synthetic profiles are only for protocol and gray-flow testing. Use `doctor --strict --allow-synthetic` only in tests; real member automations must keep `synthetic_data = false`.
+Synthetic profiles are only for protocol and gray-flow testing. Use `doctor --strict --allow-synthetic` only in tests; real member incoming automations must keep `synthetic_data = false`.
 
 Framework change submission is automatic when the member-side Codex can identify a clean change, enough evidence, and a safe maturity level. If validation evidence is missing, submit as `candidate` or `draft`; do not discard the work. Administrator patch contribution remains manual by default.
 

@@ -200,7 +200,7 @@ After Gate 5 or a terminal failure/blocked state:
 2. If local source changes exist and are not unrelated dirty files, invoke `android-framework-patch-capture` to package the intended change set with:
    - platform/version token, project, feature slug, summary, maturity, modified files, artifacts, risk notes, verification evidence, search-before-change evidence, and explicit `related_report_run_ids` when a daily/weekly run id is known.
 3. Invoke `android-knowledge-intake` with the capture package so it generates a `framework_change` incoming package. Use the member profile, not an administrator profile, unless the administrator is manually contributing a patch.
-4. If no patch package can be made, do not pretend the knowledge was captured. Record exactly why, and rely on the daily/weekly automation to preserve the work as `work_findings`.
+4. If no patch package can be made, do not pretend the knowledge was captured. Record exactly why, and rely on the daily/weekly incoming automation to preserve the work as `work_findings`.
 5. Do not upload unrelated diffs, credentials, logs with sensitive data, mixed task changes, or a `validated` package without qualifying verification.
 
 The normal successful chain is:

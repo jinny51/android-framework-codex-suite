@@ -9,13 +9,13 @@ Use this skill when a Framework change is ready to be packaged as a reusable, re
 
 Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-knowledge-intake` uploads a valuable patch to the team knowledge repository.
 
-The generated package includes patch content `sha1` for server-side deduplication. If a known daily/weekly automation run produced the work context, pass `--related-report-run-id <run_id>` so intake can preserve an explicit report link.
+The generated package includes patch content `sha1` for server-side deduplication. If a known daily/weekly incoming run produced the work context, pass `--related-report-run-id <run_id>` so intake can preserve an explicit report link.
 
 ## Boundary
 
 - `android-framework-change-workflow`: owns requirement analysis, source changes, risk, build/deploy coordination, and final verification.
 - `android-framework-patch-capture`: owns patch/readme/evidence packaging for existing changes.
-- `android-knowledge-intake`: owns daily/weekly/patch package submission to the knowledge repository.
+- `android-knowledge-intake`: owns daily/weekly/framework_change incoming package submission to the knowledge repository.
 
 ## Quick Command
 
@@ -57,7 +57,7 @@ search-before-change, build, verification, and package-check evidence are preser
 
 ```bash
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" \
-  --profile admin_alias patch --prepare \
+  --profile <member_alias> patch --prepare \
   --patch-package .codex/patch-packages/<run-id>/ \
   --project "TVE8402M" \
   --summary "补丁摘要" \

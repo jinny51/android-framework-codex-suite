@@ -146,7 +146,7 @@ Status helps ranking, but it must not be used as the only reuse decision.
 
 ## Report Link
 
-When the patch came from a known daily or weekly automation run, include the run id:
+When the patch came from a known daily or weekly incoming run, include the run id:
 
 ```json
 {
