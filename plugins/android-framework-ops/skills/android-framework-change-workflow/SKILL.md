@@ -17,7 +17,7 @@ Use it for both direct requirement implementation and bug/regression work. Do no
 
 It coordinates with adjacent Android skills:
 
-- `android-knowledge-search` searches prior reports, archived patches, search anchors, and validation evidence before re-analysis or re-implementation. Use it as the pre-analysis knowledge gate when the team knowledge repository is available.
+- `android-knowledge-search` searches prior cases, platform variants, archived patches, search anchors, and validation evidence before re-analysis or re-implementation. Use it as the pre-analysis knowledge gate when the team knowledge repository is available.
 - `android-wsl-source-access` proves the source tree is mounted and usable; `android-wsl-remote-build-deploy` proves artifacts were built and delivered.
 - Build/deploy executors may use `android-remote-channel` internally for reusable SSH/tmux remote sessions; this workflow should still call the platform build/deploy executor rather than the channel directly.
 - `android-framework-patch-capture` turns an implemented or stage-worthy Framework change into a patch/readme/evidence package after this workflow has produced a concrete change. Use it before `android-knowledge-intake` whenever a Framework change, failed attempt, or stage-worthy draft should be preserved.
@@ -30,7 +30,7 @@ Follow this ownership boundary:
 
 ```text
 android-knowledge-search
-  -> search prior reports/patches/search anchors/validation evidence before reimplementing
+  -> search prior cases/variants/patches/search anchors/validation evidence before reimplementing
 
 android-wsl-source-access
   -> access/recover/identify source tree handoff
