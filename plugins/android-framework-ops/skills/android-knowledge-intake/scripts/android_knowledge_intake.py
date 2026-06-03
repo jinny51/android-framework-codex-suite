@@ -36,6 +36,11 @@ REPORT_HEADINGS = {
 PACKAGE_TYPES = {"daily", "weekly", "patch"}
 PATCH_README_HEADINGS = ("功能描述", "修改点", "日志控制", "SystemProperties", "字符串国际化", "可回滚性")
 PATCH_README_PLACEHOLDER_RE = re.compile(r"(?im)^\s*(?:[-*]\s*)?TODO\b|TODO:")
+PATCH_README_FORBIDDEN_MARKERS = (
+    "自动生成的草稿说明",
+    "根据补丁 diff 自动生成",
+    "当前说明仅根据 diff 自动生成",
+)
 INCOMING_KINDS = {"daily_trace", "weekly_trace", "framework_change"}
 MATURITY_VALUES = {"validated", "candidate", "draft", "failed", "blocked"}
 TRACE_REQUIRED_EVIDENCE_KINDS = {"source", "work_findings"}
@@ -1108,6 +1113,9 @@ def validate_patch_readme(path: Path) -> list[str]:
         return [f"{path.name} readme 不能为空"]
     if PATCH_README_PLACEHOLDER_RE.search(text):
         errors.append(f"{path.name} readme 仍包含 TODO 模板内容")
+    for marker in PATCH_README_FORBIDDEN_MARKERS:
+        if marker in text:
+            errors.append(f"{path.name} readme 包含草稿/模板说明: {marker}")
     for heading in PATCH_README_HEADINGS:
         if not has_heading(text, heading):
             errors.append(f"{path.name} 缺少必填章节: ## {heading}")
@@ -2502,6 +2510,9 @@ def prepare_patch_package(
         sort_keys=True,
     )
     variant_id = "variant-" + stable_slug_id("-".join([platform, android_version, project, summary]), "framework-change", 100, variant_seed)
+    patch_problem_payload = first_evidence_payload(package_dir, capture_evidence_entries, "patch_problem_summary")
+    case_problem = str(patch_problem_payload.get("problem_summary") or summary)
+    case_solution = str(patch_problem_payload.get("solution_summary") or summary)
 
     case_path = "knowledge/case.json"
     variant_path = "knowledge/variant.json"
@@ -2510,8 +2521,8 @@ def prepare_patch_package(
         {
             "case_id": case_id,
             "title": summary,
-            "problem": summary,
-            "solution_summary": "成员端 Codex 根据补丁 diff、会话材料和验证证据生成该 Framework 修改包。",
+            "problem": case_problem,
+            "solution_summary": case_solution,
         },
     )
     write_json(

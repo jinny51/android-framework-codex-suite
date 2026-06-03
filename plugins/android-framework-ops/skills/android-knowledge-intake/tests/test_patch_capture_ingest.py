@@ -417,6 +417,54 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertRegex(first_manifest["case_id"], r"^case-framework-change-[0-9a-f]{10}$")
             self.assertRegex(first_manifest["variant_id"], r"^variant-mtk-15-tve8402m-[0-9a-f]{10}$")
 
+    def test_case_solution_uses_patch_problem_summary_not_internal_wording(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patch = root / "mtk16-camera2@reverseportrait.patch"
+            patch.write_text(
+                "diff --git a/host/AndroidManifest.xml b/host/AndroidManifest.xml\n"
+                "--- a/host/AndroidManifest.xml\n"
+                "+++ b/host/AndroidManifest.xml\n"
+                "@@ -1 +1,2 @@\n"
+                "+//guiliu 20260603@ reverse portrait camera\n",
+                encoding="utf-8",
+            )
+            patch.with_suffix(".readme.md").write_text(valid_patch_readme(patch.stem), encoding="utf-8")
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 3),
+                self.config(root),
+                run_id="20260603-120000-patch",
+                patch_paths=[str(patch)],
+                patch_package_paths=[],
+                project="mtk android16 Camera2",
+                summary="Camera2 reversePortrait 方向补偿",
+                status="candidate",
+                schema_version="1",
+            )
+
+            case = json.loads((package / "knowledge" / "case.json").read_text(encoding="utf-8"))
+            self.assertNotIn("成员端 Codex 根据补丁 diff", case["solution_summary"])
+            self.assertTrue(case["solution_summary"])
+
+    def test_draft_patch_readme_marker_fails_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patch = root / "mtk15-frameworks-base@statusbar-policy.patch"
+            patch.write_text(
+                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+                "--- a/frameworks/base/services/core/java/X.java\n"
+                "+++ b/frameworks/base/services/core/java/X.java\n"
+                "@@ -1 +1,2 @@\n"
+                "+//gyf 20260601@ framework policy\n",
+                encoding="utf-8",
+            )
+            patch.with_suffix(".readme.md").write_text("# 状态栏策略\n\n这是根据补丁 diff 自动生成的草稿说明。\n", encoding="utf-8")
+
+            errors = intake.validate_patch_file(patch)
+
+            self.assertTrue(any("草稿/模板说明" in item for item in errors))
+
     def test_patch_semantics_still_identify_common_framework_paths(self) -> None:
         files = [
             "services/core/java/com/android/server/audio/AudioService.java",
