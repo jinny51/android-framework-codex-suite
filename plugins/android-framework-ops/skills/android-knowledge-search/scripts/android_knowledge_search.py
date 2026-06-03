@@ -19,6 +19,16 @@ ROOT_MARKERS = (
     Path("index") / "search-docs.jsonl",
 )
 ENV_PREFIXES = ("CODEX_KNOWLEDGE_", "CODEX_REPORT_", "CODEX_WORK_REPORT_")
+AI_DEFAULT_RESULT_KINDS = {"case", "variant", "patch", "symbol"}
+AI_EVIDENCE_KINDS = {
+    "patch_diff_facts",
+    "patch_problem_inference",
+    "project_inference",
+    "risk_surface",
+    "build_result",
+    "verification_result",
+    "search_before_change",
+}
 
 
 def expand_path(value: str | os.PathLike[str]) -> Path:
@@ -553,6 +563,8 @@ def search(rows: list[dict[str, Any]], q: str, result_type: str, limit: int, inc
     results: list[dict[str, Any]] = []
     kind_filter = "" if result_type == "all" else result_type
     for row in rows:
+        if result_type == "all" and not is_default_ai_result(row):
+            continue
         if kind_filter and row.get("kind") != kind_filter:
             continue
         if not include_synthetic and bool(row.get("synthetic_data")):
@@ -574,6 +586,15 @@ def search(rows: list[dict[str, Any]], q: str, result_type: str, limit: int, inc
         reverse=True,
     )
     return results[:limit]
+
+
+def is_default_ai_result(row: dict[str, Any]) -> bool:
+    kind = str(row.get("kind") or "")
+    if kind in AI_DEFAULT_RESULT_KINDS:
+        return True
+    if kind == "evidence":
+        return str(row.get("evidence_kind") or "") in AI_EVIDENCE_KINDS
+    return False
 
 
 def rel_or_empty(root: Path, value: Any) -> str:

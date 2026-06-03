@@ -1,13 +1,13 @@
 ---
 name: android-knowledge-search
-description: Search the team knowledge repository for reusable reports, archived patches, search anchors, validation notes, and prior Android Framework solutions. Use before re-implementing a feature, during Android Framework requirement triage, or when a user asks to find existing patches or team knowledge.
+description: Search the team knowledge repository for reusable cases, platform variants, archived patches, search anchors, validation notes, and prior Android Framework solutions. Use before re-implementing a feature, during Android Framework requirement triage, or when a user asks to find existing patches or team knowledge.
 ---
 
 # Android Knowledge Search
 
 Use this skill to search the team knowledge repository before starting new analysis or implementation. It is the read-side entry for the knowledge system: `android-knowledge-intake` and `android-framework-patch-capture` produce assets; this skill retrieves them.
 
-This skill does not submit reports, create patches, edit source, or decide correctness by itself. It returns prior facts so Codex can judge whether a patch or report is relevant to the current requirement.
+This skill does not submit reports, create patches, edit source, or decide correctness by itself. It returns prior facts so Codex can judge whether an existing case, variant, patch, symbol, or validation fact is relevant to the current requirement.
 
 ## Quick Command
 
@@ -60,11 +60,12 @@ Pass `--refresh` only when using a local Git clone and the latest server content
 When handling a new Android Framework requirement:
 
 1. Search with feature words, affected module, likely class name, property key, Settings key, resource key, search anchor, and artifact name.
-2. Read the top matching patch readme or report before deciding whether to reuse.
+2. Read the top matching case, variant, patch readme, or validation fact before deciding whether to reuse.
 3. Treat `status`, `reusable`, platform, and validation fields as hints, not truth.
-4. Prefer case and variant results first; then inspect related patches, reports, evidence, and symbols.
+4. Prefer case and variant results first; then inspect related patches, AI evidence, and symbols.
 5. Compare facts: modified files, touched symbols, artifact, risk notes, build evidence, device verification, rollback path.
 6. If a prior patch looks relevant, report the evidence and remaining uncertainty before applying or adapting it.
+7. Use explicit `--type report`, `--type event`, or `--type evidence` only for administrator trace-back or debugging archive material. Default `--type all` is the AI reuse view and does not return report/event archive rows.
 
 For `android-framework-change-workflow`, this is the pre-analysis search gate. Search first; if no useful result exists, continue with normal requirement analysis and implementation.
 

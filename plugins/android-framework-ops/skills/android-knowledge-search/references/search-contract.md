@@ -13,17 +13,29 @@ index/
 └── evidence-index.jsonl
 ```
 
-Current rebuilt repositories are case/variant first. `case-index.jsonl` and `variant-index.jsonl` are the primary search sources. Search also reads authoritative `patches/by-id`, `reports/by-id`, `events/by-id`, and `evidence/by-id` objects. It must not read old generated SQLite or legacy patch/report indexes.
+Current rebuilt repositories are case/variant first. `case-index.jsonl` and `variant-index.jsonl` are the primary search sources. Search also reads authoritative `patches/by-id`, `reports/by-id`, `events/by-id`, and `evidence/by-id` objects for explicit filters. It must not read old generated SQLite or legacy patch/report indexes.
+
+Default `--type all` is the AI reuse view. It returns only `case`, `variant`, `patch`, `symbol`, and AI evidence kinds:
+
+- `patch_diff_facts`
+- `patch_problem_inference`
+- `project_inference`
+- `risk_surface`
+- `build_result`
+- `verification_result`
+- `search_before_change`
+
+Default `--type all` must not return report rows, event rows, or human/archive evidence kinds such as `source`, `work_findings`, `report_context`, or `package_check`. These archive records remain available only through explicit type filters for administrator trace-back and debugging.
 
 ## Result Types
 
 - `case`: primary Android Framework problem, requirement, or engineering scenario.
 - `variant`: one implementation for a platform, Android version, project, branch, source tree, repo path, patch list, reports, and verification status.
 - `patch`: archived patch assets, readme path, status hints, modified files, modules, search anchors, patch-derived explanation, validation notes, and rollback hint.
-- `report`: member daily or weekly report entries and report item summaries.
+- `report`: member daily or weekly report entries and report item summaries. Explicit filter only; not part of default AI reuse search.
 - `symbol`: reverse index from modified files, SystemProperties, Settings keys, string/resource keys, FrameworkLog keys, modules, and patch-derived anchors to patch IDs.
-- `event`: archived records such as `framework_change`, `daily_trace`, or `weekly_trace`, including member, date, project, platform, and maturity when applicable.
-- `evidence`: evidence records such as source metadata, changed files, patch diff facts, patch problem explanation, risk surface, build result, device/equivalent verification, search-before-change, and package checks.
+- `event`: archived records such as `framework_change`, `daily_trace`, or `weekly_trace`, including member, date, project, platform, and maturity when applicable. Explicit filter only; not part of default AI reuse search.
+- `evidence`: evidence records. Default AI search includes only patch facts, patch problem explanation, project inference, risk surface, build result, device/equivalent verification, and search-before-change. Source metadata, work findings, report context, and package checks require explicit `--type evidence`.
 
 ## Judgment Boundary
 

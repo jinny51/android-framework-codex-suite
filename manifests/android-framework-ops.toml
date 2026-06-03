@@ -13,7 +13,7 @@ summary = "将已完成、阶段性、失败或阻塞但有价值的 Framework �
 [[skills]]
 name = "android-knowledge-search"
 category = "Knowledge System"
-summary = "搜索团队知识库中的历史报告、补丁、检索锚点和验证记录"
+summary = "默认搜索团队知识库中的可复用案例、平台实现、补丁、检索锚点和验证记录"
 
 [[skills]]
 name = "android-knowledge-intake"

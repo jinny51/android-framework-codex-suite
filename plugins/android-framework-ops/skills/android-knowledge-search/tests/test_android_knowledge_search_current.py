@@ -62,6 +62,29 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                 "payload": {"method": "device", "device": "rk3576"},
             },
         )
+        write_json(
+            root / "evidence" / "by-id" / "source-evidence.json",
+            {
+                "schema": "knowledge-evidence",
+                "evidence_id": "source-evidence",
+                "event_id": "event-power",
+                "kind": "source",
+                "summary": "成员会话原始材料包含密码123等归档内容",
+                "payload": {"raw_text": "密码123 电源键排查过程"},
+            },
+        )
+        write_json(
+            root / "reports" / "by-id" / "report-power.json",
+            {
+                "schema": "knowledge-report",
+                "report_id": "report-power",
+                "type": "daily",
+                "author": "测试成员",
+                "date": "2026-05-26",
+                "overview": "密码123 电源键日报记录",
+                "items": [{"title": "电源键调试", "project": "TVE8402M"}],
+            },
+        )
         return root
 
     def test_load_rows_includes_knowledge_events_and_evidence(self):
@@ -123,15 +146,31 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         self.assertEqual(events[0]["id"], "event-power")
         self.assertEqual(evidence[0]["id"], "verification-result")
 
-    def test_markdown_formats_event_and_evidence_results(self):
+    def test_default_search_excludes_archive_rows_but_keeps_ai_evidence(self):
         root = self.make_root()
         rows = search.load_rows(root)
         results = search.search(rows, "电源键 真机验证", "all", 5, include_synthetic=False)
 
         text = search.format_markdown(root, "电源键 真机验证", results, None)
 
-        self.assertIn("[event]", text)
         self.assertIn("[evidence]", text)
+        self.assertNotIn("[event]", text)
+        self.assertNotIn("[report]", text)
+
+        archive_results = search.search(rows, "密码123", "all", 5, include_synthetic=False)
+        self.assertEqual(archive_results, [])
+
+    def test_explicit_archive_filters_remain_available(self):
+        root = self.make_root()
+        rows = search.load_rows(root)
+
+        reports = search.search(rows, "密码123", "report", 5, include_synthetic=False)
+        events = search.search(rows, "电源键 rk3576", "event", 5, include_synthetic=False)
+        evidence = search.search(rows, "密码123", "evidence", 5, include_synthetic=False)
+
+        self.assertEqual(reports[0]["id"], "report-power")
+        self.assertEqual(events[0]["id"], "event-power")
+        self.assertEqual(evidence[0]["id"], "source-evidence")
 
     def test_current_rebuild_case_and_variant_indexes_are_searchable(self):
         root = Path(tempfile.mkdtemp())

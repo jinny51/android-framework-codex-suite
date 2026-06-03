@@ -6,16 +6,18 @@
 
 ## 用途
 
-该 skill 用于搜索团队知识库里的日报、周报、补丁、修改文件、检索锚点（文件/类名/属性/资源 key）、归档记录和验证证据。
+该 skill 默认搜索团队知识库里的案例、平台实现、补丁、修改文件、检索锚点（文件/类名/属性/资源 key）和可复用验证证据。
 
 它的价值是让成员或其他 skill 在重新分析、重新开发之前，先查团队是否已经保存过类似功能、补丁或问题处理记录。
+
+日报、周报、incoming 事件、原始来源和工作过程证据属于人看归档。它们保留显式查询能力，但不进入默认 AI 复用检索结果。
 
 ## 典型场景
 
 - 新需求来了，先查有没有类似 Framework 修改或历史补丁。
 - 看到一个类名、属性、Settings key、资源 key，想知道以前哪个补丁改过。
-- 想从日报/周报里找某个项目、问题、成员的历史处理记录。
-- 想确认某个 incoming 是否留下了可复用归档记录和验证证据。
+- 管理员需要追溯日报、周报、incoming 事件或原始来源时，使用显式 `--type report`、`--type event` 或 `--type evidence`。
+- 想确认某个 incoming 是否留下了可复用验证证据。
 - `android-framework-change-workflow` 在进入源码分析前，先查知识库作为参考材料。
 
 ## 常用命令
@@ -46,7 +48,7 @@ python3 "scripts/android_knowledge_search.py" \
   --type variant
 ```
 
-只搜归档记录或验证证据：
+只搜归档记录或证据：
 
 ```bash
 python3 "scripts/android_knowledge_search.py" \
@@ -57,6 +59,8 @@ python3 "scripts/android_knowledge_search.py" \
   "真机验证 services.jar" \
   --type evidence
 ```
+
+默认 `--type all` 是 AI 复用视图，不返回 report/event，也不返回 `source`、`work_findings`、`report_context`、`package_check` 这类人看归档证据。需要追溯来源时必须显式指定类型。
 
 指定知识库路径：
 

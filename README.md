@@ -36,7 +36,7 @@
 | 阶段 | 负责 skill | 职责 |
 | --- | --- | --- |
 | 源码接入 / 路径映射 | `android-wsl-source-access` | 把服务器 Android 源码挂载或恢复到 WSL，并记录本地路径、远程路径、SSH 主机映射 |
-| 开工前查知识库 | `android-knowledge-search` | 搜索历史报告、补丁、检索锚点、验证证据，判断是否有可复用方案 |
+| 开工前查知识库 | `android-knowledge-search` | 默认搜索可复用案例、平台实现、补丁、检索锚点和验证证据，判断是否有可复用方案 |
 | 需求分析 / 代码修改 | `android-framework-change-workflow` | 分析需求或 bug，查源码，改代码，加必要调试日志，判断风险和回滚路径 |
 | 远程命令执行 | `android-remote-channel` | 管理 SSH/tmux 长会话、命令日志、占用状态和锁，避免多个 Codex 会话互相踩远程环境 |
 | 编译 / 产物定位 / 推送 | `android-wsl-remote-build-deploy` | 调用服务器编译 Android，定位 jar/apk 等产物，并推送到设备 |
