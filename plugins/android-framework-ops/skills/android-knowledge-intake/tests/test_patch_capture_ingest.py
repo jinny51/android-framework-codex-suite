@@ -368,6 +368,55 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(manifest["maturity"], "candidate")
             self.assertEqual(verification["payload"]["result"], "MISSING")
 
+    def test_chinese_summary_produces_distinct_framework_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first_patch = root / "mtk15-frameworks-base@volume-dialog-position.patch"
+            second_patch = root / "mtk15-frameworks-base@statusbar-policy.patch"
+            for patch in (first_patch, second_patch):
+                patch.write_text(
+                    "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+                    "--- a/frameworks/base/services/core/java/X.java\n"
+                    "+++ b/frameworks/base/services/core/java/X.java\n"
+                    "@@ -1 +1,2 @@\n"
+                    "+//gyf 20260601@ framework policy\n",
+                    encoding="utf-8",
+                )
+                patch.with_suffix(".readme.md").write_text(valid_patch_readme(patch.stem), encoding="utf-8")
+
+            first = intake.prepare_patch_package(
+                dt.date(2026, 6, 1),
+                self.config(root),
+                run_id="20260601-120000-first",
+                patch_paths=[str(first_patch)],
+                patch_package_paths=[],
+                project="TVE8402M",
+                summary="通知栏音量弹窗位置适配",
+                status="candidate",
+                schema_version="1",
+            )
+            second = intake.prepare_patch_package(
+                dt.date(2026, 6, 1),
+                self.config(root),
+                run_id="20260601-120000-second",
+                patch_paths=[str(second_patch)],
+                patch_package_paths=[],
+                project="TVE8402M",
+                summary="状态栏策略调整",
+                status="candidate",
+                schema_version="1",
+            )
+
+            first_manifest = json.loads((first / "manifest.json").read_text(encoding="utf-8"))
+            second_manifest = json.loads((second / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertNotEqual(first_manifest["case_id"], second_manifest["case_id"])
+            self.assertNotEqual(first_manifest["variant_id"], second_manifest["variant_id"])
+            self.assertNotEqual(first_manifest["case_id"], "case-item")
+            self.assertNotEqual(first_manifest["variant_id"], "variant-mtk-15-tve8402m")
+            self.assertRegex(first_manifest["case_id"], r"^case-framework-change-[0-9a-f]{10}$")
+            self.assertRegex(first_manifest["variant_id"], r"^variant-mtk-15-tve8402m-[0-9a-f]{10}$")
+
     def test_patch_semantics_still_identify_common_framework_paths(self) -> None:
         files = [
             "services/core/java/com/android/server/audio/AudioService.java",

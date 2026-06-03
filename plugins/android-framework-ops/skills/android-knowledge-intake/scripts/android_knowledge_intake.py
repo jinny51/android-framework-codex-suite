@@ -924,6 +924,20 @@ def safe_id(value: str) -> str:
     return value or "item"
 
 
+def sha1_text(value: str, length: int = 10) -> str:
+    return hashlib.sha1(value.encode("utf-8")).hexdigest()[:length]
+
+
+def stable_slug_id(value: str, fallback: str, limit: int, hash_source: str | None = None) -> str:
+    base = safe_id(value).lower()
+    if base == "item":
+        base = safe_id(fallback).lower()
+    digest = sha1_text(hash_source if hash_source is not None else value)
+    head_limit = max(1, limit - len(digest) - 1)
+    head = base[:head_limit].strip("-._") or safe_id(fallback).lower()
+    return f"{head}-{digest}"[:limit].strip("-._")
+
+
 def sha1_file(path: Path) -> str:
     digest = hashlib.sha1()
     with path.open("rb") as handle:
@@ -2255,11 +2269,6 @@ def repo_paths_from_files(files: list[str]) -> list[str]:
     return sorted(dict.fromkeys(repos)) or ["unknown"]
 
 
-def slug_id(value: str, fallback: str) -> str:
-    item = safe_id(value.lower().replace("_", "-"))
-    return item or fallback
-
-
 def first_evidence_path(entries: list[dict[str, Any]], kind: str) -> str:
     for entry in entries:
         if entry.get("kind") == kind and isinstance(entry.get("path"), str):
@@ -2477,10 +2486,22 @@ def prepare_patch_package(
         }
     )
     repo_paths = repo_paths_from_files(modified_files)
-    case_id = "case-" + slug_id(summary, "framework-change")[:80]
-    variant_id = "variant-" + slug_id("-".join([platform, android_version, project, summary]), "framework-change")[:100]
     patch_rel_paths = [str(item["path"]) for item in all_patch_items]
     all_related_report_run_ids = unique_strings(all_related_report_run_ids)
+    case_id = "case-" + stable_slug_id(summary, "framework-change", 80)
+    variant_seed = json.dumps(
+        {
+            "android_version": android_version,
+            "case_id": case_id,
+            "platform": platform,
+            "project": project,
+            "repo_paths": repo_paths,
+            "summary": summary,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    variant_id = "variant-" + stable_slug_id("-".join([platform, android_version, project, summary]), "framework-change", 100, variant_seed)
 
     case_path = "knowledge/case.json"
     variant_path = "knowledge/variant.json"
