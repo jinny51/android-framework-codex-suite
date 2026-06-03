@@ -81,12 +81,12 @@ def create_capture_package(
         },
     )
     write_json(
-        package / "evidence" / "patch-problem-inference.json",
+        package / "evidence" / "patch-problem-summary.json",
         {
-            "kind": "patch_problem_inference",
+            "kind": "patch_problem_summary",
             "confidence": "medium",
-            "inferred_problem": "Navigation policy may need adjustment",
-            "inferred_solution": "Adjust framework policy path",
+            "problem_summary": "Navigation policy may need adjustment",
+            "solution_summary": "Adjust framework policy path",
             "basis": ["patch modifies frameworks/base/services/core/java/X.java"],
             "limits": ["verification is separate"],
         },
@@ -121,7 +121,7 @@ def create_capture_package(
             {"id": "verification-result", "kind": "verification_result", "path": "evidence/verification-result.json", "result": "PASS"},
             {"id": "search-before-change", "kind": "search_before_change", "path": "evidence/search-before-change.json", "result": "INFO"},
             {"id": "patch-diff-facts", "kind": "patch_diff_facts", "path": "evidence/patch-diff-facts.json", "result": "INFO"},
-            {"id": "patch-problem-inference", "kind": "patch_problem_inference", "path": "evidence/patch-problem-inference.json", "result": "INFO"},
+            {"id": "patch-problem-summary", "kind": "patch_problem_summary", "path": "evidence/patch-problem-summary.json", "result": "INFO"},
             {"id": "risk-surface", "kind": "risk_surface", "path": "evidence/risk-surface.json", "result": "INFO"},
         ],
     }
@@ -172,7 +172,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
             diff_facts = json.loads((package / "knowledge" / "evidence" / "patch_diff_facts.json").read_text(encoding="utf-8"))
             source = json.loads((package / "knowledge" / "evidence" / "source.json").read_text(encoding="utf-8"))
-            problem = json.loads((package / "knowledge" / "evidence" / "capture" / "capture-patch-problem-inference.json").read_text(encoding="utf-8"))
+            problem = json.loads((package / "knowledge" / "evidence" / "capture" / "capture-patch-problem-summary.json").read_text(encoding="utf-8"))
             risk = json.loads((package / "knowledge" / "evidence" / "capture" / "capture-risk-surface.json").read_text(encoding="utf-8"))
 
             self.assertEqual(check["status"], "PASS")
@@ -385,7 +385,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
         self.assertIn("Audio", modules)
         self.assertIn("Camera", modules)
         self.assertIn("ProductConfig", modules)
-        self.assertIn("音频录制", problem["inferred_problem"])
+        self.assertIn("音频录制", problem["problem_summary"])
         self.assertIn("音频路由/音量行为", risk["risk_areas"])
         self.assertIn("相机行为", risk["risk_areas"])
         self.assertIn("产品配置/预置应用", risk["risk_areas"])

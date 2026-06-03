@@ -49,19 +49,18 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                 "summary": "修改电源键策略以满足产品需求",
             },
         )
-        write_json(
-            root / "evidence" / "by-id" / "verification-result.json",
-            {
-                "schema": "knowledge-evidence",
-                "evidence_id": "verification-result",
-                "case_id": "case-power-key",
-                "variant_id": "variant-rk3576-tve8402m-power-key",
-                "kind": "verification_result",
-                "result": "PASS",
-                "summary": "rk3576 真机验证电源键行为通过",
-                "payload": {"method": "device", "device": "rk3576"},
-            },
-        )
+        verification_evidence = {
+            "schema": "knowledge-evidence",
+            "evidence_id": "verification-result",
+            "case_id": "case-power-key",
+            "variant_id": "variant-rk3576-tve8402m-power-key",
+            "kind": "verification_result",
+            "result": "PASS",
+            "summary": "rk3576 真机验证电源键行为通过",
+            "payload": {"method": "device", "device": "rk3576"},
+        }
+        write_json(root / "evidence" / "by-id" / "verification-result.json", verification_evidence)
+        write_jsonl(root / "index" / "evidence-index.jsonl", [verification_evidence])
         write_json(
             root / "evidence" / "by-id" / "source-evidence.json",
             {
@@ -87,14 +86,16 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         )
         return root
 
-    def test_load_rows_includes_knowledge_events_and_evidence(self):
+    def test_default_load_rows_excludes_archive_rows(self):
         root = self.make_root()
 
         rows = search.load_rows(root)
 
         kinds = {row["kind"] for row in rows}
-        self.assertIn("event", kinds)
         self.assertIn("evidence", kinds)
+        self.assertNotIn("event", kinds)
+        self.assertNotIn("report", kinds)
+        self.assertNotIn("source-evidence", {row.get("id") for row in rows})
 
     def test_find_root_uses_configured_member_worktree_without_jinny_defaults(self):
         temp = Path(tempfile.mkdtemp())
@@ -138,7 +139,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
 
     def test_search_can_filter_event_and_evidence(self):
         root = self.make_root()
-        rows = search.load_rows(root)
+        rows = search.load_rows(root, include_archive=True)
 
         events = search.search(rows, "电源键 rk3576", "event", 5, include_synthetic=False)
         evidence = search.search(rows, "真机验证", "evidence", 5, include_synthetic=False)
@@ -162,7 +163,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
 
     def test_explicit_archive_filters_remain_available(self):
         root = self.make_root()
-        rows = search.load_rows(root)
+        rows = search.load_rows(root, include_archive=True)
 
         reports = search.search(rows, "密码123", "report", 5, include_synthetic=False)
         events = search.search(rows, "电源键 rk3576", "event", 5, include_synthetic=False)
@@ -305,9 +306,9 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                 "title": "Focus fix",
                 "summary": "",
                 "modules": ["WindowManager"],
-                "inferred_problem": "Launcher launch may leave window focus stale",
-                "inferred_solution": "Adjust WindowManager focus update",
-                "inferred_keywords": ["focus", "Launcher", "audio route/volume", "usb/device permission"],
+                "problem_summary": "Launcher launch may leave window focus stale",
+                "solution_summary": "Adjust WindowManager focus update",
+                "keywords": ["focus", "Launcher", "audio route/volume", "usb/device permission"],
                 "inference_confidence": "medium",
                 "inference_basis": ["patch modifies WindowState.java"],
                 "inference_limits": ["device verification is separate"],
@@ -324,9 +325,9 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                 "title": "Policy fix",
                 "summary": "",
                 "modules": ["Policy"],
-                "inferred_problem": "Behavior in Policy may need correction",
-                "inferred_solution": "Patch changes Policy code paths and should be reviewed against the target requirement",
-                "inferred_keywords": ["Policy"],
+                "problem_summary": "Behavior in Policy may need correction",
+                "solution_summary": "Patch changes Policy code paths and should be reviewed against the target requirement",
+                "keywords": ["Policy"],
                 "inference_confidence": "low",
                 "inference_basis": ["patch modifies PhoneWindowManager.java"],
                 "inference_limits": ["device verification is separate"],

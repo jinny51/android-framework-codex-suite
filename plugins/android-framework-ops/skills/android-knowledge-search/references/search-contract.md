@@ -13,12 +13,12 @@ index/
 └── evidence-index.jsonl
 ```
 
-Current rebuilt repositories are case/variant first. `case-index.jsonl` and `variant-index.jsonl` are the primary search sources. Search also reads authoritative `patches/by-id`, `reports/by-id`, `events/by-id`, and `evidence/by-id` objects for explicit filters. It must not read old generated SQLite or legacy patch/report indexes.
+Current rebuilt repositories are case/variant first. `case-index.jsonl` and `variant-index.jsonl` are the primary search sources. Default search loads `patches/by-id` plus generated AI indexes only. `reports/by-id`, `events/by-id`, and raw `evidence/by-id` are loaded only for explicit archive filters. It must not read old generated SQLite or legacy patch/report indexes.
 
 Default `--type all` is the AI reuse view. It returns only `case`, `variant`, `patch`, `symbol`, and AI evidence kinds:
 
 - `patch_diff_facts`
-- `patch_problem_inference`
+- `patch_problem_summary`
 - `project_inference`
 - `risk_surface`
 - `build_result`

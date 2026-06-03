@@ -43,22 +43,23 @@ FRAMEWORK_REQUIRED_EVIDENCE_KINDS = {
     "source",
     "patch_diff_facts",
     "project_inference",
-    "patch_problem_inference",
+    "patch_problem_summary",
     "risk_surface",
     "verification_result",
     "search_before_change",
 }
 FRAMEWORK_OPTIONAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
-INFERENCE_EVIDENCE_KINDS = {"patch_problem_inference", "risk_surface"}
-REQUIRED_PATCH_EXPLANATION_KINDS = {"patch_problem_inference", "risk_surface"}
+EXPLANATION_EVIDENCE_KINDS = {"patch_problem_summary", "risk_surface"}
+REQUIRED_PATCH_EXPLANATION_KINDS = {"patch_problem_summary", "risk_surface"}
 EVIDENCE_CONFIDENCE_VALUES = {"low", "medium", "high"}
 REPORT_KINDS = {"daily", "weekly", "summary", "session"}
+LEGACY_PATCH_PROBLEM_KIND = "patch_" + "problem_" + "inference"
 EVIDENCE_KINDS = {
     "source",
     "codex_sessions",
     "changed_files",
     "patch_diff_facts",
-    "patch_problem_inference",
+    "patch_problem_summary",
     "risk_surface",
     "build_result",
     "verification_result",
@@ -1459,7 +1460,7 @@ def patch_diff_modified_files(package_dir: Path, rel: str) -> list[str]:
     return files
 
 
-def validate_inference_evidence(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
+def validate_explanation_evidence(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
     rel = item.get("path")
     if not isinstance(rel, str) or not rel:
         errors.append("补丁解释 evidence 必须引用 JSON 文件")
@@ -1476,9 +1477,9 @@ def validate_inference_evidence(package_dir: Path, item: dict[str, Any], errors:
         errors.append(f"{rel} basis 必须是非空数组")
     if not isinstance(limits, list) or not limits:
         errors.append(f"{rel} limits 必须是非空数组")
-    if item.get("kind") == "patch_problem_inference":
-        if not payload.get("inferred_problem") or not payload.get("inferred_solution"):
-            errors.append(f"{rel} 必须包含 inferred_problem 和 inferred_solution")
+    if item.get("kind") == "patch_problem_summary":
+        if not payload.get("problem_summary") or not payload.get("solution_summary"):
+            errors.append(f"{rel} 必须包含 problem_summary 和 solution_summary")
     if item.get("kind") == "risk_surface":
         risk_areas = payload.get("risk_areas")
         if not isinstance(risk_areas, list) or not risk_areas:
@@ -1644,10 +1645,22 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             evidence = read_referenced_json(package_dir, rel)
             if not isinstance(evidence, dict):
                 continue
+            if evidence.get("kind") == LEGACY_PATCH_PROBLEM_KIND:
+                errors.append(f"{rel} 使用了旧补丁问题证据类型；请改用 patch_problem_summary")
             if evidence.get("case_id") != manifest.get("case_id"):
                 errors.append(f"{rel} evidence.case_id 必须等于 manifest.case_id")
             if evidence.get("variant_id") != manifest.get("variant_id"):
                 errors.append(f"{rel} evidence.variant_id 必须等于 manifest.variant_id")
+            if evidence.get("kind") == "patch_problem_summary":
+                payload = evidence
+                if "payload" in payload:
+                    errors.append(f"{rel} 必须直接使用顶层字段，不能再包一层 payload")
+                if not payload.get("problem_summary") or not payload.get("solution_summary"):
+                    errors.append(f"{rel} 必须包含 problem_summary 和 solution_summary")
+                if not isinstance(payload.get("basis"), list) or not payload.get("basis"):
+                    errors.append(f"{rel} basis 必须是非空数组")
+                if not isinstance(payload.get("limits"), list):
+                    errors.append(f"{rel} limits 必须是数组")
         for kind in FRAMEWORK_REQUIRED_EVIDENCE_KINDS:
             if kind not in evidence_by_kind:
                 errors.append(f"framework_change 缺少 {kind} evidence")
@@ -1945,13 +1958,13 @@ def patch_problem_and_risk_payloads(patch_id: str, source_patch: str, summary: s
     ]
     return (
         {
-            "kind": "patch_problem_inference",
+            "kind": "patch_problem_summary",
             "patch_id": patch_id,
             "source_patch": source_patch,
             "confidence": confidence,
-            "inferred_problem": problem,
-            "inferred_solution": solution,
-            "inferred_keywords": keywords,
+            "problem_summary": problem,
+            "solution_summary": solution,
+            "keywords": keywords,
             "basis": basis,
             "limits": limits,
         },
@@ -2030,13 +2043,13 @@ def ensure_patch_analysis_evidence(package_dir: Path, patch_entries: list[dict[s
             )
 
         problem_payload, risk_payload = patch_problem_and_risk_payloads(patch_id, source_patch, summary, merged_facts)
-        if "patch_problem_inference" not in existing:
+        if "patch_problem_summary" not in existing:
             problem_path = evidence_dir / f"{safe_patch_id}-patch-problem.json"
             write_json(problem_path, problem_payload)
             evidence_entries.append(
                 {
                     "id": f"{safe_patch_id}-patch-problem",
-                    "kind": "patch_problem_inference",
+                    "kind": "patch_problem_summary",
                     "patch_id": patch_id,
                     "path": f"knowledge/evidence/{problem_path.name}",
                     "result": "INFO",
@@ -2563,16 +2576,27 @@ def prepare_patch_package(
             "payload": aggregate_patch_diff_facts(all_patch_items),
         },
     )
-    patch_problem_path = first_evidence_path(capture_evidence_entries, "patch_problem_inference")
+    patch_problem_path = first_evidence_path(capture_evidence_entries, "patch_problem_summary")
     risk_path = first_evidence_path(capture_evidence_entries, "risk_surface")
     required_generated = {
         "patch_diff_facts": patch_diff_path,
-        "patch_problem_inference": patch_problem_path,
+        "patch_problem_summary": patch_problem_path,
         "risk_surface": risk_path,
     }
     for kind, rel in list(required_generated.items()):
         if not rel:
             fallback = f"knowledge/evidence/{kind}.json"
+            payload: dict[str, Any] = {"basis": ["自动生成兜底证据"], "limits": ["缺少可解析补丁证据"]}
+            if kind == "patch_problem_summary":
+                payload.update(
+                    {
+                        "problem_summary": summary,
+                        "solution_summary": "成员端 Codex 未取得更完整的补丁说明，需结合 diff 和验证证据复核。",
+                        "keywords": [],
+                    }
+                )
+            if kind == "risk_surface":
+                payload["risk_areas"] = ["修改路径需按需求验证"]
             write_default_evidence(
                 package_dir,
                 fallback,
@@ -2580,7 +2604,7 @@ def prepare_patch_package(
                     "kind": kind,
                     "case_id": case_id,
                     "variant_id": variant_id,
-                    "payload": {"basis": ["自动生成兜底证据"], "limits": ["缺少可解析补丁证据"]},
+                    **payload,
                 },
             )
             required_generated[kind] = fallback
@@ -2622,7 +2646,7 @@ def prepare_patch_package(
                 source_path,
                 required_generated["patch_diff_facts"],
                 project_path,
-                required_generated["patch_problem_inference"],
+                required_generated["patch_problem_summary"],
                 required_generated["risk_surface"],
                 verification_path,
                 search_path,

@@ -2,7 +2,7 @@
 
 Member-side Codex submits only `incoming` packages. It does not write final knowledge views such as reports, patches, index, or site. The server validates the package and materializes case, variant, patch, report, evidence, event, search index, and admin site.
 
-The server does not run Codex and must not be the main AI reasoning layer. Project inference, patch problem inference, risk, verification status, and search-before-change evidence are produced by member-side Codex.
+The server does not run Codex and must not be the main AI reasoning layer. Project inference, patch problem summary, risk, verification status, and search-before-change evidence are produced by member-side Codex.
 
 ## Server Merge Anchors
 
@@ -150,7 +150,7 @@ knowledge/variant.json
 knowledge/evidence/source.json
 knowledge/evidence/patch_diff_facts.json
 knowledge/evidence/project_inference.json
-knowledge/evidence/patch_problem_inference.json
+knowledge/evidence/patch_problem_summary.json
 knowledge/evidence/risk_surface.json
 knowledge/evidence/verification_result.json
 knowledge/evidence/search_before_change.json
@@ -177,7 +177,7 @@ Manifest excerpt:
       "knowledge/evidence/source.json",
       "knowledge/evidence/patch_diff_facts.json",
       "knowledge/evidence/project_inference.json",
-      "knowledge/evidence/patch_problem_inference.json",
+      "knowledge/evidence/patch_problem_summary.json",
       "knowledge/evidence/risk_surface.json",
       "knowledge/evidence/verification_result.json",
       "knowledge/evidence/search_before_change.json"

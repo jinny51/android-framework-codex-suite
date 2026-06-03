@@ -22,7 +22,7 @@ ENV_PREFIXES = ("CODEX_KNOWLEDGE_", "CODEX_REPORT_", "CODEX_WORK_REPORT_")
 AI_DEFAULT_RESULT_KINDS = {"case", "variant", "patch", "symbol"}
 AI_EVIDENCE_KINDS = {
     "patch_diff_facts",
-    "patch_problem_inference",
+    "patch_problem_summary",
     "project_inference",
     "risk_surface",
     "build_result",
@@ -339,7 +339,7 @@ def evidence_row(item: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def load_from_jsonl(root: Path) -> list[dict[str, Any]]:
+def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     search_docs = {str(item.get("case_id", "")): item for item in read_jsonl(root / "index" / "search-docs.jsonl")}
     for item in read_jsonl(root / "index" / "case-index.jsonl"):
@@ -361,28 +361,31 @@ def load_from_jsonl(root: Path) -> list[dict[str, Any]]:
         rows.append({"kind": "symbol", "id": item.get("symbol_id", ""), "symbol": item.get("value", ""), **item})
     for item in read_jsonl(root / "index" / "evidence-index.jsonl"):
         rows.append(evidence_row(item))
-    if not any(row.get("kind") == "evidence" for row in rows):
+    loaded_evidence_ids = {str(row.get("evidence_id") or row.get("id") or "") for row in rows if row.get("kind") == "evidence"}
+    if include_archive:
         for path in sorted(root.glob("evidence/by-id/*.json")):
             item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
-            if isinstance(item, dict):
+            evidence_id = str(item.get("evidence_id") or "")
+            if isinstance(item, dict) and evidence_id not in loaded_evidence_ids:
                 rows.append(evidence_row({**item, "path": str(path.relative_to(root))}))
     for path in sorted(root.glob("patches/by-id/*/patch.json")):
         item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
         if isinstance(item, dict):
             rows.append({"kind": "patch", "id": item.get("patch_id", ""), "path": str(path.relative_to(root)), **item})
-    for path in sorted(root.glob("reports/by-id/*.json")):
-        item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
-        if isinstance(item, dict):
-            rows.append({"kind": "report", "id": item.get("report_id", ""), "path": str(path.relative_to(root)), **item})
-    for path in sorted(root.glob("events/by-id/*.json")):
-        item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
-        if isinstance(item, dict):
-            rows.append({"kind": "event", "id": item.get("event_id", ""), "path": str(path.relative_to(root)), **item})
+    if include_archive:
+        for path in sorted(root.glob("reports/by-id/*.json")):
+            item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
+            if isinstance(item, dict):
+                rows.append({"kind": "report", "id": item.get("report_id", ""), "path": str(path.relative_to(root)), **item})
+        for path in sorted(root.glob("events/by-id/*.json")):
+            item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
+            if isinstance(item, dict):
+                rows.append({"kind": "event", "id": item.get("event_id", ""), "path": str(path.relative_to(root)), **item})
     return rows
 
 
-def load_rows(root: Path) -> list[dict[str, Any]]:
-    return load_from_jsonl(root)
+def load_rows(root: Path, include_archive: bool = False) -> list[dict[str, Any]]:
+    return load_from_jsonl(root, include_archive=include_archive)
 
 
 def stringify(value: Any) -> str:
@@ -450,9 +453,9 @@ def row_text(row: dict[str, Any]) -> str:
         "resource_keys",
         "strings",
         "keywords",
-        "inferred_problem",
-        "inferred_solution",
-        "inferred_keywords",
+        "problem_summary",
+        "solution_summary",
+        "keywords",
         "inference_confidence",
         "inference_basis",
         "inference_limits",
@@ -494,8 +497,8 @@ def score_row(row: dict[str, Any], terms: list[str]) -> tuple[int, list[str]]:
         (6, "modified_files"),
         (6, "patch_ids"),
         (6, "modules"),
-        (6, "inferred_keywords"),
-        (6, "inferred_problem"),
+        (6, "keywords"),
+        (6, "problem_summary"),
         (6, "payload"),
         (6, "system_properties"),
         (6, "settings_keys"),
@@ -753,17 +756,17 @@ def format_patch(root: Path, row: dict[str, Any], index: int) -> str:
         lines.append(f"   - modified_files: {compact_list(row.get('modified_files'))}")
     if row.get("modules"):
         lines.append(f"   - modules: {compact_list(row.get('modules'))}")
-    if row.get("inferred_problem") or row.get("inferred_solution"):
+    if row.get("problem_summary") or row.get("solution_summary"):
         lines.append(
             "   - 补丁问题线索: "
-            f"{localized_analysis_text(row.get('inferred_problem') or '')}"
+            f"{localized_analysis_text(row.get('problem_summary') or '')}"
         )
-        if row.get("inferred_solution"):
-            lines.append(f"   - 补丁方案线索: {localized_analysis_text(row.get('inferred_solution') or '')}")
-    if row.get("inferred_keywords") or row.get("risk_areas"):
+        if row.get("solution_summary"):
+            lines.append(f"   - 补丁方案线索: {localized_analysis_text(row.get('solution_summary') or '')}")
+    if row.get("keywords") or row.get("risk_areas"):
         lines.append(
             "   - 关键词/风险面: "
-            f"{compact_list(row.get('inferred_keywords'))}"
+            f"{compact_list(row.get('keywords'))}"
             f" / {compact_list(row.get('risk_areas'))}"
         )
     symbols = compact_list(
@@ -910,7 +913,7 @@ def main(argv: list[str] | None = None) -> int:
     query = " ".join(args.query).strip()
     root = find_root(args.root)
     refresh_status = refresh_root(root) if args.refresh else None
-    rows = load_rows(root)
+    rows = load_rows(root, include_archive=args.type in {"report", "event", "evidence"})
     results = search(rows, query, args.type, max(args.limit, 1), args.include_synthetic)
 
     if args.json:

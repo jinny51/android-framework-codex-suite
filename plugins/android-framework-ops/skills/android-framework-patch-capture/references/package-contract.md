@@ -13,7 +13,7 @@ This package is a local handoff artifact. `android-knowledge-intake` can later s
 └── evidence/
     ├── changed-files.json
     ├── patch-diff-facts.json
-    ├── patch-problem-inference.json
+    ├── patch-problem-summary.json
     ├── risk-surface.json
     ├── build-result.json
     ├── verification-result.json
@@ -54,9 +54,9 @@ This package is a local handoff artifact. `android-knowledge-intake` can later s
       "summary": "补丁 diff 中解析出的客观事实"
     },
     {
-      "id": "patch-problem-inference",
-      "kind": "patch_problem_inference",
-      "path": "evidence/patch-problem-inference.json",
+      "id": "patch-problem-summary",
+      "kind": "patch_problem_summary",
+      "path": "evidence/patch-problem-summary.json",
       "result": "INFO",
       "summary": "补丁对应的问题与方案说明"
     },
@@ -114,11 +114,11 @@ Patch-content explanation is allowed only when it carries basis and limits:
 
 ```json
 {
-  "kind": "patch_problem_inference",
+  "kind": "patch_problem_summary",
   "confidence": "medium",
-  "inferred_problem": "窗口或 Activity 焦点行为需要按产品需求调整。",
-  "inferred_solution": "修改 WindowManager 或 ActivityTaskManager 相关路径中的焦点处理逻辑。",
-  "inferred_keywords": [],
+  "problem_summary": "窗口或 Activity 焦点行为需要按产品需求调整。",
+  "solution_summary": "修改 WindowManager 或 ActivityTaskManager 相关路径中的焦点处理逻辑。",
+  "keywords": [],
   "basis": ["补丁修改文件: frameworks/base/..."],
   "limits": ["补丁内容不能单独证明原始需求文字"]
 }

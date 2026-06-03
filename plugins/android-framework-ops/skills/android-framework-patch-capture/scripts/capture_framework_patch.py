@@ -469,7 +469,7 @@ def patch_analysis_from_diff(diff_text: str, facts: dict[str, Any], patch_name: 
     if args.summary:
         basis.append("提交时提供了补丁摘要")
 
-    inferred_problem, inferred_solution, confidence = semantic_problem_solution(modules, flags)
+    problem_summary, solution_summary, confidence = semantic_problem_solution(modules, flags)
     risks = semantic_risk_areas(modules, flags)
 
     limits = [
@@ -491,13 +491,13 @@ def patch_analysis_from_diff(diff_text: str, facts: dict[str, Any], patch_name: 
             "resource_keys": facts["resource_keys"],
             "framework_log_keys": facts["framework_log_keys"],
         },
-        "patch_problem_inference": {
-            "kind": "patch_problem_inference",
+        "patch_problem_summary": {
+            "kind": "patch_problem_summary",
             "source_patch": source_patch,
             "confidence": confidence,
-            "inferred_problem": inferred_problem,
-            "inferred_solution": inferred_solution,
-            "inferred_keywords": keywords,
+            "problem_summary": problem_summary,
+            "solution_summary": solution_summary,
+            "keywords": keywords,
             "basis": basis,
             "limits": limits,
         },
@@ -739,9 +739,9 @@ def main() -> int:
             "summary": "补丁 diff 中解析出的客观事实",
         },
         {
-            "id": "patch-problem-inference",
-            "kind": "patch_problem_inference",
-            "path": "evidence/patch-problem-inference.json",
+            "id": "patch-problem-summary",
+            "kind": "patch_problem_summary",
+            "path": "evidence/patch-problem-summary.json",
             "result": "INFO",
             "summary": "补丁对应的问题与方案说明",
         },
@@ -793,7 +793,7 @@ def main() -> int:
     write_json(package_dir / "manifest.json", manifest)
     write_json(evidence_dir / "changed-files.json", {"facts": facts, "git": manifest["git"]})
     write_json(evidence_dir / "patch-diff-facts.json", patch_analysis["patch_diff_facts"])
-    write_json(evidence_dir / "patch-problem-inference.json", patch_analysis["patch_problem_inference"])
+    write_json(evidence_dir / "patch-problem-summary.json", patch_analysis["patch_problem_summary"])
     write_json(evidence_dir / "risk-surface.json", patch_analysis["risk_surface"])
     write_json(evidence_dir / "verification-result.json", verification_payload)
     write_json(evidence_dir / "search-before-change.json", search_payload)
