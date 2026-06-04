@@ -93,33 +93,83 @@ def write_member_config(root: Path, remote: Path, synthetic_data: bool = True) -
     return env
 
 
-def write_codex_session(codex_home: Path, session_id: str, cwd: Path, date: dt.date, message: str) -> None:
+def write_codex_session(
+    codex_home: Path,
+    session_id: str,
+    cwd: Path,
+    date: dt.date,
+    message: str | list[str],
+    thread_name: str = "SystemUI 状态栏策略修改",
+    commands: list[str] | None = None,
+) -> None:
     sessions_dir = codex_home / "sessions" / f"{date:%Y}" / f"{date:%m}" / f"{date:%d}"
     sessions_dir.mkdir(parents=True, exist_ok=True)
-    (codex_home / "session_index.jsonl").write_text(
-        json.dumps({"id": session_id, "thread_name": "SystemUI 状态栏策略修改"}, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    index = codex_home / "session_index.jsonl"
+    with index.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps({"id": session_id, "thread_name": thread_name}, ensure_ascii=False) + "\n")
     rows = [
         {
             "timestamp": f"{date.isoformat()}T10:00:00+08:00",
             "type": "session_meta",
             "payload": {"id": session_id, "cwd": str(cwd)},
-        },
-        {
-            "timestamp": f"{date.isoformat()}T10:10:00+08:00",
-            "type": "response_item",
-            "payload": {
-                "type": "message",
-                "role": "user",
-                "content": [{"type": "input_text", "text": message}],
-            },
-        },
+        }
     ]
+    for index, text in enumerate([message] if isinstance(message, str) else message, start=1):
+        rows.append(
+            {
+                "timestamp": f"{date.isoformat()}T10:{index:02d}:00+08:00",
+                "type": "response_item",
+                "payload": {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": text}],
+                },
+            }
+        )
+    for index, cmd in enumerate(commands or [], start=30):
+        rows.append(
+            {
+                "timestamp": f"{date.isoformat()}T10:{index:02d}:00+08:00",
+                "type": "response_item",
+                "payload": {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "arguments": json.dumps({"cmd": cmd}, ensure_ascii=False),
+                },
+            }
+        )
     (sessions_dir / f"{session_id}.jsonl").write_text(
         "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
         encoding="utf-8",
     )
+
+
+def read_package_report(package: Path, report_type: str = "daily") -> str:
+    return (package / "reports" / f"{report_type}.md").read_text(encoding="utf-8")
+
+
+def read_package_findings(package: Path) -> dict:
+    return json.loads((package / "knowledge" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
+
+
+def prepare_daily_package(env: dict[str, str], date: str, run_id: str) -> Path:
+    result = run_json(
+        [
+            sys.executable,
+            str(INTAKE_SCRIPT),
+            "--profile",
+            "member01",
+            "daily",
+            "--date",
+            date,
+            "--run-id",
+            run_id,
+            "--prepare",
+        ],
+        SUITE_ROOT,
+        env,
+    )
+    return Path(result["package"])
 
 
 def write_admin_config(root: Path, remote: Path) -> dict[str, str]:
@@ -179,6 +229,89 @@ def create_framework_repo(root: Path) -> Path:
 
 
 class MemberAutomationFlowTests(unittest.TestCase):
+    def test_daily_uses_remote_project_anchor_and_filters_codex_noise(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            codex_home = Path(env["CODEX_HOME"])
+            source_root = create_framework_repo(root)
+            run(["git", "checkout", "-b", "TVA10A2R_camera_fix"], source_root)
+            noise_dir = root / "codex-home" / "worktrees" / "knowledge-guiliu"
+            noise_dir.mkdir(parents=True)
+
+            write_codex_session(
+                codex_home,
+                "22222222-2222-3333-4444-555555555555",
+                source_root,
+                dt.date(2026, 6, 3),
+                [
+                    "今天通过 ssh test35 连接服务器，在 /home/jinny/work/rk/TVA10A2R 源码里处理 TVA10A2R 视频通话看不到设备端画面，dual_camera_error 补丁已改完，进度80%，待设备验证。",
+                    "继续排查 TVA10A2R 视频监控画面旋转问题，进度40%。",
+                ],
+                thread_name="TVA10A2R 视频通话和视频监控定制",
+                commands=[
+                    "ssh test35",
+                    "cd /home/jinny/work/rk/TVA10A2R && git branch --show-current",
+                    "git diff frameworks/base hardware/rockchip/camera",
+                ],
+            )
+            write_codex_session(
+                codex_home,
+                "33333333-2222-3333-4444-555555555555",
+                noise_dir,
+                dt.date(2026, 6, 3),
+                [
+                    "Enter passphrase for key 是123",
+                    "The following is the Codex agent history added since your last approval assessment.",
+                    "# Files mentioned by the user: screenshot.jpg",
+                ],
+                thread_name="The following is the Codex agent history whose request action you are assessing",
+            )
+
+            package = prepare_daily_package(env, "2026-06-03", "20260603-210000-daily")
+            report = read_package_report(package)
+            findings = read_package_findings(package)
+            finding_text = json.dumps(findings, ensure_ascii=False)
+
+            self.assertIn("### TVA10A2R", report)
+            self.assertIn("视频通话", report)
+            self.assertIn("视频监控", report)
+            self.assertIn("待设备验证", report)
+            self.assertNotIn("TVA10A2R_camera_fix", report)
+            self.assertNotIn("knowledge-guiliu", report)
+            self.assertNotIn("Enter passphrase", report)
+            self.assertNotIn("Codex agent history", report)
+            self.assertNotIn("files-mentioned", report)
+            self.assertIn("TVA10A2R", finding_text)
+            self.assertNotIn("Enter passphrase", finding_text)
+
+    def test_daily_splits_project_code_from_trailing_description(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            codex_home = Path(env["CODEX_HOME"])
+            source_root = create_framework_repo(root)
+            run(["git", "checkout", "-b", "android16"], source_root)
+
+            write_codex_session(
+                codex_home,
+                "44444444-2222-3333-4444-555555555555",
+                source_root,
+                dt.date(2026, 6, 3),
+                "今日完成 TVE1086U整体项目交接，整理运营商文档和 apply 脚本注意事项，进度100%。",
+                thread_name="TVE1086U整体项目交接",
+            )
+
+            package = prepare_daily_package(env, "2026-06-03", "20260603-211000-daily")
+            report = read_package_report(package)
+
+            self.assertIn("### TVE1086U", report)
+            self.assertIn("整体项目交接", report)
+            self.assertNotIn("### TVE1086U整体项目交接", report)
+            self.assertNotIn("### android16", report)
+
     def test_daily_records_discovered_patch_without_formal_patch_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

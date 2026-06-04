@@ -28,6 +28,8 @@ ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
 PATCH_FILENAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
 PROJECT_MODEL_RE = re.compile(r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{5}(?:[A-Z0-9_]+)?(?![A-Z0-9])", re.I)
+PROJECT_ANCHOR_RE = re.compile(r"(?i)(TVA\d{2}[A-Z]\d[A-Z]|TV[EI]\d{4}[A-Z]\d?)")
+REMOTE_PATH_RE = re.compile(r"(?:/[A-Za-z0-9_.@+-]+){2,}")
 BANNED_LOG_PATTERNS = ("Log.d(", "Log.i(", "Log.w(", "Slog.d(", "Slog.i(", "Slog.w(")
 REPORT_HEADINGS = {
     "daily": ("今日概览", "项目事项"),
@@ -82,6 +84,21 @@ DATE_KEY_RE = re.compile(r"^\d{8}$")
 DATE_DISPLAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RUN_ID_RE = re.compile(r"^\d{8}-\d{6}(-[A-Za-z0-9_.-]+)?$")
 MEMBER_ALIAS_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
+NOISE_TEXT_RE = re.compile(
+    r"(?i)("
+    r"enter\s+passphrase|"
+    r"codex agent history|"
+    r"request action you are assessing|"
+    r"the user interrupted the previous turn|"
+    r"files mentioned by the user|"
+    r"files-mentioned-by-the-user|"
+    r"plugin://|"
+    r"日报上传测试|"
+    r"周报上传测试|"
+    r"daily report draft|"
+    r"weekly report draft"
+    r")"
+)
 
 
 CONFIG_DEFAULTS = {
@@ -477,6 +494,42 @@ def should_skip_message(text: str) -> bool:
         return True
     if re.match(r"^/[^ ]+\s+\w+\s+\d{4}-\d{2}-\d{2}\s+", text):
         return True
+    if NOISE_TEXT_RE.search(text):
+        return True
+    return False
+
+
+def has_project_anchor(text: str) -> bool:
+    return bool(PROJECT_ANCHOR_RE.search(text or ""))
+
+
+def project_anchor(text: str) -> str:
+    match = PROJECT_ANCHOR_RE.search(text or "")
+    return match.group(1).upper() if match else ""
+
+
+def strip_project_anchor(text: str, project: str) -> str:
+    if not text:
+        return ""
+    cleaned = re.sub(r"[*`#]+", "", text)
+    if project:
+        cleaned = re.sub(re.escape(project), "", cleaned, flags=re.I)
+    cleaned = REMOTE_PATH_RE.sub(" ", cleaned)
+    cleaned = re.sub(r"(?i)\bssh\s+[A-Za-z0-9_.@:-]+", " ", cleaned)
+    cleaned = re.sub(r"\b(?:TVA\d{2}[A-Z]\d[A-Z]|TV[EI]\d{4}[A-Z]\d?)", " ", cleaned, flags=re.I)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" _-:/\\，,。；;（）()")
+    return cleaned
+
+
+def is_noise_session(work: SessionWork) -> bool:
+    text = " ".join([work.thread_name, work.cwd, *work.messages])
+    if has_project_anchor(text):
+        return False
+    if NOISE_TEXT_RE.search(text):
+        return True
+    normalized = work.cwd.replace("\\", "/").lower()
+    if any(part in normalized for part in ("/.codex/", "/documents/codex/worktrees/knowledge-", "/android-framework-codex-suite/")):
+        return True
     return False
 
 
@@ -490,7 +543,9 @@ def should_skip_session(work: SessionWork) -> bool:
     skip_names = ("日报上传测试", "周报上传测试")
     if any(name in work.thread_name for name in skip_names):
         return True
-    return "汇总" in work.thread_name and ("日报" in work.thread_name or "周报" in work.thread_name)
+    if "汇总" in work.thread_name and ("日报" in work.thread_name or "周报" in work.thread_name):
+        return True
+    return is_noise_session(work)
 
 
 def git_root(path: str) -> Path | None:
@@ -513,10 +568,15 @@ def git_branch_or_name(path: str) -> str:
 
 
 def project_name(work: SessionWork) -> str:
-    text = " ".join([work.thread_name, work.cwd, *work.messages]).lower()
+    candidates = [work.project, work.cwd, work.thread_name, *work.messages]
+    for text in candidates:
+        anchor = project_anchor(text)
+        if anchor:
+            return anchor
+    text = " ".join(candidates).lower()
     if "/documents/codex/" in text or "/.codex/" in text:
-        return "全局项目"
-    return work.project or "未识别项目"
+        return "全局事项"
+    return work.project if work.project and not NOISE_TEXT_RE.search(work.project) else "未识别项目"
 
 
 def parse_sessions(config: dict[str, str], dates: set[dt.date]) -> list[SessionWork]:
@@ -550,7 +610,7 @@ def parse_sessions(config: dict[str, str], dates: set[dt.date]) -> list[SessionW
                 except json.JSONDecodeError:
                     args = {}
                 cmd = compact_text(str(args.get("cmd", "")), 160)
-                if cmd and any(token in cmd for token in ("git ", "apply_patch", ".patch", "build", "test", "adb ")):
+                if cmd and any(token in cmd for token in ("git ", "apply_patch", ".patch", "build", "test", "adb ", "ssh ", "cd ", "/home/")):
                     work.messages.append(f"执行命令: {cmd}")
 
         if not work.session_id:
@@ -669,17 +729,61 @@ def summarize_session(work: SessionWork) -> str:
     text = " ".join([work.thread_name, *work.messages]).lower()
     if all(keyword in text for keyword in ("codex", "日报")) and any(keyword in text for keyword in ("自动化", "skill", "插件", "知识库")):
         return "搭建 Codex incoming 自动沉淀与知识库提交能力"
+    project = project_anchor(" ".join([work.project, work.thread_name, *work.messages]))
+    messages = [item for item in work.messages if not item.startswith("执行命令:") and not should_skip_message(item)]
+    anchored_messages = [item for item in messages if project and project.lower() in item.lower()]
+    candidates = anchored_messages or messages
+    if candidates:
+        summaries = [clean_work_summary(item, project) for item in candidates[:3]]
+        summary = "；".join(item for item in summaries if item)
+        if summary:
+            return compact_text(summary, 240)
     name = work.thread_name.strip()
-    if name and not re.fullmatch(r"[0-9a-f-]{20,}", name):
-        return compact_text(name, 80)
-    messages = [item for item in work.messages if not item.startswith("执行命令:")]
-    if messages:
-        return compact_text(messages[-1], 80)
+    if name and not re.fullmatch(r"[0-9a-f-]{20,}", name) and not NOISE_TEXT_RE.search(name):
+        summary = clean_work_summary(name, project)
+        if summary:
+            return compact_text(summary, 120)
     return "处理Codex对话中的开发问题"
+
+
+def clean_work_summary(text: str, project: str) -> str:
+    text = strip_project_anchor(text, project)
+    text = re.sub(r"(?i)\b(?:today|daily|weekly)\b", " ", text)
+    text = re.sub(r"^(?:今天|今日|本周|继续|主要|围绕|完成|处理|修复|排查|整理|在|通过)\s*", "", text)
+    text = re.sub(r"源码里\s*", "", text)
+    text = re.sub(r"连接服务器\s*", "", text)
+    text = re.sub(r"通过\s*[，,]?\s*", "", text)
+    text = re.sub(r"在\s*/?\s*处理", "处理", text)
+    text = re.sub(r"在\s*/?\s*", "", text)
+    text = re.sub(r"\s+", " ", text).strip(" ，,。；;")
+    return text
+
+
+def progress_phrase(text: str) -> str:
+    progress = ""
+    match = re.search(r"(?:进度|完成度)[:：]?\s*([0-9]{1,3}%\s*(?:->|~|～|-|到)\s*[0-9]{1,3}%|[0-9]{1,3}%)", text)
+    if match:
+        progress = match.group(1).replace(" ", "")
+    if any(word in text for word in ("阻塞", "blocked", "缺少", "等待", "依赖")):
+        status = "阻塞"
+    elif any(word in text for word in ("待验证", "验证中", "等待测试验证", "待设备验证", "待客户验证")):
+        status = "待验证"
+    elif any(word in text for word in ("失败", "报错", "未解决", "未完成", "待处理", "继续排查", "修改中", "处理中")):
+        status = "处理中"
+    elif any(word in text for word in ("已完成", "解决", "修复", "成功", "通过", "验证完成", "改好", "完成")):
+        status = "已完成"
+    else:
+        status = ""
+    if progress and status:
+        return f"{progress}，{status}"
+    return progress or status
 
 
 def progress_for_session(work: SessionWork, has_patch: bool) -> str:
     text = " ".join([work.thread_name, *work.messages])
+    phrase = progress_phrase(text)
+    if phrase:
+        return phrase
     if any(word in text for word in ("失败", "报错", "未解决", "未完成", "待处理", "继续排查")):
         return "进行中"
     if any(word in text for word in ("已完成", "解决", "修复", "成功", "通过", "验证完成", "改好", "完成")):
