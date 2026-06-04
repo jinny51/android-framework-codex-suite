@@ -31,6 +31,21 @@ This package is a local handoff artifact. `android-knowledge-intake` can later s
   "summary": "功能摘要",
   "status": "candidate",
   "related_report_run_ids": ["20260601-210000-daily"],
+  "source_root": "/home/<wsl-user>/work/rk/TVE8402M",
+  "git": {
+    "root": "/home/<wsl-user>/work/rk/TVE8402M",
+    "branch": "feature/TVE8402M-policy",
+    "remote": "ssh://example/repo.git",
+    "head": "abc1234"
+  },
+  "project_inference": {
+    "project": "TVE8402M",
+    "recognized": true,
+    "basis": ["source_root: /home/<wsl-user>/work/rk/TVE8402M"],
+    "checked_sources": ["命令参数 project", "source_root", "git branch", "git remote"],
+    "limits": [],
+    "recognition_scope": "TVE/TVA/TVI"
+  },
   "evidence": [
     {
       "id": "verification-result",
@@ -143,6 +158,25 @@ Allowed statuses:
 - `blocked`: retained as blocked work evidence
 
 Status helps ranking, but it must not be used as the only reuse decision.
+
+## Project Recognition
+
+`project` must be a recognized company project model in the current scope:
+
+```text
+TVE
+TVA
+TVI
+```
+
+Recognition priority:
+
+1. Explicit `--project` containing a scoped company project model.
+2. Capture manifest or patch item project from an earlier package.
+3. Source context: `source_root`, git branch, git remote, local mount path, or the WSL source-access registry.
+4. Patch/readme/diff/summary text.
+
+Generic labels such as `android16`, `Camera2`, or `mtk android16 Camera2` are checked inputs, not project names. When no company project model is found, write `project: "unknown"` and preserve the checked sources in `project_inference`.
 
 ## Report Link
 

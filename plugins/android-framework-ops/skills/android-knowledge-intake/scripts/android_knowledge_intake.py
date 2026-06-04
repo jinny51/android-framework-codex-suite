@@ -8,6 +8,7 @@ import json
 import os
 import random
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -1113,7 +1114,7 @@ def copy_patch_capture_packages(
     package_paths: list[str],
     default_project: str,
     default_status: str,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], bool, list[str]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], bool, list[str], list[dict[str, Any]]]:
     patch_dir = package_dir / "patches"
     evidence_dir = package_dir / "knowledge" / "evidence" / "capture"
     patch_dir.mkdir(parents=True, exist_ok=True)
@@ -1124,6 +1125,7 @@ def copy_patch_capture_packages(
     sources: list[dict[str, Any]] = []
     has_pass_verification = False
     related_report_run_ids: list[str] = []
+    source_contexts: list[dict[str, Any]] = []
 
     for raw in package_paths:
         capture_dir = Path(raw).expanduser().resolve()
@@ -1131,6 +1133,19 @@ def copy_patch_capture_packages(
         if manifest.get("package_type") != "framework_patch":
             raise SystemExit(f"不是 android-framework-patch-capture 工作包: {capture_dir}")
         related_report_run_ids.extend(list_string_values(manifest.get("related_report_run_ids")))
+        git = manifest.get("git") if isinstance(manifest.get("git"), dict) else {}
+        source_contexts.append(
+            {
+                "source_root": str(manifest.get("source_root") or ""),
+                "local_mount_path": str(manifest.get("local_mount_path") or ""),
+                "remote_root": str(manifest.get("remote_root") or ""),
+                "ssh_host": str(manifest.get("ssh_host") or ""),
+                "sdk_name": str(manifest.get("sdk_name") or ""),
+                "git_branch": str(git.get("branch") or ""),
+                "git_remote": str(git.get("remote") or ""),
+                "git_remotes": str(git.get("remotes") or ""),
+            }
+        )
         capture_id = safe_id(capture_dir.name)
         patches = manifest.get("patches", [])
         if not isinstance(patches, list) or not patches:
@@ -1187,7 +1202,7 @@ def copy_patch_capture_packages(
             if verification_payload_passes(capture_dir, item):
                 has_pass_verification = True
 
-    return patch_entries, evidence_entries, sources, has_pass_verification, unique_strings(related_report_run_ids)
+    return patch_entries, evidence_entries, sources, has_pass_verification, unique_strings(related_report_run_ids), source_contexts
 
 
 def discover_patches_from_cwd(project: str, date: dt.date) -> list[PatchInfo]:
@@ -2414,6 +2429,113 @@ def find_company_project(text: str) -> str:
     return match.group(0) if match else ""
 
 
+def parse_shell_array(text: str, name: str) -> list[str]:
+    match = re.search(rf"^{re.escape(name)}=\((.*)\)$", text, re.M)
+    if not match:
+        return []
+    try:
+        return [item for item in shlex.split(match.group(1)) if item]
+    except ValueError:
+        return []
+
+
+def path_strings_overlap(left: str, right: str) -> bool:
+    left = left.replace("\\", "/").rstrip("/")
+    right = right.replace("\\", "/").rstrip("/")
+    if not left or not right:
+        return False
+    return left == right or left.startswith(right + "/") or right.startswith(left + "/")
+
+
+def source_access_registry_clues(source_paths: list[str]) -> list[tuple[str, str]]:
+    registry_dir = Path.home() / ".codex" / "android-wsl-source-access-info" / "projects"
+    if not registry_dir.is_dir():
+        return []
+    source_paths = [path for path in source_paths if path]
+    if not source_paths:
+        return []
+    clues: list[tuple[str, str]] = []
+    for registry_file in sorted(registry_dir.glob("*.env")):
+        try:
+            text = registry_file.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        paths = parse_shell_array(text, "PROJECT_PATHS")
+        if not paths:
+            continue
+        ssh_hosts = parse_shell_array(text, "REMOTE_SSH_HOSTS")
+        remote_roots = parse_shell_array(text, "REMOTE_ROOTS")
+        platforms = parse_shell_array(text, "PLATFORMS")
+        sdk_names = parse_shell_array(text, "SDK_NAMES")
+        shares = parse_shell_array(text, "SAMBA_PROJECT_SHARES")
+        for index, project_path in enumerate(paths):
+            if not any(path_strings_overlap(source_path, project_path) for source_path in source_paths):
+                continue
+            if index < len(sdk_names):
+                clues.append(("source-access registry sdk_name", sdk_names[index]))
+            if index < len(remote_roots):
+                clues.append(("source-access registry remote_root", remote_roots[index]))
+            if index < len(shares):
+                clues.append(("source-access registry share", shares[index]))
+            if index < len(platforms):
+                clues.append(("source-access registry platform", platforms[index]))
+            if index < len(ssh_hosts):
+                clues.append(("source-access registry ssh_host", ssh_hosts[index]))
+    return clues
+
+
+def source_context_clues(source_contexts: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    clues: list[tuple[str, str]] = []
+    registry_paths: list[str] = []
+    fields = (
+        ("source_root", "capture source_root"),
+        ("local_mount_path", "capture local_mount_path"),
+        ("git_branch", "capture git branch"),
+        ("git_remote", "capture git remote"),
+        ("git_remotes", "capture git remotes"),
+        ("remote_root", "capture remote_root"),
+        ("ssh_host", "capture ssh_host"),
+        ("sdk_name", "capture sdk_name"),
+    )
+    for context in source_contexts:
+        for key, label in fields:
+            value = context.get(key)
+            if isinstance(value, str) and value.strip():
+                clues.append((label, value))
+                if key in {"source_root", "local_mount_path", "remote_root"}:
+                    registry_paths.append(value)
+    clues.extend(source_access_registry_clues(registry_paths))
+    return clues
+
+
+def related_report_project_clues(config: dict[str, str], run_ids: list[str]) -> list[tuple[str, str]]:
+    repo_value = config.get("repo_worktree", "")
+    if not repo_value or not run_ids:
+        return []
+    repo = expanded_path(repo_value)
+    if not repo.is_dir():
+        return []
+    clues: list[tuple[str, str]] = []
+    for run_id in unique_strings(run_ids):
+        date_key = run_id[:8]
+        if not DATE_KEY_RE.fullmatch(date_key):
+            continue
+        incoming_day = repo / "incoming" / date_key
+        if not incoming_day.is_dir():
+            continue
+        for report_dir in sorted(incoming_day.glob(f"*/{run_id}")):
+            for rel in (
+                "manifest.json",
+                "reports/daily.md",
+                "reports/weekly.md",
+                "knowledge/evidence/work_findings.json",
+            ):
+                sample = read_text_sample(report_dir / rel)
+                if sample:
+                    clues.append((f"related report {run_id} {rel}", sample))
+    return clues
+
+
 def read_text_sample(path: Path, limit: int = 12000) -> str:
     if not path.is_file():
         return ""
@@ -2450,37 +2572,69 @@ def infer_project(
     patch_sources: list[dict[str, Any]],
     summary: str,
     package_dir: Path | None = None,
+    source_contexts: list[dict[str, Any]] | None = None,
+    related_report_clues: list[tuple[str, str]] | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    clues: list[tuple[str, str]] = []
+    explicit_clues: list[tuple[str, str]] = []
     if explicit_project and explicit_project.strip() != "unknown":
-        clues.append(("命令参数 project", explicit_project.strip()))
+        explicit_clues.append(("命令参数 project", explicit_project.strip()))
+
+    capture_project_clues: list[tuple[str, str]] = []
     for item in patch_entries:
-        for key, label in (("project", "capture package project"), ("path", "补丁路径"), ("readme", "补丁说明路径")):
+        for key, label in (("project", "capture package project"),):
             value = item.get(key)
             if isinstance(value, str) and value:
-                clues.append((label, value))
+                capture_project_clues.append((label, value))
+
+    context_clues = source_context_clues(source_contexts or [])
+
+    patch_clues: list[tuple[str, str]] = []
+    for item in patch_entries:
+        for key, label in (("path", "补丁路径"), ("readme", "补丁说明路径")):
+            value = item.get(key)
+            if isinstance(value, str) and value:
+                patch_clues.append((label, value))
             if package_dir and key in {"path", "readme"} and isinstance(value, str) and value:
                 sample = read_text_sample(package_dir / value)
                 if sample:
-                    clues.append((label.replace("路径", "内容"), sample))
+                    patch_clues.append((label.replace("路径", "内容"), sample))
     for item in patch_sources:
         for key, label in (("project", "补丁来源 project"), ("name", "补丁名称"), ("source", "补丁来源路径")):
             value = item.get(key)
             if isinstance(value, str) and value:
-                clues.append((label, value))
+                if key == "project":
+                    capture_project_clues.append((label, value))
+                else:
+                    patch_clues.append((label, value))
     if summary:
-        clues.append(("补丁摘要", summary))
+        patch_clues.append(("补丁摘要", summary))
 
+    groups = [
+        ("explicit", explicit_clues),
+        ("capture_package_project", capture_project_clues),
+        ("source_context", context_clues),
+        ("patch_context", patch_clues),
+        ("related_report", related_report_clues or []),
+    ]
+    clues = [(label, value) for _, values in groups for label, value in values if str(value).strip()]
     checked_sources = sorted(dict.fromkeys(label for label, _ in clues))
     raw_inputs = [f"{label}: {value}" for label, value in clues]
-    for label, value in clues:
-        project = find_company_project(value)
-        if project:
-            return project, project_inference_payload(project, [f"{label}: {value}"], checked_sources, raw_inputs)
+    for _, values in groups:
+        for label, value in values:
+            project = find_company_project(value)
+            if project:
+                return project, project_inference_payload(project, [f"{label}: {value}"], checked_sources, raw_inputs)
 
-    limits = ["未从命令参数、capture package、补丁名称、补丁路径或补丁摘要中识别到 TVE/TVA/TVI 项目型号"]
+    limits = ["未从命令参数、capture package、source_root/git/registry、补丁内容或关联报告中识别到 TVE/TVA/TVI 项目型号"]
     if explicit_project and explicit_project.strip() not in {"", "unknown"}:
         limits.append("命令参数 project 未匹配公司项目型号规范，未作为项目名入库")
+    weak_capture_projects = [
+        value
+        for label, value in capture_project_clues
+        if value.strip() and value.strip() != "unknown" and not find_company_project(value)
+    ]
+    if weak_capture_projects:
+        limits.append("capture package project 未匹配公司项目型号规范，未作为项目名入库")
     return "unknown", project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
 
 
@@ -2529,11 +2683,12 @@ def prepare_patch_package(
     patch_entries: list[dict[str, Any]] = []
     capture_evidence_entries: list[dict[str, Any]] = []
     patch_sources: list[dict[str, Any]] = []
+    source_contexts: list[dict[str, Any]] = []
     has_pass_verification = False
     all_related_report_run_ids = list_string_values(related_report_run_ids)
 
     if patch_package_paths:
-        capture_entries, evidence_entries, source_entries, capture_has_pass, capture_related_report_run_ids = copy_patch_capture_packages(
+        capture_entries, evidence_entries, source_entries, capture_has_pass, capture_related_report_run_ids, capture_source_contexts = copy_patch_capture_packages(
             package_dir,
             patch_package_paths,
             project,
@@ -2542,6 +2697,7 @@ def prepare_patch_package(
         patch_entries.extend(capture_entries)
         capture_evidence_entries.extend(evidence_entries)
         patch_sources.extend(source_entries)
+        source_contexts.extend(capture_source_contexts)
         has_pass_verification = has_pass_verification or capture_has_pass
         all_related_report_run_ids.extend(capture_related_report_run_ids)
 
@@ -2587,7 +2743,8 @@ def prepare_patch_package(
     maturity = framework_maturity_from_patch_statuses(statuses, has_pass_verification)
 
     platform, android_version = parse_platform_token(patch_entries)
-    project, project_payload = infer_project(project, patch_entries, patch_sources, summary, package_dir)
+    related_project_clues = related_report_project_clues(config, all_related_report_run_ids)
+    project, project_payload = infer_project(project, patch_entries, patch_sources, summary, package_dir, source_contexts, related_project_clues)
     all_patch_items = [incoming_patch_item(package_dir, item) for item in patch_entries]
     modified_files = sorted(
         {

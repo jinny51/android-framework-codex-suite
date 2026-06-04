@@ -215,11 +215,11 @@ Manifest excerpt:
 Project must come from traceable evidence:
 
 ```text
-explicit incoming project
-patch readme or handover notes
-daily or weekly context
-attachment or directory name
-patch filename
+explicit incoming project containing a TVE/TVA/TVI model
+capture package manifest or patch item project containing a TVE/TVA/TVI model
+source_root, git branch, git remote, local mount path, or WSL source-access registry
+patch/readme/diff/summary text
+explicit related daily or weekly report context
 ```
 
 Current automatic project recognition scope:
@@ -239,3 +239,5 @@ If the project cannot be identified from traceable evidence, use:
 ```
 
 and explain checked sources and limits in `project_inference`.
+
+Generic labels such as `android16`, `Camera2`, or `mtk android16 Camera2` are not company project names. They must remain checked raw inputs in `project_inference`, but they must not be written to `manifest.project` or `knowledge/variant.json project`.

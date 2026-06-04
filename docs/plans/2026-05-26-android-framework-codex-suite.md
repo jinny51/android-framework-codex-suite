@@ -30,7 +30,7 @@
 1. 本机试装并验证 Codex 能识别插件。
 2. 小范围团队试用 `android-framework-ops`。
 3. 根据团队反馈补齐 `jinny-android-practices`。
-4. 稳定后把知识库 incoming 自动化接入成员日常流程。
+4. 稳定后把 skill 生成 incoming 包接入成员日常流程。
 
 ## 核心原则
 

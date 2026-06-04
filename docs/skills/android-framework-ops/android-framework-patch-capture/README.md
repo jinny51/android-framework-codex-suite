@@ -33,6 +33,8 @@ python3 "scripts/capture_framework_patch.py" \
   --related-report-run-id 20260601-210000-daily
 ```
 
+如果 `--project` 未提供，或只提供了 `android16`、`Camera2`、`mtk android16 Camera2` 这类非公司项目标签，脚本会继续从 `source_root`、git 分支/remote、WSL source-access registry 和补丁内容中识别 `TVE`/`TVA`/`TVI` 项目号；识别不到时写入 `unknown`。
+
 输出目录：
 
 ```text

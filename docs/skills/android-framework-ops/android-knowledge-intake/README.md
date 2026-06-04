@@ -65,6 +65,8 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --s
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "TVE8402M" --summary "功能补丁摘要" --status validated
 ```
 
+`--project` 只有包含 `TVE`/`TVA`/`TVI` 公司项目号时才作为高优先级项目名。对 capture 包，intake 还会读取 capture manifest/patch item、`source_root`、git 分支/remote、WSL source-access registry、补丁/readme/diff/summary，以及显式关联的日报/周报上下文来识别项目；泛化标签不会写入 `manifest.project`。
+
 如果这个 Framework change 明确来自某个 `daily_trace` 或 `weekly_trace` incoming 包，显式带上 run id，服务器会用它做确定性关联：
 
 ```bash

@@ -44,6 +44,23 @@ def create_repo(root: Path) -> None:
     )
 
 
+def create_plain_repo(root: Path) -> None:
+    run(["git", "init"], root)
+    run(["git", "config", "user.email", "codex@example.invalid"], root)
+    run(["git", "config", "user.name", "Codex Test"], root)
+    source = root / "frameworks" / "base" / "services" / "core" / "java" / "com" / "android" / "server" / "wm"
+    source.mkdir(parents=True)
+    (source / "DisplayPolicy.java").write_text("class DisplayPolicy {}\n", encoding="utf-8")
+    run(["git", "add", "."], root)
+    run(["git", "commit", "-m", "initial"], root)
+    (source / "DisplayPolicy.java").write_text(
+        "class DisplayPolicy {\n"
+        "  //gyf 20260604@ plain policy update\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+
 def create_audio_camera_repo(root: Path) -> None:
     run(["git", "init"], root)
     run(["git", "config", "user.email", "codex@example.invalid"], root)
@@ -267,6 +284,76 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("equivalent", result.stdout)
+
+    def test_infers_company_project_from_source_root_and_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "work" / "rk" / "TVA10A2R"
+            root.mkdir(parents=True)
+            create_plain_repo(root)
+            run(["git", "checkout", "-b", "feature/TVA10A2R-camera-policy"], root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260604-120000-patch",
+                    "--platform",
+                    "mtk16",
+                    "--feature",
+                    "camera-policy",
+                    "--summary",
+                    "Camera2 reversePortrait direction compensation",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "TVA10A2R")
+            self.assertEqual(manifest["patches"][0]["project"], "TVA10A2R")
+
+    def test_non_company_project_argument_is_not_written_as_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_plain_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260604-130000-patch",
+                    "--platform",
+                    "mtk16",
+                    "--feature",
+                    "camera-policy",
+                    "--summary",
+                    "Camera2 reversePortrait direction compensation",
+                    "--project",
+                    "mtk android16 Camera2",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "unknown")
+            self.assertEqual(manifest["patches"][0]["project"], "unknown")
 
 
 if __name__ == "__main__":

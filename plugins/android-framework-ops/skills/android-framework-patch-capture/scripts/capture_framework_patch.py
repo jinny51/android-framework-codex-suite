@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -16,6 +17,7 @@ from typing import Any
 SCHEMA_VERSION = "1.0"
 PATCH_NAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 PLATFORM_RE = re.compile(r"^[a-z0-9]+[0-9]+$")
+PROJECT_MODEL_RE = re.compile(r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{5}(?:[A-Z0-9_]+)?(?![A-Z0-9])", re.I)
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
 BANNED_LOG_PATTERNS = ("Log.d(", "Log.i(", "Log.w(", "Slog.d(", "Slog.i(", "Slog.w(")
 SUPPORTED_EXTERNAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
@@ -116,8 +118,124 @@ def git_metadata(root: Path) -> dict[str, str]:
         "root": str(root),
         "branch": output(["branch", "--show-current"]),
         "head": output(["rev-parse", "--short", "HEAD"]),
+        "remote": output(["config", "--get", "remote.origin.url"]),
+        "remotes": output(["remote", "-v"]),
         "status": output(["status", "--short"]),
     }
+
+
+def find_company_project(text: str) -> str:
+    match = PROJECT_MODEL_RE.search((text or "").upper())
+    return match.group(0) if match else ""
+
+
+def parse_shell_array(text: str, name: str) -> list[str]:
+    match = re.search(rf"^{re.escape(name)}=\((.*)\)$", text, re.M)
+    if not match:
+        return []
+    try:
+        return [item for item in shlex.split(match.group(1)) if item]
+    except ValueError:
+        return []
+
+
+def path_strings_overlap(left: str, right: str) -> bool:
+    left = left.replace("\\", "/").rstrip("/")
+    right = right.replace("\\", "/").rstrip("/")
+    if not left or not right:
+        return False
+    return left == right or left.startswith(right + "/") or right.startswith(left + "/")
+
+
+def source_access_registry_clues(source_root: Path) -> list[tuple[str, str]]:
+    registry_dir = Path.home() / ".codex" / "android-wsl-source-access-info" / "projects"
+    if not registry_dir.is_dir():
+        return []
+    clues: list[tuple[str, str]] = []
+    source_text = str(source_root)
+    for registry_file in sorted(registry_dir.glob("*.env")):
+        try:
+            text = registry_file.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        paths = parse_shell_array(text, "PROJECT_PATHS")
+        if not paths:
+            continue
+        ssh_hosts = parse_shell_array(text, "REMOTE_SSH_HOSTS")
+        remote_roots = parse_shell_array(text, "REMOTE_ROOTS")
+        platforms = parse_shell_array(text, "PLATFORMS")
+        sdk_names = parse_shell_array(text, "SDK_NAMES")
+        shares = parse_shell_array(text, "SAMBA_PROJECT_SHARES")
+        for index, project_path in enumerate(paths):
+            if not path_strings_overlap(source_text, project_path):
+                continue
+            if index < len(sdk_names):
+                clues.append(("source-access registry sdk_name", sdk_names[index]))
+            if index < len(remote_roots):
+                clues.append(("source-access registry remote_root", remote_roots[index]))
+            if index < len(shares):
+                clues.append(("source-access registry share", shares[index]))
+            if index < len(platforms):
+                clues.append(("source-access registry platform", platforms[index]))
+            if index < len(ssh_hosts):
+                clues.append(("source-access registry ssh_host", ssh_hosts[index]))
+    return clues
+
+
+def project_inference_payload(
+    project: str,
+    basis: list[str],
+    checked_sources: list[str],
+    raw_inputs: list[str],
+    limits: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "project": project,
+        "recognized": project != "unknown",
+        "basis": basis,
+        "checked_sources": checked_sources,
+        "raw_inputs": raw_inputs[:20],
+        "limits": limits or [],
+        "recognition_scope": "TVE/TVA/TVI",
+        "company_rule_match": project != "unknown",
+    }
+
+
+def infer_capture_project(args: argparse.Namespace, source_root: Path, git_info: dict[str, str], diff_text: str) -> tuple[str, dict[str, Any]]:
+    groups: list[tuple[str, list[tuple[str, str]]]] = [
+        ("explicit", [("命令参数 project", args.project or "")]),
+        (
+            "source_context",
+            [
+                ("source_root", str(source_root)),
+                ("git branch", git_info.get("branch", "")),
+                ("git remote", git_info.get("remote", "")),
+                ("git remotes", git_info.get("remotes", "")),
+                *source_access_registry_clues(source_root),
+            ],
+        ),
+        (
+            "patch_context",
+            [
+                ("补丁摘要", args.summary or ""),
+                ("补丁功能名", args.feature or ""),
+                ("补丁 diff", diff_text),
+            ],
+        ),
+    ]
+    clues = [(label, value) for _, values in groups for label, value in values if str(value).strip()]
+    checked_sources = sorted(dict.fromkeys(label for label, _ in clues))
+    raw_inputs = [f"{label}: {value}" for label, value in clues]
+    for _, values in groups:
+        for label, value in values:
+            project = find_company_project(value)
+            if project:
+                return project, project_inference_payload(project, [f"{label}: {value}"], checked_sources, raw_inputs)
+
+    limits = ["未从命令参数、source_root、git branch、git remote、source-access registry、补丁摘要或 diff 中识别到 TVE/TVA/TVI 项目型号"]
+    if args.project and args.project.strip() not in {"", "unknown"}:
+        limits.append("命令参数 project 未匹配公司项目型号规范，未作为项目名写入补丁包")
+    return "unknown", project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -681,6 +799,8 @@ def main() -> int:
 
     facts = facts_from_diff(diff_text)
     git_info = git_metadata(source_root)
+    resolved_project, project_inference = infer_capture_project(args, source_root, git_info, diff_text)
+    args.project = resolved_project
     args.module = slug(args.module or infer_module(facts["modified_files"]))
     platform = slug(args.platform)
     feature = slug(args.feature)
@@ -787,6 +907,7 @@ def main() -> int:
         "related_report_run_ids": args.related_report_run_id or [],
         "source_root": str(source_root),
         "git": git_info,
+        "project_inference": project_inference,
         "patches": [patch_item],
         "evidence": evidence_items,
     }

@@ -11,6 +11,8 @@ Use it after `android-framework-change-workflow` has produced a concrete change,
 
 The generated package includes patch content `sha1` for server-side deduplication. If a known daily/weekly incoming run produced the work context, pass `--related-report-run-id <run_id>` so intake can preserve an explicit report link.
 
+`--project` is a high-priority hint only when it contains a company project anchor in the current recognition scope (`TVE`, `TVA`, or `TVI`). If `--project` is omitted or contains a generic label such as `mtk android16 Camera2`, the capture script must continue looking at `source_root`, git branch, git remote, the WSL source-access registry, and patch/readme/diff/summary text before falling back to `unknown`.
+
 ## Boundary
 
 - `android-framework-change-workflow`: owns requirement analysis, source changes, risk, build/deploy coordination, and final verification.
@@ -65,6 +67,14 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" \
 ```
 
 ## Packaging Rules
+
+Project recognition priority is:
+
+1. Explicit `--project` containing a `TVE`/`TVA`/`TVI` project model.
+2. Source context from the active git tree: `source_root`, git branch, git remote, and remembered WSL source-access registry entries.
+3. Patch package text: summary, feature name, readme, and diff.
+
+Do not write generic labels such as `android16`, `Camera2`, or `mtk android16 Camera2` as the package project. Preserve them only as checked inference inputs.
 
 Before packaging, inspect `git status --short` and preserve unrelated user work. Package only the intended change set. If unrelated files are dirty, stop and ask whether to split, stash, or include them.
 

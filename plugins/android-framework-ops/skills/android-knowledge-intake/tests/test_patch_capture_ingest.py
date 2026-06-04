@@ -45,6 +45,10 @@ def create_capture_package(
     status: str = "validated",
     related_report_run_ids: list[str] | None = None,
     include_build_result: bool = False,
+    project: str = "TVE1234A",
+    source_root: str | None = None,
+    git_branch: str = "",
+    git_remote: str = "",
 ) -> Path:
     package = root / "capture"
     patch = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
@@ -104,7 +108,7 @@ def create_capture_package(
     manifest = {
         "schema_version": "1.0",
         "package_type": "framework_patch",
-        "project": "TVE1234A",
+        "project": project,
         "summary": "Allow nav policy toggle",
         "status": status,
         "patches": [
@@ -113,7 +117,7 @@ def create_capture_package(
                 "readme": "patches/rk14-frameworks-base@nav-policy-toggle.readme.md",
                 "status": status,
                 "reusable": status == "validated",
-                "project": "TVE1234A",
+                "project": project,
                 "facts": {"modified_files": ["frameworks/base/services/core/java/X.java"]},
             }
         ],
@@ -125,6 +129,10 @@ def create_capture_package(
             {"id": "risk-surface", "kind": "risk_surface", "path": "evidence/risk-surface.json", "result": "INFO"},
         ],
     }
+    if source_root:
+        manifest["source_root"] = source_root
+    if git_branch or git_remote:
+        manifest["git"] = {"branch": git_branch, "remote": git_remote}
     if include_build_result:
         manifest["evidence"].append(
             {
@@ -222,6 +230,36 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(build_result["result"], "PASS")
             self.assertEqual(build_result["case_id"], manifest["case_id"])
             self.assertEqual(build_result["variant_id"], manifest["variant_id"])
+
+    def test_capture_package_source_context_overrides_non_company_project_argument(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_package = create_capture_package(
+                root,
+                project="mtk android16 Camera2",
+                source_root="/home/test35/work/mtk/TVA10A2R/android16",
+                git_branch="feature/TVA10A2R-camera2-reverseportrait",
+            )
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 4),
+                self.config(root),
+                run_id="20260604-120000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture_package)],
+                project="mtk android16 Camera2",
+                summary="Camera2 reversePortrait 方向补偿",
+                status="candidate",
+                schema_version="1",
+            )
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            variant = json.loads((package / "knowledge" / "variant.json").read_text(encoding="utf-8"))
+            project_inference = json.loads((package / "knowledge" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "TVA10A2R")
+            self.assertEqual(variant["project"], "TVA10A2R")
+            self.assertEqual(project_inference["payload"]["project"], "TVA10A2R")
+            self.assertTrue(project_inference["payload"]["company_rule_match"])
 
     def test_blocked_patch_stays_blocked_without_becoming_failed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -443,7 +481,11 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 schema_version="1",
             )
 
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            variant = json.loads((package / "knowledge" / "variant.json").read_text(encoding="utf-8"))
             case = json.loads((package / "knowledge" / "case.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["project"], "unknown")
+            self.assertEqual(variant["project"], "unknown")
             self.assertNotIn("成员端 Codex 根据补丁 diff", case["solution_summary"])
             self.assertTrue(case["solution_summary"])
 
