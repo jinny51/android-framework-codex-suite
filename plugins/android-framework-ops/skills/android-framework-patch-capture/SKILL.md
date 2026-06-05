@@ -1,13 +1,13 @@
 ---
 name: android-framework-patch-capture
-description: "Use after Android Framework code changes are implemented, staged, failed, or blocked but need to be turned into a reusable or cautionary engineering asset: generate a standards-compliant patch file, paired readme, changed-file evidence, symbol facts, log/property checks, and a package manifest for later android-knowledge-intake submission and team knowledge indexing."
+description: "Use after Android Framework code changes are implemented, staged, failed, or blocked but need to be turned into a reusable or cautionary engineering asset: generate a standards-compliant patch file, paired readme, changed-file evidence, symbol facts, log/property checks, and a package manifest for later android-knowledge-intake database incoming submission and administrator-approved knowledge indexing."
 ---
 
 # Android Framework Patch Capture
 
 Use this skill when a Framework change is ready to be packaged as a reusable, reviewable, or cautionary patch asset. It does not implement requirements, diagnose root cause, build, deploy, or decide final correctness. It packages existing source changes into `patch + readme + evidence` so `android-knowledge-intake` can submit them as incoming.
 
-Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-knowledge-intake` uploads a valuable patch to the team knowledge repository.
+Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-knowledge-intake` submits a valuable patch package to the database repository as incoming. Administrator review/export decides whether it later enters the knowledge repository.
 
 The generated package includes patch content `sha1` for server-side deduplication. If a known daily/weekly incoming run produced the work context, pass `--related-report-run-id <run_id>` so intake can preserve an explicit report link.
 
@@ -17,7 +17,7 @@ The generated package includes patch content `sha1` for server-side deduplicatio
 
 - `android-framework-change-workflow`: owns requirement analysis, source changes, risk, build/deploy coordination, and final verification.
 - `android-framework-patch-capture`: owns patch/readme/evidence packaging for existing changes.
-- `android-knowledge-intake`: owns daily/weekly/framework_change incoming package submission to the knowledge repository.
+- `android-knowledge-intake`: owns daily/weekly/framework_change incoming package submission to the database repository.
 
 ## Quick Command
 

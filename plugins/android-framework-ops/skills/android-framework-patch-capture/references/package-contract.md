@@ -1,6 +1,6 @@
 # Framework Patch Package Contract
 
-This package is a local handoff artifact. `android-knowledge-intake` can later submit the generated patch file and readme to the team knowledge repository.
+This package is a local handoff artifact. `android-knowledge-intake` can later submit the generated patch file and readme to the database repository as incoming. Administrator review/export decides whether approved material enters the knowledge repository.
 
 ## Directory
 

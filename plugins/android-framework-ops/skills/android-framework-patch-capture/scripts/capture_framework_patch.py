@@ -670,7 +670,7 @@ def readme_text(
     rollback = args.rollback or "在目标源码树执行 `git apply -R <patch>`，或回退对应提交。"
     log_control = "无直接 Log.d/i/w 或 Slog.d/i/w 新增。"
     if facts["banned_log_hits"]:
-        log_control = "检测到直接日志调用，提交知识库前必须改为 FrameworkLog 或说明保留原因：" + ", ".join(facts["banned_log_hits"])
+        log_control = "检测到直接日志调用，提交数据库仓库 incoming 前必须改为 FrameworkLog 或说明保留原因：" + ", ".join(facts["banned_log_hits"])
 
     return f"""# {patch_name}
 

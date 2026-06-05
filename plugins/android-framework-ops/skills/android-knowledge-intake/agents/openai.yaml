@@ -1,7 +1,7 @@
 interface:
   display_name: "Android Knowledge Intake"
   short_description: "Submit member knowledge incoming packages"
-  default_prompt: "Use $android-knowledge-intake to generate, review, or submit member-side daily, weekly, or framework_change incoming packages for the team knowledge repository."
+  default_prompt: "Use $android-knowledge-intake to generate, review, or submit member-side daily, weekly, or framework_change incoming packages to the database repository for administrator review and later approved knowledge export."
 
 policy:
   allow_implicit_invocation: true

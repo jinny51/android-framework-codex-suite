@@ -1,6 +1,6 @@
 ---
 name: android-knowledge-intake
-description: Generate, review, and submit member-side Codex incoming packages into the team knowledge repository. Use when asked about 个人日报、个人周报、日报周报提交、Framework 修改沉淀、工作包、incoming、patch 入库、知识库入库 or report automation.
+description: Generate, review, and submit member-side Codex incoming packages to the database repository for administrator review and later approved knowledge export. Use when asked about 个人日报、个人周报、日报周报提交、Framework 修改沉淀、工作包、incoming、patch 入库、知识库入库 or report automation.
 ---
 
 # Android Knowledge Intake
