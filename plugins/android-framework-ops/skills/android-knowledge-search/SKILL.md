@@ -5,7 +5,7 @@ description: Search the team knowledge repository for reusable cases, platform v
 
 # Android Knowledge Search
 
-Use this skill to search the team knowledge repository before starting new analysis or implementation. It is the read-side entry for the knowledge system: `android-knowledge-intake` and `android-framework-patch-capture` produce assets; this skill retrieves them.
+Use this skill to search the team knowledge repository before starting new analysis or implementation. It is the read-side entry for the knowledge system: `android-knowledge-intake` and `android-framework-patch-capture` submit materials to the database repository; administrator review/export promotes approved AI knowledge into the knowledge repository for this skill to retrieve.
 
 This skill does not submit reports, create patches, edit source, or decide correctness by itself. It returns prior facts so Codex can judge whether an existing case, variant, patch, symbol, or validation fact is relevant to the current requirement.
 
@@ -36,22 +36,24 @@ python3 "scripts/android_knowledge_search.py" \
 python3 "scripts/android_knowledge_search.py" \
   "WindowManager display" --json
 
-# Use an explicit mounted or cloned knowledge root.
+# Use an explicit mounted or cloned knowledge repository root.
 python3 "scripts/android_knowledge_search.py" \
-  "PackageManager permission" --root /path/to/knowledge/worktree
+  "PackageManager permission" --root /path/to/knowledge-worktree
 ```
 
 ## Source Selection
 
-The script searches the first valid knowledge root it can find:
+The script searches the first valid knowledge repository root it can find:
 
 1. `--root <path>`
 2. `CODEX_KNOWLEDGE_ROOT`
-3. `CODEX_REPORT_REPO_WORKTREE`, `CODEX_REPORT_WORKTREE`, `CODEX_WORK_REPORT_REPO_WORKTREE`, or `CODEX_WORK_REPORT_WORKTREE`
-4. `repo_worktree` or `worktree` from the selected profile in `$CODEX_HOME/report/config.toml`, `$CODEX_HOME/android-knowledge-search.toml`, or the nearest `.codex/report.toml`
+3. `CODEX_KNOWLEDGE_REPO_WORKTREE` or `CODEX_REPORT_KNOWLEDGE_REPO_WORKTREE`
+4. `knowledge_repo_worktree` or `knowledge_worktree` from the selected profile in `$CODEX_HOME/report/config.toml`, `$CODEX_HOME/android-knowledge-search.toml`, or the nearest `.codex/report.toml`
 5. current directory or its parents, when they contain current `index/*.jsonl` knowledge indexes
-6. generic Codex worktrees such as `$CODEX_HOME/worktrees/knowledge`, `CODEX_DOCUMENTS/worktrees/knowledge`, or detected Windows `Documents/Codex/worktrees/knowledge`
-7. common mapped server locations such as `/mnt/z/knowledge/worktree`
+6. generic Codex worktrees such as `$CODEX_HOME/worktrees/knowledge` or detected Windows `Documents/Codex/worktrees/knowledge`
+7. common mapped server locations such as `/mnt/z/knowledge/knowledge-worktree`
+
+The search skill must not automatically read the database worktree. If an administrator wants to inspect database internals, pass that path explicitly with `--root` and understand that it is not the normal member reuse path.
 
 Pass `--refresh` only when using a local Git clone and the latest server content is required. Refresh runs `git pull --ff-only`; it skips refresh when the worktree is dirty.
 

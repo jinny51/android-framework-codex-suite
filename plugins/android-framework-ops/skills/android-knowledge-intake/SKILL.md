@@ -5,15 +5,15 @@ description: Generate, review, and submit member-side Codex incoming packages in
 
 # Android Knowledge Intake
 
-Use this skill for member-side knowledge intake automation. The skill does not write final reports, patches, index, or site directories. It creates a local pending incoming package first, then submits that package to `incoming/YYYYMMDD/member_alias/run_id/` in the team knowledge Git repository.
+Use this skill for member-side knowledge intake automation. The skill does not write final reports, patches, index, or site directories. It creates a local pending incoming package first, then submits that package to `incoming/YYYYMMDD/member_alias/run_id/` in the database repository.
 
-The member-side Codex agent is the knowledge producer. It should collect session context, git activity, patch diff, build results, verification records, failed paths, blocked paths, and optional human notes, then generate incoming. The knowledge repository server validates, archives, indexes, and renders; it does not perform heavy AI reasoning.
+The member-side Codex agent is the knowledge producer. It should collect session context, git activity, patch diff, build results, verification records, failed paths, blocked paths, and optional human notes, then generate incoming. The database repository server hook validates and queues review records; it does not approve knowledge, generate knowledge indexes, or perform heavy AI reasoning. Knowledge repository content is produced later by the administrator review/export flow.
 
 Ordinary members use `daily` and `weekly` modes to generate member-level incoming packages on schedule, and use `patch` when a Framework change should be converted into a `framework_change` incoming package. Administrator profiles are for occasional manual patch contribution only; they must not generate personal daily or weekly reports.
 
 Default policy: preserve automatically first, rank by maturity later. Lack of manual confirmation is not a reason to drop knowledge. Daily and weekly traces must preserve `work_findings`; Framework changes use `maturity` values `validated`, `candidate`, `draft`, `failed`, or `blocked`.
 
-Use configuration profiles for identity. Global config stores server/path defaults; each `[profiles.<name>]` stores one member identity, worktree, git author, role, allowed modes, and optional test behavior. Prefer explicit `--profile <name>` in automations so a daily incoming run cannot accidentally use an administrator identity.
+Use configuration profiles for identity. Global config stores database repository and knowledge repository defaults; each `[profiles.<name>]` stores one member identity, database worktree, knowledge worktree, git author, role, allowed modes, and optional test behavior. Prefer explicit `--profile <name>` in automations so a daily incoming run cannot accidentally use an administrator identity.
 
 Framework change incoming must carry deterministic merge anchors. Patch content `sha1` is emitted in `patch_diff_facts`; `related_report_run_ids` is used only when the daily/weekly run id is explicitly known. Do not create fuzzy report links on the member side.
 
@@ -85,7 +85,7 @@ Recommended member-side incoming automations:
 
 Before enabling member-side incoming automations, run `doctor --strict --check-remote` for the exact profile used by the automation. Strict doctor must pass before scheduled runs are enabled. It verifies identity, role, allowed modes, repository paths, Git availability, clean repository state, and optional remote reachability.
 
-Member profiles can read the cloned knowledge worktree for search, but their intake pushes must contain only `incoming/**` paths. The intake script checks outgoing commits before push and stops if a member profile has staged or committed generated objects, docs, scripts, site, index, or other non-incoming paths. Administrator profiles are not subject to this member-only outgoing-path guard.
+Member profiles submit only to the database worktree. Search must use the knowledge repository worktree through `android-knowledge-search`, not the database worktree. The intake script checks outgoing commits before push and stops if a member profile has staged or committed generated objects, docs, scripts, site, index, or other non-incoming paths. Administrator profiles are not subject to this member-only outgoing-path guard.
 
 Synthetic profiles are only for protocol and gray-flow testing. Use `doctor --strict --allow-synthetic` only in tests; real member incoming automations must keep `synthetic_data = false`.
 
@@ -104,15 +104,25 @@ Configuration is loaded from low to high priority:
 3. `$CODEX_HOME/android-knowledge-intake.toml`.
 4. `$CODEX_HOME/report/config.toml`.
 5. The current repository's nearest `.codex/report.toml`.
-6. Environment variables such as `CODEX_REPORT_PROFILE`, `CODEX_REPORT_MEMBER_ALIAS`, `CODEX_REPORT_MEMBER_NAME`, `CODEX_REPORT_REPO_URL`, `CODEX_REPORT_REPO_WORKTREE`.
+6. Environment variables such as `CODEX_REPORT_PROFILE`, `CODEX_REPORT_MEMBER_ALIAS`, `CODEX_REPORT_MEMBER_NAME`, `CODEX_REPORT_DATABASE_REPO_URL`, `CODEX_REPORT_DATABASE_REPO_WORKTREE`, and `CODEX_REPORT_KNOWLEDGE_REPO_WORKTREE`.
+
+Before prepare/upload/submit, the script automatically migrates old single-repository or `submission`/`approved` config files into the current `database`/`knowledge` shape and writes a timestamped backup. To inspect or run migration explicitly:
+
+```bash
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> config-migrate
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> config-migrate --write
+```
 
 Recommended profile config:
 
 ```toml
 default_profile = "member_alias"
 
-[server]
-repo_url = "test35:/home/test35/work/knowledge/remote.git"
+[database]
+repo_url = "test35:/home/test35/work/knowledge/database.git"
+
+[knowledge]
+repo_url = "test35:/home/test35/work/knowledge/knowledge.git"
 
 incoming_schema_version = "1"
 
@@ -125,14 +135,16 @@ member_alias = "member_alias"
 member_name = "成员姓名"
 role = "member"
 allowed_modes = ["daily", "weekly", "patch"]
-repo_worktree = "$CODEX_HOME/worktrees/knowledge-member_alias"
+database_repo_worktree = "$CODEX_HOME/worktrees/knowledge-database-member_alias"
+knowledge_repo_worktree = "$CODEX_HOME/worktrees/knowledge"
 
 [profiles.admin_alias]
 member_alias = "admin_alias"
 member_name = "管理员姓名"
 role = "admin"
 allowed_modes = ["patch"]
-repo_worktree = "$CODEX_HOME/worktrees/knowledge-admin_alias"
+database_repo_worktree = "$CODEX_HOME/worktrees/knowledge-database-admin_alias"
+knowledge_repo_worktree = "$CODEX_HOME/worktrees/knowledge"
 ```
 
 `allowed_modes` is enforced before prepare/upload/submit. For administrator profiles, `daily` and `weekly` must fail.

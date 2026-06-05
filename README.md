@@ -31,22 +31,22 @@
 
 ## Android Framework 工作流
 
-一句话：`android-wsl-source-access` 负责连接服务器源码，`android-knowledge-search` 负责开工前先查知识库，`android-framework-change-workflow` 负责分析和改代码并给验收结论，`android-remote-channel` 负责稳定执行服务器命令，`android-wsl-remote-build-deploy` 负责编译和推送设备，`android-framework-patch-capture` 与 `android-knowledge-intake` 负责把结果沉淀回知识库。
+一句话：`android-wsl-source-access` 负责连接服务器源码，`android-knowledge-search` 负责开工前先查知识库仓库，`android-framework-change-workflow` 负责分析和改代码并给验收结论，`android-remote-channel` 负责稳定执行服务器命令，`android-wsl-remote-build-deploy` 负责编译和推送设备，`android-framework-patch-capture` 与 `android-knowledge-intake` 负责把结果打包提交到数据库仓库。
 
 | 阶段 | 负责 skill | 职责 |
 | --- | --- | --- |
 | 源码接入 / 路径映射 | `android-wsl-source-access` | 把服务器 Android 源码挂载或恢复到 WSL，并记录本地路径、远程路径、SSH 主机映射 |
-| 开工前查知识库 | `android-knowledge-search` | 默认搜索可复用案例、平台实现、补丁、检索锚点和验证证据，判断是否有可复用方案 |
+| 开工前查知识库 | `android-knowledge-search` | 默认搜索知识库仓库里的可复用案例、平台实现、补丁、检索锚点和验证证据，判断是否有可复用方案 |
 | 需求分析 / 代码修改 | `android-framework-change-workflow` | 分析需求或 bug，查源码，改代码，加必要调试日志，判断风险和回滚路径 |
 | 远程命令执行 | `android-remote-channel` | 管理 SSH/tmux 长会话、命令日志、占用状态和锁，避免多个 Codex 会话互相踩远程环境 |
 | 编译 / 产物定位 / 推送 | `android-wsl-remote-build-deploy` | 调用服务器编译 Android，定位 jar/apk 等产物，并推送到设备 |
 | 功能验证 / 验收结论 | `android-framework-change-workflow` | 根据需求、日志、设备行为、风险矩阵判断任务是否完成，并决定知识成熟度 |
 | 补丁资料整理 | `android-framework-patch-capture` | 把已完成、阶段性、失败或阻塞但有价值的 Framework 修改整理成 patch、说明、修改文件证据、符号事实和验证材料 |
-| 知识入库 | `android-knowledge-intake` | 生成并提交 `daily_trace`、`weekly_trace` 或 `framework_change` incoming 包 |
+| 知识入库 | `android-knowledge-intake` | 生成并提交 `daily_trace`、`weekly_trace` 或 `framework_change` incoming 包到数据库仓库 |
 
 `remote-build-deploy` 只证明产物是否编出、是否推上设备；最终能不能算需求完成，由 `android-framework-change-workflow` 结合需求和验证证据判断。
 
-Framework 需求默认闭环是：开工前查知识库，开发和验证后通过 `patch-capture` 与 `knowledge-intake` 生成 incoming。验证通过的修改按 `validated`，需要复验的修改按 `candidate`，未完成但有价值的修改按 `draft`，失败或阻塞路径按 `failed` / `blocked` 保留。这样知识不会因为成员没有手动整理而只留在本机或会话里。
+Framework 需求默认闭环是：开工前查知识库仓库，开发和验证后通过 `patch-capture` 与 `knowledge-intake` 生成 incoming 并提交到数据库仓库。验证通过的修改按 `validated`，需要复验的修改按 `candidate`，未完成但有价值的修改按 `draft`，失败或阻塞路径按 `failed` / `blocked` 保留。是否进入知识库仓库由管理员审核和导出流程决定。
 
 Windows 原生 Codex 场景不属于团队默认主链路。确实需要 SMB/UNC、PowerShell 和本地 `adb.exe` 交付时，额外安装 `android-framework-windows-ops`。
 
@@ -56,7 +56,7 @@ Windows 原生 Codex 场景不属于团队默认主链路。确实需要 SMB/UNC
 
 | Skill | 会在服务器源码树上执行的典型命令 |
 | --- | --- |
-| `android-knowledge-search` | 通常不在服务器源码树执行命令，只读取当前知识库 JSONL 索引和权威对象目录 |
+| `android-knowledge-search` | 通常不在服务器源码树执行命令，只读取知识库仓库 JSONL 索引和权威对象目录 |
 | `android-framework-change-workflow` | `rg`, `sed`, `git diff`, `git status`，以及必要的源码修改或调试日志/监控 |
 | `android-framework-patch-capture` | `git status`, `git diff HEAD`，读取变更并生成 patch、说明和 evidence 文件 |
 | `android-wsl-remote-build-deploy` | `git status`, `repo status`, `.codex/build-push.sh plan/build`, `.codex/build-session.sh` 中的构建封装 |
@@ -119,10 +119,11 @@ $CODEX_HOME/<skill-name>.toml
 <project>/.codex/report.toml
 ```
 
-知识库和产物目录建议放在 Codex 工作区数据目录：
+数据库仓库、知识库仓库和产物目录建议放在 Codex 工作区数据目录：
 
 ```text
-<Codex documents>/worktrees/knowledge-<member_alias>
+<Codex documents>/worktrees/knowledge-database-<member_alias>
+<Codex documents>/worktrees/knowledge
 <Codex documents>/artifacts/android-knowledge-intake
 ```
 

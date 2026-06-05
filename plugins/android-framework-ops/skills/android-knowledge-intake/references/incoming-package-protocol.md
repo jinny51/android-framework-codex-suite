@@ -1,6 +1,8 @@
 # Incoming Package Protocol
 
-Member-side Codex submits only `incoming` packages. It does not write final knowledge views such as reports, patches, index, or site. The server validates the package and materializes case, variant, patch, report, evidence, event, search index, and admin site.
+Member-side Codex submits only `incoming` packages to the database repository. It does not write final knowledge views such as reports, patches, index, or site. The database repository server hook validates packages and writes review records; it does not approve knowledge or materialize the knowledge repository.
+
+Only the administrator review/export flow can promote an uploaded package into the knowledge repository.
 
 The server does not run Codex and must not be the main AI reasoning layer. Project inference, patch problem summary, risk, verification status, and search-before-change evidence are produced by member-side Codex.
 

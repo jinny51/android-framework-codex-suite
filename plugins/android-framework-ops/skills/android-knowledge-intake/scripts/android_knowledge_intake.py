@@ -109,8 +109,16 @@ CONFIG_DEFAULTS = {
     "allowed_modes": "",
     "member_alias": "",
     "member_name": "",
-    "repo_url": "test35:/home/test35/work/knowledge/remote.git",
-    "repo_worktree": "$CODEX_HOME/worktrees/knowledge",
+    "database_repo_url": "",
+    "database_repo_worktree": "",
+    "knowledge_repo_url": "",
+    "knowledge_repo_worktree": "",
+    "submission_repo_url": "",
+    "submission_repo_worktree": "",
+    "approved_repo_url": "",
+    "approved_repo_worktree": "",
+    "repo_url": "",
+    "repo_worktree": "",
     "git_user_name": "",
     "git_user_email": "",
     "codex_home": "$CODEX_HOME",
@@ -268,8 +276,28 @@ def flatten_config_payload(payload: dict[str, Any]) -> dict[str, str]:
             normalized = "repo_url"
         elif section == "server" and key == "worktree":
             normalized = "repo_worktree"
+        elif section == "database" and key in {"repo_url", "url", "database_repo_url"}:
+            normalized = "database_repo_url"
+        elif section == "database" and key in {"repo_worktree", "worktree", "database_repo_worktree"}:
+            normalized = "database_repo_worktree"
+        elif section == "knowledge" and key in {"repo_url", "url", "knowledge_repo_url"}:
+            normalized = "knowledge_repo_url"
+        elif section == "knowledge" and key in {"repo_worktree", "worktree", "knowledge_repo_worktree"}:
+            normalized = "knowledge_repo_worktree"
+        elif section == "submission" and key in {"repo_url", "url"}:
+            normalized = "database_repo_url"
+        elif section == "submission" and key in {"repo_worktree", "worktree"}:
+            normalized = "database_repo_worktree"
+        elif section == "approved" and key in {"repo_url", "url"}:
+            normalized = "knowledge_repo_url"
+        elif section == "approved" and key in {"repo_worktree", "worktree"}:
+            normalized = "knowledge_repo_worktree"
         elif section == "paths" and key in {"worktree", "repo_worktree"}:
             normalized = "repo_worktree"
+        elif section == "paths" and key in {"database_repo_worktree", "database_worktree", "submission_repo_worktree", "submission_worktree"}:
+            normalized = "database_repo_worktree"
+        elif section == "paths" and key in {"knowledge_repo_worktree", "knowledge_worktree", "approved_repo_worktree", "approved_worktree"}:
+            normalized = "knowledge_repo_worktree"
         elif section == "paths" and key in {"codex_home", "out_dir"}:
             normalized = key
         elif section == "git" and key in {"user_name", "name"}:
@@ -331,6 +359,22 @@ def apply_env_overrides(config: dict[str, str]) -> None:
         "PERSON": "member_name",
         "PERSON_NAME": "member_name",
         "MEMBER_NAME": "member_name",
+        "DATABASE_REPO": "database_repo_url",
+        "DATABASE_REPO_URL": "database_repo_url",
+        "DATABASE_WORKTREE": "database_repo_worktree",
+        "DATABASE_REPO_WORKTREE": "database_repo_worktree",
+        "KNOWLEDGE_REPO": "knowledge_repo_url",
+        "KNOWLEDGE_REPO_URL": "knowledge_repo_url",
+        "KNOWLEDGE_WORKTREE": "knowledge_repo_worktree",
+        "KNOWLEDGE_REPO_WORKTREE": "knowledge_repo_worktree",
+        "SUBMISSION_REPO": "database_repo_url",
+        "SUBMISSION_REPO_URL": "database_repo_url",
+        "SUBMISSION_WORKTREE": "database_repo_worktree",
+        "SUBMISSION_REPO_WORKTREE": "database_repo_worktree",
+        "APPROVED_REPO": "knowledge_repo_url",
+        "APPROVED_REPO_URL": "knowledge_repo_url",
+        "APPROVED_WORKTREE": "knowledge_repo_worktree",
+        "APPROVED_REPO_WORKTREE": "knowledge_repo_worktree",
         "REPO": "repo_url",
         "WORKTREE": "repo_worktree",
     }
@@ -378,10 +422,221 @@ def load_config(profile_override: str | None = None) -> tuple[dict[str, str], li
     return config, loaded
 
 
+def first_string(*values: Any) -> str:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def nested_value(payload: dict[str, Any], section: str, key: str) -> Any:
+    value = payload.get(section)
+    if isinstance(value, dict):
+        return value.get(key)
+    return None
+
+
+def profile_payloads(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    profiles = payload.get("profiles")
+    if not isinstance(profiles, dict):
+        return {}
+    return {str(name): values for name, values in profiles.items() if isinstance(values, dict)}
+
+
+def toml_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return "[" + ", ".join(toml_scalar(item) for item in value) + "]"
+    text = str(value)
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def render_migrated_config(payload: dict[str, Any]) -> str:
+    default_profile = first_string(payload.get("default_profile"))
+    database_url = first_string(
+        payload.get("database_repo_url"),
+        nested_value(payload, "database", "repo_url"),
+        nested_value(payload, "database", "url"),
+        payload.get("submission_repo_url"),
+        nested_value(payload, "submission", "repo_url"),
+        nested_value(payload, "submission", "url"),
+        payload.get("repo_url"),
+        nested_value(payload, "server", "repo_url"),
+    )
+    knowledge_url = first_string(
+        payload.get("knowledge_repo_url"),
+        nested_value(payload, "knowledge", "repo_url"),
+        nested_value(payload, "knowledge", "url"),
+        payload.get("approved_repo_url"),
+        nested_value(payload, "approved", "repo_url"),
+        nested_value(payload, "approved", "url"),
+    )
+    paths_payload = payload.get("paths") if isinstance(payload.get("paths"), dict) else {}
+
+    lines: list[str] = []
+    if default_profile:
+        lines.append(f"default_profile = {toml_scalar(default_profile)}")
+        lines.append("")
+
+    lines.append("[database]")
+    lines.append(f"repo_url = {toml_scalar(database_url)}")
+    lines.append("")
+    lines.append("[knowledge]")
+    lines.append(f"repo_url = {toml_scalar(knowledge_url)}")
+    lines.append("")
+    lines.append("[paths]")
+    lines.append(f"codex_home = {toml_scalar(first_string(paths_payload.get('codex_home'), payload.get('codex_home'), '$CODEX_HOME'))}")
+    lines.append(f"out_dir = {toml_scalar(first_string(paths_payload.get('out_dir'), payload.get('out_dir'), '$CODEX_HOME/artifacts/android-knowledge-intake'))}")
+
+    for key in ("include_patches", "incoming_schema_version", "max_attachment_mb", "push_retries", "timezone", "synthetic_data", "synthetic_item_count"):
+        value = payload.get(key)
+        if value is not None:
+            lines.append(f"{key} = {toml_scalar(value)}")
+    lines.append("")
+
+    for profile_name, profile in sorted(profile_payloads(payload).items()):
+        flattened = flatten_config_payload(profile)
+        alias = first_string(profile.get("member_alias"), flattened.get("member_alias"), profile_name)
+        database_worktree = first_string(
+            profile.get("database_repo_worktree"),
+            flattened.get("database_repo_worktree"),
+            f"$CODEX_HOME/worktrees/knowledge-database-{alias}",
+        )
+        knowledge_worktree = first_string(
+            profile.get("knowledge_repo_worktree"),
+            flattened.get("knowledge_repo_worktree"),
+            "$CODEX_HOME/worktrees/knowledge",
+        )
+        lines.append(f"[profiles.{profile_name}]")
+        for key in ("member_alias", "member_name", "role", "allowed_modes"):
+            value = profile.get(key)
+            if value is None and key in flattened:
+                value = flattened[key]
+            if value is not None:
+                lines.append(f"{key} = {toml_scalar(value)}")
+        if database_worktree:
+            lines.append(f"database_repo_worktree = {toml_scalar(database_worktree)}")
+        if knowledge_worktree:
+            lines.append(f"knowledge_repo_worktree = {toml_scalar(knowledge_worktree)}")
+        for key in ("git_user_name", "git_user_email", "synthetic_data", "synthetic_item_count"):
+            value = profile.get(key)
+            if value is None and key in flattened:
+                value = flattened[key]
+            if value is not None:
+                lines.append(f"{key} = {toml_scalar(value)}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def config_uses_legacy_repository_terms(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(?m)^\s*\[(submission|approved|server)\]\s*$|submission_repo_|approved_repo_|knowledge-submission|knowledge-approved",
+            text,
+        )
+    )
+
+
+def payload_uses_legacy_repository_terms(payload: dict[str, Any]) -> bool:
+    if any(key in payload for key in ("repo_url", "repo_worktree", "submission_repo_url", "submission_repo_worktree", "approved_repo_url", "approved_repo_worktree")):
+        return True
+    if any(isinstance(payload.get(section), dict) for section in ("server", "submission", "approved")):
+        return True
+    for profile in profile_payloads(payload).values():
+        if any(
+            key in profile
+            for key in (
+                "repo_url",
+                "repo_worktree",
+                "submission_repo_url",
+                "submission_repo_worktree",
+                "approved_repo_url",
+                "approved_repo_worktree",
+                "approved_worktree",
+                "submission_worktree",
+            )
+        ):
+            return True
+    return False
+
+
+def config_has_new_repository_terms(text: str) -> bool:
+    return "database_repo_" in text or "knowledge_repo_" in text or bool(re.search(r"^\s*\[(database|knowledge)\]\s*$", text, re.M))
+
+
+def migrate_config_file(path: Path, write: bool) -> dict[str, Any]:
+    original = path.read_text(encoding="utf-8")
+    payload = read_toml(path)
+    needs_migration = config_uses_legacy_repository_terms(original) or payload_uses_legacy_repository_terms(payload)
+    already_current = config_has_new_repository_terms(original)
+    result: dict[str, Any] = {
+        "path": str(path),
+        "needs_migration": needs_migration,
+        "already_current": already_current,
+        "changed": False,
+    }
+    if not needs_migration:
+        return result
+    migrated = render_migrated_config(payload)
+    result["preview"] = migrated
+    if not write:
+        return result
+    backup = path.with_name(path.name + f".bak-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    backup.write_text(original, encoding="utf-8")
+    path.write_text(migrated, encoding="utf-8")
+    result["backup"] = str(backup)
+    result["changed"] = True
+    return result
+
+
+def config_migrate(profile_override: str | None, write: bool) -> dict[str, Any]:
+    _config, loaded = load_config(profile_override)
+    user_paths = [path for path in loaded if path != PLUGIN_ROOT / "config.toml"]
+    if not user_paths:
+        return {"status": "PASS", "changed": False, "message": "未发现需要迁移的用户配置文件。"}
+    results = [migrate_config_file(path, write) for path in user_paths]
+    changed = any(item.get("changed") for item in results)
+    needs = any(item.get("needs_migration") for item in results)
+    return {
+        "status": "PASS" if write or not needs else "NEEDS_MIGRATION",
+        "changed": changed,
+        "write": write,
+        "results": results,
+    }
+
+
 def require_config(config: dict[str, str]) -> None:
-    missing = [key for key in ("member_alias", "member_name", "repo_url") if not config.get(key, "").strip()]
+    missing = [key for key in ("member_alias", "member_name") if not config.get(key, "").strip()]
+    if not database_repo_url(config):
+        missing.append("database_repo_url")
     if missing:
         raise SystemExit("缺少必要配置: " + ", ".join(missing))
+
+
+def database_repo_url(config: dict[str, str]) -> str:
+    return (config.get("database_repo_url") or config.get("submission_repo_url") or config.get("repo_url") or "").strip()
+
+
+def database_repo_worktree(config: dict[str, str]) -> Path:
+    value = (
+        config.get("database_repo_worktree")
+        or config.get("submission_repo_worktree")
+        or config.get("repo_worktree")
+        or "$CODEX_HOME/worktrees/knowledge-database"
+    )
+    return expanded_path(value)
+
+
+def knowledge_repo_url(config: dict[str, str]) -> str:
+    return (config.get("knowledge_repo_url") or config.get("approved_repo_url") or "").strip()
+
+
+def knowledge_repo_worktree(config: dict[str, str]) -> Path:
+    value = config.get("knowledge_repo_worktree") or config.get("approved_repo_worktree") or "$CODEX_HOME/worktrees/knowledge"
+    return expanded_path(value)
 
 
 def allowed_modes(config: dict[str, str]) -> set[str]:
@@ -2509,10 +2764,9 @@ def source_context_clues(source_contexts: list[dict[str, Any]]) -> list[tuple[st
 
 
 def related_report_project_clues(config: dict[str, str], run_ids: list[str]) -> list[tuple[str, str]]:
-    repo_value = config.get("repo_worktree", "")
-    if not repo_value or not run_ids:
+    if not run_ids:
         return []
-    repo = expanded_path(repo_value)
+    repo = database_repo_worktree(config)
     if not repo.is_dir():
         return []
     clues: list[tuple[str, str]] = []
@@ -2966,15 +3220,15 @@ def git_run(repo: Path, args: list[str], check: bool = True) -> subprocess.Compl
 
 
 def ensure_repo(config: dict[str, str]) -> Path:
-    repo = expanded_path(config["repo_worktree"])
-    repo_url = config["repo_url"].strip()
+    repo = database_repo_worktree(config)
+    repo_url = database_repo_url(config)
     if not repo_url:
-        raise SystemExit("repo_url 不能为空")
+        raise SystemExit("database_repo_url 不能为空")
     if not (repo / ".git").exists():
         repo.parent.mkdir(parents=True, exist_ok=True)
         cp = run(["git", "clone", repo_url, str(repo)])
         if cp.returncode != 0:
-            raise SystemExit(f"clone knowledge 仓库失败: {cp.stderr.strip() or cp.stdout.strip()}")
+            raise SystemExit(f"clone 数据库仓库失败: {cp.stderr.strip() or cp.stdout.strip()}")
     git_run(repo, ["remote", "set-url", "origin", repo_url])
     name = config.get("git_user_name") or config.get("member_name") or config.get("member_alias")
     email = config.get("git_user_email") or f"{config.get('member_alias', 'codex')}@codex.local"
@@ -3123,8 +3377,10 @@ def doctor_strict_checks(
     alias = config.get("member_alias", "").strip()
     name = config.get("member_name", "").strip()
     role = config.get("role", "").strip()
-    repo_url = config.get("repo_url", "").strip()
-    repo = expanded_path(config.get("repo_worktree", ""))
+    repo_url = database_repo_url(config)
+    repo = database_repo_worktree(config)
+    knowledge_url = knowledge_repo_url(config)
+    knowledge_repo = knowledge_repo_worktree(config)
     out_dir = expanded_path(config.get("out_dir", ""))
 
     if not loaded:
@@ -3162,9 +3418,13 @@ def doctor_strict_checks(
         error("synthetic_data=true 只能用于协议/灰度测试，成员端正式自动化必须关闭。")
 
     if not repo_url:
-        error("repo_url 不能为空。")
+        error("database_repo_url 不能为空。")
     if ".codex/plugins/cache" in repo.as_posix():
-        error("repo_worktree 不能放在插件缓存目录下。")
+        error("database_repo_worktree 不能放在插件缓存目录下。")
+    if ".codex/plugins/cache" in knowledge_repo.as_posix():
+        error("knowledge_repo_worktree 不能放在插件缓存目录下。")
+    if knowledge_repo == repo:
+        error("knowledge_repo_worktree 不能和 database_repo_worktree 使用同一个目录。")
     if ".codex/plugins/cache" in out_dir.as_posix():
         error("out_dir 不能放在插件缓存目录下。")
 
@@ -3176,12 +3436,12 @@ def doctor_strict_checks(
         origin = git_run(repo, ["config", "--get", "remote.origin.url"], check=False)
         origin_url = origin.stdout.strip()
         if not origin_url:
-            error(f"repo_worktree 缺少 origin remote: {repo}")
+            error(f"database_repo_worktree 缺少 origin remote: {repo}")
         elif repo_url and origin_url != repo_url:
-            error(f"repo_worktree origin 与 repo_url 不一致: origin={origin_url}, repo_url={repo_url}")
+            error(f"database_repo_worktree origin 与 database_repo_url 不一致: origin={origin_url}, database_repo_url={repo_url}")
         dirty = git_run(repo, ["status", "--porcelain"], check=False)
         if dirty.returncode == 0 and dirty.stdout.strip():
-            error(f"repo_worktree 存在未提交改动，自动化提交前必须清理: {repo}")
+            error(f"database_repo_worktree 存在未提交改动，自动化提交前必须清理: {repo}")
         if role == "member":
             branch = git_run(repo, ["rev-parse", "--abbrev-ref", "HEAD"], check=False)
             fetch = git_run(repo, ["fetch", "origin"], check=False)
@@ -3193,11 +3453,19 @@ def doctor_strict_checks(
             else:
                 warn("无法检查待 push 路径；提交时仍会强制限制 member profile 只能 push incoming/**。")
     elif repo.exists():
-        error(f"repo_worktree 已存在但不是 Git 仓库: {repo}")
+        error(f"database_repo_worktree 已存在但不是 Git 仓库: {repo}")
     else:
         parent = nearest_existing_parent(repo.parent)
         if not os.access(parent, os.W_OK):
-            error(f"repo_worktree 父目录不可写，无法自动 clone: {parent}")
+            error(f"database_repo_worktree 父目录不可写，无法自动 clone: {parent}")
+
+    if knowledge_url and (knowledge_repo / ".git").exists():
+        origin = git_run(knowledge_repo, ["config", "--get", "remote.origin.url"], check=False)
+        origin_url = origin.stdout.strip()
+        if origin_url and origin_url != knowledge_url:
+            error(f"knowledge_repo_worktree origin 与 knowledge_repo_url 不一致: origin={origin_url}, knowledge_repo_url={knowledge_url}")
+    elif knowledge_repo.exists() and not (knowledge_repo / ".git").exists():
+        warn(f"knowledge_repo_worktree 已存在但不是 Git 仓库；搜索仍可读取本地索引: {knowledge_repo}")
 
     out_parent = nearest_existing_parent(out_dir.parent)
     if not os.access(out_parent, os.W_OK):
@@ -3206,7 +3474,11 @@ def doctor_strict_checks(
     if check_remote and repo_url:
         remote = run(["git", "ls-remote", "--heads", repo_url])
         if remote.returncode != 0:
-            error("repo_url 无法访问，请先配置 SSH/Git 权限: " + (remote.stderr.strip() or remote.stdout.strip()))
+            error("database_repo_url 无法访问，请先配置 SSH/Git 权限: " + (remote.stderr.strip() or remote.stdout.strip()))
+    if check_remote and knowledge_url:
+        remote = run(["git", "ls-remote", "--heads", knowledge_url])
+        if remote.returncode != 0:
+            error("knowledge_repo_url 无法访问，请先配置 SSH/Git 权限: " + (remote.stderr.strip() or remote.stdout.strip()))
 
     return {
         "status": "FAIL" if errors else "PASS",
@@ -3222,7 +3494,8 @@ def doctor(
     check_remote: bool = False,
     allow_synthetic: bool = False,
 ) -> dict[str, Any]:
-    repo = expanded_path(config["repo_worktree"])
+    repo = database_repo_worktree(config)
+    knowledge_repo = knowledge_repo_worktree(config)
     payload: dict[str, Any] = {
         "skill_root": str(PLUGIN_ROOT),
         "codex_home": default_codex_home(),
@@ -3233,9 +3506,12 @@ def doctor(
         "synthetic_data": synthetic_mode(config),
         "member_alias": config.get("member_alias"),
         "member_name": config.get("member_name"),
-        "repo_url": config.get("repo_url"),
-        "repo_worktree": str(repo),
-        "repo_cloned": (repo / ".git").exists(),
+        "database_repo_url": database_repo_url(config),
+        "database_repo_worktree": str(repo),
+        "database_repo_cloned": (repo / ".git").exists(),
+        "knowledge_repo_url": knowledge_repo_url(config),
+        "knowledge_repo_worktree": str(knowledge_repo),
+        "knowledge_repo_cloned": (knowledge_repo / ".git").exists(),
         "out_dir": str(expanded_path(config["out_dir"])),
         "git": run(["git", "--version"]).stdout.strip(),
     }
@@ -3252,9 +3528,13 @@ def parse_args() -> argparse.Namespace:
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_parser.add_argument("--strict", action="store_true", help="fail when the selected profile is unsafe for member-side automation")
-    doctor_parser.add_argument("--check-remote", action="store_true", help="also verify repo_url is reachable with git ls-remote")
+    doctor_parser.add_argument("--check-remote", action="store_true", help="also verify database_repo_url and knowledge_repo_url are reachable with git ls-remote")
     doctor_parser.add_argument("--allow-synthetic", action="store_true", help="allow synthetic_data=true for protocol or gray-flow testing")
     doctor_parser.set_defaults(report_type="")
+
+    migrate_parser = subparsers.add_parser("config-migrate")
+    migrate_parser.add_argument("--write", action="store_true", help="rewrite user config with database/knowledge repository fields and create a backup")
+    migrate_parser.set_defaults(report_type="")
 
     for report_type in ("daily", "weekly", "patch"):
         sub = subparsers.add_parser(report_type)
@@ -3284,6 +3564,15 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+
+    if args.command == "config-migrate":
+        result = config_migrate(args.profile, args.write)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result.get("status") == "PASS" else 1
+
+    if args.command != "doctor":
+        config_migrate(args.profile, write=True)
+
     config, loaded = load_config(args.profile)
 
     if args.command == "doctor":

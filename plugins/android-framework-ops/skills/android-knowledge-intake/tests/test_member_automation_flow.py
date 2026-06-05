@@ -32,8 +32,8 @@ def run(cmd: list[str], cwd: Path, env: dict[str, str] | None = None, check: boo
     return result
 
 
-def run_json(cmd: list[str], cwd: Path, env: dict[str, str]) -> dict:
-    result = run(cmd, cwd, env)
+def run_json(cmd: list[str], cwd: Path, env: dict[str, str], check: bool = True) -> dict:
+    result = run(cmd, cwd, env, check=check)
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as exc:  # pragma: no cover - failure diagnostics
@@ -82,6 +82,47 @@ def write_member_config(root: Path, remote: Path, synthetic_data: bool = True) -
             git_user_name = "成员甲"
             git_user_email = "member01@example.invalid"
             synthetic_data = {str(synthetic_data).lower()}
+            synthetic_item_count = "2"
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(codex_home)
+    return env
+
+
+def write_current_member_config(root: Path, database_remote: Path, knowledge_remote: Path | None = None) -> dict[str, str]:
+    codex_home = root / "codex-home-current"
+    config_dir = codex_home / "report"
+    config_dir.mkdir(parents=True)
+    knowledge_value = (knowledge_remote or database_remote).as_posix()
+    (config_dir / "config.toml").write_text(
+        textwrap.dedent(
+            f"""
+            default_profile = "member01"
+            incoming_schema_version = "1"
+
+            [database]
+            repo_url = "{database_remote.as_posix()}"
+
+            [knowledge]
+            repo_url = "{knowledge_value}"
+
+            [paths]
+            out_dir = "{(root / "artifacts" / "android-knowledge-intake").as_posix()}"
+
+            [profiles.member01]
+            member_alias = "member01"
+            member_name = "成员甲"
+            role = "member"
+            allowed_modes = ["daily", "weekly", "patch"]
+            database_repo_worktree = "{(root / "worktrees" / "knowledge-database-member01").as_posix()}"
+            knowledge_repo_worktree = "{(root / "worktrees" / "knowledge").as_posix()}"
+            git_user_name = "成员甲"
+            git_user_email = "member01@example.invalid"
+            synthetic_data = true
             synthetic_item_count = "2"
             """
         ).strip()
@@ -229,6 +270,57 @@ def create_framework_repo(root: Path) -> Path:
 
 
 class MemberAutomationFlowTests(unittest.TestCase):
+    def test_config_migrate_rewrites_legacy_server_config_to_database_and_knowledge(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=True)
+            config_path = Path(env["CODEX_HOME"]) / "report" / "config.toml"
+
+            dry = run_json(
+                [sys.executable, str(INTAKE_SCRIPT), "--profile", "member01", "config-migrate"],
+                SUITE_ROOT,
+                env,
+                check=False,
+            )
+            self.assertEqual(dry["status"], "NEEDS_MIGRATION")
+            self.assertFalse(dry["changed"])
+
+            migrated = run_json(
+                [sys.executable, str(INTAKE_SCRIPT), "--profile", "member01", "config-migrate", "--write"],
+                SUITE_ROOT,
+                env,
+            )
+            self.assertEqual(migrated["status"], "PASS")
+            self.assertTrue(migrated["changed"])
+
+            text = config_path.read_text(encoding="utf-8")
+            self.assertIn("[database]", text)
+            self.assertIn("[knowledge]", text)
+            self.assertIn("database_repo_worktree", text)
+            self.assertIn("knowledge_repo_worktree", text)
+            self.assertNotIn("[server]", text)
+            self.assertNotRegex(text, r"(?m)^repo_worktree\s*=")
+            self.assertTrue(list(config_path.parent.glob("config.toml.bak-*")))
+
+    def test_current_database_and_knowledge_config_doctor_uses_new_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_current_member_config(root, remote)
+
+            result = run_json(
+                [sys.executable, str(INTAKE_SCRIPT), "--profile", "member01", "doctor"],
+                SUITE_ROOT,
+                env,
+            )
+
+            self.assertEqual(result["database_repo_url"], remote.as_posix())
+            self.assertIn("knowledge-database-member01", result["database_repo_worktree"])
+            self.assertIn("worktrees/knowledge", result["knowledge_repo_worktree"])
+            self.assertNotIn("submission_repo_url", result)
+            self.assertNotIn("approved_repo_url", result)
+
     def test_daily_uses_remote_project_anchor_and_filters_codex_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -562,7 +654,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             root = Path(tmp)
             remote = seed_knowledge_remote(root)
             env = write_member_config(root, remote)
-            repo = root / "worktrees" / "knowledge-member01"
+            repo = Path(env["CODEX_HOME"]) / "worktrees" / "knowledge-database-member01"
             run(["git", "clone", str(remote), str(repo)], root)
             run(["git", "config", "user.email", "member01@example.invalid"], repo)
             run(["git", "config", "user.name", "成员甲"], repo)
@@ -597,7 +689,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             root = Path(tmp)
             remote = seed_knowledge_remote(root)
             env = write_admin_config(root, remote)
-            repo = root / "worktrees" / "knowledge-jinny"
+            repo = Path(env["CODEX_HOME"]) / "worktrees" / "knowledge-database-jinny"
             run(["git", "clone", str(remote), str(repo)], root)
             run(["git", "config", "user.email", "jinny@example.invalid"], repo)
             run(["git", "config", "user.name", "吴金雨"], repo)

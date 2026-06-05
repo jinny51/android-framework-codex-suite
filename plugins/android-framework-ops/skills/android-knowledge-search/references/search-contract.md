@@ -2,7 +2,7 @@
 
 ## Data Sources
 
-Search reads generated knowledge indexes from a knowledge repository worktree:
+Search reads generated knowledge indexes from the knowledge repository worktree:
 
 ```text
 index/
@@ -14,6 +14,8 @@ index/
 ```
 
 Current rebuilt repositories are case/variant first. `case-index.jsonl` and `variant-index.jsonl` are the primary search sources. Default search loads `patches/by-id` plus generated AI indexes only. `reports/by-id`, `events/by-id`, and raw `evidence/by-id` are loaded only for explicit archive filters. It must not read old generated SQLite or legacy patch/report indexes.
+
+Search must not automatically use the database repository or member incoming worktree. It may inspect those only when an administrator passes an explicit `--root`.
 
 Default `--type all` is the AI reuse view. It returns only `case`, `variant`, `patch`, `symbol`, and AI evidence kinds:
 

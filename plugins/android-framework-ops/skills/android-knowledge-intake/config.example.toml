@@ -1,7 +1,10 @@
 default_profile = "member_alias"
 
-[server]
-repo_url = "test35:/home/test35/work/knowledge/remote.git"
+[database]
+repo_url = "test35:/home/test35/work/knowledge/database.git"
+
+[knowledge]
+repo_url = "test35:/home/test35/work/knowledge/knowledge.git"
 
 [paths]
 codex_home = "$CODEX_HOME"
@@ -18,7 +21,8 @@ member_alias = "member_alias"
 member_name = "成员姓名"
 role = "member"
 allowed_modes = ["daily", "weekly", "patch"]
-repo_worktree = "$CODEX_HOME/worktrees/knowledge-member_alias"
+database_repo_worktree = "$CODEX_HOME/worktrees/knowledge-database-member_alias"
+knowledge_repo_worktree = "$CODEX_HOME/worktrees/knowledge"
 git_user_name = "成员姓名"
 git_user_email = "member_alias@codex.local"
 
@@ -27,6 +31,7 @@ member_alias = "admin_alias"
 member_name = "管理员姓名"
 role = "admin"
 allowed_modes = ["patch"]
-repo_worktree = "$CODEX_HOME/worktrees/knowledge-admin_alias"
+database_repo_worktree = "$CODEX_HOME/worktrees/knowledge-database-admin_alias"
+knowledge_repo_worktree = "$CODEX_HOME/worktrees/knowledge"
 git_user_name = "管理员姓名"
 git_user_email = "admin_alias@codex.local"
