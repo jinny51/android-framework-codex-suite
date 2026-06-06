@@ -1,6 +1,6 @@
 # Framework Patch Package Contract
 
-This package is a local handoff artifact. `android-knowledge-intake` can later submit the generated patch file and readme to the database repository as incoming. Administrator review/export decides whether approved material enters the knowledge repository.
+This package is a local handoff artifact. `android-knowledge-intake` can later submit the generated patch file and readme through the server submission channel as incoming. The user's local `android-knowledge-curation-maintainer` skill decides whether and how material enters the knowledge repository.
 
 ## Directory
 
@@ -180,7 +180,7 @@ Generic labels such as `android16`, `Camera2`, or `mtk android16 Camera2` are ch
 
 ## Report Link
 
-When the patch came from a known daily or weekly incoming run, include the run id:
+When the patch came from a known daily or weekly incoming run, include the run id. Weekly run ids are provenance only; weekly packages remain database archive records and are not materialized into the knowledge repository:
 
 ```json
 {

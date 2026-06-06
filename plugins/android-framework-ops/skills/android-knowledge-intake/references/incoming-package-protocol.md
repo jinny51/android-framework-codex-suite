@@ -1,10 +1,10 @@
 # Incoming Package Protocol
 
-Member-side Codex submits only `incoming` packages to the database repository. It does not write final knowledge views such as reports, patches, index, or site. The database repository server hook validates packages and writes review records; it does not approve knowledge or materialize the knowledge repository.
+Member-side Codex creates only `incoming` packages and sends them through the server submission channel. It does not clone, pull, directly search, or push the database repository, and it does not write final knowledge views such as reports, patches, index, or site. The server validates packages, stores them in the database repository, and commits as the server-side authority; it does not approve knowledge or materialize the knowledge repository.
 
-Only the administrator review/export flow can promote an uploaded package into the knowledge repository.
+Only the user's local `android-knowledge-curation-maintainer` skill and the AI knowledge loop can decide whether and how an uploaded package enters the knowledge repository.
 
-The server does not run Codex and must not be the main AI reasoning layer. Project inference, patch problem summary, risk, verification status, and search-before-change evidence are produced by member-side Codex.
+The server does not run Codex and must not be the main AI reasoning layer. Project inference, patch problem summary, risk, verification status, and search-before-change evidence are produced by member-side Codex. Curation decisions, materialization plans, and knowledge validity are produced by the user's local curation maintainer skill, not by the member-side intake skill.
 
 ## Server Merge Anchors
 

@@ -13,7 +13,7 @@ index/
 └── evidence-index.jsonl
 ```
 
-Current rebuilt repositories are case/variant first. `case-index.jsonl` and `variant-index.jsonl` are the primary search sources. Default search loads `patches/by-id` plus generated AI indexes only. `reports/by-id`, `events/by-id`, and raw `evidence/by-id` are loaded only for explicit archive filters. It must not read old generated SQLite or legacy patch/report indexes.
+Current repositories are case/variant first. `case-index.jsonl` and `variant-index.jsonl` are the primary search sources. Default search loads `patches/by-id` plus generated AI indexes only. `reports/by-id`, `events/by-id`, and raw `evidence/by-id` are loaded only for explicit archive filters. It must not read residual generated SQLite or residual patch/report indexes.
 
 Search must not automatically use the database repository or member incoming worktree. It may inspect those only when an administrator passes an explicit `--root`.
 

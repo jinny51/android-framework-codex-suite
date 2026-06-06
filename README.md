@@ -23,7 +23,7 @@
 
 1. 用户当前明确要求和项目本地规范优先。
 2. 个人或团队实践 skill 负责代码风格、review 口径、项目偏好。
-3. `android-framework-ops` 负责 WSL 主链路 Framework 工程闭环：源码接入、历史检索、诊断修改、远程构建、设备推送、验收证据、补丁归档、知识入库。
+3. `android-framework-ops` 负责 WSL 主链路 Framework 工程闭环：源码接入、知识检索、诊断修改、远程构建、设备推送、验收证据、补丁归档、知识入库。
 4. `android-framework-windows-ops` 只在 Windows 原生 Codex 场景中作为可选兼容层使用。
 5. `codex-workspace-care` 只在用户明确需要处理本地 Codex 历史或交接上下文时使用。
 
@@ -46,7 +46,7 @@
 
 `remote-build-deploy` 只证明产物是否编出、是否推上设备；最终能不能算需求完成，由 `android-framework-change-workflow` 结合需求和验证证据判断。
 
-Framework 需求默认闭环是：开工前查知识库仓库，开发和验证后通过 `patch-capture` 与 `knowledge-intake` 生成 incoming 并提交到数据库仓库。验证通过的修改按 `validated`，需要复验的修改按 `candidate`，未完成但有价值的修改按 `draft`，失败或阻塞路径按 `failed` / `blocked` 保留。是否进入知识库仓库由管理员审核和导出流程决定。
+Framework 需求默认闭环是：开工前查知识库仓库，开发和验证后通过 `patch-capture` 与 `knowledge-intake` 生成 incoming，并通过服务器上传入口提交给数据库仓库。验证通过的修改按 `validated`，需要复验的修改按 `candidate`，未完成但有价值的修改按 `draft`，失败或阻塞路径按 `failed` / `blocked` 保留。是否进入知识库仓库由你本机的本地技能 `android-knowledge-curation-maintainer` 和 AI 知识闭环决定，不由成员端插件直接决定；周报包只做进度归档，固定不进入知识库仓库。
 
 Windows 原生 Codex 场景不属于团队默认主链路。确实需要 SMB/UNC、PowerShell 和本地 `adb.exe` 交付时，额外安装 `android-framework-windows-ops`。
 
@@ -119,15 +119,15 @@ $CODEX_HOME/<skill-name>.toml
 <project>/.codex/report.toml
 ```
 
-数据库仓库、知识库仓库和产物目录建议放在 Codex 工作区数据目录：
+服务器上传入口、知识库仓库工作树和产物目录建议按成员私有配置指定：
 
 ```text
-<Codex documents>/worktrees/knowledge-database-<member_alias>
+test35:/home/test35/work/knowledge/knowledge.git
 <Codex documents>/worktrees/knowledge
 <Codex documents>/artifacts/android-knowledge-intake
 ```
 
-这些路径是模板，不是插件硬编码要求。团队成员应在自己的 `config.toml` profile 中设置实际路径；管理员本机路径也只应该存在于管理员自己的私有配置中。
+这些路径是模板，不是插件硬编码要求。团队成员应在自己的 `config.toml` profile 中设置服务器上传入口和知识库仓库工作树；成员端不配置数据库仓库工作树。
 
 ## 维护
 

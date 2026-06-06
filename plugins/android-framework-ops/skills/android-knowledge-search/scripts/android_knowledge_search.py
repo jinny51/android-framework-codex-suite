@@ -141,23 +141,15 @@ def configured_worktree_values(payload: dict[str, Any]) -> list[str]:
             values.append(value.strip())
 
     add(payload.get("knowledge_repo_worktree"))
-    add(payload.get("approved_repo_worktree"))
     knowledge = payload.get("knowledge")
     if isinstance(knowledge, dict):
         add(knowledge.get("worktree"))
         add(knowledge.get("repo_worktree"))
         add(knowledge.get("knowledge_repo_worktree"))
-    approved = payload.get("approved")
-    if isinstance(approved, dict):
-        add(approved.get("worktree"))
-        add(approved.get("repo_worktree"))
-        add(approved.get("approved_repo_worktree"))
     paths = payload.get("paths")
     if isinstance(paths, dict):
         add(paths.get("knowledge_worktree"))
         add(paths.get("knowledge_repo_worktree"))
-        add(paths.get("approved_worktree"))
-        add(paths.get("approved_repo_worktree"))
     profiles = payload.get("profiles")
     profile = selected_profile(payload)
     if profile and isinstance(profiles, dict):
@@ -165,8 +157,6 @@ def configured_worktree_values(payload: dict[str, Any]) -> list[str]:
         if isinstance(profile_payload, dict):
             add(profile_payload.get("knowledge_repo_worktree"))
             add(profile_payload.get("knowledge_worktree"))
-            add(profile_payload.get("approved_repo_worktree"))
-            add(profile_payload.get("approved_worktree"))
     return values
 
 
@@ -175,10 +165,6 @@ def configured_roots() -> list[Path]:
     for env_key in (
         "CODEX_KNOWLEDGE_REPO_WORKTREE",
         "CODEX_REPORT_KNOWLEDGE_REPO_WORKTREE",
-        "CODEX_APPROVED_KNOWLEDGE_ROOT",
-        "CODEX_KNOWLEDGE_APPROVED_ROOT",
-        "CODEX_APPROVED_REPO_WORKTREE",
-        "CODEX_REPORT_APPROVED_REPO_WORKTREE",
     ):
         if os.environ.get(env_key):
             roots.append(expand_path(os.environ[env_key]))

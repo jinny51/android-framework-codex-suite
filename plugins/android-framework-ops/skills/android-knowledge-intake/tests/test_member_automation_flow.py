@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import contextlib
+import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -14,6 +17,31 @@ from pathlib import Path
 SUITE_ROOT = Path(__file__).resolve().parents[5]
 INTAKE_SCRIPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "scripts" / "android_knowledge_intake.py"
 CAPTURE_SCRIPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-framework-patch-capture" / "scripts" / "capture_framework_patch.py"
+MIGRATION_PROMPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "references" / "member-migration-prompt.md"
+MEMBER_BOUNDARY_DOCS = (
+    SUITE_ROOT / "README.md",
+    SUITE_ROOT / "plugins" / "android-framework-ops" / "README.md",
+    SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "SKILL.md",
+    SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "agents" / "openai.yaml",
+    SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "config.example.toml",
+    SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "references" / "incoming-package-protocol.md",
+    MIGRATION_PROMPT,
+    SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-framework-patch-capture" / "SKILL.md",
+    SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-framework-patch-capture" / "references" / "package-contract.md",
+    SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-search" / "SKILL.md",
+    SUITE_ROOT / "docs" / "skills" / "android-framework-ops" / "android-knowledge-intake" / "README.md",
+)
+
+
+def load_intake_module():
+    name = "android_knowledge_intake_under_test"
+    spec = importlib.util.spec_from_file_location(name, INTAKE_SCRIPT)
+    if spec is None or spec.loader is None:
+        raise AssertionError(f"无法加载脚本: {INTAKE_SCRIPT}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def run(cmd: list[str], cwd: Path, env: dict[str, str] | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -57,7 +85,35 @@ def seed_knowledge_remote(root: Path) -> Path:
     return remote
 
 
-def write_member_config(root: Path, remote: Path, synthetic_data: bool = True) -> dict[str, str]:
+def seed_stale_plugin_checkout(root: Path) -> Path:
+    remote = root / "plugin-origin.git"
+    seed = root / "plugin-seed"
+    checkout = root / "plugin-checkout"
+    skill_root = checkout / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake"
+    seed_skill_root = seed / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake"
+
+    run(["git", "init", "--bare", str(remote)], root)
+    run(["git", "init", str(seed)], root)
+    run(["git", "config", "user.email", "plugin@example.invalid"], seed)
+    run(["git", "config", "user.name", "Plugin User"], seed)
+    seed_skill_root.mkdir(parents=True)
+    (seed_skill_root / "marker.txt").write_text("version 1\n", encoding="utf-8")
+    run(["git", "add", "."], seed)
+    run(["git", "commit", "-m", "plugin seed"], seed)
+    run(["git", "branch", "-M", "main"], seed)
+    run(["git", "remote", "add", "origin", str(remote)], seed)
+    run(["git", "push", "-u", "origin", "main"], seed)
+    run(["git", "--git-dir", str(remote), "symbolic-ref", "HEAD", "refs/heads/main"], root)
+    run(["git", "clone", str(remote), str(checkout)], root)
+
+    (seed_skill_root / "marker.txt").write_text("version 2\n", encoding="utf-8")
+    run(["git", "add", "."], seed)
+    run(["git", "commit", "-m", "plugin update"], seed)
+    run(["git", "push"], seed)
+    return skill_root
+
+
+def write_member_config(root: Path, knowledge_remote: Path, submit_command: str | None = None, synthetic_data: bool = True) -> dict[str, str]:
     codex_home = root / "codex-home"
     config_dir = codex_home / "report"
     config_dir.mkdir(parents=True)
@@ -67,8 +123,12 @@ def write_member_config(root: Path, remote: Path, synthetic_data: bool = True) -
             default_profile = "member01"
             incoming_schema_version = "1"
 
-            [server]
-            repo_url = "{remote.as_posix()}"
+            [submission]
+            method = "local"
+            command = "{submit_command or "python3 -c 'import sys; sys.exit(0)'"}"
+
+            [knowledge]
+            repo_url = "{knowledge_remote.as_posix()}"
 
             [paths]
             out_dir = "{(root / "artifacts" / "android-knowledge-intake").as_posix()}"
@@ -78,7 +138,7 @@ def write_member_config(root: Path, remote: Path, synthetic_data: bool = True) -
             member_name = "成员甲"
             role = "member"
             allowed_modes = ["daily", "weekly", "patch"]
-            repo_worktree = "{(root / "worktrees" / "knowledge-member01").as_posix()}"
+            knowledge_repo_worktree = "{(root / "worktrees" / "knowledge").as_posix()}"
             git_user_name = "成员甲"
             git_user_email = "member01@example.invalid"
             synthetic_data = {str(synthetic_data).lower()}
@@ -90,48 +150,60 @@ def write_member_config(root: Path, remote: Path, synthetic_data: bool = True) -
     )
     env = os.environ.copy()
     env["CODEX_HOME"] = str(codex_home)
+    env["CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"] = "1"
     return env
 
 
-def write_current_member_config(root: Path, database_remote: Path, knowledge_remote: Path | None = None) -> dict[str, str]:
-    codex_home = root / "codex-home-current"
-    config_dir = codex_home / "report"
-    config_dir.mkdir(parents=True)
-    knowledge_value = (knowledge_remote or database_remote).as_posix()
-    (config_dir / "config.toml").write_text(
+def write_local_submitter(root: Path, database_root: Path) -> str:
+    script = root / "local-submit.py"
+    script.write_text(
         textwrap.dedent(
-            f"""
-            default_profile = "member01"
-            incoming_schema_version = "1"
+            """
+            from __future__ import annotations
 
-            [database]
-            repo_url = "{database_remote.as_posix()}"
+            import argparse
+            import json
+            import shutil
+            import sys
+            import tarfile
+            import tempfile
+            from pathlib import Path
 
-            [knowledge]
-            repo_url = "{knowledge_value}"
-
-            [paths]
-            out_dir = "{(root / "artifacts" / "android-knowledge-intake").as_posix()}"
-
-            [profiles.member01]
-            member_alias = "member01"
-            member_name = "成员甲"
-            role = "member"
-            allowed_modes = ["daily", "weekly", "patch"]
-            database_repo_worktree = "{(root / "worktrees" / "knowledge-database-member01").as_posix()}"
-            knowledge_repo_worktree = "{(root / "worktrees" / "knowledge").as_posix()}"
-            git_user_name = "成员甲"
-            git_user_email = "member01@example.invalid"
-            synthetic_data = true
-            synthetic_item_count = "2"
+            parser = argparse.ArgumentParser()
+            parser.add_argument("--root", required=True)
+            parser.add_argument("--member", required=True)
+            parser.add_argument("--stdin-tar-gz", action="store_true")
+            args = parser.parse_args()
+            if not args.stdin_tar_gz:
+                raise SystemExit("--stdin-tar-gz is required")
+            root = Path(args.root)
+            with tempfile.TemporaryDirectory() as tmp:
+                package = Path(tmp) / "package"
+                package.mkdir()
+                archive_path = Path(tmp) / "package.tar.gz"
+                archive_path.write_bytes(sys.stdin.buffer.read())
+                with tarfile.open(archive_path, "r:gz") as archive:
+                    for member in archive.getmembers():
+                        target = (package / member.name).resolve()
+                        if package.resolve() not in target.parents and target != package.resolve():
+                            raise SystemExit("path traversal")
+                    archive.extractall(package)
+                manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+                if manifest["member_alias"] != args.member:
+                    raise SystemExit("member mismatch")
+                date_key = manifest["date"].replace("-", "")
+                target = root / "incoming" / date_key / manifest["member_alias"] / manifest["run_id"]
+                if target.exists():
+                    raise SystemExit("target exists")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(package, target)
+                print(json.dumps({"submitted": True, "path": str(target)}, ensure_ascii=False))
             """
         ).strip()
         + "\n",
         encoding="utf-8",
     )
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
-    return env
+    return f"{sys.executable} {script} --root {database_root}"
 
 
 def write_codex_session(
@@ -213,40 +285,6 @@ def prepare_daily_package(env: dict[str, str], date: str, run_id: str) -> Path:
     return Path(result["package"])
 
 
-def write_admin_config(root: Path, remote: Path) -> dict[str, str]:
-    codex_home = root / "codex-home-admin"
-    config_dir = codex_home / "report"
-    config_dir.mkdir(parents=True)
-    (config_dir / "config.toml").write_text(
-        textwrap.dedent(
-            f"""
-            default_profile = "jinny"
-            incoming_schema_version = "1"
-
-            [server]
-            repo_url = "{remote.as_posix()}"
-
-            [paths]
-            out_dir = "{(root / "artifacts" / "android-knowledge-intake-admin").as_posix()}"
-
-            [profiles.jinny]
-            member_alias = "jinny"
-            member_name = "吴金雨"
-            role = "admin"
-            allowed_modes = ["patch"]
-            repo_worktree = "{(root / "worktrees" / "knowledge-jinny").as_posix()}"
-            git_user_name = "吴金雨"
-            git_user_email = "jinny@example.invalid"
-            synthetic_data = false
-            """
-        ).strip()
-        + "\n",
-        encoding="utf-8",
-    )
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
-    return env
-
 
 def create_framework_repo(root: Path) -> Path:
     source_root = root / "android-source"
@@ -270,44 +308,133 @@ def create_framework_repo(root: Path) -> Path:
 
 
 class MemberAutomationFlowTests(unittest.TestCase):
-    def test_config_migrate_rewrites_legacy_server_config_to_database_and_knowledge(self) -> None:
+    def test_member_facing_docs_preserve_repository_and_skill_boundaries(self) -> None:
+        combined = "\n".join(path.read_text(encoding="utf-8") for path in MEMBER_BOUNDARY_DOCS)
+        forbidden = [
+            "administrator review",
+            "admin review",
+            "管理员审核",
+            "管理端审核",
+            "等待管理员",
+            "人工审核",
+            "android-knowledge-curation ",
+            "android-knowledge-curation\n",
+        ]
+        for term in forbidden:
+            self.assertNotIn(term, combined)
+
+        member_only_docs = (
+            SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "SKILL.md",
+            SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "config.example.toml",
+            MIGRATION_PROMPT,
+            SUITE_ROOT / "docs" / "skills" / "android-framework-ops" / "android-knowledge-intake" / "README.md",
+        )
+        member_text = "\n".join(path.read_text(encoding="utf-8") for path in member_only_docs)
+        self.assertNotIn("database_repo_worktree", member_text)
+        self.assertNotIn("knowledge-database-", member_text)
+        self.assertIn("server submission channel", member_text)
+        self.assertIn("android-knowledge-curation-maintainer", combined)
+        self.assertIn("周报包", member_text)
+        self.assertIn("不进入知识库仓库", member_text)
+
+    def test_member_migration_prompt_covers_update_and_dual_repositories(self) -> None:
+        text = MIGRATION_PROMPT.read_text(encoding="utf-8")
+
+        self.assertIn("首次启用提示词", text)
+        self.assertIn("插件更新（plugin update）", text)
+        self.assertIn("新配置（new configuration）", text)
+        self.assertIn("服务器上传入口（server upload endpoint）", text)
+        self.assertIn("/home/test35/work/knowledge/database-worktree/scripts/knowledge-submit", text)
+        self.assertIn("test35:/home/test35/work/knowledge/knowledge.git", text)
+        self.assertIn("doctor --strict --check-remote", text)
+        self.assertNotIn("database_repo_worktree", text)
+        self.assertNotIn("remote.git", text)
+        self.assertNotIn("config-migrate", text)
+
+    def test_git_submission_mode_is_not_supported(self) -> None:
+        module = load_intake_module()
+
+        with self.assertRaises(SystemExit) as caught:
+            module.submission_method({"submission_method": "git"})
+
+        self.assertIn("不支持", str(caught.exception))
+
+    def test_plugin_freshness_detects_checkout_behind_origin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plugin_root = seed_stale_plugin_checkout(root)
+            module = load_intake_module()
+            module.PLUGIN_ROOT = plugin_root
+
+            result = module.plugin_freshness_check(fetch=True)
+
+            self.assertEqual(result["status"], "STALE")
+            self.assertTrue(result["blocking"])
+            self.assertIn("插件有更新", result["message"])
+            self.assertIn("git -C", result["update_command"])
+            self.assertIn("pull --ff-only", result["update_command"])
+
+    def test_plugin_freshness_non_git_install_is_nonblocking_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plugin_root = root / "codex-plugin-cache" / "android-knowledge-intake"
+            plugin_root.mkdir(parents=True)
+            module = load_intake_module()
+            module.PLUGIN_ROOT = plugin_root
+
+            result = module.plugin_freshness_check(fetch=True)
+            forced = module.plugin_freshness_check(fetch=True, require=True)
+
+            self.assertEqual(result["status"], "UNKNOWN")
+            self.assertFalse(result["blocking"])
+            self.assertEqual(forced["status"], "UNKNOWN")
+            self.assertTrue(forced["blocking"])
+
+    def test_daily_prepare_stops_when_plugin_checkout_is_stale(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             remote = seed_knowledge_remote(root)
-            env = write_member_config(root, remote, synthetic_data=True)
-            config_path = Path(env["CODEX_HOME"]) / "report" / "config.toml"
+            plugin_root = seed_stale_plugin_checkout(root)
+            env = write_member_config(root, remote)
+            env.pop("CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK", None)
+            module = load_intake_module()
+            old_argv = sys.argv[:]
+            old_env = os.environ.copy()
+            try:
+                module.PLUGIN_ROOT = plugin_root
+                os.environ.clear()
+                os.environ.update(env)
+                sys.argv = [
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "daily",
+                    "--date",
+                    "2026-06-01",
+                    "--run-id",
+                    "20260601-210000-daily",
+                    "--prepare",
+                ]
+                stdout = io.StringIO()
 
-            dry = run_json(
-                [sys.executable, str(INTAKE_SCRIPT), "--profile", "member01", "config-migrate"],
-                SUITE_ROOT,
-                env,
-                check=False,
-            )
-            self.assertEqual(dry["status"], "NEEDS_MIGRATION")
-            self.assertFalse(dry["changed"])
+                with contextlib.redirect_stdout(stdout):
+                    code = module.main()
 
-            migrated = run_json(
-                [sys.executable, str(INTAKE_SCRIPT), "--profile", "member01", "config-migrate", "--write"],
-                SUITE_ROOT,
-                env,
-            )
-            self.assertEqual(migrated["status"], "PASS")
-            self.assertTrue(migrated["changed"])
+                self.assertEqual(code, 1)
+                payload = json.loads(stdout.getvalue())
+                self.assertEqual(payload["status"], "FAIL")
+                self.assertEqual(payload["plugin_freshness"]["status"], "STALE")
+                self.assertIn("插件有更新", payload["message"])
+            finally:
+                sys.argv = old_argv
+                os.environ.clear()
+                os.environ.update(old_env)
 
-            text = config_path.read_text(encoding="utf-8")
-            self.assertIn("[database]", text)
-            self.assertIn("[knowledge]", text)
-            self.assertIn("database_repo_worktree", text)
-            self.assertIn("knowledge_repo_worktree", text)
-            self.assertNotIn("[server]", text)
-            self.assertNotRegex(text, r"(?m)^repo_worktree\s*=")
-            self.assertTrue(list(config_path.parent.glob("config.toml.bak-*")))
-
-    def test_current_database_and_knowledge_config_doctor_uses_new_fields(self) -> None:
+    def test_current_submission_and_knowledge_config_doctor_uses_member_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             remote = seed_knowledge_remote(root)
-            env = write_current_member_config(root, remote)
+            env = write_member_config(root, remote)
 
             result = run_json(
                 [sys.executable, str(INTAKE_SCRIPT), "--profile", "member01", "doctor"],
@@ -315,8 +442,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 env,
             )
 
-            self.assertEqual(result["database_repo_url"], remote.as_posix())
-            self.assertIn("knowledge-database-member01", result["database_repo_worktree"])
+            self.assertEqual(result["submission_method"], "local")
+            self.assertIn("submission_command", result)
+            self.assertNotIn("database_repo_worktree", result)
             self.assertIn("worktrees/knowledge", result["knowledge_repo_worktree"])
             self.assertNotIn("submission_repo_url", result)
             self.assertNotIn("approved_repo_url", result)
@@ -518,8 +646,10 @@ class MemberAutomationFlowTests(unittest.TestCase):
     def test_daily_weekly_and_patch_upload_to_simulated_incoming_remote(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            remote = seed_knowledge_remote(root)
-            env = write_member_config(root, remote)
+            knowledge_remote = seed_knowledge_remote(root)
+            database_root = root / "server-database"
+            submit_command = write_local_submitter(root, database_root)
+            env = write_member_config(root, knowledge_remote, submit_command)
 
             daily = run_json(
                 [
@@ -639,114 +769,14 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertTrue(patch_project["payload"]["company_rule_match"])
             self.assertIn("TVE8402M", (daily_package / "reports" / "daily.md").read_text(encoding="utf-8"))
 
-            clone = root / "remote-checkout"
-            run(["git", "clone", str(remote), str(clone)], root)
             expected = [
-                clone / "incoming" / "20260601" / "member01" / "20260601-210000-daily" / "manifest.json",
-                clone / "incoming" / "20260606" / "member01" / "20260606-220000-weekly" / "manifest.json",
-                clone / "incoming" / "20260601" / "member01" / "20260601-230000-patch" / "manifest.json",
+                database_root / "incoming" / "20260601" / "member01" / "20260601-210000-daily" / "manifest.json",
+                database_root / "incoming" / "20260606" / "member01" / "20260606-220000-weekly" / "manifest.json",
+                database_root / "incoming" / "20260601" / "member01" / "20260601-230000-patch" / "manifest.json",
             ]
             for path in expected:
                 self.assertTrue(path.is_file(), path)
-
-    def test_member_upload_rejects_outgoing_non_incoming_paths(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            remote = seed_knowledge_remote(root)
-            env = write_member_config(root, remote)
-            repo = Path(env["CODEX_HOME"]) / "worktrees" / "knowledge-database-member01"
-            run(["git", "clone", str(remote), str(repo)], root)
-            run(["git", "config", "user.email", "member01@example.invalid"], repo)
-            run(["git", "config", "user.name", "成员甲"], repo)
-            (repo / "site").mkdir()
-            (repo / "site" / "index.html").write_text("member should not push generated site\n", encoding="utf-8")
-            run(["git", "add", "site/index.html"], repo)
-            run(["git", "commit", "-m", "bad local site edit"], repo)
-
-            result = run(
-                [
-                    sys.executable,
-                    str(INTAKE_SCRIPT),
-                    "--profile",
-                    "member01",
-                    "daily",
-                    "--date",
-                    "2026-06-01",
-                    "--run-id",
-                    "20260601-210000-daily",
-                    "--upload",
-                ],
-                SUITE_ROOT,
-                env,
-                check=False,
-            )
-
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("非 incoming 路径", result.stderr + result.stdout)
-
-    def test_admin_upload_does_not_apply_member_incoming_only_guard(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            remote = seed_knowledge_remote(root)
-            env = write_admin_config(root, remote)
-            repo = Path(env["CODEX_HOME"]) / "worktrees" / "knowledge-database-jinny"
-            run(["git", "clone", str(remote), str(repo)], root)
-            run(["git", "config", "user.email", "jinny@example.invalid"], repo)
-            run(["git", "config", "user.name", "吴金雨"], repo)
-            (repo / "docs").mkdir()
-            (repo / "docs" / "admin-note.md").write_text("admin maintenance change\n", encoding="utf-8")
-            run(["git", "add", "docs/admin-note.md"], repo)
-            run(["git", "commit", "-m", "admin maintenance note"], repo)
-            patch_file = root / "mtk15-frameworks-base@statusbar-policy.patch"
-            patch_file.write_text(
-                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
-                "--- a/frameworks/base/services/core/java/X.java\n"
-                "+++ b/frameworks/base/services/core/java/X.java\n"
-                "@@ -1 +1,2 @@\n"
-                "+//gyf 20260601@ statusbar policy\n",
-                encoding="utf-8",
-            )
-            patch_file.with_suffix(".readme.md").write_text(
-                "# statusbar policy\n\n"
-                "## 功能描述\n\n状态栏策略调整。\n\n"
-                "## 修改点\n\n- 修改 frameworks/base。\n\n"
-                "## 日志控制\n\n无。\n\n"
-                "## SystemProperties\n\n无。\n\n"
-                "## 字符串国际化\n\n无。\n\n"
-                "## 可回滚性\n\n可回滚。\n",
-                encoding="utf-8",
-            )
-
-            result = run_json(
-                [
-                    sys.executable,
-                    str(INTAKE_SCRIPT),
-                    "--profile",
-                    "jinny",
-                    "patch",
-                    "--date",
-                    "2026-06-01",
-                    "--run-id",
-                    "20260601-231000-patch",
-                    "--patch",
-                    str(patch_file),
-                    "--project",
-                    "TVE8402M",
-                    "--summary",
-                    "状态栏策略调整",
-                    "--status",
-                    "candidate",
-                    "--upload",
-                ],
-                SUITE_ROOT,
-                env,
-            )
-
-            clone = root / "admin-remote-checkout"
-            run(["git", "clone", str(remote), str(clone)], root)
-            self.assertTrue((clone / "docs" / "admin-note.md").is_file())
-            self.assertTrue((clone / "incoming" / "20260601" / "jinny" / "20260601-231000-patch" / "manifest.json").is_file())
-            self.assertTrue(result["submit"]["pushed"])
+            self.assertFalse((Path(env["CODEX_HOME"]) / "worktrees" / "knowledge-database-member01").exists())
 
     def test_non_company_project_is_not_preserved_as_project_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

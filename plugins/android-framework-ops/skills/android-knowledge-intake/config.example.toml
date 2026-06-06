@@ -1,7 +1,9 @@
 default_profile = "member_alias"
 
-[database]
-repo_url = "test35:/home/test35/work/knowledge/database.git"
+[submission]
+method = "ssh"
+ssh_host = "test35"
+command = "/home/test35/work/knowledge/database-worktree/scripts/knowledge-submit"
 
 [knowledge]
 repo_url = "test35:/home/test35/work/knowledge/knowledge.git"
@@ -21,17 +23,15 @@ member_alias = "member_alias"
 member_name = "成员姓名"
 role = "member"
 allowed_modes = ["daily", "weekly", "patch"]
-database_repo_worktree = "$CODEX_HOME/worktrees/knowledge-database-member_alias"
 knowledge_repo_worktree = "$CODEX_HOME/worktrees/knowledge"
 git_user_name = "成员姓名"
 git_user_email = "member_alias@codex.local"
 
 [profiles.admin_alias]
 member_alias = "admin_alias"
-member_name = "管理员姓名"
+member_name = "链路测试"
 role = "admin"
 allowed_modes = ["patch"]
-database_repo_worktree = "$CODEX_HOME/worktrees/knowledge-database-admin_alias"
 knowledge_repo_worktree = "$CODEX_HOME/worktrees/knowledge"
-git_user_name = "管理员姓名"
+git_user_name = "链路测试"
 git_user_email = "admin_alias@codex.local"

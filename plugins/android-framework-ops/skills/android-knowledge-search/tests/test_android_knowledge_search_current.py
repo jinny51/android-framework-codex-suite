@@ -100,10 +100,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
     def test_find_root_uses_configured_knowledge_worktree_without_database_worktree(self):
         temp = Path(tempfile.mkdtemp())
         codex_home = temp / ".codex"
-        database_root = codex_home / "worktrees" / "knowledge-database-member01"
         knowledge_root = codex_home / "worktrees" / "knowledge"
-        (database_root / "index").mkdir(parents=True)
-        write_jsonl(database_root / "index" / "case-index.jsonl", [])
         (knowledge_root / "index").mkdir(parents=True)
         write_jsonl(knowledge_root / "index" / "case-index.jsonl", [])
         config_dir = codex_home / "report"
@@ -115,7 +112,6 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             [profiles.member01]
             member_alias = "member01"
             member_name = "成员一"
-            database_repo_worktree = "$CODEX_HOME/worktrees/knowledge-database-member01"
             knowledge_repo_worktree = "$CODEX_HOME/worktrees/knowledge"
             """,
             encoding="utf-8",
@@ -129,10 +125,6 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                 "CODEX_KNOWLEDGE_ROOT": "",
                 "CODEX_KNOWLEDGE_REPO_WORKTREE": "",
                 "CODEX_REPORT_KNOWLEDGE_REPO_WORKTREE": "",
-                "CODEX_APPROVED_KNOWLEDGE_ROOT": "",
-                "CODEX_KNOWLEDGE_APPROVED_ROOT": "",
-                "CODEX_APPROVED_REPO_WORKTREE": "",
-                "CODEX_REPORT_APPROVED_REPO_WORKTREE": "",
             },
         ):
             candidates = search.candidate_roots(None)
@@ -140,7 +132,6 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
 
         candidate_text = "\n".join(str(item) for item in candidates)
         self.assertEqual(root, knowledge_root.resolve())
-        self.assertNotIn(str(database_root.resolve()), candidate_text)
         self.assertNotIn("knowledge-" + "jinny", candidate_text)
         self.assertNotIn("knowledge-" + "test", candidate_text)
 

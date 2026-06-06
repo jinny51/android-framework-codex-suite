@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import io
 import json
 import os
 import random
@@ -12,6 +13,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,6 +28,12 @@ except ImportError:  # pragma: no cover
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 INCOMING_SCHEMA_VERSION = "1"
 ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
+PLUGIN_UPDATE_SKIP_ENV = "CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"
+PLUGIN_UPDATE_REQUIRE_ENV = "CODEX_REPORT_REQUIRE_PLUGIN_UPDATE_CHECK"
+DEFAULT_SUBMISSION_METHOD = "ssh"
+DEFAULT_SUBMISSION_SSH_HOST = "test35"
+DEFAULT_SUBMISSION_COMMAND = "/home/test35/work/knowledge/database-worktree/scripts/knowledge-submit"
+DEFAULT_KNOWLEDGE_REPO_URL = "test35:/home/test35/work/knowledge/knowledge.git"
 PATCH_FILENAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
 PROJECT_MODEL_RE = re.compile(r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{5}(?:[A-Z0-9_]+)?(?![A-Z0-9])", re.I)
@@ -109,16 +117,11 @@ CONFIG_DEFAULTS = {
     "allowed_modes": "",
     "member_alias": "",
     "member_name": "",
-    "database_repo_url": "",
-    "database_repo_worktree": "",
     "knowledge_repo_url": "",
     "knowledge_repo_worktree": "",
-    "submission_repo_url": "",
-    "submission_repo_worktree": "",
-    "approved_repo_url": "",
-    "approved_repo_worktree": "",
-    "repo_url": "",
-    "repo_worktree": "",
+    "submission_method": DEFAULT_SUBMISSION_METHOD,
+    "submission_ssh_host": DEFAULT_SUBMISSION_SSH_HOST,
+    "submission_command": DEFAULT_SUBMISSION_COMMAND,
     "git_user_name": "",
     "git_user_email": "",
     "codex_home": "$CODEX_HOME",
@@ -126,7 +129,6 @@ CONFIG_DEFAULTS = {
     "incoming_schema_version": "1",
     "include_patches": "true",
     "max_attachment_mb": "5",
-    "push_retries": "3",
     "timezone": "Asia/Shanghai",
     "synthetic_data": "false",
     "synthetic_item_count": "3",
@@ -178,6 +180,144 @@ def expanded_path(value: str) -> Path:
 
 def parse_bool(value: str) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "on", "y"}
+
+
+def env_enabled(name: str) -> bool:
+    return parse_bool(os.environ.get(name, ""))
+
+
+def plugin_update_unknown(message: str, require: bool, git_root: Path | None = None, update_command: str = "") -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "status": "UNKNOWN",
+        "blocking": require,
+        "message": message,
+    }
+    if git_root is not None:
+        payload["git_root"] = str(git_root)
+    if update_command:
+        payload["update_command"] = update_command
+    if require:
+        payload["message"] += " 已按强制策略停止本次生成；请先完成插件更新（plugin update）后重新运行原命令。"
+    return payload
+
+
+def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[str, Any]:
+    require = require or env_enabled(PLUGIN_UPDATE_REQUIRE_ENV)
+    if env_enabled(PLUGIN_UPDATE_SKIP_ENV):
+        return {
+            "status": "SKIPPED",
+            "blocking": False,
+            "message": "已按环境变量跳过插件更新检查（plugin update check）。",
+        }
+
+    root_cp = run(["git", "-C", str(PLUGIN_ROOT), "rev-parse", "--show-toplevel"])
+    if root_cp.returncode != 0:
+        return plugin_update_unknown(
+            "无法确认插件版本：当前插件目录不是 Git 仓库（git repository）。请在 Codex 插件市场更新 Android Framework Ops 插件后重新运行。",
+            require,
+        )
+    git_root = Path(root_cp.stdout.strip()).resolve()
+    update_command = shlex.join(["git", "-C", str(git_root), "pull", "--ff-only"])
+
+    branch_cp = run(["git", "-C", str(git_root), "rev-parse", "--abbrev-ref", "HEAD"])
+    if branch_cp.returncode != 0:
+        return plugin_update_unknown("无法读取插件当前分支，不能确认是否有更新。", require, git_root, update_command)
+    branch = branch_cp.stdout.strip()
+    if branch == "HEAD":
+        return plugin_update_unknown("插件仓库处于 detached HEAD 状态，不能自动判断远端更新。", require, git_root, update_command)
+
+    remote_cp = run(["git", "-C", str(git_root), "config", "--get", f"branch.{branch}.remote"])
+    remote_name = remote_cp.stdout.strip() if remote_cp.returncode == 0 else ""
+    if not remote_name:
+        origin_cp = run(["git", "-C", str(git_root), "config", "--get", "remote.origin.url"])
+        if origin_cp.returncode == 0 and origin_cp.stdout.strip():
+            remote_name = "origin"
+    if not remote_name:
+        return plugin_update_unknown("插件仓库没有配置远端仓库，不能确认是否有更新。", require, git_root, update_command)
+
+    if fetch:
+        fetch_cp = run(["git", "-C", str(git_root), "fetch", "--quiet", remote_name])
+        if fetch_cp.returncode != 0:
+            detail = (fetch_cp.stderr.strip() or fetch_cp.stdout.strip()).splitlines()
+            suffix = f": {detail[0]}" if detail else ""
+            return plugin_update_unknown(f"无法访问插件远端仓库，不能确认是否有更新{suffix}", require, git_root, update_command)
+
+    local_cp = run(["git", "-C", str(git_root), "rev-parse", "HEAD"])
+    if local_cp.returncode != 0:
+        return plugin_update_unknown("无法读取插件本地提交，不能确认是否有更新。", require, git_root, update_command)
+    local_commit = local_cp.stdout.strip()
+
+    upstream_cp = run(["git", "-C", str(git_root), "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+    upstream_ref = upstream_cp.stdout.strip() if upstream_cp.returncode == 0 else ""
+    if not upstream_ref:
+        for candidate in (f"{remote_name}/{branch}", "origin/main", "origin/master"):
+            candidate_cp = run(["git", "-C", str(git_root), "rev-parse", "--verify", candidate])
+            if candidate_cp.returncode == 0:
+                upstream_ref = candidate
+                break
+    if not upstream_ref:
+        return plugin_update_unknown("插件仓库没有可比较的上游分支，不能确认是否有更新。", require, git_root, update_command)
+
+    remote_commit_cp = run(["git", "-C", str(git_root), "rev-parse", upstream_ref])
+    if remote_commit_cp.returncode != 0:
+        return plugin_update_unknown("无法读取插件远端提交，不能确认是否有更新。", require, git_root, update_command)
+    remote_commit = remote_commit_cp.stdout.strip()
+
+    dirty_cp = run(["git", "-C", str(git_root), "status", "--porcelain"])
+    warnings: list[str] = []
+    if dirty_cp.returncode == 0 and dirty_cp.stdout.strip():
+        warnings.append("插件仓库存在未提交改动，更新前需要先处理本地改动。")
+
+    payload: dict[str, Any] = {
+        "git_root": str(git_root),
+        "local_commit": local_commit[:12],
+        "remote_ref": upstream_ref,
+        "remote_commit": remote_commit[:12],
+        "update_command": update_command,
+    }
+    if warnings:
+        payload["warnings"] = warnings
+
+    if local_commit == remote_commit:
+        payload.update(
+            {
+                "status": "PASS",
+                "blocking": False,
+                "message": "插件已是当前远端版本。",
+            }
+        )
+        return payload
+
+    local_ancestor = run(["git", "-C", str(git_root), "merge-base", "--is-ancestor", local_commit, remote_commit])
+    if local_ancestor.returncode == 0:
+        payload.update(
+            {
+                "status": "STALE",
+                "blocking": True,
+                "message": "插件有更新，已停止本次生成。请先执行插件更新（plugin update）后重新运行原命令。",
+            }
+        )
+        return payload
+
+    remote_ancestor = run(["git", "-C", str(git_root), "merge-base", "--is-ancestor", remote_commit, local_commit])
+    if remote_ancestor.returncode == 0:
+        payload.update(
+            {
+                "status": "PASS",
+                "blocking": False,
+                "message": "本地插件提交领先远端，未发现必须先拉取的更新。",
+            }
+        )
+        return payload
+
+    payload.update(
+        {
+            "status": "DIVERGED",
+            "blocking": True,
+            "message": "插件本地分支和远端分支已分叉，已停止本次生成。请让管理员处理插件更新（plugin update）后重新运行原命令。",
+        }
+    )
+    return payload
 
 
 def synthetic_mode(config: dict[str, str]) -> bool:
@@ -272,31 +412,17 @@ def flatten_config_payload(payload: dict[str, Any]) -> dict[str, str]:
             normalized = "member_alias"
         elif section == "member" and key == "name":
             normalized = "member_name"
-        elif section == "server" and key == "repo_url":
-            normalized = "repo_url"
-        elif section == "server" and key == "worktree":
-            normalized = "repo_worktree"
-        elif section == "database" and key in {"repo_url", "url", "database_repo_url"}:
-            normalized = "database_repo_url"
-        elif section == "database" and key in {"repo_worktree", "worktree", "database_repo_worktree"}:
-            normalized = "database_repo_worktree"
         elif section == "knowledge" and key in {"repo_url", "url", "knowledge_repo_url"}:
             normalized = "knowledge_repo_url"
         elif section == "knowledge" and key in {"repo_worktree", "worktree", "knowledge_repo_worktree"}:
             normalized = "knowledge_repo_worktree"
-        elif section == "submission" and key in {"repo_url", "url"}:
-            normalized = "database_repo_url"
-        elif section == "submission" and key in {"repo_worktree", "worktree"}:
-            normalized = "database_repo_worktree"
-        elif section == "approved" and key in {"repo_url", "url"}:
-            normalized = "knowledge_repo_url"
-        elif section == "approved" and key in {"repo_worktree", "worktree"}:
-            normalized = "knowledge_repo_worktree"
-        elif section == "paths" and key in {"worktree", "repo_worktree"}:
-            normalized = "repo_worktree"
-        elif section == "paths" and key in {"database_repo_worktree", "database_worktree", "submission_repo_worktree", "submission_worktree"}:
-            normalized = "database_repo_worktree"
-        elif section == "paths" and key in {"knowledge_repo_worktree", "knowledge_worktree", "approved_repo_worktree", "approved_worktree"}:
+        elif section == "submission" and key in {"method", "submission_method"}:
+            normalized = "submission_method"
+        elif section == "submission" and key in {"ssh_host", "host", "submission_ssh_host"}:
+            normalized = "submission_ssh_host"
+        elif section == "submission" and key in {"command", "submit_command", "submission_command"}:
+            normalized = "submission_command"
+        elif section == "paths" and key in {"knowledge_repo_worktree", "knowledge_worktree"}:
             normalized = "knowledge_repo_worktree"
         elif section == "paths" and key in {"codex_home", "out_dir"}:
             normalized = key
@@ -359,24 +485,14 @@ def apply_env_overrides(config: dict[str, str]) -> None:
         "PERSON": "member_name",
         "PERSON_NAME": "member_name",
         "MEMBER_NAME": "member_name",
-        "DATABASE_REPO": "database_repo_url",
-        "DATABASE_REPO_URL": "database_repo_url",
-        "DATABASE_WORKTREE": "database_repo_worktree",
-        "DATABASE_REPO_WORKTREE": "database_repo_worktree",
         "KNOWLEDGE_REPO": "knowledge_repo_url",
         "KNOWLEDGE_REPO_URL": "knowledge_repo_url",
         "KNOWLEDGE_WORKTREE": "knowledge_repo_worktree",
         "KNOWLEDGE_REPO_WORKTREE": "knowledge_repo_worktree",
-        "SUBMISSION_REPO": "database_repo_url",
-        "SUBMISSION_REPO_URL": "database_repo_url",
-        "SUBMISSION_WORKTREE": "database_repo_worktree",
-        "SUBMISSION_REPO_WORKTREE": "database_repo_worktree",
-        "APPROVED_REPO": "knowledge_repo_url",
-        "APPROVED_REPO_URL": "knowledge_repo_url",
-        "APPROVED_WORKTREE": "knowledge_repo_worktree",
-        "APPROVED_REPO_WORKTREE": "knowledge_repo_worktree",
-        "REPO": "repo_url",
-        "WORKTREE": "repo_worktree",
+        "SUBMISSION_METHOD": "submission_method",
+        "SUBMISSION_SSH_HOST": "submission_ssh_host",
+        "SUBMISSION_HOST": "submission_ssh_host",
+        "SUBMISSION_COMMAND": "submission_command",
     }
     for env_key, value in os.environ.items():
         for prefix in ENV_PREFIXES:
@@ -422,221 +538,39 @@ def load_config(profile_override: str | None = None) -> tuple[dict[str, str], li
     return config, loaded
 
 
-def first_string(*values: Any) -> str:
-    for value in values:
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return ""
-
-
-def nested_value(payload: dict[str, Any], section: str, key: str) -> Any:
-    value = payload.get(section)
-    if isinstance(value, dict):
-        return value.get(key)
-    return None
-
-
-def profile_payloads(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    profiles = payload.get("profiles")
-    if not isinstance(profiles, dict):
-        return {}
-    return {str(name): values for name, values in profiles.items() if isinstance(values, dict)}
-
-
-def toml_scalar(value: Any) -> str:
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, list):
-        return "[" + ", ".join(toml_scalar(item) for item in value) + "]"
-    text = str(value)
-    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
-
-
-def render_migrated_config(payload: dict[str, Any]) -> str:
-    default_profile = first_string(payload.get("default_profile"))
-    database_url = first_string(
-        payload.get("database_repo_url"),
-        nested_value(payload, "database", "repo_url"),
-        nested_value(payload, "database", "url"),
-        payload.get("submission_repo_url"),
-        nested_value(payload, "submission", "repo_url"),
-        nested_value(payload, "submission", "url"),
-        payload.get("repo_url"),
-        nested_value(payload, "server", "repo_url"),
-    )
-    knowledge_url = first_string(
-        payload.get("knowledge_repo_url"),
-        nested_value(payload, "knowledge", "repo_url"),
-        nested_value(payload, "knowledge", "url"),
-        payload.get("approved_repo_url"),
-        nested_value(payload, "approved", "repo_url"),
-        nested_value(payload, "approved", "url"),
-    )
-    paths_payload = payload.get("paths") if isinstance(payload.get("paths"), dict) else {}
-
-    lines: list[str] = []
-    if default_profile:
-        lines.append(f"default_profile = {toml_scalar(default_profile)}")
-        lines.append("")
-
-    lines.append("[database]")
-    lines.append(f"repo_url = {toml_scalar(database_url)}")
-    lines.append("")
-    lines.append("[knowledge]")
-    lines.append(f"repo_url = {toml_scalar(knowledge_url)}")
-    lines.append("")
-    lines.append("[paths]")
-    lines.append(f"codex_home = {toml_scalar(first_string(paths_payload.get('codex_home'), payload.get('codex_home'), '$CODEX_HOME'))}")
-    lines.append(f"out_dir = {toml_scalar(first_string(paths_payload.get('out_dir'), payload.get('out_dir'), '$CODEX_HOME/artifacts/android-knowledge-intake'))}")
-
-    for key in ("include_patches", "incoming_schema_version", "max_attachment_mb", "push_retries", "timezone", "synthetic_data", "synthetic_item_count"):
-        value = payload.get(key)
-        if value is not None:
-            lines.append(f"{key} = {toml_scalar(value)}")
-    lines.append("")
-
-    for profile_name, profile in sorted(profile_payloads(payload).items()):
-        flattened = flatten_config_payload(profile)
-        alias = first_string(profile.get("member_alias"), flattened.get("member_alias"), profile_name)
-        database_worktree = first_string(
-            profile.get("database_repo_worktree"),
-            flattened.get("database_repo_worktree"),
-            f"$CODEX_HOME/worktrees/knowledge-database-{alias}",
-        )
-        knowledge_worktree = first_string(
-            profile.get("knowledge_repo_worktree"),
-            flattened.get("knowledge_repo_worktree"),
-            "$CODEX_HOME/worktrees/knowledge",
-        )
-        lines.append(f"[profiles.{profile_name}]")
-        for key in ("member_alias", "member_name", "role", "allowed_modes"):
-            value = profile.get(key)
-            if value is None and key in flattened:
-                value = flattened[key]
-            if value is not None:
-                lines.append(f"{key} = {toml_scalar(value)}")
-        if database_worktree:
-            lines.append(f"database_repo_worktree = {toml_scalar(database_worktree)}")
-        if knowledge_worktree:
-            lines.append(f"knowledge_repo_worktree = {toml_scalar(knowledge_worktree)}")
-        for key in ("git_user_name", "git_user_email", "synthetic_data", "synthetic_item_count"):
-            value = profile.get(key)
-            if value is None and key in flattened:
-                value = flattened[key]
-            if value is not None:
-                lines.append(f"{key} = {toml_scalar(value)}")
-        lines.append("")
-
-    return "\n".join(lines).rstrip() + "\n"
-
-
-def config_uses_legacy_repository_terms(text: str) -> bool:
-    return bool(
-        re.search(
-            r"(?m)^\s*\[(submission|approved|server)\]\s*$|submission_repo_|approved_repo_|knowledge-submission|knowledge-approved",
-            text,
-        )
-    )
-
-
-def payload_uses_legacy_repository_terms(payload: dict[str, Any]) -> bool:
-    if any(key in payload for key in ("repo_url", "repo_worktree", "submission_repo_url", "submission_repo_worktree", "approved_repo_url", "approved_repo_worktree")):
-        return True
-    if any(isinstance(payload.get(section), dict) for section in ("server", "submission", "approved")):
-        return True
-    for profile in profile_payloads(payload).values():
-        if any(
-            key in profile
-            for key in (
-                "repo_url",
-                "repo_worktree",
-                "submission_repo_url",
-                "submission_repo_worktree",
-                "approved_repo_url",
-                "approved_repo_worktree",
-                "approved_worktree",
-                "submission_worktree",
-            )
-        ):
-            return True
-    return False
-
-
-def config_has_new_repository_terms(text: str) -> bool:
-    return "database_repo_" in text or "knowledge_repo_" in text or bool(re.search(r"^\s*\[(database|knowledge)\]\s*$", text, re.M))
-
-
-def migrate_config_file(path: Path, write: bool) -> dict[str, Any]:
-    original = path.read_text(encoding="utf-8")
-    payload = read_toml(path)
-    needs_migration = config_uses_legacy_repository_terms(original) or payload_uses_legacy_repository_terms(payload)
-    already_current = config_has_new_repository_terms(original)
-    result: dict[str, Any] = {
-        "path": str(path),
-        "needs_migration": needs_migration,
-        "already_current": already_current,
-        "changed": False,
-    }
-    if not needs_migration:
-        return result
-    migrated = render_migrated_config(payload)
-    result["preview"] = migrated
-    if not write:
-        return result
-    backup = path.with_name(path.name + f".bak-{dt.datetime.now().strftime('%Y%m%d-%H%M%S')}")
-    backup.write_text(original, encoding="utf-8")
-    path.write_text(migrated, encoding="utf-8")
-    result["backup"] = str(backup)
-    result["changed"] = True
-    return result
-
-
-def config_migrate(profile_override: str | None, write: bool) -> dict[str, Any]:
-    _config, loaded = load_config(profile_override)
-    user_paths = [path for path in loaded if path != PLUGIN_ROOT / "config.toml"]
-    if not user_paths:
-        return {"status": "PASS", "changed": False, "message": "未发现需要迁移的用户配置文件。"}
-    results = [migrate_config_file(path, write) for path in user_paths]
-    changed = any(item.get("changed") for item in results)
-    needs = any(item.get("needs_migration") for item in results)
-    return {
-        "status": "PASS" if write or not needs else "NEEDS_MIGRATION",
-        "changed": changed,
-        "write": write,
-        "results": results,
-    }
-
-
 def require_config(config: dict[str, str]) -> None:
     missing = [key for key in ("member_alias", "member_name") if not config.get(key, "").strip()]
-    if not database_repo_url(config):
-        missing.append("database_repo_url")
+    method = submission_method(config)
+    if method in {"ssh", "local"} and not submission_command(config):
+        missing.append("submission_command")
+    if method == "ssh" and not submission_ssh_host(config):
+        missing.append("submission_ssh_host")
     if missing:
         raise SystemExit("缺少必要配置: " + ", ".join(missing))
 
 
-def database_repo_url(config: dict[str, str]) -> str:
-    return (config.get("database_repo_url") or config.get("submission_repo_url") or config.get("repo_url") or "").strip()
-
-
-def database_repo_worktree(config: dict[str, str]) -> Path:
-    value = (
-        config.get("database_repo_worktree")
-        or config.get("submission_repo_worktree")
-        or config.get("repo_worktree")
-        or "$CODEX_HOME/worktrees/knowledge-database"
-    )
-    return expanded_path(value)
-
-
 def knowledge_repo_url(config: dict[str, str]) -> str:
-    return (config.get("knowledge_repo_url") or config.get("approved_repo_url") or "").strip()
+    return (config.get("knowledge_repo_url") or "").strip()
 
 
 def knowledge_repo_worktree(config: dict[str, str]) -> Path:
-    value = config.get("knowledge_repo_worktree") or config.get("approved_repo_worktree") or "$CODEX_HOME/worktrees/knowledge"
+    value = config.get("knowledge_repo_worktree") or "$CODEX_HOME/worktrees/knowledge"
     return expanded_path(value)
+
+
+def submission_method(config: dict[str, str]) -> str:
+    method = (config.get("submission_method") or DEFAULT_SUBMISSION_METHOD).strip().lower()
+    if method not in {"ssh", "local"}:
+        raise SystemExit(f"submission_method 不支持: {method}")
+    return method
+
+
+def submission_ssh_host(config: dict[str, str]) -> str:
+    return (config.get("submission_ssh_host") or DEFAULT_SUBMISSION_SSH_HOST).strip()
+
+
+def submission_command(config: dict[str, str]) -> str:
+    return (config.get("submission_command") or DEFAULT_SUBMISSION_COMMAND).strip()
 
 
 def allowed_modes(config: dict[str, str]) -> set[str]:
@@ -2042,7 +1976,7 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             if not isinstance(evidence, dict):
                 continue
             if evidence.get("kind") == LEGACY_PATCH_PROBLEM_KIND:
-                errors.append(f"{rel} 使用了旧补丁问题证据类型；请改用 patch_problem_summary")
+                errors.append(f"{rel} 使用了残留补丁问题证据类型；请改用 patch_problem_summary")
             if evidence.get("case_id") != manifest.get("case_id"):
                 errors.append(f"{rel} evidence.case_id 必须等于 manifest.case_id")
             if evidence.get("variant_id") != manifest.get("variant_id"):
@@ -2764,30 +2698,7 @@ def source_context_clues(source_contexts: list[dict[str, Any]]) -> list[tuple[st
 
 
 def related_report_project_clues(config: dict[str, str], run_ids: list[str]) -> list[tuple[str, str]]:
-    if not run_ids:
-        return []
-    repo = database_repo_worktree(config)
-    if not repo.is_dir():
-        return []
-    clues: list[tuple[str, str]] = []
-    for run_id in unique_strings(run_ids):
-        date_key = run_id[:8]
-        if not DATE_KEY_RE.fullmatch(date_key):
-            continue
-        incoming_day = repo / "incoming" / date_key
-        if not incoming_day.is_dir():
-            continue
-        for report_dir in sorted(incoming_day.glob(f"*/{run_id}")):
-            for rel in (
-                "manifest.json",
-                "reports/daily.md",
-                "reports/weekly.md",
-                "knowledge/evidence/work_findings.json",
-            ):
-                sample = read_text_sample(report_dir / rel)
-                if sample:
-                    clues.append((f"related report {run_id} {rel}", sample))
-    return clues
+    return []
 
 
 def read_text_sample(path: Path, limit: int = 12000) -> str:
@@ -3219,114 +3130,58 @@ def git_run(repo: Path, args: list[str], check: bool = True) -> subprocess.Compl
     return cp
 
 
-def ensure_repo(config: dict[str, str]) -> Path:
-    repo = database_repo_worktree(config)
-    repo_url = database_repo_url(config)
-    if not repo_url:
-        raise SystemExit("database_repo_url 不能为空")
-    if not (repo / ".git").exists():
-        repo.parent.mkdir(parents=True, exist_ok=True)
-        cp = run(["git", "clone", repo_url, str(repo)])
-        if cp.returncode != 0:
-            raise SystemExit(f"clone 数据库仓库失败: {cp.stderr.strip() or cp.stdout.strip()}")
-    git_run(repo, ["remote", "set-url", "origin", repo_url])
-    name = config.get("git_user_name") or config.get("member_name") or config.get("member_alias")
-    email = config.get("git_user_email") or f"{config.get('member_alias', 'codex')}@codex.local"
-    git_run(repo, ["config", "user.name", name])
-    git_run(repo, ["config", "user.email", email])
-    return repo
-
-
-def default_branch(repo: Path) -> str:
-    git_run(repo, ["fetch", "origin"])
-    cp = git_run(repo, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"], check=False)
-    value = cp.stdout.strip()
-    if value.startswith("origin/"):
-        return value.split("/", 1)[1]
-    for branch in ("master", "main"):
-        if git_run(repo, ["rev-parse", "--verify", f"origin/{branch}"], check=False).returncode == 0:
-            return branch
-    return "master"
-
-
-def pull_rebase(repo: Path, branch: str) -> None:
-    git_run(repo, ["pull", "--rebase", "origin", branch])
-
-
-def outgoing_paths(repo: Path, branch: str) -> list[str]:
-    cp = git_run(repo, ["diff", "--name-only", f"origin/{branch}..HEAD"], check=False)
-    if cp.returncode != 0:
-        return []
-    return [line.strip() for line in cp.stdout.splitlines() if line.strip()]
-
-
-def non_incoming_paths(paths: list[str]) -> list[str]:
-    return [path for path in paths if not (path == "incoming" or path.startswith("incoming/"))]
-
-
-def ensure_outgoing_only_incoming(repo: Path, branch: str, config: dict[str, str]) -> None:
-    if config.get("role") == "admin":
-        return
-    paths = outgoing_paths(repo, branch)
-    bad = non_incoming_paths(paths)
-    if bad:
-        preview = "\n".join(f"- {path}" for path in bad[:20])
-        extra = f"\n... 另有 {len(bad) - 20} 个路径" if len(bad) > 20 else ""
-        raise SystemExit(
-            "本地待 push 提交包含非 incoming 路径，已停止提交。成员端只能上传 incoming 包；"
-            "cases/variants/patches/reports/evidence/events/index/site/docs/scripts 等只能由服务器或管理员维护。\n"
-            + preview
-            + extra
-        )
-
-
-def copy_package_to_repo(package_dir: Path, repo: Path) -> Path:
-    manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
-    date_key = str(manifest["date"]).replace("-", "")
-    member = str(manifest["member_alias"])
-    run_id = package_dir.name
-    target = repo / "incoming" / date_key / member / run_id
-    if target.exists():
-        raise SystemExit(f"远端工作区已存在同名工作包，避免覆盖: {target}")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(package_dir, target)
-    return target
-
-
-def git_submit_package(package_dir: Path, config: dict[str, str]) -> dict[str, Any]:
+def submit_package(package_dir: Path, config: dict[str, str]) -> dict[str, Any]:
     check = validate_package(package_dir)
     write_json(package_dir / "local-check.json", check)
     if check["status"] != "PASS":
         raise SystemExit("本地工作包校验失败，已停止提交。请查看 local-check.json。")
 
-    repo = ensure_repo(config)
-    branch = default_branch(repo)
-    pull_rebase(repo, branch)
-    target = copy_package_to_repo(package_dir, repo)
-    rel = target.relative_to(repo).as_posix()
-    git_run(repo, ["add", rel])
-    status = git_run(repo, ["status", "--short", "--", rel]).stdout.strip()
-    if not status:
-        return {"committed": False, "pushed": False, "message": "no changes", "repo": str(repo), "path": rel}
+    method = submission_method(config)
+    return server_submit_package(package_dir, config, method)
 
-    manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
-    manifest_type = manifest.get("package_kind", "incoming")
-    msg = f"incoming({manifest_type}): {manifest['member_alias']} {manifest['date']}"
-    cp = git_run(repo, ["commit", "-m", msg], check=False)
-    if cp.returncode != 0 and "nothing to commit" not in (cp.stdout + cp.stderr):
-        raise SystemExit(f"git commit 失败: {cp.stderr.strip() or cp.stdout.strip()}")
 
-    retries = max(1, int(config.get("push_retries", "3")))
-    last_error = ""
-    for _ in range(retries):
-        ensure_outgoing_only_incoming(repo, branch, config)
-        push = git_run(repo, ["push", "origin", branch], check=False)
-        if push.returncode == 0:
-            commit = git_run(repo, ["rev-parse", "--short", "HEAD"]).stdout.strip()
-            return {"committed": True, "pushed": True, "commit": commit, "repo": str(repo), "path": rel}
-        last_error = push.stderr.strip() or push.stdout.strip()
-        pull_rebase(repo, branch)
-    raise SystemExit(f"git push 失败: {last_error}")
+def package_tar_gz_bytes(package_dir: Path) -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for path in sorted(package_dir.rglob("*")):
+            archive.add(path, arcname=path.relative_to(package_dir).as_posix(), recursive=False)
+    return buffer.getvalue()
+
+
+def server_submit_package(package_dir: Path, config: dict[str, str], method: str) -> dict[str, Any]:
+    command = shlex.split(submission_command(config))
+    if not command:
+        raise SystemExit("submission_command 不能为空")
+    member = config.get("member_alias", "").strip()
+    if not member:
+        raise SystemExit("member_alias 不能为空")
+    payload = package_tar_gz_bytes(package_dir)
+    if method == "ssh":
+        host = submission_ssh_host(config)
+        if not host:
+            raise SystemExit("submission_ssh_host 不能为空")
+        full_command = ["ssh", host, *command, "--member", member, "--stdin-tar-gz"]
+    else:
+        full_command = [*command, "--member", member, "--stdin-tar-gz"]
+    cp = subprocess.run(
+        full_command,
+        input=payload,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    stdout = cp.stdout.decode("utf-8", errors="replace")
+    stderr = cp.stderr.decode("utf-8", errors="replace")
+    if cp.returncode != 0:
+        raise SystemExit(f"上传入口提交失败: {stderr.strip() or stdout.strip()}")
+    try:
+        result = json.loads(stdout or "{}")
+    except json.JSONDecodeError:
+        result = {"message": stdout.strip()}
+    result.setdefault("submitted", True)
+    result.setdefault("method", method)
+    result.setdefault("package", str(package_dir))
+    return result
 
 
 def latest_pending(report_type: str, config: dict[str, str], date: dt.date | None = None) -> Path:
@@ -3377,8 +3232,9 @@ def doctor_strict_checks(
     alias = config.get("member_alias", "").strip()
     name = config.get("member_name", "").strip()
     role = config.get("role", "").strip()
-    repo_url = database_repo_url(config)
-    repo = database_repo_worktree(config)
+    submit_method = submission_method(config)
+    submit_host = submission_ssh_host(config)
+    submit_command = submission_command(config)
     knowledge_url = knowledge_repo_url(config)
     knowledge_repo = knowledge_repo_worktree(config)
     out_dir = expanded_path(config.get("out_dir", ""))
@@ -3417,47 +3273,24 @@ def doctor_strict_checks(
     if synthetic_mode(config) and not allow_synthetic:
         error("synthetic_data=true 只能用于协议/灰度测试，成员端正式自动化必须关闭。")
 
-    if not repo_url:
-        error("database_repo_url 不能为空。")
-    if ".codex/plugins/cache" in repo.as_posix():
-        error("database_repo_worktree 不能放在插件缓存目录下。")
+    if submit_method in {"ssh", "local"} and not submit_command:
+        error("submission_command 不能为空。")
+    if submit_method == "ssh" and not submit_host:
+        error("submission_ssh_host 不能为空。")
     if ".codex/plugins/cache" in knowledge_repo.as_posix():
         error("knowledge_repo_worktree 不能放在插件缓存目录下。")
-    if knowledge_repo == repo:
-        error("knowledge_repo_worktree 不能和 database_repo_worktree 使用同一个目录。")
     if ".codex/plugins/cache" in out_dir.as_posix():
         error("out_dir 不能放在插件缓存目录下。")
 
     git_version = run(["git", "--version"])
     if git_version.returncode != 0:
-        error("找不到 git，无法提交 incoming。")
+        error("找不到 git，无法检查知识库仓库。")
 
-    if (repo / ".git").exists():
-        origin = git_run(repo, ["config", "--get", "remote.origin.url"], check=False)
-        origin_url = origin.stdout.strip()
-        if not origin_url:
-            error(f"database_repo_worktree 缺少 origin remote: {repo}")
-        elif repo_url and origin_url != repo_url:
-            error(f"database_repo_worktree origin 与 database_repo_url 不一致: origin={origin_url}, database_repo_url={repo_url}")
-        dirty = git_run(repo, ["status", "--porcelain"], check=False)
-        if dirty.returncode == 0 and dirty.stdout.strip():
-            error(f"database_repo_worktree 存在未提交改动，自动化提交前必须清理: {repo}")
-        if role == "member":
-            branch = git_run(repo, ["rev-parse", "--abbrev-ref", "HEAD"], check=False)
-            fetch = git_run(repo, ["fetch", "origin"], check=False)
-            if branch.returncode == 0 and fetch.returncode == 0:
-                branch_name = branch.stdout.strip()
-                bad_paths = non_incoming_paths(outgoing_paths(repo, branch_name))
-                if bad_paths:
-                    error("member profile 存在待 push 的非 incoming 提交路径: " + ", ".join(bad_paths[:10]))
-            else:
-                warn("无法检查待 push 路径；提交时仍会强制限制 member profile 只能 push incoming/**。")
-    elif repo.exists():
-        error(f"database_repo_worktree 已存在但不是 Git 仓库: {repo}")
-    else:
-        parent = nearest_existing_parent(repo.parent)
-        if not os.access(parent, os.W_OK):
-            error(f"database_repo_worktree 父目录不可写，无法自动 clone: {parent}")
+    freshness = plugin_freshness_check(fetch=check_remote)
+    if freshness.get("blocking"):
+        error(str(freshness.get("message") or "插件更新检查失败。"))
+    elif freshness.get("status") == "UNKNOWN":
+        warn(str(freshness.get("message") or "无法确认插件是否为最新版本。"))
 
     if knowledge_url and (knowledge_repo / ".git").exists():
         origin = git_run(knowledge_repo, ["config", "--get", "remote.origin.url"], check=False)
@@ -3471,10 +3304,10 @@ def doctor_strict_checks(
     if not os.access(out_parent, os.W_OK):
         error(f"out_dir 父目录不可写，无法生成 pending 包: {out_parent}")
 
-    if check_remote and repo_url:
-        remote = run(["git", "ls-remote", "--heads", repo_url])
+    if check_remote and submit_method == "ssh" and submit_host:
+        remote = run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", submit_host, "true"])
         if remote.returncode != 0:
-            error("database_repo_url 无法访问，请先配置 SSH/Git 权限: " + (remote.stderr.strip() or remote.stdout.strip()))
+            warn("submission_ssh_host 普通命令检查未通过；如果服务器使用 forced command，需用真实上传包冒烟验证: " + (remote.stderr.strip() or remote.stdout.strip()))
     if check_remote and knowledge_url:
         remote = run(["git", "ls-remote", "--heads", knowledge_url])
         if remote.returncode != 0:
@@ -3494,7 +3327,6 @@ def doctor(
     check_remote: bool = False,
     allow_synthetic: bool = False,
 ) -> dict[str, Any]:
-    repo = database_repo_worktree(config)
     knowledge_repo = knowledge_repo_worktree(config)
     payload: dict[str, Any] = {
         "skill_root": str(PLUGIN_ROOT),
@@ -3506,14 +3338,15 @@ def doctor(
         "synthetic_data": synthetic_mode(config),
         "member_alias": config.get("member_alias"),
         "member_name": config.get("member_name"),
-        "database_repo_url": database_repo_url(config),
-        "database_repo_worktree": str(repo),
-        "database_repo_cloned": (repo / ".git").exists(),
+        "submission_method": submission_method(config),
+        "submission_ssh_host": submission_ssh_host(config),
+        "submission_command": submission_command(config),
         "knowledge_repo_url": knowledge_repo_url(config),
         "knowledge_repo_worktree": str(knowledge_repo),
         "knowledge_repo_cloned": (knowledge_repo / ".git").exists(),
         "out_dir": str(expanded_path(config["out_dir"])),
         "git": run(["git", "--version"]).stdout.strip(),
+        "plugin_freshness": plugin_freshness_check(fetch=check_remote),
     }
     if strict:
         payload["strict"] = doctor_strict_checks(config, loaded, check_remote, allow_synthetic)
@@ -3528,13 +3361,9 @@ def parse_args() -> argparse.Namespace:
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_parser.add_argument("--strict", action="store_true", help="fail when the selected profile is unsafe for member-side automation")
-    doctor_parser.add_argument("--check-remote", action="store_true", help="also verify database_repo_url and knowledge_repo_url are reachable with git ls-remote")
+    doctor_parser.add_argument("--check-remote", action="store_true", help="also verify the knowledge repository remote and best-effort SSH host reachability")
     doctor_parser.add_argument("--allow-synthetic", action="store_true", help="allow synthetic_data=true for protocol or gray-flow testing")
     doctor_parser.set_defaults(report_type="")
-
-    migrate_parser = subparsers.add_parser("config-migrate")
-    migrate_parser.add_argument("--write", action="store_true", help="rewrite user config with database/knowledge repository fields and create a backup")
-    migrate_parser.set_defaults(report_type="")
 
     for report_type in ("daily", "weekly", "patch"):
         sub = subparsers.add_parser(report_type)
@@ -3565,20 +3394,28 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
-    if args.command == "config-migrate":
-        result = config_migrate(args.profile, args.write)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0 if result.get("status") == "PASS" else 1
-
-    if args.command != "doctor":
-        config_migrate(args.profile, write=True)
-
     config, loaded = load_config(args.profile)
 
     if args.command == "doctor":
         result = doctor(config, loaded, args.strict, args.check_remote, args.allow_synthetic)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if not args.strict or result.get("status") == "PASS" else 1
+
+    if args.command in PACKAGE_TYPES and not args.validate and (args.prepare or args.submit_latest or args.upload):
+        freshness = plugin_freshness_check(fetch=True)
+        if freshness.get("blocking"):
+            print(
+                json.dumps(
+                    {
+                        "status": "FAIL",
+                        "message": freshness.get("message") or "插件更新检查失败。",
+                        "plugin_freshness": freshness,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 1
 
     date = parse_date_arg(args.date, config)
     if args.validate:
@@ -3598,7 +3435,7 @@ def main() -> int:
         return 0 if result["status"] == "PASS" else 1
     if args.submit_latest:
         package_dir = latest_pending(args.report_type, config, date if args.date else None)
-        result = git_submit_package(package_dir, config)
+        result = submit_package(package_dir, config)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     if args.upload:
@@ -3607,7 +3444,7 @@ def main() -> int:
             package_dir = prepare_patch_package(date, config, args.run_id, args.patches, args.patch_packages, args.project, args.summary, args.status, schema_version, args.related_report_run_ids)
         else:
             package_dir = prepare_package(args.report_type, date, config, args.run_id, schema_version)
-        result = git_submit_package(package_dir, config)
+        result = submit_package(package_dir, config)
         print(json.dumps({"package": str(package_dir), "submit": result}, ensure_ascii=False, indent=2))
         return 0
     return 2

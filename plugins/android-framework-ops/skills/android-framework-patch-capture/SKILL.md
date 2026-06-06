@@ -1,15 +1,15 @@
 ---
 name: android-framework-patch-capture
-description: "Use after Android Framework code changes are implemented, staged, failed, or blocked but need to be turned into a reusable or cautionary engineering asset: generate a standards-compliant patch file, paired readme, changed-file evidence, symbol facts, log/property checks, and a package manifest for later android-knowledge-intake database incoming submission and administrator-approved knowledge indexing."
+description: "Use after Android Framework code changes are implemented, staged, failed, or blocked but need to be turned into a reusable or cautionary engineering asset for later android-knowledge-intake incoming submission."
 ---
 
 # Android Framework Patch Capture
 
 Use this skill when a Framework change is ready to be packaged as a reusable, reviewable, or cautionary patch asset. It does not implement requirements, diagnose root cause, build, deploy, or decide final correctness. It packages existing source changes into `patch + readme + evidence` so `android-knowledge-intake` can submit them as incoming.
 
-Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-knowledge-intake` submits a valuable patch package to the database repository as incoming. Administrator review/export decides whether it later enters the knowledge repository.
+Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-knowledge-intake` submits a valuable patch package through the server submission channel. The user's local `android-knowledge-curation-maintainer` skill decides whether it later enters the knowledge repository.
 
-The generated package includes patch content `sha1` for server-side deduplication. If a known daily/weekly incoming run produced the work context, pass `--related-report-run-id <run_id>` so intake can preserve an explicit report link.
+The generated package includes patch content `sha1` for server-side deduplication. If a known daily/weekly incoming run produced the work context, pass `--related-report-run-id <run_id>` so intake can preserve an explicit report link. Weekly links are provenance only; weekly packages are not knowledge repository materialization candidates.
 
 `--project` is a high-priority hint only when it contains a company project anchor in the current recognition scope (`TVE`, `TVA`, or `TVI`). If `--project` is omitted or contains a generic label such as `mtk android16 Camera2`, the capture script must continue looking at `source_root`, git branch, git remote, the WSL source-access registry, and patch/readme/diff/summary text before falling back to `unknown`.
 
@@ -17,7 +17,7 @@ The generated package includes patch content `sha1` for server-side deduplicatio
 
 - `android-framework-change-workflow`: owns requirement analysis, source changes, risk, build/deploy coordination, and final verification.
 - `android-framework-patch-capture`: owns patch/readme/evidence packaging for existing changes.
-- `android-knowledge-intake`: owns daily/weekly/framework_change incoming package submission to the database repository.
+- `android-knowledge-intake`: owns daily/weekly/framework_change incoming package submission through the server submission channel.
 
 ## Quick Command
 

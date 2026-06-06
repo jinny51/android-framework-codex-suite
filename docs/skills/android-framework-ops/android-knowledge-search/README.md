@@ -14,7 +14,7 @@
 
 ## 典型场景
 
-- 新需求来了，先查有没有类似 Framework 修改或历史补丁。
+- 新需求来了，先查有没有类似 Framework 修改或既有补丁。
 - 看到一个类名、属性、Settings key、资源 key，想知道以前哪个补丁改过。
 - 管理员需要追溯日报、周报、incoming 事件或原始来源时，使用显式 `--type report`、`--type event` 或 `--type evidence`。
 - 想确认某个 incoming 是否留下了可复用验证证据。
