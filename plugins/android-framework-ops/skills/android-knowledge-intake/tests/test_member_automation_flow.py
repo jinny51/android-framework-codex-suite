@@ -154,6 +154,13 @@ def write_member_config(root: Path, knowledge_remote: Path, submit_command: str 
     return env
 
 
+def clone_member_knowledge_worktree(root: Path, knowledge_remote: Path) -> Path:
+    worktree = root / "worktrees" / "knowledge"
+    worktree.parent.mkdir(parents=True, exist_ok=True)
+    run(["git", "clone", str(knowledge_remote), str(worktree)], root)
+    return worktree
+
+
 def write_local_submitter(root: Path, database_root: Path) -> str:
     script = root / "local-submit.py"
     script.write_text(
@@ -346,6 +353,8 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertIn("服务器上传入口（server upload endpoint）", text)
         self.assertIn("/home/test35/work/knowledge/database-worktree/scripts/knowledge-submit", text)
         self.assertIn("test35:/home/test35/work/knowledge/knowledge.git", text)
+        self.assertIn('git clone test35:/home/test35/work/knowledge/knowledge.git "$CODEX_HOME/worktrees/knowledge"', text)
+        self.assertIn('git -C "$CODEX_HOME/worktrees/knowledge" pull --ff-only', text)
         self.assertIn("doctor --strict --check-remote", text)
         self.assertNotIn("database_repo_worktree", text)
         self.assertNotIn("remote.git", text)
@@ -390,7 +399,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(forced["status"], "UNKNOWN")
             self.assertTrue(forced["blocking"])
 
-    def test_daily_prepare_stops_when_plugin_checkout_is_stale(self) -> None:
+    def test_member_generation_modes_stop_when_plugin_checkout_is_stale(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             remote = seed_knowledge_remote(root)
@@ -404,27 +413,29 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 module.PLUGIN_ROOT = plugin_root
                 os.environ.clear()
                 os.environ.update(env)
-                sys.argv = [
-                    str(INTAKE_SCRIPT),
-                    "--profile",
-                    "member01",
-                    "daily",
-                    "--date",
-                    "2026-06-01",
-                    "--run-id",
-                    "20260601-210000-daily",
-                    "--prepare",
-                ]
-                stdout = io.StringIO()
+                for mode in ("daily", "weekly", "patch"):
+                    with self.subTest(mode=mode):
+                        sys.argv = [
+                            str(INTAKE_SCRIPT),
+                            "--profile",
+                            "member01",
+                            mode,
+                            "--date",
+                            "2026-06-01",
+                            "--run-id",
+                            f"20260601-210000-{mode}",
+                            "--prepare",
+                        ]
+                        stdout = io.StringIO()
 
-                with contextlib.redirect_stdout(stdout):
-                    code = module.main()
+                        with contextlib.redirect_stdout(stdout):
+                            code = module.main()
 
-                self.assertEqual(code, 1)
-                payload = json.loads(stdout.getvalue())
-                self.assertEqual(payload["status"], "FAIL")
-                self.assertEqual(payload["plugin_freshness"]["status"], "STALE")
-                self.assertIn("插件有更新", payload["message"])
+                        self.assertEqual(code, 1)
+                        payload = json.loads(stdout.getvalue())
+                        self.assertEqual(payload["status"], "FAIL")
+                        self.assertEqual(payload["plugin_freshness"]["status"], "STALE")
+                        self.assertIn("插件有更新", payload["message"])
             finally:
                 sys.argv = old_argv
                 os.environ.clear()
@@ -599,6 +610,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             root = Path(tmp)
             remote = seed_knowledge_remote(root)
             env = write_member_config(root, remote)
+            clone_member_knowledge_worktree(root, remote)
 
             result = run_json(
                 [
@@ -642,6 +654,31 @@ class MemberAutomationFlowTests(unittest.TestCase):
             payload = json.loads(result.stdout)
             self.assertEqual(payload["status"], "FAIL")
             self.assertTrue(any("synthetic_data=true" in item for item in payload["strict"]["errors"]))
+
+    def test_doctor_strict_requires_knowledge_worktree_clone(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "doctor",
+                    "--strict",
+                ],
+                SUITE_ROOT,
+                env,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["status"], "FAIL")
+            self.assertTrue(any("knowledge_repo_worktree 不存在" in item for item in payload["strict"]["errors"]))
 
     def test_daily_weekly_and_patch_upload_to_simulated_incoming_remote(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -18,7 +18,9 @@
 
 ## 首次启用
 
-成员首次切到当前双仓库链路时，优先把 [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md) 里的整段提示词交给成员端 Codex。提示词会要求先完成插件更新（plugin update），再直接写入新配置（new configuration）、检查服务器上传入口（server upload endpoint）、检查知识库仓库（knowledge repository）和运行健康检查（doctor check），成员只需要确认自己的 `member_alias`、姓名和 Git 作者信息。
+成员首次切到当前双仓库链路时，优先把 [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md) 里的整段提示词交给成员端 Codex。提示词会要求先完成插件更新（plugin update），再直接写入新配置（new configuration）、检查服务器上传入口（server upload endpoint）、克隆或更新唯一的知识库仓库（knowledge repository）工作树并运行健康检查（doctor check），成员只需要确认自己的 `member_alias`、姓名和 Git 作者信息。
+
+严格健康检查（doctor strict check）会要求 `knowledge_repo_worktree` 存在且是 Git 仓库（git repository）。成员端只克隆知识库仓库（knowledge repository），不能克隆或直接读取数据库仓库（database repository）。
 
 日报、周报和补丁生成入口会先做插件新鲜度检查（plugin freshness check）。如果能确认当前插件落后远端，脚本会停止本次生成并给出更新命令，避免成员继续用过期协议生成上传包。
 

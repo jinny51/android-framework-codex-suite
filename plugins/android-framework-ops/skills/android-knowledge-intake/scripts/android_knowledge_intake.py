@@ -3292,13 +3292,19 @@ def doctor_strict_checks(
     elif freshness.get("status") == "UNKNOWN":
         warn(str(freshness.get("message") or "无法确认插件是否为最新版本。"))
 
-    if knowledge_url and (knowledge_repo / ".git").exists():
+    if not knowledge_url:
+        error("knowledge_repo_url 不能为空，成员端必须配置只读知识库仓库。")
+    if not knowledge_repo.exists():
+        clone_hint = f"git clone {knowledge_url} {shlex.quote(str(knowledge_repo))}" if knowledge_url else ""
+        suffix = f" 请先克隆知识库仓库: {clone_hint}" if clone_hint else ""
+        error(f"knowledge_repo_worktree 不存在: {knowledge_repo}.{suffix}")
+    elif not (knowledge_repo / ".git").exists():
+        error(f"knowledge_repo_worktree 已存在但不是 Git 仓库: {knowledge_repo}")
+    elif knowledge_url:
         origin = git_run(knowledge_repo, ["config", "--get", "remote.origin.url"], check=False)
         origin_url = origin.stdout.strip()
         if origin_url and origin_url != knowledge_url:
             error(f"knowledge_repo_worktree origin 与 knowledge_repo_url 不一致: origin={origin_url}, knowledge_repo_url={knowledge_url}")
-    elif knowledge_repo.exists() and not (knowledge_repo / ".git").exists():
-        warn(f"knowledge_repo_worktree 已存在但不是 Git 仓库；搜索仍可读取本地索引: {knowledge_repo}")
 
     out_parent = nearest_existing_parent(out_dir.parent)
     if not os.access(out_parent, os.W_OK):

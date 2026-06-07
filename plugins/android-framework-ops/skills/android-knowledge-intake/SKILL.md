@@ -97,9 +97,9 @@ For successful automation runs, launch `scripts/archive_automation_runs.py` with
 
 ## Member First Setup
 
-When a member needs first-time setup on the current double-repository chain, read `references/member-migration-prompt.md` and give the member the copy-paste prompt. The prompt makes Codex perform 插件更新（plugin update）, 新配置（new configuration）, 服务器上传入口（server upload endpoint） and 知识库仓库（knowledge repository） checks, and `doctor --strict --check-remote` before any daily, weekly, or patch generation.
+When a member needs first-time setup on the current double-repository chain, read `references/member-migration-prompt.md` and give the member the copy-paste prompt. The prompt makes Codex perform 插件更新（plugin update）, 新配置（new configuration）, 服务器上传入口（server upload endpoint） and 知识库仓库（knowledge repository） clone/update checks, and `doctor --strict --check-remote` before any daily, weekly, or patch generation. Members clone only the knowledge repository; they never clone the database repository.
 
-The intake script also runs a plugin freshness check before `daily`, `weekly`, or `patch` `--prepare`, `--upload`, and `--submit-latest`. If it can prove the installed/source plugin checkout is behind its remote, it must stop the run and return an update command. Do not continue generating incoming packages with a stale plugin.
+The intake script also runs a plugin freshness check before `daily`, `weekly`, or `patch` `--prepare`, `--upload`, and `--submit-latest`. If it can prove the installed/source plugin checkout is behind its remote, it must stop the run and return an update command. Do not continue generating incoming packages with a stale plugin. Strict doctor fails when the configured knowledge repository worktree is missing or not a Git repository, because member-side search needs that single repository to be present.
 
 ## Configuration
 

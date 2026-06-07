@@ -53,12 +53,19 @@
    git_user_email = "<member_alias>@codex.local"
    synthetic_data = false
 
-4. 运行健康检查（doctor check）：
+4. 确保成员端只克隆并更新知识库仓库（knowledge repository），不要克隆数据库仓库（database repository）。
+   - 如果 $CODEX_HOME/worktrees/knowledge 不存在，执行：
+     git clone test35:/home/test35/work/knowledge/knowledge.git "$CODEX_HOME/worktrees/knowledge"
+   - 如果 $CODEX_HOME/worktrees/knowledge 已经是 Git 仓库（git repository），执行：
+     git -C "$CODEX_HOME/worktrees/knowledge" pull --ff-only
+   - 如果该路径存在但不是 Git 仓库，先停止并告诉我具体路径，不要继续生成上传包。
+
+5. 运行健康检查（doctor check）：
    python3 "<android_knowledge_intake.py>" --profile <member_alias> doctor --strict --check-remote
 
-5. 如果健康检查（doctor check）失败，只修复报告里的具体问题，然后重跑第 4 步。不要生成日报（daily report）、周报（weekly report）或补丁包（patch package），直到健康检查通过。
+6. 如果健康检查（doctor check）失败，只修复报告里的具体问题，然后重跑第 5 步。不要生成日报（daily report）、周报（weekly report）或补丁包（patch package），直到健康检查通过。
 
-6. 以后每次生成日报、周报或补丁包前，如果脚本提示插件有更新，先做插件更新（plugin update），再重新运行原命令。不要用过期插件继续生成上传包。
+7. 以后每次生成日报、周报或补丁包前，如果脚本提示插件有更新，先做插件更新（plugin update），再重新运行原命令。不要用过期插件继续生成上传包。
 
 完成后告诉我：
 - 插件更新（plugin update）状态
