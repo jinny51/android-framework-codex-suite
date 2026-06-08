@@ -10,17 +10,45 @@ import re
 import shlex
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "2.0"
 PATCH_NAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 PLATFORM_RE = re.compile(r"^[a-z0-9]+[0-9]+$")
 PROJECT_MODEL_RE = re.compile(r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{5}(?:[A-Z0-9_]+)?(?![A-Z0-9])", re.I)
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
-BANNED_LOG_PATTERNS = ("Log.d(", "Log.i(", "Log.w(", "Slog.d(", "Slog.i(", "Slog.w(")
+BANNED_LOG_PATTERNS = (
+    "Log.v(",
+    "Log.d(",
+    "Log.i(",
+    "Log.w(",
+    "Log.e(",
+    "Slog.v(",
+    "Slog.d(",
+    "Slog.i(",
+    "Slog.w(",
+    "Slog.e(",
+    "Slog.wtf(",
+)
+FRAMEWORK_LOG_LITERAL_RE = re.compile(r"FrameworkLog\.(?:d|i|w|e)\s*\([^,]+,\s*\"")
 SUPPORTED_EXTERNAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
+IMPLEMENTATION_ORIGINS = ("codex", "manual", "external", "historical", "mixed", "unknown")
+CAPTURE_REVIEW_REQUIRED_ORIGINS = {"manual", "external", "historical", "mixed", "unknown"}
+
+
+@dataclass
+class RepositoryCapture:
+    source_root: Path
+    repo_path: str
+    git_info: dict[str, str]
+    diff_text: str
+    facts: dict[str, Any]
+    module: str
+    patch_name: str
+    patch_rel: str
 
 
 def run(cmd: list[str], cwd: Path, check: bool = False) -> subprocess.CompletedProcess[str]:
@@ -124,6 +152,200 @@ def git_metadata(root: Path) -> dict[str, str]:
     }
 
 
+def unique_preserve(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(item for item in values if item))
+
+
+def prefixed_files(repo_path: str, files: list[str]) -> list[str]:
+    if not repo_path or repo_path == "unknown":
+        return files
+    prefix = repo_path.rstrip("/") + "/"
+    return [path if path.startswith(prefix) else prefix + path for path in files]
+
+
+def common_parent(paths: list[Path]) -> Path:
+    if not paths:
+        return Path.cwd().resolve()
+    return Path(os.path.commonpath([str(path) for path in paths])).resolve()
+
+
+def infer_repo_path_from_root(root: Path, roots: list[Path], files: list[str]) -> str:
+    normalized_root = root.as_posix()
+    known_paths = [
+        "frameworks/base",
+        "frameworks/native",
+        "frameworks/av",
+        "frameworks/proto_logging",
+        "packages/apps/Settings",
+        "packages/apps/Launcher3",
+        "packages/SystemUI",
+        "system/core",
+        "device/mediatek/sepolicy/basic",
+        "device/mediatek/vendor/common",
+        "vendor/mediatek/proprietary/packages/apps/MtkSettings",
+    ]
+    for repo_path in known_paths:
+        if normalized_root.endswith("/" + repo_path) or normalized_root.endswith(repo_path):
+            return repo_path
+
+    if len(roots) > 1:
+        parent = common_parent(roots)
+        try:
+            rel = root.relative_to(parent).as_posix()
+        except ValueError:
+            rel = root.name
+        if rel and rel != ".":
+            return rel
+
+    first = files[0] if files else ""
+    if first.startswith("frameworks/base/") or first.startswith(("services/", "core/", "data/etc/")):
+        return "frameworks/base"
+    if first.startswith("frameworks/native/"):
+        return "frameworks/native"
+    if first.startswith("frameworks/av/"):
+        return "frameworks/av"
+    if first.startswith("packages/apps/Settings/") or first.startswith("src/com/android/settings/"):
+        return "packages/apps/Settings"
+    if first.startswith("packages/SystemUI/") or first.startswith("src/com/android/systemui/"):
+        return "packages/SystemUI"
+    if first.startswith("system/core/"):
+        return "system/core"
+    parts = first.split("/")
+    if len(parts) >= 2:
+        return "/".join(parts[:2])
+    return root.name or "unknown"
+
+
+def infer_module_for_repo(repo_path: str, files: list[str]) -> str:
+    repo_rules = {
+        "frameworks/base": "frameworks-base",
+        "frameworks/native": "frameworks-native",
+        "frameworks/av": "frameworks-av",
+        "frameworks/proto_logging": "frameworks-proto-logging",
+        "packages/apps/Settings": "settings",
+        "packages/apps/Launcher3": "launcher3",
+        "packages/SystemUI": "systemui",
+        "system/core": "system-core",
+    }
+    if repo_path in repo_rules:
+        return repo_rules[repo_path]
+    if repo_path and repo_path != "unknown":
+        return slug(repo_path.replace("/", "-"))
+    return slug(infer_module(files))
+
+
+def direct_log_call_lines(diff_text: str) -> list[str]:
+    hits: list[str] = []
+    for line in added_lines(diff_text):
+        if any(pattern in line for pattern in BANNED_LOG_PATTERNS):
+            hits.append(line.strip())
+    return hits
+
+
+def framework_log_literal_lines(diff_text: str) -> list[str]:
+    return [line.strip() for line in added_lines(diff_text) if FRAMEWORK_LOG_LITERAL_RE.search(line)]
+
+
+def direct_debug_property_lines(capture: RepositoryCapture) -> list[str]:
+    if any(path.endswith("FrameworkLog.java") for path in capture.facts.get("modified_files", [])):
+        return []
+    lines: list[str] = []
+    for line in added_lines(capture.diff_text):
+        if "SystemProperties.getBoolean(" in line and "persist.sys.framework.debug" in line:
+            lines.append(line.strip())
+    return lines
+
+
+def collect_repository_captures(args: argparse.Namespace, platform: str, feature: str) -> list[RepositoryCapture]:
+    raw_roots = args.source_root or ["."]
+    roots: list[Path] = []
+    for raw_root in raw_roots:
+        root = git_root(Path(raw_root).expanduser().resolve())
+        if root not in roots:
+            roots.append(root)
+    if len(roots) > 1 and args.module:
+        raise SystemExit("多源码仓库功能包不接受单个 --module；模块名会按每个源码仓库自动推断。")
+
+    captures: list[RepositoryCapture] = []
+    used_names: set[str] = set()
+    for root in roots:
+        diff_cp = run(["git", "diff", "--binary", "--full-index", "HEAD", "--"], root, check=True)
+        diff_text = diff_cp.stdout
+        if not diff_text.strip():
+            raise SystemExit(f"源码仓库没有发现相对 HEAD 的 git diff，无法生成补丁: {root}")
+
+        facts = facts_from_diff(diff_text)
+        repo_path = infer_repo_path_from_root(root, roots, facts["modified_files"])
+        facts["repo_path"] = repo_path
+        facts["modules"] = modules_from_files(prefixed_files(repo_path, facts["modified_files"]))
+        facts["symbols"] = symbols_from_diff(diff_text)
+        module = slug(args.module or infer_module_for_repo(repo_path, facts["modified_files"]))
+        patch_name = f"{platform}-{module}@{feature}.patch"
+        if patch_name in used_names:
+            module = slug(repo_path.replace("/", "-"))
+            patch_name = f"{platform}-{module}@{feature}.patch"
+        if patch_name in used_names:
+            module = f"{module}-{sha1_text(str(root))[:8]}"
+            patch_name = f"{platform}-{module}@{feature}.patch"
+        if not PATCH_NAME_RE.fullmatch(patch_name):
+            raise SystemExit(f"生成的 patch 文件名不符合规范: {patch_name}")
+        used_names.add(patch_name)
+        captures.append(
+            RepositoryCapture(
+                source_root=root,
+                repo_path=repo_path,
+                git_info=git_metadata(root),
+                diff_text=diff_text,
+                facts=facts,
+                module=module,
+                patch_name=patch_name,
+                patch_rel=f"patches/{patch_name}",
+            )
+        )
+    return captures
+
+
+def infer_capture_project_for_feature(args: argparse.Namespace, captures: list[RepositoryCapture]) -> tuple[str, dict[str, Any]]:
+    source_values: list[tuple[str, str]] = []
+    for capture in captures:
+        source_values.extend(
+            [
+                ("source_root", str(capture.source_root)),
+                ("repo_path", capture.repo_path),
+                ("git branch", capture.git_info.get("branch", "")),
+                ("git remote", capture.git_info.get("remote", "")),
+                ("git remotes", capture.git_info.get("remotes", "")),
+                *source_access_registry_clues(capture.source_root),
+            ]
+        )
+    diff_text = "\n".join(capture.diff_text for capture in captures)
+    groups: list[tuple[str, list[tuple[str, str]]]] = [
+        ("explicit", [("命令参数 project", args.project or "")]),
+        ("source_context", source_values),
+        (
+            "patch_context",
+            [
+                ("功能摘要", args.summary or ""),
+                ("功能名", args.feature or ""),
+                ("补丁 diff", diff_text),
+            ],
+        ),
+    ]
+    clues = [(label, value) for _, values in groups for label, value in values if str(value).strip()]
+    checked_sources = sorted(dict.fromkeys(label for label, _ in clues))
+    raw_inputs = [f"{label}: {value}" for label, value in clues]
+    for _, values in groups:
+        for label, value in values:
+            project = find_company_project(value)
+            if project:
+                return project, project_inference_payload(project, [f"{label}: {value}"], checked_sources, raw_inputs)
+
+    limits = ["未从命令参数、source_root、repo_path、git branch、git remote、source-access registry、功能摘要或 diff 中识别到 TVE/TVA/TVI 项目型号"]
+    if args.project and args.project.strip() not in {"", "unknown"}:
+        limits.append("命令参数 project 未匹配公司项目型号规范，未作为项目名写入补丁包")
+    return "unknown", project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
+
+
 def find_company_project(text: str) -> str:
     match = PROJECT_MODEL_RE.search((text or "").upper())
     return match.group(0) if match else ""
@@ -201,43 +423,6 @@ def project_inference_payload(
     }
 
 
-def infer_capture_project(args: argparse.Namespace, source_root: Path, git_info: dict[str, str], diff_text: str) -> tuple[str, dict[str, Any]]:
-    groups: list[tuple[str, list[tuple[str, str]]]] = [
-        ("explicit", [("命令参数 project", args.project or "")]),
-        (
-            "source_context",
-            [
-                ("source_root", str(source_root)),
-                ("git branch", git_info.get("branch", "")),
-                ("git remote", git_info.get("remote", "")),
-                ("git remotes", git_info.get("remotes", "")),
-                *source_access_registry_clues(source_root),
-            ],
-        ),
-        (
-            "patch_context",
-            [
-                ("补丁摘要", args.summary or ""),
-                ("补丁功能名", args.feature or ""),
-                ("补丁 diff", diff_text),
-            ],
-        ),
-    ]
-    clues = [(label, value) for _, values in groups for label, value in values if str(value).strip()]
-    checked_sources = sorted(dict.fromkeys(label for label, _ in clues))
-    raw_inputs = [f"{label}: {value}" for label, value in clues]
-    for _, values in groups:
-        for label, value in values:
-            project = find_company_project(value)
-            if project:
-                return project, project_inference_payload(project, [f"{label}: {value}"], checked_sources, raw_inputs)
-
-    limits = ["未从命令参数、source_root、git branch、git remote、source-access registry、补丁摘要或 diff 中识别到 TVE/TVA/TVI 项目型号"]
-    if args.project and args.project.strip() not in {"", "unknown"}:
-        limits.append("命令参数 project 未匹配公司项目型号规范，未作为项目名写入补丁包")
-    return "unknown", project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
-
-
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -274,6 +459,14 @@ def evidence_result(payload: dict[str, Any]) -> str:
     if value in {"PASS", "FAIL", "WARN", "INFO", "SKIPPED", "MISSING"}:
         return value
     return "INFO"
+
+
+def implementation_review_required(origin: str) -> bool:
+    return origin in CAPTURE_REVIEW_REQUIRED_ORIGINS
+
+
+def implementation_review_mode(origin: str) -> str:
+    return "capture_gate" if implementation_review_required(origin) else "development_safety_net"
 
 
 def evidence_file_name(kind: str, source: Path, used_names: set[str]) -> str:
@@ -567,69 +760,6 @@ def symbols_from_diff(diff_text: str) -> list[str]:
     return sorted(set(symbols))
 
 
-def patch_analysis_from_diff(diff_text: str, facts: dict[str, Any], patch_name: str, args: argparse.Namespace) -> dict[str, dict[str, Any]]:
-    files = facts["modified_files"]
-    modules = modules_from_files(files)
-    symbols = symbols_from_diff(diff_text)
-    joined = "\n".join([diff_text, args.summary, args.feature, " ".join(files), " ".join(modules)]).lower()
-    flags = semantic_flags(joined, modules)
-    keywords = sorted(
-        {
-            *modules,
-            *[Path(path).stem for path in files],
-            *semantic_keywords(flags),
-            *[item for item in ["focus", "launcher", "power", "policy", "package", "input"] if item in joined],
-        }
-    )
-    basis = [f"补丁修改文件: {path}" for path in files]
-    basis.extend(f"根据路径归属到模块: {module}" for module in modules)
-    basis.extend(f"根据 diff hunk 识别符号: {symbol}" for symbol in symbols)
-    if args.summary:
-        basis.append("提交时提供了补丁摘要")
-
-    problem_summary, solution_summary, confidence = semantic_problem_solution(modules, flags)
-    risks = semantic_risk_areas(modules, flags)
-
-    limits = [
-        "补丁内容不能单独证明原始需求文字",
-        "补丁内容不能单独证明设备验证结果",
-        "补丁内容不能单独证明发布状态",
-    ]
-    source_patch = f"patches/{patch_name}"
-    return {
-        "patch_diff_facts": {
-            "kind": "patch_diff_facts",
-            "source_patch": source_patch,
-            "content_sha1": facts["content_sha1"],
-            "modified_files": files,
-            "modules": modules,
-            "symbols": symbols,
-            "system_properties": facts["system_properties"],
-            "settings_keys": facts["settings_keys"],
-            "resource_keys": facts["resource_keys"],
-            "framework_log_keys": facts["framework_log_keys"],
-        },
-        "patch_problem_summary": {
-            "kind": "patch_problem_summary",
-            "source_patch": source_patch,
-            "confidence": confidence,
-            "problem_summary": problem_summary,
-            "solution_summary": solution_summary,
-            "keywords": keywords,
-            "basis": basis,
-            "limits": limits,
-        },
-        "risk_surface": {
-            "kind": "risk_surface",
-            "source_patch": source_patch,
-            "confidence": confidence,
-            "risk_areas": risks,
-            "basis": basis,
-            "limits": limits,
-        },
-    }
-
-
 def validate_verification_for_status(args: argparse.Namespace, payload: dict[str, Any]) -> list[str]:
     if args.status != "validated":
         return []
@@ -659,33 +789,221 @@ def validate_verification_for_status(args: argparse.Namespace, payload: dict[str
     return errors
 
 
-def readme_text(
-    patch_name: str,
+def aggregate_feature_facts(captures: list[RepositoryCapture]) -> dict[str, Any]:
+    aggregate: dict[str, list[str]] = {
+        "modified_files": [],
+        "modules": [],
+        "symbols": [],
+        "system_properties": [],
+        "settings_keys": [],
+        "resource_keys": [],
+        "framework_log_keys": [],
+    }
+    patches: list[dict[str, Any]] = []
+    content_hashes: list[str] = []
+    for capture in captures:
+        facts = capture.facts
+        content_sha1 = str(facts.get("content_sha1") or "")
+        if content_sha1:
+            content_hashes.append(content_sha1)
+        modified_files = prefixed_files(capture.repo_path, list(facts.get("modified_files", [])))
+        aggregate["modified_files"].extend(modified_files)
+        aggregate["modules"].extend(list(facts.get("modules", [])))
+        aggregate["symbols"].extend(list(facts.get("symbols", [])))
+        for key in ("system_properties", "settings_keys", "resource_keys", "framework_log_keys"):
+            aggregate[key].extend(list(facts.get(key, [])))
+        patches.append(
+            {
+                "id": Path(capture.patch_name).stem,
+                "path": capture.patch_rel,
+                "repo_path": capture.repo_path,
+                "source_root": str(capture.source_root),
+                "content_sha1": content_sha1,
+                "status": "",
+                "modified_files": modified_files,
+                "modules": list(facts.get("modules", [])),
+                "symbols": list(facts.get("symbols", [])),
+            }
+        )
+    payload: dict[str, Any] = {
+        "kind": "patch_diff_facts",
+        "scope": "feature",
+        "patch_count": len(captures),
+        "patches": patches,
+        "content_sha1": content_hashes[0] if len(content_hashes) == 1 else "",
+    }
+    payload.update({key: unique_preserve(values) for key, values in aggregate.items()})
+    return payload
+
+
+def feature_problem_and_risk_payloads(args: argparse.Namespace, captures: list[RepositoryCapture], facts: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    files = list(facts.get("modified_files", []))
+    modules = list(facts.get("modules", []))
+    symbols = list(facts.get("symbols", []))
+    joined = "\n".join([args.summary, args.feature, " ".join(files), " ".join(modules)]).lower()
+    flags = semantic_flags(joined, modules)
+    keywords = sorted(
+        {
+            *modules,
+            *[Path(path).stem for path in files],
+            *semantic_keywords(flags),
+            *[item for item in ["focus", "launcher", "power", "policy", "package", "input"] if item in joined],
+        }
+    )
+    basis = [f"功能涉及源码仓库: {capture.repo_path}" for capture in captures]
+    basis.extend(f"补丁修改文件: {path}" for path in files)
+    basis.extend(f"根据路径归属到模块: {module}" for module in modules)
+    basis.extend(f"根据 diff hunk 识别符号: {symbol}" for symbol in symbols)
+    if args.summary:
+        basis.append("提交时提供了功能摘要")
+
+    problem_summary, solution_summary, confidence = semantic_problem_solution(modules, flags)
+    risks = semantic_risk_areas(modules, flags)
+    limits = [
+        "补丁内容不能单独证明原始需求文字",
+        "补丁内容不能单独证明设备验证结果",
+        "补丁内容不能单独证明发布状态",
+    ]
+    patch_paths = [capture.patch_rel for capture in captures]
+    return (
+        {
+            "kind": "patch_problem_summary",
+            "scope": "feature",
+            "patches": patch_paths,
+            "confidence": confidence,
+            "problem_summary": problem_summary,
+            "solution_summary": solution_summary,
+            "keywords": keywords,
+            "basis": basis,
+            "limits": limits,
+        },
+        {
+            "kind": "risk_surface",
+            "scope": "feature",
+            "patches": patch_paths,
+            "confidence": confidence,
+            "risk_areas": risks,
+            "basis": basis,
+            "limits": limits,
+        },
+    )
+
+
+def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCapture]) -> dict[str, Any]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    repositories: list[dict[str, Any]] = []
+    for capture in captures:
+        facts = capture.facts
+        repo_errors: list[str] = []
+        repo_warnings: list[str] = []
+        direct_logs = direct_log_call_lines(capture.diff_text)
+        hardcoded_logs = framework_log_literal_lines(capture.diff_text)
+        direct_debug_props = direct_debug_property_lines(capture)
+        non_framework_debug_props = [
+            prop
+            for prop in facts.get("system_properties", [])
+            if prop.startswith("debug.") or (prop.startswith("persist.") and ".debug" in prop and not prop.startswith("persist.sys.framework.debug"))
+        ]
+
+        if not facts.get("author_date_marker_present") and not args.allow_missing_author_date:
+            repo_errors.append("缺少作者日期备注，例如 //gyf 20251016@")
+        if direct_logs and not args.allow_banned_logs:
+            repo_errors.append("新增代码包含直接 Log/Slog 调用，应改用 FrameworkLog")
+        if hardcoded_logs:
+            repo_warnings.append("FrameworkLog 调用疑似包含硬编码字符串，应优先使用字符串资源")
+        if direct_debug_props:
+            repo_warnings.append("模块代码疑似直接读取 persist.sys.framework.debug.*，应通过 FrameworkLog 统一访问")
+        if non_framework_debug_props:
+            repo_warnings.append("检测到非 FrameworkLog 规范调试属性: " + ", ".join(non_framework_debug_props))
+
+        repositories.append(
+            {
+                "repo_path": capture.repo_path,
+                "patch": capture.patch_rel,
+                "author_date_marker_present": bool(facts.get("author_date_marker_present")),
+                "direct_log_lines": direct_logs[:20],
+                "framework_log_literal_lines": hardcoded_logs[:20],
+                "direct_debug_property_lines": direct_debug_props[:20],
+                "system_properties": facts.get("system_properties", []),
+                "framework_log_keys": facts.get("framework_log_keys", []),
+                "resource_keys": facts.get("resource_keys", []),
+                "errors": repo_errors,
+                "warnings": repo_warnings,
+            }
+        )
+        errors.extend(f"{capture.repo_path}: {item}" for item in repo_errors)
+        warnings.extend(f"{capture.repo_path}: {item}" for item in repo_warnings)
+
+    return {
+        "kind": "coding_standard_check",
+        "result": "FAIL" if errors else ("WARN" if warnings else "PASS"),
+        "implementation_origin": args.implementation_origin,
+        "captured_by": "codex",
+        "review_required": implementation_review_required(args.implementation_origin),
+        "review_mode": implementation_review_mode(args.implementation_origin),
+        "standard_sources": [
+            "Android Framework 补丁开发规范 v2.1 2025-10-16",
+            "Android Framework 日志管理规范 v1.0 2025-10-16",
+        ],
+        "rules": [
+            "补丁必须包含作者日期备注",
+            "直接 Log/Slog 调用禁止进入补丁，应使用 FrameworkLog",
+            "persist.sys.framework.debug.* 调试属性集中在 FrameworkLog.java",
+            "日志字符串和新增用户可见字符串应使用资源国际化",
+            "功能说明文件必须记录功能、修改点、日志控制、SystemProperties、字符串国际化和可回滚性",
+        ],
+        "repositories": repositories,
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+
+def feature_readme_text(
     args: argparse.Namespace,
+    captures: list[RepositoryCapture],
     facts: dict[str, Any],
     package_check: dict[str, Any],
+    coding_check: dict[str, Any],
 ) -> str:
     verification = args.verification or []
     risk = args.risk or "待结合当前项目、触发路径和验证结果补充。"
-    rollback = args.rollback or "在目标源码树执行 `git apply -R <patch>`，或回退对应提交。"
-    log_control = "无直接 Log.d/i/w 或 Slog.d/i/w 新增。"
-    if facts["banned_log_hits"]:
-        log_control = "检测到直接日志调用，提交数据库仓库 incoming 前必须改为 FrameworkLog 或说明保留原因：" + ", ".join(facts["banned_log_hits"])
+    rollback = args.rollback or "在对应源码仓库逐个执行 `git apply -R <patch>`，或回退对应源码仓库提交。"
+    repo_lines = "\n".join(f"- `{capture.repo_path}` -> `{capture.patch_rel}`" for capture in captures)
+    modification_sections = "\n\n".join(
+        f"### {capture.repo_path}\n\n{bullet_list(prefixed_files(capture.repo_path, capture.facts['modified_files']))}" for capture in captures
+    )
+    modules = unique_preserve([module for capture in captures for module in capture.facts.get("modules", [])])
+    direct_log_lines = [line for repo in coding_check["repositories"] for line in repo.get("direct_log_lines", [])]
+    if direct_log_lines:
+        log_control = "检测到直接 Log/Slog 新增，提交前必须改为 FrameworkLog：\n" + plain_bullets(direct_log_lines)
+    else:
+        log_control = "未检测到直接 Log/Slog 新增；如本功能新增调试日志，应统一使用 FrameworkLog。"
 
-    return f"""# {patch_name}
+    return f"""# {args.feature}
 
 ## 功能描述
 
 {args.summary}
 
+## 实现来源
+
+- implementation_origin: {args.implementation_origin}
+- captured_by: codex
+- coding_standard_review: {coding_check["review_mode"]}
+
+## 涉及源码仓库
+
+{repo_lines}
+
 ## 修改点
 
-{bullet_list(facts["modified_files"])}
+{modification_sections}
 
 ## 影响范围
 
 - 项目: {args.project}
-- 模块: {args.module}
+- 模块: {", ".join(modules) if modules else "unknown"}
 - 状态: {args.status}
 
 ## 关键符号
@@ -744,22 +1062,33 @@ def readme_text(
 
 {rollback}
 
+## 团队规范检查
+
+- coding_standard_check: {coding_check["result"]}
+- errors: {len(coding_check["errors"])}
+- warnings: {len(coding_check["warnings"])}
+
 ## 打包检查
 
-- author_date_marker_present: {str(facts["author_date_marker_present"]).lower()}
 - package_check: {package_check["status"]}
 """
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Package Android Framework git changes into patch/readme/evidence assets.")
-    parser.add_argument("--source-root", default=".", help="Android source git repository. Default: current directory.")
+    parser = argparse.ArgumentParser(description="Package one Android Framework feature into README, patches, and evidence assets.")
+    parser.add_argument("--source-root", action="append", default=[], help="Android source git repository. Repeat for multi-repository features. Default: current directory.")
     parser.add_argument("--out-dir", default=".codex/patch-packages", help="Output root. Default: .codex/patch-packages")
-    parser.add_argument("--run-id", help="Output package id. Default: YYYYMMDD-HHMMSS-patch")
+    parser.add_argument("--run-id", help="Output package id. Default: YYYYMMDD-HHMMSS-feature")
     parser.add_argument("--platform", required=True, help="Platform plus Android version token, for example rk14, mtk14, unisoc13.")
     parser.add_argument("--module", help="Patch module name. Default inferred from changed files.")
     parser.add_argument("--feature", required=True, help="Feature slug for filename, for example allow-powerkey-to-user.")
     parser.add_argument("--summary", required=True, help="Human-readable requirement or patch summary.")
+    parser.add_argument(
+        "--implementation-origin",
+        choices=IMPLEMENTATION_ORIGINS,
+        default="codex",
+        help="Who implemented the code before packaging. Use manual/external/historical/mixed/unknown for non-Codex-authored code.",
+    )
     parser.add_argument("--project", default="unknown", help="Project name for manifest/readme.")
     parser.add_argument("--status", choices=["draft", "candidate", "validated", "failed", "blocked"], default="draft")
     parser.add_argument("--verification", action="append", default=[], help="Build verification fact. Repeatable.")
@@ -788,29 +1117,22 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    source_root = git_root(Path(args.source_root).resolve())
     if not PLATFORM_RE.fullmatch(slug(args.platform)):
         raise SystemExit("--platform 必须包含平台和 Android 版本，例如 rk14、mtk14、unisoc13。")
 
-    diff_cp = run(["git", "diff", "--binary", "--full-index", "HEAD", "--"], source_root, check=True)
-    diff_text = diff_cp.stdout
-    if not diff_text.strip():
-        raise SystemExit("没有发现相对 HEAD 的 git diff，无法生成 patch。")
-
-    facts = facts_from_diff(diff_text)
-    git_info = git_metadata(source_root)
-    resolved_project, project_inference = infer_capture_project(args, source_root, git_info, diff_text)
-    args.project = resolved_project
-    args.module = slug(args.module or infer_module(facts["modified_files"]))
     platform = slug(args.platform)
     feature = slug(args.feature)
-    patch_name = f"{platform}-{args.module}@{feature}.patch"
-    if not PATCH_NAME_RE.fullmatch(patch_name):
-        raise SystemExit(f"生成的 patch 文件名不符合规范: {patch_name}")
+    args.feature = feature
+    captures = collect_repository_captures(args, platform, feature)
+    resolved_project, project_inference = infer_capture_project_for_feature(args, captures)
+    args.project = resolved_project
 
     now = dt.datetime.now()
-    run_id = args.run_id or f"{now:%Y%m%d-%H%M%S}-patch"
-    package_dir = (source_root / args.out_dir / run_id).resolve()
+    run_id = args.run_id or f"{now:%Y%m%d-%H%M%S}-feature"
+    out_root = Path(args.out_dir).expanduser()
+    if not out_root.is_absolute():
+        out_root = Path.cwd() / out_root
+    package_dir = (out_root / run_id).resolve()
     if package_dir.exists():
         raise SystemExit(f"输出目录已存在: {package_dir}")
 
@@ -819,36 +1141,38 @@ def main() -> int:
     patch_dir.mkdir(parents=True)
     evidence_dir.mkdir(parents=True)
 
-    patch_path = patch_dir / patch_name
-    readme_path = patch_dir / f"{patch_path.stem}.readme.md"
-    patch_path.write_text(diff_text, encoding="utf-8")
+    for capture in captures:
+        (patch_dir / capture.patch_name).write_text(capture.diff_text, encoding="utf-8")
 
     errors: list[str] = []
     warnings: list[str] = []
-    if not facts["author_date_marker_present"] and not args.allow_missing_author_date:
-        errors.append("patch 缺少作者日期备注，例如 //gyf 20251016@")
-    if facts["banned_log_hits"] and not args.allow_banned_logs:
-        errors.append("patch 新增代码包含直接 Log/Slog 调用，应改用 FrameworkLog: " + ", ".join(facts["banned_log_hits"]))
     verification_payload = verification_result(args)
     search_payload = search_before_change(args)
-    patch_analysis = patch_analysis_from_diff(diff_text, facts, patch_name, args)
+    feature_facts = aggregate_feature_facts(captures)
+    problem_payload, risk_payload = feature_problem_and_risk_payloads(args, captures, feature_facts)
+    coding_check = coding_standard_check(args, captures)
+    errors.extend(coding_check["errors"])
+    warnings.extend(coding_check["warnings"])
     errors.extend(validate_verification_for_status(args, verification_payload))
 
     package_check = {"status": "FAIL" if errors else "PASS", "errors": errors, "warnings": warnings}
-    readme_path.write_text(readme_text(patch_name, args, facts, package_check), encoding="utf-8")
+    readme_path = package_dir / "README.md"
+    readme_path.write_text(feature_readme_text(args, captures, feature_facts, package_check, coding_check), encoding="utf-8")
     evidence_items = [
         {
             "id": "changed-files",
             "kind": "changed_files",
             "path": "evidence/changed-files.json",
             "result": "INFO",
-            "summary": "changed files and extracted patch facts",
+            "scope": "feature",
+            "summary": "changed files and extracted feature facts",
         },
         {
             "id": "verification-result",
             "kind": "verification_result",
             "path": "evidence/verification-result.json",
             "result": verification_payload["result"],
+            "scope": "feature",
             "summary": f"{verification_payload['method']} verification evidence",
         },
         {
@@ -856,27 +1180,39 @@ def main() -> int:
             "kind": "patch_diff_facts",
             "path": "evidence/patch-diff-facts.json",
             "result": "INFO",
-            "summary": "补丁 diff 中解析出的客观事实",
+            "scope": "feature",
+            "summary": "功能补丁 diff 中解析出的客观事实",
         },
         {
             "id": "patch-problem-summary",
             "kind": "patch_problem_summary",
             "path": "evidence/patch-problem-summary.json",
             "result": "INFO",
-            "summary": "补丁对应的问题与方案说明",
+            "scope": "feature",
+            "summary": "功能对应的问题与方案说明",
         },
         {
             "id": "risk-surface",
             "kind": "risk_surface",
             "path": "evidence/risk-surface.json",
             "result": "INFO",
-            "summary": "补丁风险面说明",
+            "scope": "feature",
+            "summary": "功能风险面说明",
+        },
+        {
+            "id": "coding-standard-check",
+            "kind": "coding_standard_check",
+            "path": "evidence/coding-standard-check.json",
+            "result": coding_check["result"],
+            "scope": "feature",
+            "summary": "团队补丁开发与日志规范检查",
         },
         {
             "id": "search-before-change",
             "kind": "search_before_change",
             "path": "evidence/search-before-change.json",
             "result": "INFO",
+            "scope": "feature",
             "summary": "knowledge search performed before development",
         },
         {
@@ -884,46 +1220,89 @@ def main() -> int:
             "kind": "package_check",
             "path": "evidence/package-check.json",
             "result": package_check["status"],
+            "scope": "feature",
             "summary": "local patch package checks",
         },
     ]
     evidence_items.extend(collect_external_evidence(args, evidence_dir))
 
-    patch_item = {
-        "path": f"patches/{patch_path.name}",
-        "readme": f"patches/{readme_path.name}",
-        "content_sha1": facts["content_sha1"],
-        "status": args.status,
-        "project": args.project,
-        "facts": facts,
-    }
+    patch_items = [
+        {
+            "id": Path(capture.patch_name).stem,
+            "path": capture.patch_rel,
+            "repo_path": capture.repo_path,
+            "source_root": str(capture.source_root),
+            "content_sha1": capture.facts["content_sha1"],
+            "status": args.status,
+            "reuse_hint": args.status == "validated",
+            "project": args.project,
+            "implementation_origin": args.implementation_origin,
+            "captured_by": "codex",
+            "facts": capture.facts,
+        }
+        for capture in captures
+    ]
     manifest = {
         "schema_version": SCHEMA_VERSION,
-        "package_type": "framework_patch",
+        "package_type": "framework_feature_patch",
+        "feature": feature,
+        "readme": "README.md",
         "project": args.project,
         "summary": args.summary,
         "status": args.status,
+        "implementation_origin": args.implementation_origin,
+        "captured_by": "codex",
+        "coding_standard_check": {
+            "required": implementation_review_required(args.implementation_origin),
+            "mode": implementation_review_mode(args.implementation_origin),
+            "path": "evidence/coding-standard-check.json",
+            "result": coding_check["result"],
+        },
         "created_at": now.isoformat(timespec="seconds"),
         "related_report_run_ids": args.related_report_run_id or [],
-        "source_root": str(source_root),
-        "git": git_info,
+        "source_roots": [str(capture.source_root) for capture in captures],
+        "git_repositories": [
+            {
+                "repo_path": capture.repo_path,
+                "root": str(capture.source_root),
+                "git": capture.git_info,
+            }
+            for capture in captures
+        ],
         "project_inference": project_inference,
-        "patches": [patch_item],
+        "patches": patch_items,
         "evidence": evidence_items,
     }
     write_json(package_dir / "manifest.json", manifest)
-    write_json(evidence_dir / "changed-files.json", {"facts": facts, "git": manifest["git"]})
-    write_json(evidence_dir / "patch-diff-facts.json", patch_analysis["patch_diff_facts"])
-    write_json(evidence_dir / "patch-problem-summary.json", patch_analysis["patch_problem_summary"])
-    write_json(evidence_dir / "risk-surface.json", patch_analysis["risk_surface"])
+    write_json(
+        evidence_dir / "changed-files.json",
+        {
+            "kind": "changed_files",
+            "scope": "feature",
+            "repositories": [
+                {
+                    "repo_path": capture.repo_path,
+                    "root": str(capture.source_root),
+                    "modified_files": prefixed_files(capture.repo_path, capture.facts["modified_files"]),
+                }
+                for capture in captures
+            ],
+            "modified_files": feature_facts["modified_files"],
+        },
+    )
+    write_json(evidence_dir / "patch-diff-facts.json", feature_facts)
+    write_json(evidence_dir / "patch-problem-summary.json", problem_payload)
+    write_json(evidence_dir / "risk-surface.json", risk_payload)
+    write_json(evidence_dir / "coding-standard-check.json", coding_check)
     write_json(evidence_dir / "verification-result.json", verification_payload)
     write_json(evidence_dir / "search-before-change.json", search_payload)
     write_json(evidence_dir / "package-check.json", package_check)
 
     result = {
         "package": str(package_dir),
-        "patch": str(patch_path),
+        "patches": [str(package_dir / capture.patch_rel) for capture in captures],
         "readme": str(readme_path),
+        "implementation_origin": args.implementation_origin,
         "local_check": package_check,
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))

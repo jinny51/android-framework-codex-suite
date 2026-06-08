@@ -16,7 +16,7 @@ Member-side packages must provide enough deterministic anchors for the server to
 - patch identity: patch file content `sha1`
 - optional report link: `related_report_run_ids`
 
-The server may merge two framework_change packages into the same variant when the natural key matches, even when the incoming `variant_id` differs. The server must not downgrade a stronger mature variant just because a later package is `failed` or `blocked`; that later package is retained as evidence.
+The server may merge two framework_change packages into the same variant when the natural key matches, even when the incoming `variant_id` differs. The server must not let a later `failed` or `blocked` package overwrite stronger existing evidence; that later package is retained as evidence.
 
 ## Path
 
@@ -63,12 +63,12 @@ The default policy is:
 
 ```text
 preserve automatically first
-rank by maturity later
+rank by package status later
 ```
 
 Daily and weekly incoming automation should run even when no patch is complete. It must preserve session facts, git activity, discovered patch files, build or verification signals, WIP state, failed paths, blocked paths, and missing evidence.
 
-Patch upload is maturity-based:
+Patch upload is package-status based:
 
 ```text
 validated
@@ -87,7 +87,7 @@ blocked
   Blocked work retained with cause and checked paths.
 ```
 
-Only sensitive material, mixed unrelated diffs, unclear task boundaries, or high-risk misleading reuse should stop patch upload. Even then, daily or weekly trace should record what happened and why it was blocked.
+Only sensitive material, mixed unrelated diffs, unclear task boundaries, or high-risk misleading reuse hints should stop patch upload. Even then, daily or weekly trace should record what happened and why it was blocked.
 
 ## Daily Or Weekly Trace
 
@@ -96,8 +96,9 @@ Required shape:
 ```text
 manifest.json
 reports/daily.md or reports/weekly.md
-knowledge/evidence/source.json
-knowledge/evidence/work_findings.json
+materials/evidence/source.json
+materials/evidence/codex_sessions.json
+materials/evidence/work_findings.json
 ```
 
 Manifest excerpt:
@@ -109,9 +110,9 @@ Manifest excerpt:
   "report_path": "reports/daily.md",
   "files": {
     "evidence": [
-      "knowledge/evidence/source.json",
-      "knowledge/evidence/codex_sessions.json",
-      "knowledge/evidence/work_findings.json"
+      "materials/evidence/source.json",
+      "materials/evidence/codex_sessions.json",
+      "materials/evidence/work_findings.json"
     ]
   }
 }
@@ -130,7 +131,7 @@ Report traces must not carry `case_id` or `variant_id`. They preserve context an
       {
         "title": "锁屏永不休眠策略调整",
         "kind": "possible_framework_change",
-        "maturity": "candidate",
+        "work_status": "candidate",
         "basis": ["会话提到修复锁屏永不休眠", "frameworks/base 存在 diff"],
         "missing_evidence": ["缺少设备或等价验证"],
         "recommended_action": "补验证后可升级为 framework_change"
@@ -147,15 +148,15 @@ Required shape:
 
 ```text
 manifest.json
-knowledge/case.json
-knowledge/variant.json
-knowledge/evidence/source.json
-knowledge/evidence/patch_diff_facts.json
-knowledge/evidence/project_inference.json
-knowledge/evidence/patch_problem_summary.json
-knowledge/evidence/risk_surface.json
-knowledge/evidence/verification_result.json
-knowledge/evidence/search_before_change.json
+materials/case.json
+materials/variant.json
+materials/evidence/source.json
+materials/evidence/patch_diff_facts.json
+materials/evidence/project_inference.json
+materials/evidence/patch_problem_summary.json
+materials/evidence/risk_surface.json
+materials/evidence/verification_result.json
+materials/evidence/search_before_change.json
 patches/*.patch
 ```
 
@@ -166,33 +167,33 @@ Manifest excerpt:
   "package_kind": "framework_change",
   "case_id": "case-...",
   "variant_id": "variant-...",
-  "maturity": "candidate",
+  "package_status": "candidate",
   "platform": "mtk",
   "android_version": "15",
   "project": "TVE8402M",
   "related_report_run_ids": ["20260601-210000-daily"],
   "files": {
-    "case": "knowledge/case.json",
-    "variant": "knowledge/variant.json",
+    "case": "materials/case.json",
+    "variant": "materials/variant.json",
     "patches": ["patches/example.patch"],
     "evidence": [
-      "knowledge/evidence/source.json",
-      "knowledge/evidence/patch_diff_facts.json",
-      "knowledge/evidence/project_inference.json",
-      "knowledge/evidence/patch_problem_summary.json",
-      "knowledge/evidence/risk_surface.json",
-      "knowledge/evidence/verification_result.json",
-      "knowledge/evidence/search_before_change.json"
+      "materials/evidence/source.json",
+      "materials/evidence/patch_diff_facts.json",
+      "materials/evidence/project_inference.json",
+      "materials/evidence/patch_problem_summary.json",
+      "materials/evidence/risk_surface.json",
+      "materials/evidence/verification_result.json",
+      "materials/evidence/search_before_change.json"
     ]
   }
 }
 ```
 
-`maturity` must match `knowledge/variant.json` `status`.
+`package_status` must match `materials/variant.json` `package_status`.
 
 `validated` requires `verification_result.payload.result = PASS`.
 
-`candidate`, `draft`, `failed`, and `blocked` may enter the knowledge base, but must not be presented as directly reusable validated solutions.
+`candidate`, `draft`, `failed`, and `blocked` are uploaded as curation input materials only. They must not be presented as knowledge entries or reuse-ready validated solutions by member-side tooling.
 
 `patch_diff_facts` should include the patch content hash. For a single patch, set top-level `content_sha1`; for multiple patches, fill `patches[]`:
 
@@ -219,8 +220,8 @@ Project must come from traceable evidence:
 ```text
 explicit incoming project containing a TVE/TVA/TVI model
 capture package manifest or patch item project containing a TVE/TVA/TVI model
-source_root, git branch, git remote, local mount path, or WSL source-access registry
-patch/readme/diff/summary text
+source_root, repo_path, git branch, git remote, local mount path, or WSL source-access registry
+patch/feature README/diff/summary text
 explicit related daily or weekly report context
 ```
 
@@ -242,4 +243,4 @@ If the project cannot be identified from traceable evidence, use:
 
 and explain checked sources and limits in `project_inference`.
 
-Generic labels such as `android16`, `Camera2`, or `mtk android16 Camera2` are not company project names. They must remain checked raw inputs in `project_inference`, but they must not be written to `manifest.project` or `knowledge/variant.json project`.
+Generic labels such as `android16`, `Camera2`, or `mtk android16 Camera2` are not company project names. They must remain checked raw inputs in `project_inference`, but they must not be written to `manifest.project` or `materials/variant.json project`.

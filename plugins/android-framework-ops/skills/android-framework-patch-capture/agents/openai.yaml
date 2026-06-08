@@ -1,4 +1,4 @@
 interface:
   display_name: "Android Framework Patch Capture"
-  short_description: "Package Framework changes into patch assets"
-  default_prompt: "Use $android-framework-patch-capture to turn existing Android Framework source changes into a patch, readme, and evidence package."
+  short_description: "Package one Framework feature into README, patches, and evidence"
+  default_prompt: "Use $android-framework-patch-capture to turn existing Android Framework feature changes into one README, repository-level patches, and evidence."

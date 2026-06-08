@@ -63,7 +63,7 @@ When handling a new Android Framework requirement:
 
 1. Search with feature words, affected module, likely class name, property key, Settings key, resource key, search anchor, and artifact name.
 2. Read the top matching case, variant, patch readme, or validation fact before deciding whether to reuse.
-3. Treat `status`, `reusable`, platform, and validation fields as hints, not truth.
+3. Treat `status`, `package_status`, `reuse_hint`, platform, and validation fields as hints, not truth.
 4. Prefer case and variant results first; then inspect related patches, AI evidence, and symbols.
 5. Compare facts: modified files, touched symbols, artifact, risk notes, build evidence, device verification, rollback path.
 6. If a prior patch looks relevant, report the evidence and remaining uncertainty before applying or adapting it.

@@ -1,6 +1,6 @@
-# Patch Maturity Rules
+# Patch Package Status Rules
 
-Daily work is always recorded. Patch upload is maturity-based.
+Daily work is always recorded. Framework change upload is package-status based. These statuses describe the member-side incoming package and its evidence quality; they are not curation decisions and do not decide whether anything enters the knowledge repository.
 
 ## Status
 
@@ -17,7 +17,9 @@ Daily work is always recorded. Patch upload is maturity-based.
 - Patch with build and accepted device/equivalent verification: upload as `validated`.
 - Known failure: upload as `failed` when it helps future AI avoid repeating the path.
 - Blocked work: record as `blocked` when the missing condition is explicit.
-- Stop patch upload only for sensitive material, mixed unrelated diffs, unclear task boundaries, or high-risk misleading reuse.
+- Stop patch upload only for sensitive material, mixed unrelated diffs, unclear task boundaries, or high-risk misleading reuse hints.
+
+The user's local curation maintainer skill later reads the database repository and knowledge repository to produce the curation decision.
 
 ## Evidence Keywords
 

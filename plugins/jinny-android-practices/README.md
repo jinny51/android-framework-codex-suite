@@ -6,9 +6,13 @@ Jinny Android Practices 是可选实践插件，用于放置 Jinny 团队的 And
 
 ## 当前状态
 
-当前仓库尚未包含具体实践 skill。
+当前包含的实践 skill：
 
-保留这个插件边界是为了避免把个人或小团队偏好混进 `android-framework-ops`。后续如果要加入代码风格、review、项目规范、提交规范或验收偏好，应放在这里，而不是放进核心工程插件。
+| Skill | 职责 |
+| --- | --- |
+| [jinny-framework-coding-standards](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/jinny-android-practices/jinny-framework-coding-standards) | 在 Android Framework 需求实现、评审和补丁打包前应用 Jinny 团队补丁开发规范与 FrameworkLog 日志规范 |
+
+保留这个插件边界是为了避免把个人或小团队偏好混进 `android-framework-ops`。后续如果要加入更多代码风格、review、项目规范、提交规范或验收偏好，应放在这里，而不是放进核心工程插件。
 
 新增实践 skill 后，对应的人类说明放在 GitHub 源仓库的 `docs/skills/jinny-android-practices/<skill-name>/README.md`。插件安装后的 runtime skill 目录只保留 Codex 执行需要的文件，不放 `README.md`。
 
@@ -20,6 +24,10 @@ Jinny Android Practices 是可选实践插件，用于放置 Jinny 团队的 And
 | Review 规则 | patch 自检清单、风险分级、回滚说明、验证证据要求 |
 | 项目规范 | 特定平台、特定客户、特定源码树的本地工作约定 |
 | 团队协作 | 日报/周报口径、patch 说明口径、知识库沉淀偏好 |
+
+## 和核心工作流配合
+
+当 `jinny-framework-coding-standards` 与 `android-framework-change-workflow` 同时适用时，应在代码修改前加载团队规范。补丁采集阶段只做校验和证据保存，不应作为事后补规范的主要环节。
 
 ## 不适合放进这里的内容
 

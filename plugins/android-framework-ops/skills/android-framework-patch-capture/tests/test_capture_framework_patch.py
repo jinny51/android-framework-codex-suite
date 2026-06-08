@@ -88,6 +88,41 @@ def create_audio_camera_repo(root: Path) -> None:
     )
 
 
+def create_frameworks_base_repo(root: Path) -> None:
+    run(["git", "init"], root)
+    run(["git", "config", "user.email", "codex@example.invalid"], root)
+    run(["git", "config", "user.name", "Codex Test"], root)
+    source = root / "services" / "core" / "java" / "com" / "android" / "server" / "wm"
+    source.mkdir(parents=True)
+    (source / "DisplayPolicy.java").write_text("class DisplayPolicy {}\n", encoding="utf-8")
+    run(["git", "add", "."], root)
+    run(["git", "commit", "-m", "initial"], root)
+    (source / "DisplayPolicy.java").write_text(
+        "class DisplayPolicy {\n"
+        "  //gyf 20260608@ align cross repo feature policy\n"
+        "  static final String KEY = \"persist.sys.cross_repo_policy\";\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+
+def create_settings_repo(root: Path) -> None:
+    run(["git", "init"], root)
+    run(["git", "config", "user.email", "codex@example.invalid"], root)
+    run(["git", "config", "user.name", "Codex Test"], root)
+    source = root / "src" / "com" / "android" / "settings"
+    source.mkdir(parents=True)
+    (source / "DisplaySettings.java").write_text("class DisplaySettings {}\n", encoding="utf-8")
+    run(["git", "add", "."], root)
+    run(["git", "commit", "-m", "initial"], root)
+    (source / "DisplaySettings.java").write_text(
+        "class DisplaySettings {\n"
+        "  //gyf 20260608@ expose cross repo feature switch\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+
 class CaptureFrameworkPatchTests(unittest.TestCase):
     def test_writes_verification_and_search_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -122,6 +157,8 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "nav-policy-toggle",
                     "--summary",
                     "Allow navigation policy toggle",
+                    "--implementation-origin",
+                    "manual",
                     "--status",
                     "validated",
                     "--verification",
@@ -133,7 +170,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "--search-query",
                     "navigation policy toggle",
                     "--search-result",
-                    "No reusable patch found",
+                    "No reuse candidate found",
                     "--related-report-run-id",
                     "20260601-210000-daily",
                     "--build-result",
@@ -148,6 +185,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             diff_facts = json.loads((package_dir / "evidence" / "patch-diff-facts.json").read_text(encoding="utf-8"))
             problem_summary = json.loads((package_dir / "evidence" / "patch-problem-summary.json").read_text(encoding="utf-8"))
             risk_surface = json.loads((package_dir / "evidence" / "risk-surface.json").read_text(encoding="utf-8"))
+            coding_check = json.loads((package_dir / "evidence" / "coding-standard-check.json").read_text(encoding="utf-8"))
             manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
             evidence_ids = {item["id"] for item in manifest["evidence"]}
 
@@ -175,6 +213,15 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("search-before-change", evidence_ids)
             self.assertRegex(manifest["patches"][0]["content_sha1"], r"^[0-9a-f]{40}$")
             self.assertEqual(manifest["related_report_run_ids"], ["20260601-210000-daily"])
+            self.assertEqual(manifest["implementation_origin"], "manual")
+            self.assertEqual(manifest["captured_by"], "codex")
+            self.assertTrue(manifest["coding_standard_check"]["required"])
+            self.assertEqual(manifest["coding_standard_check"]["mode"], "capture_gate")
+            self.assertEqual(manifest["patches"][0]["implementation_origin"], "manual")
+            self.assertEqual(manifest["patches"][0]["reuse_hint"], True)
+            self.assertNotIn("reusable", manifest["patches"][0])
+            self.assertEqual(coding_check["implementation_origin"], "manual")
+            self.assertTrue(coding_check["review_required"])
 
     def test_common_framework_paths_produce_specific_patch_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -354,6 +401,65 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
 
             self.assertEqual(manifest["project"], "unknown")
             self.assertEqual(manifest["patches"][0]["project"], "unknown")
+
+    def test_multi_repo_feature_package_has_one_readme_and_multiple_patches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = Path(tmp)
+            frameworks_base = workspace / "android" / "frameworks" / "base"
+            settings = workspace / "android" / "packages" / "apps" / "Settings"
+            frameworks_base.mkdir(parents=True)
+            settings.mkdir(parents=True)
+            create_frameworks_base_repo(frameworks_base)
+            create_settings_repo(settings)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(frameworks_base),
+                    "--source-root",
+                    str(settings),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260608-120000-feature",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "cross-repo-display-policy",
+                    "--summary",
+                    "跨源码仓库调整显示策略和设置入口",
+                    "--status",
+                    "candidate",
+                ],
+                workspace,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["package_type"], "framework_feature_patch")
+            self.assertEqual(manifest["readme"], "README.md")
+            self.assertEqual(len(manifest["patches"]), 2)
+            self.assertEqual(
+                {item["repo_path"] for item in manifest["patches"]},
+                {"frameworks/base", "packages/apps/Settings"},
+            )
+            self.assertEqual(
+                {Path(item["path"]).name for item in manifest["patches"]},
+                {
+                    "rk14-frameworks-base@cross-repo-display-policy.patch",
+                    "rk14-settings@cross-repo-display-policy.patch",
+                },
+            )
+            self.assertFalse(list((package_dir / "patches").glob("*.readme.md")))
+            readme = (package_dir / "README.md").read_text(encoding="utf-8")
+            self.assertIn("## 涉及源码仓库", readme)
+            self.assertIn("frameworks/base", readme)
+            self.assertIn("packages/apps/Settings", readme)
+            self.assertIn("rk14-frameworks-base@cross-repo-display-policy.patch", readme)
+            self.assertIn("rk14-settings@cross-repo-display-policy.patch", readme)
 
 
 if __name__ == "__main__":

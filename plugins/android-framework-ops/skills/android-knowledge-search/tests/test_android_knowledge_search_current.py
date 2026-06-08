@@ -40,7 +40,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                 "event_type": "incoming",
                 "source_type": "incoming_package",
                 "package_kind": "framework_change",
-                "maturity": "validated",
+                "package_status": "validated",
                 "member_alias": "testuser",
                 "member_name": "测试成员",
                 "date": "2026-05-26",

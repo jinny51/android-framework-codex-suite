@@ -1,6 +1,6 @@
 {
   "name": "jinny-android-practices",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Optional opinionated Android Framework coding, review, and project workflow practices.",
   "author": {
     "name": "Jinny Android Framework Team",
@@ -29,6 +29,7 @@
       "Write"
     ],
     "defaultPrompt": [
+      "按 Jinny Framework 编码规范实现这个需求",
       "按 Jinny 的 Framework 规范检查这次修改",
       "用团队 review 规则看一下当前 patch",
       "按项目本地规范整理实现方案"

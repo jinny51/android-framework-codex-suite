@@ -36,7 +36,7 @@ Default `--type all` must not return report rows, event rows, or human/archive e
 - `patch`: archived patch assets, readme path, status hints, modified files, modules, search anchors, patch-derived explanation, validation notes, and rollback hint.
 - `report`: member daily or weekly report entries and report item summaries. Explicit filter only; not part of default AI reuse search.
 - `symbol`: reverse index from modified files, SystemProperties, Settings keys, string/resource keys, FrameworkLog keys, modules, and patch-derived anchors to patch IDs.
-- `event`: archived records such as `framework_change`, `daily_trace`, or `weekly_trace`, including member, date, project, platform, and maturity when applicable. Explicit filter only; not part of default AI reuse search.
+- `event`: archived records such as `framework_change`, `daily_trace`, or `weekly_trace`, including member, date, project, platform, and package status when applicable. Explicit filter only; not part of default AI reuse search.
 - `evidence`: evidence records. Default AI search includes only patch facts, patch problem explanation, project inference, risk surface, build result, device/equivalent verification, and search-before-change. Source metadata, work findings, report context, and package checks require explicit `--type evidence`.
 
 ## Judgment Boundary
@@ -46,11 +46,11 @@ The search result is evidence, not a final reuse decision.
 Do not treat these fields as absolute truth:
 
 - `status`
-- `reusable`
+- `package_status`
+- `reuse_hint`
 - platform labels
 - author notes
 - validation status
-- maturity
 - evidence result
 
 They are useful hints. The consuming workflow must compare the current requirement with stored facts such as modified files, modules, patch-derived anchors, affected artifacts, touched keys, readme details, build evidence, device verification, explanation basis, explanation limits, and rollback notes.

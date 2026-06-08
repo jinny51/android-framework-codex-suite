@@ -8,9 +8,9 @@
 
 | 插件 | 定位 | 包含内容 | 推荐安装对象 |
 | --- | --- | --- | --- |
-| [android-framework-ops](plugins/android-framework-ops/README.md) | Android Framework WSL 主链路核心插件 | WSL 源码接入、知识检索、需求分析、远程执行、构建推送、验收、补丁归档、知识入库 | 所有需要 Codex 处理 Android Framework 工程任务的成员 |
+| [android-framework-ops](plugins/android-framework-ops/README.md) | Android Framework WSL 主链路核心插件 | WSL 源码接入、知识检索、需求分析、远程执行、构建推送、验收、补丁归档、incoming 上传材料 | 所有需要 Codex 处理 Android Framework 工程任务的成员 |
 | [android-framework-windows-ops](plugins/android-framework-windows-ops/README.md) | 可选 Windows 原生兼容插件 | Windows SMB/UNC 源码映射、PowerShell/ssh.exe 远程会话、本地 adb.exe 推送 | 确实需要 Windows 原生 Codex 的成员 |
-| [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选团队实践插件 | Jinny 团队代码风格、review、项目本地规范等有倾向性的规则入口 | 想沿用 Jinny 团队实践的成员 |
+| [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选团队实践插件 | Jinny 团队代码风格、FrameworkLog 规范、review、项目本地规范等有倾向性的规则入口 | 想沿用 Jinny 团队实践的成员 |
 | [codex-workspace-care](plugins/codex-workspace-care/README.md) | 独立工作区维护插件 | Codex 本地聊天历史清理、修复、隐私残留检查、上下文交接 | 需要维护本地 Codex 状态或迁移会话上下文的成员 |
 
 `codex-chat-history-cleaner` 和 `codex-chat-history-context-extractor` 不属于 Android Framework 工程链路，所以放在独立插件 `codex-workspace-care` 中。
@@ -23,7 +23,7 @@
 
 1. 用户当前明确要求和项目本地规范优先。
 2. 个人或团队实践 skill 负责代码风格、review 口径、项目偏好。
-3. `android-framework-ops` 负责 WSL 主链路 Framework 工程闭环：源码接入、知识检索、诊断修改、远程构建、设备推送、验收证据、补丁归档、知识入库。
+3. `android-framework-ops` 负责 WSL 主链路 Framework 工程闭环：源码接入、知识检索、诊断修改、远程构建、设备推送、验收证据、补丁归档、incoming 上传材料。
 4. `android-framework-windows-ops` 只在 Windows 原生 Codex 场景中作为可选兼容层使用。
 5. `codex-workspace-care` 只在用户明确需要处理本地 Codex 历史或交接上下文时使用。
 
@@ -40,9 +40,9 @@
 | 需求分析 / 代码修改 | `android-framework-change-workflow` | 分析需求或 bug，查源码，改代码，加必要调试日志，判断风险和回滚路径 |
 | 远程命令执行 | `android-remote-channel` | 管理 SSH/tmux 长会话、命令日志、占用状态和锁，避免多个 Codex 会话互相踩远程环境 |
 | 编译 / 产物定位 / 推送 | `android-wsl-remote-build-deploy` | 调用服务器编译 Android，定位 jar/apk 等产物，并推送到设备 |
-| 功能验证 / 验收结论 | `android-framework-change-workflow` | 根据需求、日志、设备行为、风险矩阵判断任务是否完成，并决定知识成熟度 |
-| 补丁资料整理 | `android-framework-patch-capture` | 把已完成、阶段性、失败或阻塞但有价值的 Framework 修改整理成 patch、说明、修改文件证据、符号事实和验证材料 |
-| 知识入库 | `android-knowledge-intake` | 生成并提交 `daily_trace`、`weekly_trace` 或 `framework_change` incoming 包到数据库仓库 |
+| 功能验证 / 验收结论 | `android-framework-change-workflow` | 根据需求、日志、设备行为、风险矩阵判断任务是否完成，并决定包状态（package status） |
+| 补丁资料整理 | `android-framework-patch-capture` | 把已完成、阶段性、失败或阻塞但有价值的 Framework 功能整理成一个功能 README、多源码仓库 patch、修改文件证据、符号事实和验证材料 |
+| 上传材料 | `android-knowledge-intake` | 生成并提交 `daily_trace`、`weekly_trace` 或 `framework_change` incoming 包到数据库仓库 |
 
 `remote-build-deploy` 只证明产物是否编出、是否推上设备；最终能不能算需求完成，由 `android-framework-change-workflow` 结合需求和验证证据判断。
 
@@ -58,7 +58,7 @@ Windows 原生 Codex 场景不属于团队默认主链路。确实需要 SMB/UNC
 | --- | --- |
 | `android-knowledge-search` | 通常不在服务器源码树执行命令，只读取知识库仓库 JSONL 索引和权威对象目录 |
 | `android-framework-change-workflow` | `rg`, `sed`, `git diff`, `git status`，以及必要的源码修改或调试日志/监控 |
-| `android-framework-patch-capture` | `git status`, `git diff HEAD`，读取变更并生成 patch、说明和 evidence 文件 |
+| `android-framework-patch-capture` | `git status`, `git diff HEAD`，读取一个或多个源码仓库变更并生成一个功能 README、仓库级 patch 和 evidence 文件 |
 | `android-wsl-remote-build-deploy` | `git status`, `repo status`, `.codex/build-push.sh plan/build`, `.codex/build-session.sh` 中的构建封装 |
 | `android-remote-channel` | `tmux`, `cd <REMOTE_ROOT>`, `tail`, `cat`, `mkdir`, `rm`, `flock` |
 | `android-wsl-source-access` | 通常不执行开发命令，只做 `test -d`, `ls`, `find` 这类源码识别命令 |
@@ -102,7 +102,7 @@ Git 引用：main
 
 1. 需要 Android Framework 工程能力：安装 `android-framework-ops`。
 2. 确实需要 Windows 原生 SMB/UNC + PowerShell 工作流：额外安装 `android-framework-windows-ops`。
-3. 需要 Jinny 团队代码风格和 review 规则：额外安装 `jinny-android-practices`。
+3. 需要 Jinny 团队代码风格、补丁开发规范和 FrameworkLog 日志规范：额外安装 `jinny-android-practices`，使用 `jinny-framework-coding-standards`。
 4. 需要处理 Codex 本地历史或交接上下文：额外安装 `codex-workspace-care`。
 
 维护者本地开发插件时才需要 clone 本仓库并运行校验脚本。
@@ -183,7 +183,7 @@ find plugins -path '*/skills/*/README.md' -print
 
 没有输出就是符合当前约定。
 
-如果修改了 Python 脚本或入库/检索逻辑，额外执行：
+如果修改了 Python 脚本或材料上传/检索逻辑，额外执行：
 
 ```bash
 python3 -m pytest --capture=no \

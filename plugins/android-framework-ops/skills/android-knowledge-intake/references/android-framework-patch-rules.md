@@ -20,9 +20,9 @@ Suggested regex:
 ^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$
 ```
 
-## Required Readme Headings
+## Required Feature README Headings
 
-Each patch readme must include:
+Each framework change package must include one feature README with:
 
 ```markdown
 ## 功能描述
@@ -42,8 +42,7 @@ Recommended additional headings:
 
 ## Log And Property Checks
 
-- New `Log.d`, `Log.i`, `Log.w`, `Slog.d`, `Slog.i`, `Slog.w` are forbidden.
+- New direct `Log.*` and `Slog.*` calls are forbidden.
 - Use `FrameworkLog`.
 - `persist.sys.framework.debug.*` must be centralized in `FrameworkLog.java`.
 - User-visible strings should use resources and include Chinese/English values.
-

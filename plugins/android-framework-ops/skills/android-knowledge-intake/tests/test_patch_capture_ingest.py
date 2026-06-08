@@ -52,7 +52,7 @@ def create_capture_package(
 ) -> Path:
     package = root / "capture"
     patch = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
-    readme = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.readme.md"
+    readme = package / "README.md"
     patch.parent.mkdir(parents=True)
     patch.write_text(
         "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
@@ -106,18 +106,39 @@ def create_capture_package(
         },
     )
     manifest = {
-        "schema_version": "1.0",
-        "package_type": "framework_patch",
+        "schema_version": "2.0",
+        "package_type": "framework_feature_patch",
+        "feature": "nav-policy-toggle",
+        "readme": "README.md",
         "project": project,
         "summary": "Allow nav policy toggle",
         "status": status,
+        "implementation_origin": "manual",
+        "captured_by": "codex",
+        "coding_standard_check": {
+            "required": True,
+            "mode": "capture_gate",
+            "path": "evidence/coding-standard-check.json",
+            "result": "PASS",
+        },
+        "git_repositories": [
+            {
+                "repo_path": "frameworks/base",
+                "root": source_root or "/work/android/frameworks/base",
+                "git": {"branch": git_branch, "remote": git_remote},
+            }
+        ],
         "patches": [
             {
+                "id": "rk14-frameworks-base@nav-policy-toggle",
                 "path": "patches/rk14-frameworks-base@nav-policy-toggle.patch",
-                "readme": "patches/rk14-frameworks-base@nav-policy-toggle.readme.md",
+                "repo_path": "frameworks/base",
+                "source_root": source_root or "/work/android/frameworks/base",
                 "status": status,
-                "reusable": status == "validated",
+                "reuse_hint": status == "validated",
                 "project": project,
+                "implementation_origin": "manual",
+                "captured_by": "codex",
                 "facts": {"modified_files": ["frameworks/base/services/core/java/X.java"]},
             }
         ],
@@ -129,10 +150,6 @@ def create_capture_package(
             {"id": "risk-surface", "kind": "risk_surface", "path": "evidence/risk-surface.json", "result": "INFO"},
         ],
     }
-    if source_root:
-        manifest["source_root"] = source_root
-    if git_branch or git_remote:
-        manifest["git"] = {"branch": git_branch, "remote": git_remote}
     if include_build_result:
         manifest["evidence"].append(
             {
@@ -145,6 +162,113 @@ def create_capture_package(
         )
     if related_report_run_ids:
         manifest["related_report_run_ids"] = related_report_run_ids
+    write_json(package / "manifest.json", manifest)
+    return package
+
+
+def create_feature_capture_package(root: Path) -> Path:
+    package = root / "feature-capture"
+    patch_dir = package / "patches"
+    patch_dir.mkdir(parents=True)
+    readme = package / "README.md"
+    readme.write_text(valid_patch_readme("cross repo display policy"), encoding="utf-8")
+    first_patch = patch_dir / "rk14-frameworks-base@cross-repo-display-policy.patch"
+    second_patch = patch_dir / "rk14-settings@cross-repo-display-policy.patch"
+    first_patch.write_text(
+        "diff --git a/services/core/java/com/android/server/wm/DisplayPolicy.java b/services/core/java/com/android/server/wm/DisplayPolicy.java\n"
+        "--- a/services/core/java/com/android/server/wm/DisplayPolicy.java\n"
+        "+++ b/services/core/java/com/android/server/wm/DisplayPolicy.java\n"
+        "@@ -1 +1,2 @@\n"
+        "+//gyf 20260608@ display policy\n",
+        encoding="utf-8",
+    )
+    second_patch.write_text(
+        "diff --git a/src/com/android/settings/DisplaySettings.java b/src/com/android/settings/DisplaySettings.java\n"
+        "--- a/src/com/android/settings/DisplaySettings.java\n"
+        "+++ b/src/com/android/settings/DisplaySettings.java\n"
+        "@@ -1 +1,2 @@\n"
+        "+//gyf 20260608@ settings entry\n",
+        encoding="utf-8",
+    )
+    write_json(package / "evidence" / "verification-result.json", {"result": "PASS", "method": "device", "summary": "device pass"})
+    write_json(package / "evidence" / "search-before-change.json", {"result": "INFO", "method": "knowledge_search", "queries": ["display policy"]})
+    write_json(
+        package / "evidence" / "patch-problem-summary.json",
+        {
+            "kind": "patch_problem_summary",
+            "scope": "feature",
+            "confidence": "medium",
+            "problem_summary": "显示策略和设置入口需要一起适配。",
+            "solution_summary": "同时调整 Framework 策略和 Settings 入口。",
+            "basis": ["功能包包含 frameworks/base 和 packages/apps/Settings 两个源码仓库补丁"],
+            "limits": ["设备验证记录独立保存"],
+        },
+    )
+    write_json(
+        package / "evidence" / "risk-surface.json",
+        {
+            "kind": "risk_surface",
+            "scope": "feature",
+            "confidence": "medium",
+            "risk_areas": ["显示策略", "设置入口"],
+            "basis": ["功能包包含两个源码仓库补丁"],
+            "limits": ["跨仓库变更需要整体验证"],
+        },
+    )
+    manifest = {
+        "schema_version": "2.0",
+        "package_type": "framework_feature_patch",
+        "feature": "cross-repo-display-policy",
+        "readme": "README.md",
+        "project": "TVE1234A",
+        "summary": "跨源码仓库调整显示策略和设置入口",
+        "status": "validated",
+        "implementation_origin": "manual",
+        "captured_by": "codex",
+        "coding_standard_check": {
+            "required": True,
+            "mode": "capture_gate",
+            "path": "evidence/coding-standard-check.json",
+            "result": "PASS",
+        },
+        "source_roots": ["/work/android/frameworks/base", "/work/android/packages/apps/Settings"],
+        "git_repositories": [
+            {"repo_path": "frameworks/base", "root": "/work/android/frameworks/base", "git": {"branch": "main", "remote": ""}},
+            {"repo_path": "packages/apps/Settings", "root": "/work/android/packages/apps/Settings", "git": {"branch": "main", "remote": ""}},
+        ],
+        "patches": [
+            {
+                "id": "rk14-frameworks-base@cross-repo-display-policy",
+                "path": "patches/rk14-frameworks-base@cross-repo-display-policy.patch",
+                "repo_path": "frameworks/base",
+                "source_root": "/work/android/frameworks/base",
+                "status": "validated",
+                "reuse_hint": True,
+                "project": "TVE1234A",
+                "implementation_origin": "manual",
+                "captured_by": "codex",
+                "facts": {"modified_files": ["services/core/java/com/android/server/wm/DisplayPolicy.java"], "modules": ["frameworks-base"]},
+            },
+            {
+                "id": "rk14-settings@cross-repo-display-policy",
+                "path": "patches/rk14-settings@cross-repo-display-policy.patch",
+                "repo_path": "packages/apps/Settings",
+                "source_root": "/work/android/packages/apps/Settings",
+                "status": "validated",
+                "reuse_hint": True,
+                "project": "TVE1234A",
+                "implementation_origin": "manual",
+                "captured_by": "codex",
+                "facts": {"modified_files": ["src/com/android/settings/DisplaySettings.java"], "modules": ["settings"]},
+            },
+        ],
+        "evidence": [
+            {"id": "verification-result", "kind": "verification_result", "path": "evidence/verification-result.json", "result": "PASS", "scope": "feature"},
+            {"id": "search-before-change", "kind": "search_before_change", "path": "evidence/search-before-change.json", "result": "INFO", "scope": "feature"},
+            {"id": "patch-problem-summary", "kind": "patch_problem_summary", "path": "evidence/patch-problem-summary.json", "result": "INFO", "scope": "feature"},
+            {"id": "risk-surface", "kind": "risk_surface", "path": "evidence/risk-surface.json", "result": "INFO", "scope": "feature"},
+        ],
+    }
     write_json(package / "manifest.json", manifest)
     return package
 
@@ -178,20 +302,27 @@ class PatchCaptureIngestTests(unittest.TestCase):
 
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
             check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-            diff_facts = json.loads((package / "knowledge" / "evidence" / "patch_diff_facts.json").read_text(encoding="utf-8"))
-            source = json.loads((package / "knowledge" / "evidence" / "source.json").read_text(encoding="utf-8"))
-            problem = json.loads((package / "knowledge" / "evidence" / "capture" / "capture-patch-problem-summary.json").read_text(encoding="utf-8"))
-            risk = json.loads((package / "knowledge" / "evidence" / "capture" / "capture-risk-surface.json").read_text(encoding="utf-8"))
+            diff_facts = json.loads((package / "materials" / "evidence" / "patch_diff_facts.json").read_text(encoding="utf-8"))
+            source = json.loads((package / "materials" / "evidence" / "source.json").read_text(encoding="utf-8"))
+            problem = json.loads((package / "materials" / "evidence" / "capture" / "capture-patch-problem-summary.json").read_text(encoding="utf-8"))
+            risk = json.loads((package / "materials" / "evidence" / "capture" / "capture-risk-surface.json").read_text(encoding="utf-8"))
 
             self.assertEqual(check["status"], "PASS")
             self.assertEqual(manifest["schema"], "knowledge-incoming-package")
             self.assertEqual(manifest["schema_version"], "1")
             self.assertEqual(manifest["package_kind"], "framework_change")
             self.assertEqual(manifest["member_alias"], "admin_alias")
-            self.assertEqual(manifest["maturity"], "validated")
+            self.assertEqual(manifest["package_status"], "validated")
+            self.assertNotIn("maturity", manifest)
+            self.assertFalse((package / "knowledge").exists())
             self.assertEqual(manifest["platform"], "rk")
             self.assertEqual(manifest["android_version"], "14")
             self.assertEqual(manifest["related_report_run_ids"], ["20260601-210000-daily"])
+            self.assertEqual(manifest["implementation_origins"], ["manual"])
+            self.assertEqual(manifest["capture_tools"], ["codex"])
+            self.assertEqual(diff_facts["payload"]["implementation_origins"], ["manual"])
+            self.assertEqual(diff_facts["payload"]["capture_tools"], ["codex"])
+            self.assertEqual(diff_facts["payload"]["patches"][0]["implementation_origin"], "manual")
             self.assertRegex(diff_facts["payload"]["content_sha1"], r"^[0-9a-f]{40}$")
             self.assertEqual(diff_facts["payload"]["content_sha1"], diff_facts["payload"]["patches"][0]["content_sha1"])
             for evidence in (source, problem, risk):
@@ -202,9 +333,10 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertNotIn("cwd", source["payload"])
             self.assertNotIn("host", source["payload"])
             evidence_files = set(manifest["files"]["evidence"])
-            self.assertIn("knowledge/evidence/source.json", evidence_files)
-            self.assertIn("knowledge/evidence/project_inference.json", evidence_files)
-            self.assertIn("knowledge/evidence/verification_result.json", evidence_files)
+            self.assertIn("materials/evidence/source.json", evidence_files)
+            self.assertIn("materials/evidence/project_inference.json", evidence_files)
+            self.assertIn("materials/evidence/verification_result.json", evidence_files)
+            self.assertFalse(any(str(path).startswith("knowledge/") for path in manifest["files"]["evidence"]))
 
     def test_capture_package_preserves_optional_build_result_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -223,9 +355,9 @@ class PatchCaptureIngestTests(unittest.TestCase):
 
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
             evidence_files = set(manifest["files"]["evidence"])
-            self.assertIn("knowledge/evidence/capture/capture-build-result.json", evidence_files)
+            self.assertIn("materials/evidence/capture/capture-build-result.json", evidence_files)
 
-            build_result = json.loads((package / "knowledge" / "evidence" / "capture" / "capture-build-result.json").read_text(encoding="utf-8"))
+            build_result = json.loads((package / "materials" / "evidence" / "capture" / "capture-build-result.json").read_text(encoding="utf-8"))
             self.assertEqual(build_result["kind"], "build_result")
             self.assertEqual(build_result["result"], "PASS")
             self.assertEqual(build_result["case_id"], manifest["case_id"])
@@ -253,8 +385,8 @@ class PatchCaptureIngestTests(unittest.TestCase):
             )
 
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            variant = json.loads((package / "knowledge" / "variant.json").read_text(encoding="utf-8"))
-            project_inference = json.loads((package / "knowledge" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
+            variant = json.loads((package / "materials" / "variant.json").read_text(encoding="utf-8"))
+            project_inference = json.loads((package / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
 
             self.assertEqual(manifest["project"], "TVA10A2R")
             self.assertEqual(variant["project"], "TVA10A2R")
@@ -287,9 +419,9 @@ class PatchCaptureIngestTests(unittest.TestCase):
             )
 
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            variant = json.loads((package / "knowledge" / "variant.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["maturity"], "blocked")
-            self.assertEqual(variant["status"], "blocked")
+            variant = json.loads((package / "materials" / "variant.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["package_status"], "blocked")
+            self.assertEqual(variant["package_status"], "blocked")
 
     def test_standalone_patch_with_empty_readme_fails_local_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -373,7 +505,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             )
 
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            self.assertEqual(manifest["maturity"], "candidate")
+            self.assertEqual(manifest["package_status"], "candidate")
 
     def test_standalone_patch_without_verification_is_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -401,9 +533,9 @@ class PatchCaptureIngestTests(unittest.TestCase):
             )
 
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            verification = json.loads((package / "knowledge" / "evidence" / "verification_result.json").read_text(encoding="utf-8"))
+            verification = json.loads((package / "materials" / "evidence" / "verification_result.json").read_text(encoding="utf-8"))
 
-            self.assertEqual(manifest["maturity"], "candidate")
+            self.assertEqual(manifest["package_status"], "candidate")
             self.assertEqual(verification["payload"]["result"], "MISSING")
 
     def test_chinese_summary_produces_distinct_framework_ids(self) -> None:
@@ -482,8 +614,8 @@ class PatchCaptureIngestTests(unittest.TestCase):
             )
 
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            variant = json.loads((package / "knowledge" / "variant.json").read_text(encoding="utf-8"))
-            case = json.loads((package / "knowledge" / "case.json").read_text(encoding="utf-8"))
+            variant = json.loads((package / "materials" / "variant.json").read_text(encoding="utf-8"))
+            case = json.loads((package / "materials" / "case.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["project"], "unknown")
             self.assertEqual(variant["project"], "unknown")
             self.assertNotIn("成员端 Codex 根据补丁 diff", case["solution_summary"])
@@ -528,6 +660,45 @@ class PatchCaptureIngestTests(unittest.TestCase):
         self.assertIn("音频路由/音量行为", risk["risk_areas"])
         self.assertIn("相机行为", risk["risk_areas"])
         self.assertIn("产品配置/预置应用", risk["risk_areas"])
+
+    def test_feature_capture_package_uses_one_feature_readme_for_multiple_patches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 8),
+                self.config(root),
+                run_id="20260608-120000-feature",
+                patch_paths=[],
+                patch_package_paths=[str(create_feature_capture_package(root))],
+                project="TVE1234A",
+                summary="跨源码仓库调整显示策略和设置入口",
+                status="validated",
+                schema_version="1",
+            )
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            diff_facts = json.loads((package / "materials" / "evidence" / "patch_diff_facts.json").read_text(encoding="utf-8"))
+            variant = json.loads((package / "materials" / "variant.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "PASS")
+            self.assertEqual(manifest["files"]["readme"], "materials/readme.md")
+            self.assertEqual(len(manifest["files"]["patches"]), 2)
+            self.assertTrue((package / "materials" / "readme.md").is_file())
+            self.assertFalse(list((package / "patches").glob("*.readme.md")))
+            self.assertEqual(variant["repo_paths"], ["frameworks/base", "packages/apps/Settings"])
+            self.assertEqual(variant["implementation_origins"], ["manual"])
+            self.assertEqual(manifest["implementation_origins"], ["manual"])
+            self.assertEqual(diff_facts["payload"]["patch_count"], 2)
+            self.assertEqual(diff_facts["payload"]["implementation_origins"], ["manual"])
+            self.assertEqual(
+                {item["repo_path"] for item in diff_facts["payload"]["patches"]},
+                {"frameworks/base", "packages/apps/Settings"},
+            )
+            self.assertEqual(
+                {item["implementation_origin"] for item in diff_facts["payload"]["patches"]},
+                {"manual"},
+            )
 
     def test_project_inference_keeps_full_model_and_base_model(self) -> None:
         project, payload = intake.infer_project(

@@ -431,7 +431,8 @@ def row_text(row: dict[str, Any]) -> str:
         "filename_confidence",
         "module",
         "status",
-        "maturity",
+        "package_status",
+        "reuse_hint",
         "package_kind",
         "validation_status",
         "result",
@@ -491,7 +492,7 @@ def score_row(row: dict[str, Any], terms: list[str]) -> tuple[int, list[str]]:
         (8, "summary"),
         (7, "scope"),
         (7, "symbol"),
-        (7, "maturity"),
+        (7, "package_status"),
         (6, "modified_files"),
         (6, "patch_ids"),
         (6, "modules"),
@@ -541,7 +542,7 @@ def result_priority(row: dict[str, Any]) -> int:
         priority += int(row.get("source_priority") or 0)
     except (TypeError, ValueError):
         pass
-    status = str(row.get("status") or row.get("maturity") or "").lower()
+    status = str(row.get("package_status") or row.get("status") or "").lower()
     priority += {
         "validated": 50,
         "candidate": 30,
@@ -828,7 +829,7 @@ def format_event(root: Path, row: dict[str, Any], index: int) -> str:
     lines = [
         f"{index}. [event] {title}",
         f"   - id: {row.get('id', '')}",
-        f"   - kind/maturity: {row.get('package_kind', '')} / {row.get('maturity', '')}",
+        f"   - kind/package_status: {row.get('package_kind', '')} / {row.get('package_status', '')}",
         f"   - member/date/platform: {row.get('member', '')} / {result_date(row)} / {row.get('platform', '')}",
     ]
     if row.get("project"):
@@ -847,8 +848,8 @@ def format_evidence(root: Path, row: dict[str, Any], index: int) -> str:
         f"   - id: {row.get('id', '')}",
         f"   - event/kind/result: {row.get('event_id', '')} / {row.get('evidence_kind', '')} / {row.get('result', '')}",
     ]
-    if row.get("maturity") or row.get("project") or row.get("platform"):
-        lines.append(f"   - context: {row.get('maturity', '')} / {row.get('project', '')} / {row.get('platform', '')}")
+    if row.get("package_status") or row.get("project") or row.get("platform"):
+        lines.append(f"   - context: {row.get('package_status', '')} / {row.get('project', '')} / {row.get('platform', '')}")
     if row.get("path"):
         lines.append(f"   - evidence: {rel_or_empty(root, row.get('path'))}")
     if row.get("_matched_terms"):

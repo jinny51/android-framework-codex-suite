@@ -1,6 +1,6 @@
 # Android Framework Ops
 
-Android Framework Ops 是本套件的 WSL 主链路核心工程插件。它负责让成员端 Codex 完成 Android Framework 需求从 WSL 源码接入、知识检索、诊断修改、远程构建、设备推送、验收证据、补丁归档到 incoming 入库的闭环。
+Android Framework Ops 是本套件的 WSL 主链路核心工程插件。它负责让成员端 Codex 完成 Android Framework 需求从 WSL 源码接入、知识检索、诊断修改、远程构建、设备推送、验收证据、补丁归档到 incoming 上传材料的闭环。
 
 这个插件只提供中立工程能力，不内置个人代码风格，不替代项目本地规范，也不强制接管 review workflow。
 
@@ -13,7 +13,7 @@ Windows 原生 Codex 的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力�
 | 分类 | Skill | 职责 |
 | --- | --- | --- |
 | Framework 工作流 | [android-framework-change-workflow](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-framework-change-workflow) | 统筹需求分析、问题诊断、源码修改、风险判断、验证验收和最终报告 |
-| Framework 工作流 | [android-framework-patch-capture](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-framework-patch-capture) | 将已完成或阶段性 Framework 修改整理成标准 patch、说明和验证材料补丁包 |
+| Framework 工作流 | [android-framework-patch-capture](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-framework-patch-capture) | 将已完成或阶段性 Framework 功能整理成一个功能 README、多仓库 patch 和验证材料 |
 | 知识系统 | [android-knowledge-search](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-knowledge-search) | 默认搜索 AI 可复用案例、平台实现、补丁、检索锚点和验证记录；归档记录需显式查询 |
 | 知识系统 | [android-knowledge-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-knowledge-intake) | 支持成员首次启用，先做插件更新和新配置检查，再从会话、git、patch 和验证结果生成 incoming 包并提交到数据库仓库 |
 | 远程执行 | [android-remote-channel](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-remote-channel) | 统一管理 Android 构建服务器 SSH/tmux 长会话、命令日志、占用状态和锁 |
@@ -27,11 +27,11 @@ Windows 原生 Codex 的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力�
 3. `android-framework-change-workflow` 负责需求分析、源码修改、调试日志、风险判断和验收口径。
 4. `android-remote-channel` 提供稳定远程会话，避免重复 SSH、重复 tmux、重复锁逻辑。
 5. `android-wsl-remote-build-deploy` 负责服务器构建、产物定位、设备推送。
-6. `android-framework-change-workflow` 根据需求和设备证据给最终验收结论，并决定 `validated`、`candidate`、`draft`、`failed` 或 `blocked` 成熟度。
-7. `android-framework-patch-capture` 把已完成、阶段性、失败或阻塞但有价值的 Framework 修改整理成补丁、readme 和 evidence。
+6. `android-framework-change-workflow` 根据需求和设备证据给最终验收结论，并决定 `validated`、`candidate`、`draft`、`failed` 或 `blocked` 包状态（package status）。
+7. `android-framework-patch-capture` 把已完成、阶段性、失败或阻塞但有价值的 Framework 功能整理成一个功能 README、多个源码仓库 patch 和 evidence。
 8. `android-knowledge-intake` 把成员端 Codex 生成的材料打成 incoming 包，并通过服务器上传入口提交给数据库仓库。后续能否进入知识库仓库，由你本机的本地技能 `android-knowledge-curation-maintainer` 和 AI 知识闭环决定，不由成员端插件直接决定。周报包只做进度归档，固定不进入知识库仓库。
 
-默认原则：能自动沉淀就先沉淀，再按成熟度排序和复用。缺少显式确认不等于丢弃知识；只有敏感信息、混杂无关 diff、高风险误导或身份/配置不可用时才停止入库，并在最终报告中说明。
+默认原则：成员端能自动保存材料就先保存材料，再按包状态（package status）排序和作为复用提示（reuse hint）。缺少显式确认不等于丢弃证据；只有敏感信息、混杂无关 diff、高风险误导或身份/配置不可用时才停止上传，并在最终报告中说明。是否沉淀进知识库仓库由管理端本地技能决定。
 
 ## 和其他 skill 的兼容方式
 

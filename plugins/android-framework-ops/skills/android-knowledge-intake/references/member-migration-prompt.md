@@ -3,7 +3,7 @@
 把下面整段交给成员端 Codex 使用。成员只需要提供自己的成员标识和姓名；插件更新、新配置写入、仓库检查和健康检查都由 Codex 执行。
 
 ```text
-你现在要帮我完成 Android Framework Ops 知识入库的首次启用。
+你现在要帮我完成 Android Framework Ops incoming 上传材料的首次启用。
 
 强制要求：
 - 全程用中文说明；遇到英文定义时，先写中文，再把英文放在括号里，例如 数据库仓库（database repository）、知识库仓库（knowledge repository）、上传包（incoming package）、插件更新（plugin update）、新配置（new configuration）。
@@ -21,7 +21,7 @@
    - 如果当前插件来自 Codex 插件市场或缓存目录，先更新或重新安装 Android Framework Ops 插件，再继续后续步骤。
    - 更新后重新加载插件能力；如果本轮运行环境无法重新加载，就停止并告诉我重新打开一个 Codex 会话继续。
 
-2. 找到成员端入库脚本（member-side intake script）：
+2. 找到成员端上传材料脚本（member-side intake script）：
    plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py
 
 3. 直接创建或覆盖 $CODEX_HOME/report/config.toml，使用下面的新配置。只按当前双仓库链路写入，不解析残留配置字段，不把工作树放进 .codex/plugins/cache，不配置成员数据库仓库工作树。

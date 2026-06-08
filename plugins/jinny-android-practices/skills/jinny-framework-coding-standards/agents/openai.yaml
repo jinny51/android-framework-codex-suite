@@ -1,0 +1,4 @@
+interface:
+  display_name: "Jinny Framework Coding Standards"
+  short_description: "Apply Jinny team Framework patch and logging rules"
+  default_prompt: "Use $jinny-framework-coding-standards when implementing or reviewing this Android Framework change."

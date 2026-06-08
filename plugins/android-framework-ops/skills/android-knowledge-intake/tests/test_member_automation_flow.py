@@ -269,7 +269,7 @@ def read_package_report(package: Path, report_type: str = "daily") -> str:
 
 
 def read_package_findings(package: Path) -> dict:
-    return json.loads((package / "knowledge" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
+    return json.loads((package / "materials" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
 
 
 def prepare_daily_package(env: dict[str, str], date: str, run_id: str) -> Path:
@@ -591,7 +591,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
 
             package = Path(result["package"])
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            findings = json.loads((package / "knowledge" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
+            findings = json.loads((package / "materials" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
 
             self.assertEqual(result["local_check"]["status"], "PASS")
             self.assertEqual(manifest["package_kind"], "daily_trace")
@@ -785,9 +785,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
             daily_manifest = json.loads((daily_package / "manifest.json").read_text(encoding="utf-8"))
             weekly_manifest = json.loads((weekly_package / "manifest.json").read_text(encoding="utf-8"))
             patch_manifest = json.loads((patch_package / "manifest.json").read_text(encoding="utf-8"))
-            patch_project = json.loads((patch_package / "knowledge" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
-            daily_findings = json.loads((daily_package / "knowledge" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
-            weekly_findings = json.loads((weekly_package / "knowledge" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
+            patch_project = json.loads((patch_package / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
+            daily_findings = json.loads((daily_package / "materials" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
+            weekly_findings = json.loads((weekly_package / "materials" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
 
             self.assertEqual(daily_manifest["package_kind"], "daily_trace")
             self.assertEqual(weekly_manifest["package_kind"], "weekly_trace")
@@ -798,7 +798,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     any(item["kind"] in {"work_record", "possible_framework_change"} for item in findings["payload"]["items"])
                 )
             self.assertEqual(patch_manifest["package_kind"], "framework_change")
-            self.assertEqual(patch_manifest["maturity"], "validated")
+            self.assertEqual(patch_manifest["package_status"], "validated")
             self.assertEqual(patch_manifest["platform"], "mtk")
             self.assertEqual(patch_manifest["android_version"], "15")
             self.assertEqual(patch_manifest["project"], "TVE8402M")
@@ -867,11 +867,11 @@ class MemberAutomationFlowTests(unittest.TestCase):
             )
             package = Path(result["package"])
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            project = json.loads((package / "knowledge" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
+            project = json.loads((package / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
 
             self.assertEqual(manifest["project"], "unknown")
             self.assertFalse(project["payload"]["recognized"])
-            self.assertIn("未作为项目名入库", " ".join(project["payload"]["limits"]))
+            self.assertIn("未作为项目名写入上传包", " ".join(project["payload"]["limits"]))
 
 
 if __name__ == "__main__":

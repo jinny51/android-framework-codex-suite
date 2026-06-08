@@ -1,3 +1,6 @@
 # Optional Jinny Android Framework practices.
-# This manifest starts empty because no concrete code-style or review skill exists in the current source repository.
 
+[[skills]]
+name = "jinny-framework-coding-standards"
+category = "Team Practices"
+summary = "在 Jinny 团队 Android Framework 需求实现、评审和补丁打包前应用补丁开发规范与 FrameworkLog 日志规范"

@@ -1,6 +1,6 @@
 interface:
   display_name: "Android Knowledge Intake"
-  short_description: "Submit member knowledge incoming packages"
+  short_description: "Submit member incoming material packages"
   default_prompt: "Use $android-knowledge-intake to handle member first-time migration, plugin update checks, config migration, and member-side daily, weekly, or framework_change incoming packages through the server submission channel. Do not use it for local knowledge curation; that belongs to android-knowledge-curation-maintainer."
 
 policy:
