@@ -4,7 +4,7 @@ Member-side Codex creates only `incoming` packages and sends them through the se
 
 Only the user's local `android-knowledge-curation-maintainer` skill and the AI knowledge loop can decide whether and how an uploaded package enters the knowledge repository.
 
-The server does not run Codex and must not be the main AI reasoning layer. Project inference, patch problem summary, risk, verification status, and search-before-change evidence are produced by member-side Codex. Curation decisions, materialization plans, and knowledge validity are produced by the user's local curation maintainer skill, not by the member-side intake skill.
+The server does not run Codex and must not be the main AI reasoning layer. Project inference, patch problem summary, risk, verification status, search-before-change evidence, remote build evidence, and local device delivery evidence are produced by member-side Codex. Curation decisions, materialization plans, and knowledge validity are produced by the user's local curation maintainer skill, not by the member-side intake skill.
 
 ## Server Merge Anchors
 
@@ -15,6 +15,8 @@ Member-side packages must provide enough deterministic anchors for the server to
 - variant natural key: `case_id + platform + android_version + project + repo_paths`
 - patch identity: patch file content `sha1`
 - optional report link: `related_report_run_ids`
+- pre-change knowledge use evidence: search queries, matched object ids, decision (`reuse`, `adapt`, `reference_only`, `not_applicable`, `not_found`, or `unknown`), match/mismatch points, reason, and outcome
+- cross-machine verification evidence: remote build host/source root/profile/artifact plus local transfer, adb serial, device push/install/restart, and verification result
 
 The server may merge two framework_change packages into the same variant when the natural key matches, even when the incoming `variant_id` differs. The server must not let a later `failed` or `blocked` package overwrite stronger existing evidence; that later package is retained as evidence.
 

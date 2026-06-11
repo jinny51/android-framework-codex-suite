@@ -37,6 +37,8 @@ FRAMEWORK_LOG_LITERAL_RE = re.compile(r"FrameworkLog\.(?:d|i|w|e)\s*\([^,]+,\s*\
 SUPPORTED_EXTERNAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
 IMPLEMENTATION_ORIGINS = ("codex", "manual", "external", "historical", "mixed", "unknown")
 CAPTURE_REVIEW_REQUIRED_ORIGINS = {"manual", "external", "historical", "mixed", "unknown"}
+REUSE_DECISIONS = ("reuse", "adapt", "reference_only", "not_applicable", "not_found", "unknown")
+REUSE_OUTCOMES = ("not_started", "reused_success", "adapted_success", "failed", "partial", "unverified", "not_applicable")
 
 
 @dataclass
@@ -562,6 +564,24 @@ def verification_result(args: argparse.Namespace) -> dict[str, Any]:
         "health_checks": args.health_check or [],
         "artifacts": args.artifact or [],
     }
+    remote_artifacts: list[dict[str, str]] = []
+    for index, artifact in enumerate(args.remote_artifact or []):
+        sha1 = args.artifact_sha1[index] if index < len(args.artifact_sha1 or []) else ""
+        remote_artifacts.append({"path": artifact, "sha1": sha1})
+    payload["remote_build"] = {
+        "host": args.remote_build_host or "",
+        "source_root": args.remote_source_root or "",
+        "command": args.remote_build_command or "",
+        "profile": args.remote_build_profile or "",
+        "artifacts": remote_artifacts,
+    }
+    payload["local_delivery"] = {
+        "transfer": args.artifact_transfer or "",
+        "local_artifacts": args.local_artifact or [],
+        "adb_serial": args.adb_serial or "",
+        "adb_actions": args.adb_action or [],
+        "device_restarts": args.device_restart or [],
+    }
     if method == "equivalent":
         payload.update(
             {
@@ -578,6 +598,7 @@ def search_before_change(args: argparse.Namespace) -> dict[str, Any]:
     queries = args.search_query or []
     results = args.search_result or []
     summary = args.search_summary or ""
+    decision = args.reuse_decision or infer_reuse_decision(queries, results, summary)
     return {
         "result": "INFO",
         "method": "knowledge_search",
@@ -585,7 +606,23 @@ def search_before_change(args: argparse.Namespace) -> dict[str, Any]:
         "queries": queries,
         "results": results,
         "summary": summary or "not provided by capture command",
+        "decision": decision,
+        "reuse_decision": decision,
+        "targets": args.reuse_target or [],
+        "match_points": args.reuse_match or [],
+        "mismatch_points": args.reuse_mismatch or [],
+        "reason": args.reuse_reason or "",
+        "outcome": args.reuse_outcome or "not_started",
     }
+
+
+def infer_reuse_decision(queries: list[str], results: list[str], summary: str) -> str:
+    text = "\n".join([*queries, *results, summary]).lower()
+    if not text.strip():
+        return "unknown"
+    if any(token in text for token in ("未发现", "未命中", "no reuse", "no candidate", "not found")):
+        return "not_found"
+    return "unknown"
 
 
 def modules_from_files(files: list[str]) -> list[str]:
@@ -1054,6 +1091,31 @@ def feature_readme_text(
 
 {plain_bullets(args.search_result or [])}
 
+### 使用决策
+
+- decision: {args.reuse_decision or infer_reuse_decision(args.search_query or [], args.search_result or [], args.search_summary or "")}
+- targets: {", ".join(args.reuse_target or []) if args.reuse_target else "待补充"}
+- match_points: {", ".join(args.reuse_match or []) if args.reuse_match else "待补充"}
+- mismatch_points: {", ".join(args.reuse_mismatch or []) if args.reuse_mismatch else "待补充"}
+- reason: {args.reuse_reason or "待补充"}
+- outcome: {args.reuse_outcome or "not_started"}
+
+## 远端构建链路
+
+- remote_build_host: {args.remote_build_host or "待补充"}
+- remote_source_root: {args.remote_source_root or "待补充"}
+- remote_build_profile: {args.remote_build_profile or "待补充"}
+- remote_build_command: {args.remote_build_command or "待补充"}
+- remote_artifacts: {", ".join(args.remote_artifact or []) if args.remote_artifact else "待补充"}
+
+## 本机交付和设备验证链路
+
+- artifact_transfer: {args.artifact_transfer or "待补充"}
+- local_artifacts: {", ".join(args.local_artifact or []) if args.local_artifact else "待补充"}
+- adb_serial: {args.adb_serial or "待补充"}
+- adb_actions: {", ".join(args.adb_action or []) if args.adb_action else "待补充"}
+- device_restarts: {", ".join(args.device_restart or []) if args.device_restart else "待补充"}
+
 ## 风险说明
 
 {risk}
@@ -1105,9 +1167,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--search-query", action="append", default=[], help="Knowledge-base query performed before development. Repeatable.")
     parser.add_argument("--search-result", action="append", default=[], help="Search result or reuse decision from the pre-change search. Repeatable.")
     parser.add_argument("--search-summary", default="", help="Short summary of pre-change knowledge search.")
+    parser.add_argument("--reuse-decision", choices=REUSE_DECISIONS, help="Pre-change knowledge use decision: reuse, adapt, reference_only, not_applicable, not_found, or unknown.")
+    parser.add_argument("--reuse-target", action="append", default=[], help="Matched case, variant, patch, or evidence id considered before the change. Repeatable.")
+    parser.add_argument("--reuse-match", action="append", default=[], help="Why the matched knowledge may apply. Repeatable.")
+    parser.add_argument("--reuse-mismatch", action="append", default=[], help="Why the matched knowledge may not directly apply. Repeatable.")
+    parser.add_argument("--reuse-reason", default="", help="Reason for the pre-change reuse/adapt/reference/not-applicable decision.")
+    parser.add_argument("--reuse-outcome", choices=REUSE_OUTCOMES, help="Outcome after implementing and verifying with the pre-change decision.")
     parser.add_argument("--related-report-run-id", action="append", default=[], help="daily/weekly incoming run_id related to this patch package. Repeatable.")
     parser.add_argument("--evidence-dir", action="append", default=[], help="Directory containing structured evidence JSON files such as build-result.json. Repeatable.")
     parser.add_argument("--build-result", action="append", default=[], help="Structured build-result.json to include as build_result evidence. Repeatable.")
+    parser.add_argument("--remote-build-host", default="", help="SSH host or alias of the remote build server used for source edits/build.")
+    parser.add_argument("--remote-source-root", default="", help="Remote Android source root used for the build.")
+    parser.add_argument("--remote-build-command", default="", help="Remote build command or wrapper invocation.")
+    parser.add_argument("--remote-build-profile", default="", help="Remote build profile, module group, or wrapper profile.")
+    parser.add_argument("--remote-artifact", action="append", default=[], help="Remote build artifact path. Repeatable.")
+    parser.add_argument("--artifact-sha1", action="append", default=[], help="SHA1 for the corresponding --remote-artifact. Repeatable.")
+    parser.add_argument("--artifact-transfer", default="", help="How the artifact moved from remote build server to member local machine.")
+    parser.add_argument("--local-artifact", action="append", default=[], help="Local artifact path used for device delivery. Repeatable.")
+    parser.add_argument("--adb-serial", default="", help="Local adb device serial used for verification.")
+    parser.add_argument("--adb-action", action="append", default=[], help="Local adb push/install/sync action. Repeatable.")
+    parser.add_argument("--device-restart", action="append", default=[], help="Device restart, remount, process restart, or reload action after delivery. Repeatable.")
     parser.add_argument("--risk", default="", help="Risk note for readme.")
     parser.add_argument("--rollback", default="", help="Rollback note for readme.")
     parser.add_argument("--allow-missing-author-date", action="store_true", help="Allow package even when patch lacks //name YYYYMMDD@ marker.")
@@ -1270,6 +1349,11 @@ def main() -> int:
             for capture in captures
         ],
         "project_inference": project_inference,
+        "verification_chain": {
+            "remote_build": bool(args.remote_build_host or args.remote_source_root or args.remote_build_command or args.remote_artifact),
+            "local_delivery": bool(args.artifact_transfer or args.local_artifact or args.adb_serial or args.adb_action),
+            "device_verification": bool(args.device or args.device_verification),
+        },
         "patches": patch_items,
         "evidence": evidence_items,
     }

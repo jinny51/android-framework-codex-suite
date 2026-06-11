@@ -37,7 +37,13 @@ python3 "scripts/capture_framework_patch.py" \
   --device rk3576 \
   --device-verification "设备验证通过" \
   --search-query "电源键 用户态 控制" \
-  --search-result "未发现可直接复用补丁" \
+  --search-result "命中电源键传递案例但项目和 Android 版本不同" \
+  --reuse-decision adapt \
+  --reuse-target case-power-key-to-app \
+  --reuse-match "同类按键策略需求" \
+  --reuse-mismatch "旧变体是 rk12，当前项目是 rk14" \
+  --reuse-reason "复用案例思路，按当前项目源码适配" \
+  --reuse-outcome adapted_success \
   --build-result /path/to/build-result.json
 ```
 
@@ -112,6 +118,8 @@ The generated feature README should contain facts first. Do not overclaim reuse,
 - resource/string keys
 - FrameworkLog keys
 - build and device verification evidence
+- pre-change knowledge search decision: `reuse`, `adapt`, `reference_only`, `not_applicable`, `not_found`, or `unknown`
+- remote build server, remote source path, artifact path, artifact SHA1, local transfer, local adb serial, and device delivery action when the member workflow spans a remote build server and a local device
 - risk and rollback notes
 
 `validated`, `candidate`, `draft`, `failed`, `blocked`, and platform labels are useful hints, not final truth. Future `android-framework-change-workflow` or knowledge-search skills should dynamically judge applicability from the stored facts.

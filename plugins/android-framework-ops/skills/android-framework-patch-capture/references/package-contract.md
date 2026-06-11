@@ -70,6 +70,11 @@ There is no `patches/*.readme.md` in the capture package. The README is feature-
     "limits": [],
     "recognition_scope": "TVE/TVA/TVI"
   },
+  "verification_chain": {
+    "remote_build": true,
+    "local_delivery": true,
+    "device_verification": true
+  },
   "evidence": [
     {
       "id": "verification-result",
@@ -139,6 +144,9 @@ Good facts:
 - FrameworkLog keys
 - build target and result
 - device verification steps
+- remote build host/source root/command/profile/artifact path/artifact SHA1
+- local artifact transfer path, local adb serial, push/install action, and restart/reload action
+- search-before-change decision, match points, mismatch points, and later outcome
 - equivalent verification method, reason, coverage, and remaining risk
 - failure evidence
 
@@ -164,6 +172,36 @@ These judgments should still happen at search/use time:
 - likely conflicts
 - whether a newer patch replaces this one
 - whether to apply, adapt, or only reference
+
+`search-before-change.json` records the member-side AI use decision before the change. It is evidence for later curation, not a curation decision:
+
+```json
+{
+  "result": "INFO",
+  "method": "knowledge_search",
+  "searched": true,
+  "queries": ["电源键 用户态 控制"],
+  "results": ["命中 case-power-key-to-app，但项目和 Android 版本不同"],
+  "decision": "adapt",
+  "reuse_decision": "adapt",
+  "targets": ["case-power-key-to-app"],
+  "match_points": ["同类按键策略需求"],
+  "mismatch_points": ["旧变体是 rk12，当前项目是 rk14"],
+  "reason": "复用案例思路，按当前项目源码适配",
+  "outcome": "adapted_success"
+}
+```
+
+Allowed `decision` values:
+
+```text
+reuse            直接复用：命中知识和当前平台/版本/路径/验证范围足够匹配。
+adapt            适配：同类问题成立，但平台、Android 版本、项目、源码路径或实现细节不同。
+reference_only   仅参考：机制、风险或排查方向有用，但不能作为实现依据。
+not_applicable   不适用：命中知识与当前需求或源码条件冲突。
+not_found        未命中：搜索后没有找到可用知识。
+unknown          未记录：旧包或异常场景没有形成明确决策。
+```
 
 ## Coding Standard Check
 
@@ -237,7 +275,26 @@ Runtime behavior changes in the modified module should use device verification. 
   "steps": [],
   "observed": "",
   "health_checks": [],
-  "artifacts": []
+  "artifacts": [],
+  "remote_build": {
+    "host": "builder01",
+    "source_root": "/build/android/TVE8402M",
+    "command": "bash .codex/build-push.sh build --profile framework-services",
+    "profile": "framework-services",
+    "artifacts": [
+      {
+        "path": "/build/android/TVE8402M/out/target/product/tve8402m/system/framework/services.jar",
+        "sha1": "40-hex-sha1"
+      }
+    ]
+  },
+  "local_delivery": {
+    "transfer": "scp builder01:/build/android/TVE8402M/out/.../services.jar ~/.codex/artifacts/services.jar",
+    "local_artifacts": ["~/.codex/artifacts/services.jar"],
+    "adb_serial": "ABC123",
+    "adb_actions": ["adb -s ABC123 push services.jar /system/framework/services.jar"],
+    "device_restarts": ["adb -s ABC123 reboot"]
+  }
 }
 ```
 

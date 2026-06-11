@@ -223,6 +223,96 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(coding_check["implementation_origin"], "manual")
             self.assertTrue(coding_check["review_required"])
 
+    def test_writes_pre_change_reuse_decision_and_remote_to_local_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260611-120000-patch",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "nav-policy-toggle",
+                    "--summary",
+                    "Allow navigation policy toggle",
+                    "--status",
+                    "validated",
+                    "--verification",
+                    "frameworks/base/services build PASS",
+                    "--device",
+                    "rk3576",
+                    "--device-verification",
+                    "Boot completed and navigation policy behavior matched expectation",
+                    "--search-query",
+                    "navigation policy toggle",
+                    "--search-result",
+                    "case-nav-policy matched modified files but project differs",
+                    "--reuse-decision",
+                    "adapt",
+                    "--reuse-target",
+                    "case-nav-policy",
+                    "--reuse-match",
+                    "same WindowManager policy path",
+                    "--reuse-mismatch",
+                    "old variant is rk13, current project is TVE8402M on rk14",
+                    "--reuse-reason",
+                    "reuse case idea but produce a project-specific variant",
+                    "--reuse-outcome",
+                    "adapted_success",
+                    "--remote-build-host",
+                    "builder01",
+                    "--remote-source-root",
+                    "/build/android/TVE8402M",
+                    "--remote-build-command",
+                    "bash .codex/build-push.sh build --profile framework-services",
+                    "--remote-build-profile",
+                    "framework-services",
+                    "--remote-artifact",
+                    "/build/android/TVE8402M/out/target/product/tve8402m/system/framework/services.jar",
+                    "--artifact-sha1",
+                    "0123456789abcdef0123456789abcdef01234567",
+                    "--artifact-transfer",
+                    "scp builder01:/build/android/TVE8402M/out/target/product/tve8402m/system/framework/services.jar ~/.codex/artifacts/services.jar",
+                    "--local-artifact",
+                    str(root / "services.jar"),
+                    "--adb-serial",
+                    "ABC123",
+                    "--adb-action",
+                    "adb -s ABC123 push services.jar /system/framework/services.jar",
+                    "--device-restart",
+                    "adb -s ABC123 reboot",
+                ],
+                root,
+            )
+            package_dir = Path(json.loads(result.stdout)["package"])
+            search = json.loads((package_dir / "evidence" / "search-before-change.json").read_text(encoding="utf-8"))
+            verification = json.loads((package_dir / "evidence" / "verification-result.json").read_text(encoding="utf-8"))
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(search["reuse_decision"], "adapt")
+            self.assertEqual(search["decision"], "adapt")
+            self.assertEqual(search["targets"], ["case-nav-policy"])
+            self.assertEqual(search["match_points"], ["same WindowManager policy path"])
+            self.assertEqual(search["mismatch_points"], ["old variant is rk13, current project is TVE8402M on rk14"])
+            self.assertEqual(search["reason"], "reuse case idea but produce a project-specific variant")
+            self.assertEqual(search["outcome"], "adapted_success")
+            self.assertEqual(verification["remote_build"]["host"], "builder01")
+            self.assertEqual(verification["remote_build"]["source_root"], "/build/android/TVE8402M")
+            self.assertEqual(verification["remote_build"]["profile"], "framework-services")
+            self.assertEqual(verification["remote_build"]["artifacts"][0]["sha1"], "0123456789abcdef0123456789abcdef01234567")
+            self.assertEqual(verification["local_delivery"]["transfer"], "scp builder01:/build/android/TVE8402M/out/target/product/tve8402m/system/framework/services.jar ~/.codex/artifacts/services.jar")
+            self.assertEqual(verification["local_delivery"]["adb_serial"], "ABC123")
+            self.assertIn("remote_build", manifest["verification_chain"])
+            self.assertIn("local_delivery", manifest["verification_chain"])
+
     def test_common_framework_paths_produce_specific_patch_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
