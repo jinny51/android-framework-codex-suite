@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -29,6 +31,8 @@ AI_EVIDENCE_KINDS = {
     "verification_result",
     "search_before_change",
 }
+REUSE_DECISIONS = ("reuse", "adapt", "reference_only", "not_applicable", "not_found", "unknown")
+REUSE_OUTCOMES = ("not_started", "reused_success", "adapted_success", "failed", "partial", "unverified", "not_applicable")
 
 
 def expand_path(value: str | os.PathLike[str]) -> Path:
@@ -184,6 +188,142 @@ def configured_roots() -> list[Path]:
         for value in configured_worktree_values(read_toml(path)):
             roots.append(expand_path(value))
     return roots
+
+
+def config_payloads() -> list[dict[str, Any]]:
+    home = codex_home()
+    config_paths = [
+        home / "android-knowledge-search.toml",
+        home / "report" / "config.toml",
+    ]
+    project_config = find_project_report_config()
+    if project_config:
+        config_paths.append(project_config)
+
+    payloads: list[dict[str, Any]] = []
+    for path in config_paths:
+        if path.exists():
+            payloads.append(read_toml(path))
+    return payloads
+
+
+def configured_out_dir_values(payload: dict[str, Any]) -> list[str]:
+    values: list[str] = []
+
+    def add(value: Any) -> None:
+        if isinstance(value, str) and value.strip():
+            values.append(value.strip())
+
+    add(payload.get("out_dir"))
+    paths = payload.get("paths")
+    if isinstance(paths, dict):
+        add(paths.get("out_dir"))
+    profiles = payload.get("profiles")
+    profile = selected_profile(payload)
+    if profile and isinstance(profiles, dict):
+        profile_payload = profiles.get(profile)
+        if isinstance(profile_payload, dict):
+            add(profile_payload.get("out_dir"))
+    return values
+
+
+def search_usage_root() -> Path:
+    for payload in config_payloads():
+        for value in configured_out_dir_values(payload):
+            return expand_path(value) / "search-usage"
+    return codex_home() / "artifacts" / "android-knowledge-intake" / "search-usage"
+
+
+def selected_member_alias() -> tuple[str, str]:
+    for payload in config_payloads():
+        profile = selected_profile(payload)
+        profiles = payload.get("profiles")
+        if profile and isinstance(profiles, dict):
+            profile_payload = profiles.get(profile)
+            if isinstance(profile_payload, dict):
+                alias = str(profile_payload.get("member_alias") or "").strip()
+                if alias:
+                    return profile, alias
+        alias = str(payload.get("member_alias") or "").strip()
+        if alias:
+            return profile, alias
+    return "", ""
+
+
+def result_id(row: dict[str, Any]) -> str:
+    for key in ("case_id", "variant_id", "patch_id", "symbol", "evidence_id", "report_id", "event_id", "id"):
+        value = row.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def usage_result(row: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "kind": row.get("kind", ""),
+        "id": result_id(row),
+    }
+    title = row.get("title") or row.get("patch_name") or row.get("summary") or row.get("problem") or row.get("symbol")
+    if isinstance(title, str) and title:
+        payload["title"] = title
+    path = row.get("path")
+    if isinstance(path, str) and path:
+        payload["path"] = path
+    score = row.get("_score")
+    if isinstance(score, (int, float)):
+        payload["score"] = score
+    return payload
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def record_search_usage(args: argparse.Namespace, root: Path, query: str, results: list[dict[str, Any]]) -> Path | None:
+    if args.no_record_usage or not query:
+        return None
+    now = dt.datetime.now().astimezone()
+    profile, member_alias = selected_member_alias()
+    decision = args.reuse_decision or ("not_found" if not results else "unknown")
+    result_payloads = [usage_result(item) for item in results]
+    digest = hashlib.sha1(
+        json.dumps(
+            {
+                "query": query,
+                "created_at": now.isoformat(timespec="seconds"),
+                "decision": decision,
+                "results": result_payloads[:8],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+    payload = {
+        "schema": "android-knowledge-search-usage",
+        "schema_version": "1",
+        "created_at": now.isoformat(timespec="seconds"),
+        "date": now.date().isoformat(),
+        "profile": profile,
+        "member_alias": member_alias,
+        "root": str(root),
+        "query": query,
+        "type": args.type,
+        "limit": max(args.limit, 1),
+        "searched": True,
+        "decision": decision,
+        "reuse_decision": decision,
+        "targets": args.reuse_target or [],
+        "match_points": args.reuse_match or [],
+        "mismatch_points": args.reuse_mismatch or [],
+        "reason": args.reuse_reason or "",
+        "outcome": args.reuse_outcome or "not_started",
+        "result_count": len(results),
+        "results": result_payloads,
+    }
+    path = search_usage_root() / now.strftime("%Y%m%d") / f"{now.strftime('%Y%m%d-%H%M%S')}-{digest}.json"
+    write_json(path, payload)
+    return path
 
 
 def codex_documents_roots() -> list[Path]:
@@ -903,6 +1043,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     parser.add_argument("--refresh", action="store_true", help="Run git pull --ff-only first when root is a clean Git worktree.")
     parser.add_argument("--include-synthetic", action="store_true", help="Include synthetic test data.")
+    parser.add_argument("--no-record-usage", action="store_true", help="Do not write member-side search usage evidence.")
+    parser.add_argument("--reuse-decision", choices=REUSE_DECISIONS, help="Member-side use decision for this search.")
+    parser.add_argument("--reuse-target", action="append", default=[], help="Matched case, variant, patch, or evidence id considered by this search. Repeatable.")
+    parser.add_argument("--reuse-match", action="append", default=[], help="Why the matched knowledge may apply. Repeatable.")
+    parser.add_argument("--reuse-mismatch", action="append", default=[], help="Why the matched knowledge may not directly apply. Repeatable.")
+    parser.add_argument("--reuse-reason", default="", help="Reason for the reuse/adapt/reference/not-applicable decision.")
+    parser.add_argument("--reuse-outcome", choices=REUSE_OUTCOMES, help="Outcome observed later for this search decision.")
     return parser
 
 
@@ -914,6 +1061,7 @@ def main(argv: list[str] | None = None) -> int:
     refresh_status = refresh_root(root) if args.refresh else None
     rows = load_rows(root, include_archive=args.type in {"report", "event", "evidence"})
     results = search(rows, query, args.type, max(args.limit, 1), args.include_synthetic)
+    record_search_usage(args, root, query, results)
 
     if args.json:
         print(

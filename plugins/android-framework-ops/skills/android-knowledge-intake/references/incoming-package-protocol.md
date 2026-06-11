@@ -197,6 +197,26 @@ Manifest excerpt:
 
 `candidate`, `draft`, `failed`, and `blocked` are uploaded as curation input materials only. They must not be presented as knowledge entries or reuse-ready validated solutions by member-side tooling.
 
+`materials/evidence/search_before_change.json` records member-side knowledge use before or during the change. It can come from an explicit patch capture package, or from same-day `android-knowledge-search` usage records:
+
+```json
+{
+  "kind": "search_before_change",
+  "payload": {
+    "result": "INFO",
+    "method": "knowledge_search",
+    "searched": true,
+    "queries": ["电源键 rk3576"],
+    "decision": "adapt",
+    "reuse_decision": "adapt",
+    "targets": ["case-power-key"],
+    "reason": "同类策略可参考，当前项目需适配"
+  }
+}
+```
+
+This is development evidence only. It must not be treated as a curation decision.
+
 `patch_diff_facts` should include the patch content hash. For a single patch, set top-level `content_sha1`; for multiple patches, fill `patches[]`:
 
 ```json

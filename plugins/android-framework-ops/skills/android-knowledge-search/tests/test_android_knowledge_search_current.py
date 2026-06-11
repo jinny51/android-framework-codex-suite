@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
@@ -170,6 +171,57 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         self.assertEqual(reports[0]["id"], "report-power")
         self.assertEqual(events[0]["id"], "event-power")
         self.assertEqual(evidence[0]["id"], "source-evidence")
+
+    def test_main_records_member_search_usage_by_default(self):
+        root = self.make_root()
+        temp = Path(tempfile.mkdtemp())
+        codex_home = temp / "codex-home"
+        out_dir = temp / "artifacts" / "android-knowledge-intake"
+        config_dir = codex_home / "report"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text(
+            f"""
+            default_profile = "member01"
+
+            [paths]
+            out_dir = "{out_dir.as_posix()}"
+
+            [profiles.member01]
+            member_alias = "member01"
+            member_name = "成员一"
+            """,
+            encoding="utf-8",
+        )
+
+        with patch.dict(os.environ, {"CODEX_HOME": str(codex_home), "CODEX_REPORT_PROFILE": "member01"}):
+            with patch("sys.stdout", new=io.StringIO()):
+                code = search.main(
+                    [
+                        "--root",
+                        str(root),
+                        "--json",
+                        "--reuse-decision",
+                        "adapt",
+                        "--reuse-target",
+                        "case-power-key",
+                        "--reuse-reason",
+                        "同类电源键策略可以参考，但当前项目需要适配",
+                        "电源键",
+                        "rk3576",
+                    ]
+                )
+
+        self.assertEqual(code, 0)
+        records = list((out_dir / "search-usage").rglob("*.json"))
+        self.assertEqual(len(records), 1)
+        payload = json.loads(records[0].read_text(encoding="utf-8"))
+        self.assertEqual(payload["schema"], "android-knowledge-search-usage")
+        self.assertEqual(payload["member_alias"], "member01")
+        self.assertEqual(payload["query"], "电源键 rk3576")
+        self.assertEqual(payload["decision"], "adapt")
+        self.assertEqual(payload["reuse_decision"], "adapt")
+        self.assertEqual(payload["targets"], ["case-power-key"])
+        self.assertGreater(payload["result_count"], 0)
 
     def test_current_rebuild_case_and_variant_indexes_are_searchable(self):
         root = Path(tempfile.mkdtemp())

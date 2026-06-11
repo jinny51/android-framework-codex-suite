@@ -273,6 +273,41 @@ def create_feature_capture_package(root: Path) -> Path:
     return package
 
 
+def write_member_search_usage(out_dir: Path, date: str, decision: str = "adapt") -> Path:
+    record_dir = out_dir / "search-usage" / date.replace("-", "")
+    record_dir.mkdir(parents=True, exist_ok=True)
+    path = record_dir / f"{date.replace('-', '')}-usage.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "android-knowledge-search-usage",
+                "schema_version": "1",
+                "created_at": f"{date}T09:30:00+08:00",
+                "date": date,
+                "profile": "member01",
+                "member_alias": "admin_alias",
+                "query": "显示策略 split screen",
+                "type": "all",
+                "searched": True,
+                "decision": decision,
+                "reuse_decision": decision,
+                "targets": ["case-display-policy"],
+                "match_points": ["同类显示策略"],
+                "mismatch_points": ["项目源码路径不同"],
+                "reason": "复用思路但需要适配当前项目",
+                "outcome": "not_started",
+                "result_count": 1,
+                "results": [{"kind": "case", "id": "case-display-policy", "title": "显示策略"}],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 class PatchCaptureIngestTests(unittest.TestCase):
     def config(self, root: Path) -> dict[str, str]:
         return {
@@ -337,6 +372,40 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("materials/evidence/project_inference.json", evidence_files)
             self.assertIn("materials/evidence/verification_result.json", evidence_files)
             self.assertFalse(any(str(path).startswith("knowledge/") for path in manifest["files"]["evidence"]))
+
+    def test_patch_package_carries_recent_member_search_usage_when_capture_lacks_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = self.config(root)
+            write_member_search_usage(Path(config["out_dir"]), "2026-05-26", decision="adapt")
+            patch_file = root / "rk14-frameworks-base@display-policy.patch"
+            patch_file.write_text(
+                "diff --git a/frameworks/base/services/core/java/com/android/server/wm/DisplayPolicy.java b/frameworks/base/services/core/java/com/android/server/wm/DisplayPolicy.java\n"
+                "--- a/frameworks/base/services/core/java/com/android/server/wm/DisplayPolicy.java\n"
+                "+++ b/frameworks/base/services/core/java/com/android/server/wm/DisplayPolicy.java\n"
+                "@@ -1 +1,2 @@\n"
+                "+//gyf 20260526@ display policy\n",
+                encoding="utf-8",
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                config,
+                run_id="20260526-130000-patch",
+                patch_paths=[str(patch_file)],
+                patch_package_paths=[],
+                project="TVE1234A",
+                summary="显示策略适配",
+                status="candidate",
+                schema_version="1",
+            )
+
+            search_evidence = json.loads((package / "materials" / "evidence" / "search_before_change.json").read_text(encoding="utf-8"))
+            payload = search_evidence["payload"]
+            self.assertTrue(payload["searched"])
+            self.assertEqual(payload["reuse_decision"], "adapt")
+            self.assertEqual(payload["queries"], ["显示策略 split screen"])
+            self.assertEqual(payload["targets"], ["case-display-policy"])
 
     def test_capture_package_preserves_optional_build_result_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

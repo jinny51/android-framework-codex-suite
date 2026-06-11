@@ -1573,6 +1573,127 @@ def materials_rel(*parts: str) -> str:
     return "/".join([MATERIALS_DIR, *clean])
 
 
+def search_usage_root(config: dict[str, str]) -> Path:
+    return expanded_path(config.get("out_dir") or CONFIG_DEFAULTS["out_dir"]) / "search-usage"
+
+
+def search_usage_record_dirs(config: dict[str, str], date: dt.date) -> list[Path]:
+    root = search_usage_root(config)
+    return [root / ymd(date), root / date.isoformat()]
+
+
+def load_search_usage_records(config: dict[str, str], date: dt.date) -> list[dict[str, Any]]:
+    member_alias = config.get("member_alias", "").strip()
+    records: list[dict[str, Any]] = []
+    seen: set[Path] = set()
+    valid_dates = {date.isoformat(), ymd(date)}
+    for directory in search_usage_record_dirs(config, date):
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.glob("*.json")):
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if payload.get("schema") != "android-knowledge-search-usage":
+                continue
+            record_date = str(payload.get("date") or "").strip()
+            if record_date and record_date not in valid_dates:
+                continue
+            record_member = str(payload.get("member_alias") or "").strip()
+            if record_member and member_alias and record_member != member_alias:
+                continue
+            payload["_record_path"] = str(path)
+            records.append(payload)
+    records.sort(key=lambda item: (str(item.get("created_at") or ""), str(item.get("_record_path") or "")))
+    return records
+
+
+def summarize_usage_result(result: Any) -> str:
+    if isinstance(result, str):
+        return result.strip()
+    if not isinstance(result, dict):
+        return ""
+    kind = str(result.get("kind") or "").strip()
+    result_id = str(result.get("id") or result.get("case_id") or result.get("variant_id") or result.get("patch_id") or "").strip()
+    title = str(result.get("title") or result.get("summary") or "").strip()
+    parts = [part for part in (kind, result_id, title) if part]
+    return ": ".join(parts[:1]) + (" " + " / ".join(parts[1:]) if len(parts) > 1 else "")
+
+
+def choose_search_usage_decision(records: list[dict[str, Any]]) -> str:
+    for item in reversed(records):
+        decision = str(item.get("reuse_decision") or item.get("decision") or "").strip()
+        if decision and decision != "unknown":
+            return decision
+    if records and all(str(item.get("reuse_decision") or item.get("decision") or "") == "not_found" for item in records):
+        return "not_found"
+    return "unknown"
+
+
+def search_usage_payload(config: dict[str, str], date: dt.date) -> dict[str, Any]:
+    records = load_search_usage_records(config, date)
+    if not records:
+        return {}
+    decision = choose_search_usage_decision(records)
+    queries = unique_strings([str(item.get("query") or "").strip() for item in records])
+    result_summaries = unique_strings(
+        [
+            summary
+            for item in records
+            for result in list(item.get("results") or [])
+            for summary in [summarize_usage_result(result)]
+            if summary
+        ]
+    )
+    targets = unique_strings(
+        [
+            target
+            for item in records
+            for target in list_string_values(item.get("targets"))
+        ]
+    )
+    match_points = unique_strings([point for item in records for point in list_string_values(item.get("match_points"))])
+    mismatch_points = unique_strings([point for item in records for point in list_string_values(item.get("mismatch_points"))])
+    reasons = unique_strings([str(item.get("reason") or "").strip() for item in records if str(item.get("reason") or "").strip()])
+    compact_records = []
+    for item in records:
+        compact_records.append(
+            {
+                "created_at": item.get("created_at", ""),
+                "query": item.get("query", ""),
+                "type": item.get("type", "all"),
+                "decision": item.get("decision") or item.get("reuse_decision") or "unknown",
+                "reuse_decision": item.get("reuse_decision") or item.get("decision") or "unknown",
+                "targets": list_string_values(item.get("targets")),
+                "result_count": item.get("result_count", 0),
+                "record_path": item.get("_record_path", ""),
+            }
+        )
+    return {
+        "result": "INFO",
+        "method": "knowledge_search",
+        "searched": True,
+        "queries": queries,
+        "results": result_summaries,
+        "summary": f"收集到 {len(records)} 条成员侧知识搜索使用记录。",
+        "decision": decision,
+        "reuse_decision": decision,
+        "targets": targets,
+        "match_points": match_points,
+        "mismatch_points": mismatch_points,
+        "reason": "；".join(reasons),
+        "outcome": "not_started",
+        "records": compact_records,
+    }
+
+
 def plugin_commit() -> str:
     cp = run(["git", "-C", str(PLUGIN_ROOT), "rev-parse", "--short", "HEAD"])
     if cp.returncode == 0:
@@ -2677,11 +2798,19 @@ def prepare_package(report_type: str, date: dt.date, config: dict[str, str], run
     }
     write_json(package_dir / materials_rel("evidence", "codex_sessions.json"), {"kind": "codex_sessions", "payload": evidence})
     write_json(package_dir / materials_rel("evidence", "work_findings.json"), {"kind": "work_findings", "payload": work_findings_payload(sessions, patches)})
+    search_path = ""
+    if report_type == "daily":
+        member_search_payload = search_usage_payload(config, date)
+        if member_search_payload:
+            search_path = materials_rel("evidence", "search_before_change.json")
+            write_json(package_dir / search_path, {"kind": "search_before_change", "payload": member_search_payload})
     reports_dir = package_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     shutil.move(str(package_dir / f"{report_type}.md"), reports_dir / f"{report_type}.md")
     source = write_package_source(package_dir, config, "android-knowledge-intake")
     manifest = incoming_report_manifest(report_type, date, week_key, config, summary, source, run_id)
+    if search_path:
+        manifest["files"]["evidence"].append(search_path)
     write_json(package_dir / "manifest.json", manifest)
     check = validate_package(package_dir)
     write_json(package_dir / "local-check.json", check)
@@ -3159,6 +3288,8 @@ def prepare_patch_package(
         package_status = "candidate"
 
     search_payload = first_evidence_payload(package_dir, capture_evidence_entries, "search_before_change")
+    if not search_payload:
+        search_payload = search_usage_payload(config, date)
     if not search_payload:
         search_payload = {
             "result": "INFO",

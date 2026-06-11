@@ -74,6 +74,28 @@ python3 "scripts/android_knowledge_search.py" \
 
 它不会自动读取数据库仓库或成员 incoming 工作区。管理员要排查数据库仓库内部数据时，必须显式传 `--root`。
 
+## 搜索使用证据
+
+默认搜索会写入搜索使用证据（search usage evidence）到成员本地输出目录：
+
+```text
+$CODEX_HOME/artifacts/android-knowledge-intake/search-usage/<YYYYMMDD>/*.json
+```
+
+如果报告配置里设置了 `out_dir`，会写入该目录下的 `search-usage/`。日报包（daily report package）和补丁包（patch package）会读取这些记录，并生成 `materials/evidence/search_before_change.json`。
+
+明确记录使用决策：
+
+```bash
+python3 "scripts/android_knowledge_search.py" \
+  "电源键 rk3576" \
+  --reuse-decision adapt \
+  --reuse-target case-power-key \
+  --reuse-reason "同类策略可参考，当前项目需适配"
+```
+
+取值包括 `reuse`、`adapt`、`reference_only`、`not_applicable`、`not_found` 和 `unknown`。这些只是成员侧开发证据，不是沉淀结论（curation decision）。
+
 ## 和其他 skill 的关系
 
 ```text

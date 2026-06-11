@@ -292,6 +292,42 @@ def prepare_daily_package(env: dict[str, str], date: str, run_id: str) -> Path:
     return Path(result["package"])
 
 
+def write_search_usage_record(env: dict[str, str], date: str, decision: str = "adapt") -> Path:
+    codex_home = Path(env["CODEX_HOME"])
+    record_dir = codex_home.parent / "artifacts" / "android-knowledge-intake" / "search-usage" / date.replace("-", "")
+    record_dir.mkdir(parents=True, exist_ok=True)
+    path = record_dir / f"{date.replace('-', '')}-search.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "android-knowledge-search-usage",
+                "schema_version": "1",
+                "created_at": f"{date}T09:30:00+08:00",
+                "date": date,
+                "profile": "member01",
+                "member_alias": "member01",
+                "query": "电源键 rk3576",
+                "type": "all",
+                "searched": True,
+                "decision": decision,
+                "reuse_decision": decision,
+                "targets": ["case-power-key"],
+                "match_points": ["同类电源键策略"],
+                "mismatch_points": ["当前 Android 版本不同"],
+                "reason": "需要适配当前项目源码路径",
+                "outcome": "not_started",
+                "result_count": 1,
+                "results": [{"kind": "case", "id": "case-power-key", "title": "电源键策略"}],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 
 def create_framework_repo(root: Path) -> Path:
     source_root = root / "android-source"
@@ -516,6 +552,24 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertNotIn("files-mentioned", report)
             self.assertIn("TVA10A2R", finding_text)
             self.assertNotIn("Enter passphrase", finding_text)
+
+    def test_daily_package_carries_member_search_usage_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote)
+            write_search_usage_record(env, "2026-06-01", decision="adapt")
+
+            package = prepare_daily_package(env, "2026-06-01", "20260601-210000-daily")
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            self.assertIn("materials/evidence/search_before_change.json", manifest["files"]["evidence"])
+            evidence = json.loads((package / "materials" / "evidence" / "search_before_change.json").read_text(encoding="utf-8"))
+            payload = evidence["payload"]
+            self.assertTrue(payload["searched"])
+            self.assertEqual(payload["reuse_decision"], "adapt")
+            self.assertEqual(payload["queries"], ["电源键 rk3576"])
+            self.assertEqual(payload["targets"], ["case-power-key"])
 
     def test_daily_splits_project_code_from_trailing_description(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

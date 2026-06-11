@@ -9,6 +9,8 @@ Use this skill to search the team knowledge repository before starting new analy
 
 This skill does not submit reports, create patches, edit source, or decide correctness by itself. It returns prior facts so Codex can judge whether an existing case, variant, patch, symbol, or validation fact is relevant to the current requirement.
 
+Each normal search writes a member-side search usage record under the intake artifact directory so later daily and patch packages can carry the pre-change knowledge use evidence. The record is development evidence only; it is not a curation decision.
+
 ## Quick Command
 
 ```bash
@@ -35,6 +37,13 @@ python3 "scripts/android_knowledge_search.py" \
 # Return machine-readable output for another workflow.
 python3 "scripts/android_knowledge_search.py" \
   "WindowManager display" --json
+
+# Record an explicit member-side use decision with the search.
+python3 "scripts/android_knowledge_search.py" \
+  "电源键 rk3576" \
+  --reuse-decision adapt \
+  --reuse-target case-power-key \
+  --reuse-reason "同类策略可参考，当前项目需适配"
 
 # Use an explicit mounted or cloned knowledge repository root.
 python3 "scripts/android_knowledge_search.py" \
@@ -70,6 +79,29 @@ When handling a new Android Framework requirement:
 7. Use explicit `--type report`, `--type event`, or `--type evidence` only for administrator trace-back or debugging archive material. Default `--type all` is the AI reuse view and does not return report/event archive rows.
 
 For `android-framework-change-workflow`, this is the pre-analysis search gate. Search first; if no useful result exists, continue with normal requirement analysis and implementation.
+
+## Search Usage Evidence
+
+默认会写入搜索使用证据（search usage evidence）：
+
+```text
+$CODEX_HOME/artifacts/android-knowledge-intake/search-usage/<YYYYMMDD>/*.json
+```
+
+如果报告配置里设置了 `out_dir`，记录写入该输出目录下的 `search-usage/`。后续 `android-knowledge-intake daily` 和 `android-knowledge-intake patch` 会读取同一天同成员的记录，并生成 `materials/evidence/search_before_change.json`。
+
+可记录的成员侧使用决策：
+
+```text
+reuse
+adapt
+reference_only
+not_applicable
+not_found
+unknown
+```
+
+这些值只说明成员侧 Codex 如何使用知识库仓库。它们不能替代管理端本地知识沉淀技能做出的沉淀结论（curation decision）。
 
 ## References
 
