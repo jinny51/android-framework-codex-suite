@@ -1,6 +1,6 @@
 ---
 name: codex-chat-history-cleaner
-description: Safely inspect, repair, and clean local Codex chat history state, archived sessions, search-index remnants, SQLite consistency issues, duplicate workspace-root records, and self-referential cleanup traces. Use when a user asks why deleted or archived Codex chats still appear in search, wants to delete local chat records, prevent Codex SQLite migration/update errors, scrub current-session references to old chats, or prepare a privacy-preserving cleanup workflow for sharing.
+description: Use when a user asks why archived/deleted Codex chats still appear, wants to delete local chat records, repair Codex SQLite/search/global-state issues, scrub cleanup traces, or diagnose Codex subagent tabs showing only prompts or missing history.
 ---
 
 # Codex Chat History Cleaner
@@ -10,6 +10,10 @@ description: Safely inspect, repair, and clean local Codex chat history state, a
 Treat Codex chat cleanup as destructive local-state maintenance. Start with a dry run, identify every storage surface, explain what will be removed, and request approval before executing any deletion outside the current writable workspace.
 
 Do not print private titles, paths, user names, or full thread IDs into the current conversation when the user's goal is search cleanup. Printing the matching text can make the current session become the new search hit.
+
+## Why This Exists
+
+A WSL-based Codex agent cannot use Codex Desktop's built-in archive/delete UI controls directly. This skill is the safe fallback for that environment: use Codex only to inspect the UI-visible keep set and produce a dry-run plan, then run the cleanup script from external WSL/PowerShell after Codex Desktop exits. The script edits local state stores (`state_*.sqlite`, transcripts, `session_index.jsonl`, and thread-keyed `.codex-global-state.json`) with backups and explicit guards instead of pretending it can click the desktop UI.
 
 ## Storage Surfaces
 
@@ -23,6 +27,35 @@ Check these local Codex locations under `CODEX_HOME` or `~/.codex`:
 - `.codex-global-state.json`: workspace roots, project order, thread workspace hints, projectless thread IDs, and prompt history keyed by thread ID.
 - `generated_images/` and related artifact directories: optional per-thread artifacts.
 - `logs_*.sqlite`: diagnostic logs. On WSL/Windows, direct reads under `/mnt/c` can report `disk I/O error`; verify by copying `.sqlite`, `-wal`, and `-shm` to `/tmp` before calling it corruption.
+
+## UI Keep-Set Cleanup
+
+When the user wants "only keep chats visible in the Codex UI", do not use `threads.archived` as the main decision boundary. Build a UI keep set first.
+
+1. In Codex, call `codex_app.list_threads` and list the UI-visible thread IDs/titles for user confirmation.
+2. Add the current cleanup thread and the UI-visible CLI thread if they are present in that list.
+3. Preserve child subagents automatically through `thread_spawn_edges`. A UI-visible parent means its right-side subagent tabs are also protected.
+4. Run only dry-run inside Codex:
+
+```bash
+python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
+  --delete-not-in-keep --keep-ids THREAD_ID... --dry-run --summary
+```
+
+5. After the user confirms the dry-run plan, tell them to fully exit Codex Desktop.
+6. Execute from external WSL/PowerShell, not from inside Codex:
+
+```bash
+python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
+  --delete-not-in-keep --keep-ids THREAD_ID... \
+  --execute --require-codex-exited-for-global-state --summary
+```
+
+The script backs up changed stores by default. The `--require-codex-exited-for-global-state` guard must abort before writes if Codex Desktop still appears to be running, because `.codex-global-state.json` can otherwise be rewritten from the app's in-memory state.
+
+## Separate Subagent History Diagnosis
+
+If a right-side Codex subagent tab shows only the initial prompt but its rollout exists, this is a history-display diagnosis, not a cleanup selector. UI-visible parent-linked subagents are protected regardless of whether their tab is hydrated.
 
 ## Workflow
 
@@ -78,6 +111,15 @@ python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
 
 # Full inventory and health check only, readable summary
 python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" --dry-run --summary
+
+# UI keep-set cleanup dry run inside Codex
+python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
+  --delete-not-in-keep --keep-ids THREAD_ID... --dry-run --summary
+
+# UI keep-set cleanup execution after fully exiting Codex Desktop
+python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
+  --delete-not-in-keep --keep-ids THREAD_ID... \
+  --execute --require-codex-exited-for-global-state --summary
 
 # Delete archived records plus unreferenced archived transcript files only
 python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" --all-archived --execute --summary

@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shlex
 import shutil
 import sqlite3
+import subprocess
 import tempfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -41,6 +43,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--clean-archived-files", action="store_true", help="Remove unreferenced archived_sessions transcript files.")
     parser.add_argument("--all-except-current", action="store_true", help="Select all threads except --current-thread-id.")
     parser.add_argument("--current-thread-id", help="Thread ID to preserve when using --all-except-current.")
+    parser.add_argument("--delete-not-in-keep", action="store_true", help="Select every DB/index/global-state thread not in --keep-ids.")
+    parser.add_argument("--keep-ids", nargs="*", default=[], help="Thread IDs or unique prefixes to preserve with --delete-not-in-keep.")
+    parser.add_argument("--no-keep-spawn-children", action="store_true", help="Do not recursively preserve child threads from thread_spawn_edges.")
     parser.add_argument("--ids", nargs="*", default=[], help="Thread IDs or unique prefixes to select.")
     parser.add_argument("--allow-ambiguous-ids", action="store_true", help="Allow an --ids term to match multiple threads.")
     parser.add_argument("--title-contains", nargs="*", default=[], help="Case-insensitive title substrings to select.")
@@ -50,6 +55,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--clean-global-state", action="store_true", help="Remove stale thread IDs from .codex-global-state.json.")
     parser.add_argument("--skip-health-check", action="store_true", help="Skip post-run consistency checks.")
     parser.add_argument("--skip-logs-db", action="store_true", help="Skip logs_*.sqlite copy-based checks during health checks.")
+    parser.add_argument("--require-codex-exited-for-global-state", action="store_true", help="Abort before execution if Codex desktop appears to be running and global state would be changed.")
     parser.add_argument("--no-backup", action="store_true", help="Do not create .bak backups before writes.")
     parser.add_argument("--show-full-ids", action="store_true", help="Print full selected thread IDs instead of redacted prefixes.")
     parser.add_argument("--summary", action="store_true", help="Print a concise human-readable Chinese summary instead of JSON.")
@@ -171,7 +177,69 @@ def validate_id_selectors(rows: list[ThreadRow], args: argparse.Namespace) -> No
             )
 
 
-def select_threads(rows: list[ThreadRow], args: argparse.Namespace) -> list[ThreadRow]:
+def resolve_id_terms(
+    rows: list[ThreadRow],
+    terms: list[str],
+    *,
+    allow_ambiguous_ids: bool = False,
+    allow_missing_full_ids: bool = False,
+) -> set[str]:
+    resolved: set[str] = set()
+    for term in terms:
+        lowered = term.lower()
+        matches = [row.id for row in rows if row.id.lower() == lowered or row.id.lower().startswith(lowered)]
+        if not matches:
+            if allow_missing_full_ids and re.fullmatch(
+                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+                lowered,
+                re.IGNORECASE,
+            ):
+                resolved.add(term)
+                continue
+            raise SystemExit(f"--keep-ids term {term!r} matched 0 threads. Use a full visible thread ID.")
+        if len(matches) > 1 and not allow_ambiguous_ids:
+            raise SystemExit(
+                f"--keep-ids term {term!r} matched {len(matches)} threads. Use a longer prefix or --allow-ambiguous-ids."
+            )
+        resolved.update(matches)
+    return resolved
+
+
+def fetch_spawn_edges(db_path: Path) -> list[tuple[str, str]]:
+    def query(conn: sqlite3.Connection) -> list[tuple[str, str]]:
+        tables = {
+            row[0]
+            for row in conn.execute("select name from sqlite_master where type='table' and name not like 'sqlite_%'").fetchall()
+        }
+        if "thread_spawn_edges" not in tables:
+            return []
+        return [
+            (str(parent), str(child))
+            for parent, child in conn.execute("select parent_thread_id, child_thread_id from thread_spawn_edges").fetchall()
+            if parent and child
+        ]
+
+    return with_readonly_db(db_path, query)
+
+
+def expand_keep_ids_with_spawn_children(db_path: Path, keep_ids: set[str]) -> set[str]:
+    expanded = set(keep_ids)
+    edges = fetch_spawn_edges(db_path)
+    changed = True
+    while changed:
+        changed = False
+        for parent, child in edges:
+            if parent in expanded and child not in expanded:
+                expanded.add(child)
+                changed = True
+    return expanded
+
+
+def select_threads(rows: list[ThreadRow], args: argparse.Namespace, keep_ids: set[str] | None = None) -> list[ThreadRow]:
+    if args.delete_not_in_keep:
+        keep = keep_ids or set()
+        return [row for row in rows if row.id not in keep]
+
     selected: list[ThreadRow] = []
     id_terms = [term.lower() for term in args.ids]
     title_terms = [term.lower() for term in args.title_contains]
@@ -276,6 +344,7 @@ def clean_session_index(
     stale_thread_ids: set[str],
     execute: bool,
     no_backup: bool,
+    delete_not_in_keep_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     index_path = codex_home / "session_index.jsonl"
     report: dict[str, Any] = {
@@ -284,6 +353,7 @@ def clean_session_index(
         "parse_errors": 0,
         "selected_records_removed": 0,
         "stale_records_removed": 0,
+        "not_in_keep_records_removed": 0,
     }
     if not index_path.exists():
         return report
@@ -301,12 +371,14 @@ def clean_session_index(
         record_ids = {str(payload.get("id", "")), str(payload.get("thread_id", ""))}
         if selected_ids.intersection(record_ids):
             report["selected_records_removed"] += 1
+        elif delete_not_in_keep_ids is not None and any(record_ids) and not delete_not_in_keep_ids.intersection(record_ids):
+            report["not_in_keep_records_removed"] += 1
         elif stale_thread_ids.intersection(record_ids):
             report["stale_records_removed"] += 1
         else:
             kept.append(line)
 
-    removed = report["selected_records_removed"] + report["stale_records_removed"]
+    removed = report["selected_records_removed"] + report["stale_records_removed"] + report["not_in_keep_records_removed"]
     if execute and removed:
         if not no_backup:
             report["backup"] = str(backup(index_path))
@@ -354,28 +426,38 @@ def archived_path_is_directly_referenced(candidate: Path, rows: list[ThreadRow],
     return False
 
 
-def unreferenced_archived_files(codex_home: Path, rows: list[ThreadRow]) -> tuple[list[Path], int, int]:
+def unreferenced_archived_files(
+    codex_home: Path,
+    rows: list[ThreadRow],
+    protected_thread_ids: set[str] | None = None,
+) -> tuple[list[Path], int, int, int]:
     arch_root = codex_home / "archived_sessions"
     archived_files = sorted(arch_root.glob("**/rollout-*.jsonl")) if arch_root.exists() else []
     index_path = codex_home / "session_index.jsonl"
     index_text = index_path.read_text(encoding="utf-8", errors="replace") if index_path.exists() else ""
     candidates: list[Path] = []
     skipped = 0
+    protected_skipped = 0
     for path in archived_files:
+        thread_id = rollout_file_thread_id(path)
+        if protected_thread_ids and thread_id in protected_thread_ids:
+            protected_skipped += 1
+            continue
         if archived_path_is_directly_referenced(path, rows, index_text):
             skipped += 1
         else:
             candidates.append(path)
-    return candidates, skipped, len(archived_files)
+    return candidates, skipped, len(archived_files), protected_skipped
 
 
 def clean_unreferenced_archived_files(
     codex_home: Path,
     rows: list[ThreadRow],
     execute: bool,
+    protected_thread_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     arch_root = codex_home / "archived_sessions"
-    candidates, skipped, archived_count = unreferenced_archived_files(codex_home, rows)
+    candidates, skipped, archived_count, protected_skipped = unreferenced_archived_files(codex_home, rows, protected_thread_ids)
 
     deleted = 0
     if execute:
@@ -394,6 +476,7 @@ def clean_unreferenced_archived_files(
         "archived_transcript_files": archived_count,
         "unreferenced_archived_transcript_files": len(candidates),
         "directly_referenced_files_skipped": skipped,
+        "protected_archived_transcript_files_skipped": protected_skipped,
         "deleted_archived_transcript_files": deleted,
     }
 
@@ -703,6 +786,73 @@ def clean_global_state_for_thread_ids(codex_home: Path, thread_ids: set[str], ex
     return report
 
 
+def clean_global_state_not_in_keep(codex_home: Path, keep_thread_ids: set[str], execute: bool, no_backup: bool) -> dict[str, Any]:
+    path = codex_home / ".codex-global-state.json"
+    report: dict[str, Any] = {"exists": path.exists(), "runtime_warning": "close Codex before editing global state, or the app may rewrite old in-memory values"}
+    keep_ids = {thread_id for thread_id in keep_thread_ids if thread_id}
+    report["keep_thread_count"] = len(keep_ids)
+    if not path.exists():
+        report["would_modify"] = False
+        report["modified"] = False
+        return report
+
+    names = thread_name_lookup(codex_home)
+    data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    changed = False
+
+    projectless = data.get("projectless-thread-ids")
+    if isinstance(projectless, list):
+        removed = [item for item in projectless if isinstance(item, str) and item not in keep_ids]
+        kept = [item for item in projectless if not isinstance(item, str) or item in keep_ids]
+        report["projectless_thread_ids_removed"] = len(removed)
+        report["projectless_thread_id_prefixes_removed"] = [item[:12] for item in removed[:10]]
+        report["projectless_thread_samples_removed"] = describe_thread_refs(removed, names)
+        if kept != projectless:
+            data["projectless-thread-ids"] = kept
+            changed = True
+
+    hints = data.get("thread-workspace-root-hints")
+    if isinstance(hints, dict):
+        removed_hint_ids = [key for key in hints if key not in keep_ids]
+        kept_hints = {key: value for key, value in hints.items() if key in keep_ids}
+        report["thread_workspace_hints_removed"] = len(removed_hint_ids)
+        report["thread_workspace_hint_prefixes_removed"] = [item[:12] for item in removed_hint_ids[:10]]
+        report["thread_workspace_hint_samples_removed"] = describe_thread_refs(
+            removed_hint_ids,
+            names,
+            {key: str(hints.get(key, "")) for key in removed_hint_ids},
+        )
+        if kept_hints != hints:
+            data["thread-workspace-root-hints"] = kept_hints
+            changed = True
+
+    atom = data.get("electron-persisted-atom-state")
+    prompt_history = atom.get("prompt-history") if isinstance(atom, dict) else None
+    if isinstance(prompt_history, dict):
+        removed_prompt_ids = [key for key in prompt_history if key != "new-conversation" and key not in keep_ids]
+        kept_prompt_history = {
+            key: value
+            for key, value in prompt_history.items()
+            if key == "new-conversation" or key in keep_ids
+        }
+        report["prompt_history_threads_removed"] = len(removed_prompt_ids)
+        report["prompt_history_thread_prefixes_removed"] = [item[:12] for item in removed_prompt_ids[:10]]
+        report["prompt_history_thread_samples_removed"] = describe_thread_refs(removed_prompt_ids, names)
+        if kept_prompt_history != prompt_history:
+            atom["prompt-history"] = kept_prompt_history
+            changed = True
+
+    report["would_modify"] = changed
+    if execute and changed:
+        if not no_backup:
+            report["backup"] = str(backup(path))
+        path.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        report["modified"] = True
+    else:
+        report["modified"] = False
+    return report
+
+
 def sqlite_health(db_path: Path) -> dict[str, Any]:
     report: dict[str, Any] = {
         "db": db_path.name if db_path.parent.name != "sqlite" else f"sqlite/{db_path.name}",
@@ -912,6 +1062,63 @@ def shell_command(parts: list[Any]) -> str:
     return " ".join(shlex.quote(str(part)) for part in parts)
 
 
+def codex_desktop_process_report() -> dict[str, Any]:
+    report: dict[str, Any] = {"checked": True, "running": False, "matches": []}
+    powershell = shutil.which("powershell.exe")
+    if powershell:
+        command = (
+            "Get-Process | "
+            "Where-Object { $_.ProcessName -match '^(Codex|OpenAI\\.Codex)$' -or ($_.Path -and $_.Path -match 'OpenAI\\.Codex') } | "
+            "Select-Object -First 10 -ExpandProperty ProcessName"
+        )
+        try:
+            result = subprocess.run(
+                [powershell, "-NoProfile", "-Command", command],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=5,
+            )
+            matches = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            report.update(
+                {
+                    "method": "powershell.exe Get-Process",
+                    "running": bool(matches),
+                    "matches": matches,
+                    "returncode": result.returncode,
+                }
+            )
+            if result.stderr.strip():
+                report["stderr"] = result.stderr.strip()[:300]
+            return report
+        except Exception as exc:
+            report["powershell_error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+
+    proc = Path("/proc")
+    matches: list[str] = []
+    if proc.exists():
+        for item in proc.iterdir():
+            if not item.name.isdigit():
+                continue
+            try:
+                if int(item.name) == os.getpid():
+                    continue
+                comm = (item / "comm").read_text(encoding="utf-8", errors="replace").strip()
+                cmdline = (item / "cmdline").read_text(encoding="utf-8", errors="replace").replace("\x00", " ")
+            except Exception:
+                continue
+            hay = f"{comm} {cmdline}"
+            if "clean_codex_history.py" in hay:
+                continue
+            if "OpenAI.Codex" in hay or comm.lower() in {"codex", "codex.exe", "openai.codex", "openai.codex.exe"}:
+                matches.append(f"{item.name}:{comm}")
+                if len(matches) >= 10:
+                    break
+    report.update({"method": "procfs", "running": bool(matches), "matches": matches})
+    return report
+
+
 def optional_global_cleanup_command(codex_home: str) -> str:
     return shell_command(
         [
@@ -957,6 +1164,12 @@ def render_summary(summary: dict[str, Any]) -> str:
     lines: list[str] = []
     lines.append("Codex 本地状态检查结果")
     lines.append(f"模式：{'预览，不会修改' if dry_run else '执行，已按参数修改'}")
+    keep_set = summary.get("keep_set") if isinstance(summary.get("keep_set"), dict) else None
+    if keep_set:
+        lines.append(
+            f"UI 保留集模式：保留 {keep_set.get('keep_thread_count', 0)} 个线程"
+            f"{'，包含关联子智能体' if keep_set.get('spawn_children_preserved') else ''}"
+        )
 
     health = summary.get("health", {}) if isinstance(summary.get("health"), dict) else {}
     sqlite_dbs = health.get("sqlite_primary_dbs", []) if isinstance(health.get("sqlite_primary_dbs"), list) else []
@@ -996,21 +1209,45 @@ def render_summary(summary: dict[str, Any]) -> str:
     else:
         lines.append("线程子表孤儿记录：无")
 
+    selected_thread_count = sum(
+        int(db.get("selected_count") or 0)
+        for db in summary.get("databases", [])
+        if isinstance(db, dict)
+    )
+    if selected_thread_count:
+        if actions.get("delete_not_in_keep"):
+            lines.append(f"非 UI 保留集 DB 会话：{'将删除' if dry_run else '已删除'} {selected_thread_count} 条")
+        else:
+            lines.append(f"选中 DB 会话：{'将删除' if dry_run else '已删除'} {selected_thread_count} 条")
+
     archived = summary.get("archived_files") if isinstance(summary.get("archived_files"), dict) else None
     transcripts = health.get("transcripts") if isinstance(health.get("transcripts"), dict) else {}
     if archived:
+        protected_archived = int(archived.get("protected_archived_transcript_files_skipped") or 0)
         if dry_run:
             lines.append(f"归档残留：发现 {archived.get('unreferenced_archived_transcript_files', 0)} 个可清理文件")
         else:
             lines.append(f"归档残留：已删除 {archived.get('deleted_archived_transcript_files', 0)} 个文件")
+        if protected_archived:
+            lines.append(f"归档副本保护：跳过 UI 保留集相关文件 {protected_archived} 个")
     elif transcripts:
         lines.append(f"归档残留：{transcripts.get('orphan_archived_transcript_files', 0)} 个")
 
     index_report = summary.get("session_index", {}) if isinstance(summary.get("session_index"), dict) else {}
     stale_index = int(index_report.get("stale_records_removed") or 0)
+    selected_index = int(index_report.get("selected_records_removed") or 0)
+    not_in_keep_index = int(index_report.get("not_in_keep_records_removed") or 0)
+    index_removed = stale_index + selected_index + not_in_keep_index
     health_index = health.get("session_index", {}) if isinstance(health.get("session_index"), dict) else {}
-    if stale_index:
-        lines.append(f"搜索索引 stale 记录：{'将清理' if dry_run else '已清理'} {stale_index} 条")
+    if index_removed:
+        parts = []
+        if selected_index:
+            parts.append(f"选中 {selected_index} 条")
+        if not_in_keep_index:
+            parts.append(f"非保留集 {not_in_keep_index} 条")
+        if stale_index:
+            parts.append(f"stale {stale_index} 条")
+        lines.append(f"搜索索引记录：{'将清理' if dry_run else '已清理'} " + "、".join(parts))
     elif int(health_index.get("stale_thread_id_records") or 0):
         lines.append(f"搜索索引 stale 记录：还有 {health_index.get('stale_thread_id_records')} 条")
     else:
@@ -1020,7 +1257,15 @@ def render_summary(summary: dict[str, Any]) -> str:
 
     global_cleanup = summary.get("global_state_cleanup") if isinstance(summary.get("global_state_cleanup"), dict) else None
     selected_global_cleanup = summary.get("global_state_selected_cleanup") if isinstance(summary.get("global_state_selected_cleanup"), dict) else None
+    keep_global_cleanup = summary.get("global_state_keep_cleanup") if isinstance(summary.get("global_state_keep_cleanup"), dict) else None
     global_health = health.get("global_state", {}) if isinstance(health.get("global_state"), dict) else {}
+    if keep_global_cleanup:
+        removed_threads = int(keep_global_cleanup.get("projectless_thread_ids_removed") or 0)
+        removed_hints = int(keep_global_cleanup.get("thread_workspace_hints_removed") or 0)
+        removed_prompts = int(keep_global_cleanup.get("prompt_history_threads_removed") or 0)
+        if removed_threads or removed_hints or removed_prompts:
+            action = "会清理" if dry_run else "已清理"
+            lines.append(f"全局状态非保留集残留：{action} projectless {removed_threads} 个、workspace hint {removed_hints} 个、prompt-history {removed_prompts} 个")
     if selected_global_cleanup:
         removed_threads = int(selected_global_cleanup.get("projectless_thread_ids_removed") or 0)
         removed_hints = int(selected_global_cleanup.get("thread_workspace_hints_removed") or 0)
@@ -1051,16 +1296,17 @@ def render_summary(summary: dict[str, Any]) -> str:
         if ordinary_orphans:
             lines.append(f"普通会话孤儿 transcript：{ordinary_orphans} 个，脚本不会自动删除")
 
-    review = health.get("review_candidates", {}) if isinstance(health.get("review_candidates"), dict) else {}
-    cli_count = int(review.get("cli_thread_count") or 0)
-    if cli_count:
-        lines.append(f"CLI 会话候选：{cli_count} 条，仅列出不自动删除{render_thread_samples(review.get('cli_samples'))}")
-    bad_count = int(review.get("missing_transcript_thread_count") or 0)
-    if bad_count:
-        lines.append(
-            f"坏会话记录候选：{bad_count} 条，DB 有线程但 transcript 缺失，仅列出不自动删除"
-            f"{render_thread_samples(review.get('missing_transcript_samples'))}"
-        )
+    if not actions.get("delete_not_in_keep"):
+        review = health.get("review_candidates", {}) if isinstance(health.get("review_candidates"), dict) else {}
+        cli_count = int(review.get("cli_thread_count") or 0)
+        if cli_count:
+            lines.append(f"CLI 会话候选：{cli_count} 条，仅列出不自动删除{render_thread_samples(review.get('cli_samples'))}")
+        bad_count = int(review.get("missing_transcript_thread_count") or 0)
+        if bad_count:
+            lines.append(
+                f"坏会话记录候选：{bad_count} 条，DB 有线程但 transcript 缺失，仅列出不自动删除"
+                f"{render_thread_samples(review.get('missing_transcript_samples'))}"
+            )
 
     missing_projects = health.get("missing_projects", {}) if isinstance(health.get("missing_projects"), dict) else {}
     missing_project_count = int(missing_projects.get("missing_project_thread_count") or 0)
@@ -1105,18 +1351,27 @@ def render_summary(summary: dict[str, Any]) -> str:
         if global_samples:
             lines.append("全局 stale 会话示例" + render_thread_samples(global_samples, limit=8))
         if global_stale_threads or global_stale_hints:
-            lines.append("退出 Codex 后可选执行：" + optional_global_cleanup_command(str(summary.get("codex_home") or Path.home() / ".codex")))
+            if actions.get("delete_not_in_keep"):
+                lines.append("退出 Codex 后执行：使用同一条 UI 保留集命令，把 --dry-run 换成 --execute，并加 --require-codex-exited-for-global-state。")
+            else:
+                lines.append("退出 Codex 后可选执行：" + optional_global_cleanup_command(str(summary.get("codex_home") or Path.home() / ".codex")))
 
     would_change = any(
         [
+            selected_thread_count,
+            index_removed,
             db_orphans_before,
-            stale_index,
             archived and int(archived.get("unreferenced_archived_transcript_files") or 0),
             selected_global_cleanup and bool(selected_global_cleanup.get("would_modify")),
+            keep_global_cleanup and bool(keep_global_cleanup.get("would_modify")),
             global_cleanup and bool(global_cleanup.get("would_modify")),
         ]
     )
-    needs_codex_exit = bool((selected_global_cleanup and selected_global_cleanup.get("would_modify")) or (global_cleanup and global_cleanup.get("would_modify")))
+    needs_codex_exit = bool(
+        (selected_global_cleanup and selected_global_cleanup.get("would_modify"))
+        or (keep_global_cleanup and keep_global_cleanup.get("would_modify"))
+        or (global_cleanup and global_cleanup.get("would_modify"))
+    )
     if sqlite_bad:
         lines.append("结论：SQLite 主库还有风险，先不要升级或继续清理，需看 JSON 详情。")
     elif dry_run and would_change:
@@ -1146,6 +1401,10 @@ def main() -> int:
         raise SystemExit("Use either --dry-run or --execute, not both.")
     if args.all_except_current and not args.current_thread_id:
         raise SystemExit("--all-except-current requires --current-thread-id.")
+    if args.delete_not_in_keep and not args.keep_ids:
+        raise SystemExit("--delete-not-in-keep requires --keep-ids.")
+    if args.delete_not_in_keep and (args.all_archived or args.all_except_current or args.ids or args.title_contains or args.scrub_file):
+        raise SystemExit("--delete-not-in-keep cannot be combined with other thread selectors or --scrub-file.")
 
     codex_home = Path(args.codex_home).expanduser()
     dbs = state_dbs(codex_home)
@@ -1156,8 +1415,25 @@ def main() -> int:
     all_rows = [row for rows in db_rows.values() for row in rows]
     validate_id_selectors(all_rows, args)
 
-    clean_archived_files = args.clean_archived_files or args.all_archived
-    selectors_used = args.all_archived or args.all_except_current or args.ids or args.title_contains
+    keep_ids_all: set[str] = set()
+    keep_ids_by_db: dict[Path, set[str]] = {}
+    if args.delete_not_in_keep:
+        base_keep_ids = resolve_id_terms(
+            all_rows,
+            args.keep_ids,
+            allow_ambiguous_ids=args.allow_ambiguous_ids,
+            allow_missing_full_ids=True,
+        )
+        keep_ids_all.update(base_keep_ids)
+        for db_path in dbs:
+            keep_ids = set(base_keep_ids)
+            if not args.no_keep_spawn_children:
+                keep_ids = expand_keep_ids_with_spawn_children(db_path, keep_ids)
+            keep_ids_by_db[db_path] = keep_ids
+            keep_ids_all.update(keep_ids)
+
+    clean_archived_files = args.clean_archived_files or args.all_archived or args.delete_not_in_keep
+    selectors_used = args.all_archived or args.all_except_current or args.ids or args.title_contains or args.delete_not_in_keep
     actions_used = (
         selectors_used
         or args.scrub_file
@@ -1166,12 +1442,20 @@ def main() -> int:
         or args.clean_global_state
         or clean_archived_files
     )
+    if execute and args.require_codex_exited_for_global_state and (selectors_used or args.clean_global_state or clean_archived_files):
+        process_report = codex_desktop_process_report()
+        if process_report.get("running"):
+            raise SystemExit(
+                "Codex desktop appears to be running; close Codex before executing cleanup that changes .codex-global-state.json. "
+                f"Detected: {process_report.get('matches')}"
+            )
     mode = "execute" if execute else "dry-run"
     summary: dict[str, Any] = {
         "mode": mode,
         "codex_home": str(codex_home),
         "actions_requested": {
             "archived_sqlite_cleanup": bool(args.archived_sqlite_cleanup),
+            "delete_not_in_keep": bool(args.delete_not_in_keep),
             "selectors_used": bool(selectors_used),
             "clean_archived_files": bool(clean_archived_files),
             "repair_thread_orphans": bool(args.repair_thread_orphans),
@@ -1181,11 +1465,17 @@ def main() -> int:
         },
         "databases": [],
     }
+    if args.delete_not_in_keep:
+        summary["keep_set"] = {
+            "keep_thread_count": len(keep_ids_all),
+            "keep_id_prefixes": [thread_id[:12] for thread_id in sorted(keep_ids_all)[:25]],
+            "spawn_children_preserved": not args.no_keep_spawn_children,
+        }
 
     backup_done: set[Path] = set()
     selected_all: list[ThreadRow] = []
     for db_path, rows in db_rows.items():
-        selected = select_threads(rows, args)
+        selected = select_threads(rows, args, keep_ids_by_db.get(db_path))
         selected_all.extend(selected)
         db_report: dict[str, Any] = {
             "db": db_path.name,
@@ -1194,6 +1484,9 @@ def main() -> int:
             "selected_id_prefixes": [row.id[:12] for row in selected],
             "selected_existing_session_files": count_existing_rollouts(codex_home, selected),
         }
+        if args.delete_not_in_keep:
+            db_report["keep_count"] = len(keep_ids_by_db.get(db_path, set()))
+            db_report["keep_id_prefixes"] = [thread_id[:12] for thread_id in sorted(keep_ids_by_db.get(db_path, set()))[:25]]
         if args.show_full_ids:
             db_report["selected_ids"] = [row.id for row in selected]
         if execute and selected:
@@ -1225,7 +1518,7 @@ def main() -> int:
     if args.clean_stale_index:
         stale_ids = stale_index_thread_ids(codex_home, thread_ids_after)
         if args.archived_sqlite_cleanup:
-            archived_candidates, _, _ = unreferenced_archived_files(codex_home, rows_after)
+            archived_candidates, _, _, _ = unreferenced_archived_files(codex_home, rows_after)
             archived_cleanup_ids = {row.id for row in selected_all}
             archived_cleanup_ids.update(
                 thread_id
@@ -1239,10 +1532,15 @@ def main() -> int:
         stale_ids,
         execute,
         args.no_backup,
+        keep_ids_all if args.delete_not_in_keep else None,
     )
 
     if clean_archived_files:
-        archived_candidates_for_global_state, _, _ = unreferenced_archived_files(codex_home, rows_after)
+        archived_candidates_for_global_state, _, _, _ = unreferenced_archived_files(
+            codex_home,
+            rows_after,
+            keep_ids_all if args.delete_not_in_keep else None,
+        )
     else:
         archived_candidates_for_global_state = []
 
@@ -1252,7 +1550,14 @@ def main() -> int:
         for path in archived_candidates_for_global_state
         if (thread_id := rollout_file_thread_id(path))
     )
-    if global_state_selected_ids:
+    if args.delete_not_in_keep:
+        summary["global_state_keep_cleanup"] = clean_global_state_not_in_keep(
+            codex_home,
+            keep_ids_all,
+            execute,
+            args.no_backup,
+        )
+    elif global_state_selected_ids:
         summary["global_state_selected_cleanup"] = clean_global_state_for_thread_ids(
             codex_home,
             global_state_selected_ids,
@@ -1261,7 +1566,12 @@ def main() -> int:
         )
 
     if clean_archived_files:
-        summary["archived_files"] = clean_unreferenced_archived_files(codex_home, rows_after, execute)
+        summary["archived_files"] = clean_unreferenced_archived_files(
+            codex_home,
+            rows_after,
+            execute,
+            keep_ids_all if args.delete_not_in_keep else None,
+        )
 
     if args.clean_global_state:
         summary["global_state_cleanup"] = clean_global_state(codex_home, thread_ids_after, execute, args.no_backup)
