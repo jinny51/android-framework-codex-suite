@@ -40,6 +40,8 @@ python3 "scripts/capture_framework_patch.py" \
 
 如果 `--project` 未提供，或只提供了 `android16`、`Camera2`、`mtk android16 Camera2` 这类非公司项目标签，脚本会继续从 `source_root`、repo 路径、git 分支/remote、WSL source-access registry 和补丁内容中识别 `TVE`/`TVA`/`TVI` 项目号；识别不到时写入 `unknown`。
 
+如果构建交付流程已经由 `android-wsl-remote-build-deploy/scripts/push-artifacts.sh` 写出 `<source-root>/.codex/evidence/latest-build-delivery.json`，补丁采集会自动读取远端构建和本机 adb 证据，并合并进 `verification-result.json`。手工 `--remote-build-*` 和 `--adb-*` 参数只用于历史材料或异常路径补录。
+
 输出目录：
 
 ```text

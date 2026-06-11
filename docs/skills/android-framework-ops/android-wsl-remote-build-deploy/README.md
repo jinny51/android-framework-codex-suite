@@ -18,6 +18,18 @@ WSL 源码接入场景下的 Android 远程编译和推送 skill。
 - 构建完成后，需要从 WSL 挂载路径定位编译产物，并通过本地 `adb` 推送到设备。
 - Framework 开发流程需要一份构建、编译产物路径、推送结果和设备状态记录，但最终验收结论由 `android-framework-change-workflow` 判断。
 
+## 构建到本机 adb 证据
+
+`scripts/push-artifacts.sh` 支持写出标准验证证据：
+
+```text
+<source-root>/.codex/evidence/latest-build-delivery.json
+```
+
+或通过 `--evidence-out` / `CODEX_BUILD_DELIVERY_EVIDENCE` 指定路径。该文件记录远端构建服务器、远端源码路径、构建命令、构建 profile、远端产物、产物 SHA1、本机产物、本机 adb serial、push/install/reboot 动作和结果。
+
+`android-framework-patch-capture` 会从每个 `--source-root` 自动读取这份证据并合并进补丁包的 `verification-result.json`，成员不需要在补丁打包时重复手工录入同一串远端构建和本机 adb 参数。
+
 ## 文件入口
 
 - [SKILL.md](../../../../plugins/android-framework-ops/skills/android-wsl-remote-build-deploy/SKILL.md)：给 Codex 自动加载的执行说明。

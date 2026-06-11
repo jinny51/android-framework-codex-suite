@@ -313,6 +313,82 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("remote_build", manifest["verification_chain"])
             self.assertIn("local_delivery", manifest["verification_chain"])
 
+    def test_auto_reads_remote_local_verification_evidence_from_source_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+            evidence_dir = root / ".codex" / "evidence"
+            evidence_dir.mkdir(parents=True)
+            (evidence_dir / "latest-build-delivery.json").write_text(
+                json.dumps(
+                    {
+                        "kind": "verification_result",
+                        "result": "PASS",
+                        "method": "device",
+                        "summary": "remote build and local adb delivery passed",
+                        "build": ["framework-services build PASS"],
+                        "device": "ABC123",
+                        "steps": ["boot completed after services.jar push"],
+                        "remote_build": {
+                            "host": "builder01",
+                            "source_root": "/build/android/TVE8402M",
+                            "command": "bash .codex/build-push.sh build --profile framework-services",
+                            "profile": "framework-services",
+                            "artifacts": [
+                                {
+                                    "path": "/build/android/TVE8402M/out/target/product/tve8402m/system/framework/services.jar",
+                                    "sha1": "0123456789abcdef0123456789abcdef01234567",
+                                }
+                            ],
+                        },
+                        "local_delivery": {
+                            "transfer": "scp builder01:/build/android/TVE8402M/out/target/product/tve8402m/system/framework/services.jar ~/.codex/artifacts/services.jar",
+                            "local_artifacts": ["/mnt/c/Users/jinny/.codex/artifacts/services.jar"],
+                            "adb_serial": "ABC123",
+                            "adb_actions": ["adb -s ABC123 push services.jar /system/framework/services.jar"],
+                            "device_restarts": ["adb -s ABC123 reboot"],
+                        },
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260611-121500-patch",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "nav-policy-toggle",
+                    "--summary",
+                    "Allow navigation policy toggle",
+                    "--status",
+                    "validated",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            verification = json.loads((package_dir / "evidence" / "verification-result.json").read_text(encoding="utf-8"))
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(verification["result"], "PASS")
+            self.assertEqual(verification["method"], "device")
+            self.assertEqual(verification["remote_build"]["host"], "builder01")
+            self.assertEqual(verification["local_delivery"]["adb_serial"], "ABC123")
+            self.assertIn("remote_build", manifest["verification_chain"])
+            self.assertIn("local_delivery", manifest["verification_chain"])
+
     def test_common_framework_paths_produce_specific_patch_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

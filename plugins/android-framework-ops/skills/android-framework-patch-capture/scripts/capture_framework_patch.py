@@ -35,6 +35,10 @@ BANNED_LOG_PATTERNS = (
 )
 FRAMEWORK_LOG_LITERAL_RE = re.compile(r"FrameworkLog\.(?:d|i|w|e)\s*\([^,]+,\s*\"")
 SUPPORTED_EXTERNAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
+AUTO_VERIFICATION_EVIDENCE_NAMES = (
+    ".codex/evidence/latest-build-delivery.json",
+    ".codex/evidence/build-delivery.json",
+)
 IMPLEMENTATION_ORIGINS = ("codex", "manual", "external", "historical", "mixed", "unknown")
 CAPTURE_REVIEW_REQUIRED_ORIGINS = {"manual", "external", "historical", "mixed", "unknown"}
 REUSE_DECISIONS = ("reuse", "adapt", "reference_only", "not_applicable", "not_found", "unknown")
@@ -440,6 +444,22 @@ def read_json(path: Path) -> dict[str, Any]:
     return payload
 
 
+def string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
+
+
+def merge_string_lists(first: list[str], second: list[str]) -> list[str]:
+    result: list[str] = []
+    for item in [*first, *second]:
+        if item and item not in result:
+            result.append(item)
+    return result
+
+
 def evidence_kind_from_file(path: Path, payload: dict[str, Any]) -> str:
     kind = str(payload.get("kind") or "").strip()
     if kind:
@@ -461,6 +481,57 @@ def evidence_result(payload: dict[str, Any]) -> str:
     if value in {"PASS", "FAIL", "WARN", "INFO", "SKIPPED", "MISSING"}:
         return value
     return "INFO"
+
+
+def source_roots_for_auto_evidence(args: argparse.Namespace) -> list[Path]:
+    roots = [Path(item).expanduser().resolve() for item in args.source_root or []]
+    if not roots:
+        roots = [Path.cwd().resolve()]
+    result: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        if root not in seen:
+            seen.add(root)
+            result.append(root)
+    return result
+
+
+def merge_auto_verification_payload(base: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    if not base:
+        return dict(incoming)
+    merged = dict(base)
+    for key in ("result", "method", "summary", "device"):
+        if not merged.get(key) and incoming.get(key):
+            merged[key] = incoming[key]
+    for key in ("build", "steps", "health_checks", "artifacts"):
+        merged[key] = merge_string_lists(string_list(merged.get(key)), string_list(incoming.get(key)))
+    for key in ("remote_build", "local_delivery"):
+        current = merged.get(key) if isinstance(merged.get(key), dict) else {}
+        update = incoming.get(key) if isinstance(incoming.get(key), dict) else {}
+        combined = dict(current)
+        for field, value in update.items():
+            if field == "artifacts":
+                combined[field] = list(value) if isinstance(value, list) else value
+            elif not combined.get(field) and value:
+                combined[field] = value
+        if combined:
+            merged[key] = combined
+    return merged
+
+
+def load_auto_verification_payload(args: argparse.Namespace) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for root in source_roots_for_auto_evidence(args):
+        for rel in AUTO_VERIFICATION_EVIDENCE_NAMES:
+            path = root / rel
+            if not path.is_file():
+                continue
+            item = read_json(path)
+            kind = evidence_kind_from_file(path, item)
+            if kind != "verification_result":
+                continue
+            payload = merge_auto_verification_payload(payload, item)
+    return payload
 
 
 def implementation_review_required(origin: str) -> bool:
@@ -533,9 +604,11 @@ def plain_bullets(items: list[str]) -> str:
     return "\n".join(f"- {item}" for item in items)
 
 
-def inferred_verification_method(args: argparse.Namespace) -> str:
+def inferred_verification_method(args: argparse.Namespace, auto_payload: dict[str, Any] | None = None) -> str:
     if args.verification_method:
         return args.verification_method
+    if auto_payload and auto_payload.get("method"):
+        return str(auto_payload.get("method"))
     if args.equivalent_type or args.equivalent_reason or args.equivalent_coverage or args.remaining_risk:
         return "equivalent"
     if args.device or args.device_verification:
@@ -543,8 +616,9 @@ def inferred_verification_method(args: argparse.Namespace) -> str:
     return "not_provided"
 
 
-def verification_result(args: argparse.Namespace) -> dict[str, Any]:
-    method = inferred_verification_method(args)
+def verification_result(args: argparse.Namespace, auto_payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    auto_payload = auto_payload or {}
+    method = inferred_verification_method(args, auto_payload)
     has_evidence = bool(
         args.verification
         or args.device_verification
@@ -552,35 +626,43 @@ def verification_result(args: argparse.Namespace) -> dict[str, Any]:
         or args.equivalent_reason
         or args.health_check
         or args.artifact
+        or auto_payload
     )
-    result = args.verification_result or ("PASS" if has_evidence else "INFO")
+    result = args.verification_result or str(auto_payload.get("result") or "") or ("PASS" if has_evidence else "INFO")
+    auto_remote_build = auto_payload.get("remote_build") if isinstance(auto_payload.get("remote_build"), dict) else {}
+    auto_local_delivery = auto_payload.get("local_delivery") if isinstance(auto_payload.get("local_delivery"), dict) else {}
+    auto_local_artifacts = string_list(auto_local_delivery.get("local_artifacts") if isinstance(auto_local_delivery, dict) else [])
+    auto_adb_actions = string_list(auto_local_delivery.get("adb_actions") if isinstance(auto_local_delivery, dict) else [])
+    auto_device_restarts = string_list(auto_local_delivery.get("device_restarts") if isinstance(auto_local_delivery, dict) else [])
     payload: dict[str, Any] = {
         "result": result,
         "method": method,
-        "build": args.verification or [],
-        "device": args.device or "",
-        "steps": args.device_verification or [],
-        "observed": "\n".join(args.device_verification or []),
-        "health_checks": args.health_check or [],
-        "artifacts": args.artifact or [],
+        "build": args.verification or string_list(auto_payload.get("build")),
+        "device": args.device or str(auto_payload.get("device") or auto_local_delivery.get("adb_serial") or ""),
+        "steps": args.device_verification or string_list(auto_payload.get("steps")),
+        "observed": "\n".join(args.device_verification or string_list(auto_payload.get("steps"))),
+        "health_checks": args.health_check or string_list(auto_payload.get("health_checks")),
+        "artifacts": args.artifact or string_list(auto_payload.get("artifacts")),
     }
     remote_artifacts: list[dict[str, str]] = []
     for index, artifact in enumerate(args.remote_artifact or []):
         sha1 = args.artifact_sha1[index] if index < len(args.artifact_sha1 or []) else ""
         remote_artifacts.append({"path": artifact, "sha1": sha1})
+    if not remote_artifacts and isinstance(auto_remote_build.get("artifacts"), list):
+        remote_artifacts = [item for item in auto_remote_build.get("artifacts", []) if isinstance(item, dict)]
     payload["remote_build"] = {
-        "host": args.remote_build_host or "",
-        "source_root": args.remote_source_root or "",
-        "command": args.remote_build_command or "",
-        "profile": args.remote_build_profile or "",
+        "host": args.remote_build_host or str(auto_remote_build.get("host") or ""),
+        "source_root": args.remote_source_root or str(auto_remote_build.get("source_root") or ""),
+        "command": args.remote_build_command or str(auto_remote_build.get("command") or ""),
+        "profile": args.remote_build_profile or str(auto_remote_build.get("profile") or ""),
         "artifacts": remote_artifacts,
     }
     payload["local_delivery"] = {
-        "transfer": args.artifact_transfer or "",
-        "local_artifacts": args.local_artifact or [],
-        "adb_serial": args.adb_serial or "",
-        "adb_actions": args.adb_action or [],
-        "device_restarts": args.device_restart or [],
+        "transfer": args.artifact_transfer or str(auto_local_delivery.get("transfer") or ""),
+        "local_artifacts": args.local_artifact or auto_local_artifacts,
+        "adb_serial": args.adb_serial or str(auto_local_delivery.get("adb_serial") or ""),
+        "adb_actions": args.adb_action or auto_adb_actions,
+        "device_restarts": args.device_restart or auto_device_restarts,
     }
     if method == "equivalent":
         payload.update(
@@ -807,18 +889,18 @@ def validate_verification_for_status(args: argparse.Namespace, payload: dict[str
         errors.append("status 是 validated 时 verification-result.result 必须是 PASS")
 
     if method == "device":
-        if not args.verification:
+        if not payload.get("build"):
             errors.append("status 是 validated 且 method=device 时必须提供 --verification 构建验证")
-        if not args.device_verification:
+        if not payload.get("steps"):
             errors.append("status 是 validated 且 method=device 时必须提供 --device-verification 真机验证")
     elif method == "equivalent":
-        if not args.equivalent_type:
+        if not payload.get("equivalent_type"):
             errors.append("status 是 validated 且 method=equivalent 时必须提供 --equivalent-type")
-        if not args.equivalent_reason:
+        if not payload.get("reason"):
             errors.append("status 是 validated 且 method=equivalent 时必须提供 --equivalent-reason")
-        if not args.equivalent_coverage:
+        if not payload.get("coverage"):
             errors.append("status 是 validated 且 method=equivalent 时必须提供 --equivalent-coverage")
-        if not args.remaining_risk:
+        if not payload.get("remaining_risk"):
             errors.append("status 是 validated 且 method=equivalent 时必须提供 --remaining-risk")
     else:
         errors.append("status 是 validated 时必须提供 device 或 equivalent 验证证据")
@@ -1225,7 +1307,8 @@ def main() -> int:
 
     errors: list[str] = []
     warnings: list[str] = []
-    verification_payload = verification_result(args)
+    auto_verification_payload = load_auto_verification_payload(args)
+    verification_payload = verification_result(args, auto_verification_payload)
     search_payload = search_before_change(args)
     feature_facts = aggregate_feature_facts(captures)
     problem_payload, risk_payload = feature_problem_and_risk_payloads(args, captures, feature_facts)
@@ -1350,9 +1433,19 @@ def main() -> int:
         ],
         "project_inference": project_inference,
         "verification_chain": {
-            "remote_build": bool(args.remote_build_host or args.remote_source_root or args.remote_build_command or args.remote_artifact),
-            "local_delivery": bool(args.artifact_transfer or args.local_artifact or args.adb_serial or args.adb_action),
-            "device_verification": bool(args.device or args.device_verification),
+            "remote_build": bool(
+                verification_payload.get("remote_build", {}).get("host")
+                or verification_payload.get("remote_build", {}).get("source_root")
+                or verification_payload.get("remote_build", {}).get("command")
+                or verification_payload.get("remote_build", {}).get("artifacts")
+            ),
+            "local_delivery": bool(
+                verification_payload.get("local_delivery", {}).get("transfer")
+                or verification_payload.get("local_delivery", {}).get("local_artifacts")
+                or verification_payload.get("local_delivery", {}).get("adb_serial")
+                or verification_payload.get("local_delivery", {}).get("adb_actions")
+            ),
+            "device_verification": bool(verification_payload.get("device") or verification_payload.get("steps")),
         },
         "patches": patch_items,
         "evidence": evidence_items,

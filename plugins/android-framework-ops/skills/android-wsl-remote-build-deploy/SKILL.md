@@ -267,8 +267,23 @@ Use project-local artifact destination memory after a real successful push:
   --artifact "$artifact" \
   --product-out "$LOCAL_REPO/$PRODUCT_OUT_REL" \
   --destinations-file "$LOCAL_REPO/.codex/artifact-destinations.sh" \
-  --learn-destinations
+  --learn-destinations \
+  --remote-build-host "$SSH_HOST" \
+  --remote-source-root "$REMOTE_ROOT" \
+  --remote-build-command "bash .codex/build-push.sh build --profile <profile>" \
+  --remote-build-profile "<profile>" \
+  --remote-artifact "$REMOTE_ROOT/$PRODUCT_OUT_REL/$ARTIFACT_REL" \
+  --artifact-transfer "mounted Samba/CIFS product output" \
+  --adb-serial "<local-adb-serial>"
 ```
+
+`push-artifacts.sh` writes standard build-delivery evidence to:
+
+```text
+$LOCAL_REPO/.codex/evidence/latest-build-delivery.json
+```
+
+or to `--evidence-out` / `CODEX_BUILD_DELIVERY_EVIDENCE` when specified. `android-framework-patch-capture` reads this file automatically from each `--source-root`, so remote build host, remote source path, build command/profile, artifact paths, local transfer, adb serial, push actions, and restart actions enter the patch package without retyping them as capture arguments.
 
 Project debug devices are expected to support `adb root` and `adb remount`. If either fails, return that key error as deploy evidence instead of trying a remote-device workaround.
 

@@ -203,6 +203,45 @@ not_found        未命中：搜索后没有找到可用知识。
 unknown          未记录：旧包或异常场景没有形成明确决策。
 ```
 
+## Remote Build To Local ADB Evidence
+
+When Android work is built on a remote server and delivered to a local USB device, the deploy executor should write:
+
+```text
+<source-root>/.codex/evidence/latest-build-delivery.json
+```
+
+`capture_framework_patch.py` reads this file automatically from each `--source-root` and merges it into `verification-result.json`. The expected shape is:
+
+```json
+{
+  "kind": "verification_result",
+  "result": "PASS",
+  "method": "device",
+  "build": ["framework-services build PASS"],
+  "device": "ABC123",
+  "steps": ["adb -s ABC123 push services.jar /system/framework/services.jar"],
+  "remote_build": {
+    "host": "builder01",
+    "source_root": "/build/android/TVE8402M",
+    "command": "bash .codex/build-push.sh build --profile framework-services",
+    "profile": "framework-services",
+    "artifacts": [
+      {"path": "/build/android/TVE8402M/out/target/product/tve/system/framework/services.jar", "sha1": "40-hex-sha1"}
+    ]
+  },
+  "local_delivery": {
+    "transfer": "mounted Samba/CIFS product output",
+    "local_artifacts": ["/mnt/repo/out/target/product/tve/system/framework/services.jar"],
+    "adb_serial": "ABC123",
+    "adb_actions": ["adb -s ABC123 push services.jar /system/framework/services.jar"],
+    "device_restarts": ["adb -s ABC123 reboot"]
+  }
+}
+```
+
+Manual capture arguments can still override or supplement the automatic file for historical or exceptional packages.
+
 ## Coding Standard Check
 
 Coding standards should be applied during development, especially when a team practice skill such as `jinny-framework-coding-standards` is active. Capture-time checks are a safety net for manual, historical, external, or half-inherited code.
