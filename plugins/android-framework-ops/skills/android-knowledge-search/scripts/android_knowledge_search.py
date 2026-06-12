@@ -491,6 +491,52 @@ def case_is_searchable(case_id: str, active_case_ids: set[str]) -> bool:
     return not active_case_ids or not case_id or case_id in active_case_ids
 
 
+def append_token(tokens: set[str], value: Any) -> None:
+    text = str(value or "").strip()
+    if text:
+        tokens.add(text)
+
+
+def retracted_reference_tokens(index_rows: list[dict[str, Any]], patch_rows: list[dict[str, Any]]) -> set[str]:
+    tokens: set[str] = set()
+    for item in [*index_rows, *patch_rows]:
+        if not is_retracted_object(item):
+            continue
+        append_token(tokens, item.get("case_id"))
+        append_token(tokens, item.get("variant_id"))
+        append_token(tokens, item.get("patch_id"))
+        append_token(tokens, item.get("id"))
+        for key in ("case_ids", "variant_ids", "patch_ids"):
+            value = item.get(key)
+            if isinstance(value, list):
+                for entry in value:
+                    append_token(tokens, entry)
+    return tokens
+
+
+def contains_retracted_reference(value: Any, tokens: set[str]) -> bool:
+    if not tokens:
+        return False
+    return any(token and token in stringify(value) for token in tokens)
+
+
+def redact_retracted_references(value: Any, tokens: set[str]) -> Any:
+    if not tokens:
+        return value
+    if isinstance(value, list):
+        return [
+            redacted
+            for item in value
+            if not contains_retracted_reference(item, tokens)
+            for redacted in [redact_retracted_references(item, tokens)]
+        ]
+    if isinstance(value, dict):
+        return {key: redact_retracted_references(item, tokens) for key, item in value.items()}
+    if contains_retracted_reference(value, tokens):
+        return ""
+    return value
+
+
 def evidence_row(item: dict[str, Any]) -> dict[str, Any]:
     row = dict(item)
     row["evidence_kind"] = row.pop("kind", "")
@@ -502,6 +548,16 @@ def evidence_row(item: dict[str, Any]) -> dict[str, Any]:
 
 def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    case_index_rows = read_jsonl(root / "index" / "case-index.jsonl")
+    variant_index_rows = read_jsonl(root / "index" / "variant-index.jsonl")
+    evidence_index_rows = read_jsonl(root / "index" / "evidence-index.jsonl")
+    symbol_index_rows = read_jsonl(root / "index" / "symbol-index.jsonl")
+    patch_index_rows: list[dict[str, Any]] = []
+    for path in sorted(root.glob("patches/by-id/*/patch.json")):
+        item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
+        if isinstance(item, dict):
+            patch_index_rows.append({**item, "path": str(path.relative_to(root))})
+    retracted_tokens = retracted_reference_tokens([*case_index_rows, *variant_index_rows, *evidence_index_rows], patch_index_rows)
     search_docs = {str(item.get("case_id", "")): item for item in read_jsonl(root / "index" / "search-docs.jsonl")}
     active_case_ids = {
         case_id
@@ -510,7 +566,7 @@ def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str,
     }
     rejected_patch_ids: set[str] = set()
     active_patch_ids: set[str] = set()
-    for item in read_jsonl(root / "index" / "case-index.jsonl"):
+    for item in case_index_rows:
         case_id = str(item.get("case_id", ""))
         if not include_archive and (is_retracted_object(item) or not case_is_searchable(case_id, active_case_ids)):
             continue
@@ -531,16 +587,19 @@ def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str,
                 **replacement_fields,
             }
         )
-    for item in read_jsonl(root / "index" / "variant-index.jsonl"):
+    for item in variant_index_rows:
         case_id = row_case_id(item)
         if not include_archive and (is_retracted_object(item) or not case_is_searchable(case_id, active_case_ids)):
             continue
         rows.append({"kind": "variant", "id": item.get("variant_id", ""), **item})
-    for item in read_jsonl(root / "index" / "evidence-index.jsonl"):
+    for item in evidence_index_rows:
         case_id = row_case_id(item)
         if not include_archive and (is_retracted_object(item) or not case_is_searchable(case_id, active_case_ids)):
             continue
-        rows.append(evidence_row(item))
+        row = evidence_row(item)
+        if not include_archive:
+            row["payload"] = redact_retracted_references(row.get("payload"), retracted_tokens)
+        rows.append(row)
     loaded_evidence_ids = {str(row.get("evidence_id") or row.get("id") or "") for row in rows if row.get("kind") == "evidence"}
     if include_archive:
         for path in sorted(root.glob("evidence/by-id/*.json")):
@@ -549,8 +608,7 @@ def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str,
             if isinstance(item, dict) and evidence_id not in loaded_evidence_ids:
                 rows.append(evidence_row({**item, "path": str(path.relative_to(root))}))
     patch_rows: list[dict[str, Any]] = []
-    for path in sorted(root.glob("patches/by-id/*/patch.json")):
-        item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
+    for item in patch_index_rows:
         if isinstance(item, dict):
             patch_id = str(item.get("patch_id") or "")
             if not include_archive and (
@@ -561,8 +619,8 @@ def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str,
                 continue
             if patch_id:
                 active_patch_ids.add(patch_id)
-            patch_rows.append({"kind": "patch", "id": patch_id, "path": str(path.relative_to(root)), **item})
-    for item in read_jsonl(root / "index" / "symbol-index.jsonl"):
+            patch_rows.append({"kind": "patch", "id": patch_id, **item})
+    for item in symbol_index_rows:
         case_id = row_case_id(item)
         patch_id = str(item.get("patch_id") or "")
         if not include_archive and (

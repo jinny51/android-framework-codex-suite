@@ -160,6 +160,72 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         archive_results = search.search(rows, "密码123", "all", 5, include_synthetic=False)
         self.assertEqual(archive_results, [])
 
+    def test_default_search_redacts_retracted_references_inside_evidence_payloads(self):
+        root = self.make_root()
+        write_jsonl(
+            root / "index" / "case-index.jsonl",
+            [
+                {
+                    "case_id": "case-retracted",
+                    "title": "通知栏音量弹窗位置适配",
+                    "status": "retracted",
+                    "knowledge_validity": {"retracted": True},
+                },
+                {
+                    "case_id": "case-active",
+                    "title": "分屏导航栏高度修复",
+                    "status": "needs_review",
+                    "knowledge_validity": {"confidence": "medium"},
+                },
+            ],
+        )
+        write_jsonl(
+            root / "index" / "search-docs.jsonl",
+            [
+                {
+                    "case_id": "case-active",
+                    "title": "分屏导航栏高度修复",
+                    "text": "gesture nav split screen",
+                    "status": "needs_review",
+                }
+            ],
+        )
+        write_jsonl(
+            root / "index" / "evidence-index.jsonl",
+            [
+                {
+                    "schema": "knowledge-evidence",
+                    "evidence_id": "evidence-search-usage",
+                    "case_id": "case-active",
+                    "variant_id": "variant-active",
+                    "kind": "search_before_change",
+                    "summary": "成员侧搜索记录",
+                    "payload": {
+                        "best_match": "case-retracted",
+                        "results": [
+                            "case case-retracted / 通知栏音量弹窗位置适配",
+                            "variant case-retracted",
+                            "case case-active / 分屏导航栏高度修复",
+                        ],
+                        "targets": ["case-retracted", "case-active"],
+                    },
+                }
+            ],
+        )
+
+        rows = search.load_rows(root)
+        default_results = search.search(rows, "通知栏音量弹窗", "all", 5, include_synthetic=False)
+        evidence = next(row for row in rows if row.get("id") == "evidence-search-usage")
+
+        self.assertEqual(default_results, [])
+        self.assertEqual(evidence["payload"]["best_match"], "")
+        self.assertEqual(evidence["payload"]["results"], ["case case-active / 分屏导航栏高度修复"])
+        self.assertEqual(evidence["payload"]["targets"], ["case-active"])
+
+        archive_rows = search.load_rows(root, include_archive=True)
+        archive_evidence = next(row for row in archive_rows if row.get("id") == "evidence-search-usage")
+        self.assertIn("case case-retracted / 通知栏音量弹窗位置适配", archive_evidence["payload"]["results"])
+
     def test_explicit_archive_filters_remain_available(self):
         root = self.make_root()
         rows = search.load_rows(root, include_archive=True)
