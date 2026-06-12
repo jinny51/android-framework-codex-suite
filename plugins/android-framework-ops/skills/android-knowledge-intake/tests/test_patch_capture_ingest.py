@@ -947,6 +947,23 @@ class PatchCaptureIngestTests(unittest.TestCase):
         self.assertEqual(payload["suffix"], "1_H031")
         self.assertTrue(payload["company_rule_match"])
 
+    def test_daily_project_inference_collapses_same_base_model_candidates(self) -> None:
+        project, payload = intake.infer_report_project(
+            "daily",
+            "今天处理 TVE1067M1 管理端应用下发，并修复 TVE1067M1_H031 分屏手势条黑屏。",
+            {
+                "TVE1067M1": [("管理端应用下发", "已完成")],
+                "TVE1067M1_H031": [("分屏手势条黑屏", "已完成")],
+            },
+            [],
+            [],
+        )
+
+        self.assertEqual(project, "TVE1067M")
+        self.assertEqual(payload["project"], "TVE1067M")
+        self.assertEqual(payload["base_model"], "TVE1067M")
+        self.assertIn("多个候选共享基础项目 TVE1067M", " ".join(payload["limits"]))
+
     def test_patch_project_inference_uses_related_daily_report_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

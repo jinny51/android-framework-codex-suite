@@ -3281,6 +3281,18 @@ def infer_report_project(
         project, label, value = matched[0]
         return project, project_inference_payload(project, [f"{label}: {value}"], checked_sources, raw_inputs)
     if len(unique_projects) > 1:
+        base_models = sorted(dict.fromkeys(project[:8] for project in unique_projects))
+        if len(base_models) == 1:
+            base_project = base_models[0]
+            payload = project_inference_payload(
+                base_project,
+                [f"{label_prefix}候选项目: {', '.join(unique_projects)}"],
+                checked_sources,
+                raw_inputs,
+                [f"多个候选共享基础项目 {base_project}，日报写入基础项目并保留完整候选证据"],
+            )
+            payload["candidates"] = unique_projects
+            return base_project, payload
         return "unknown", project_inference_payload(
             "unknown",
             [],
