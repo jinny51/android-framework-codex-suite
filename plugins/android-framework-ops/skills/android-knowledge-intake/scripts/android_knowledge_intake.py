@@ -1762,6 +1762,8 @@ def incoming_report_manifest(
     summary: str,
     source: dict[str, Any],
     run_id: str,
+    project: str = "",
+    project_evidence_path: str = "",
 ) -> dict[str, Any]:
     report_name = f"{report_type}.md"
     package_kind = "daily_trace" if report_type == "daily" else "weekly_trace"
@@ -1787,6 +1789,10 @@ def incoming_report_manifest(
     }
     if report_type == "weekly":
         manifest["week_range"] = week_key
+    if report_type == "daily" and project:
+        manifest["project"] = project
+    if project_evidence_path:
+        manifest["files"]["evidence"].append(project_evidence_path)
     return manifest
 
 
@@ -2798,6 +2804,18 @@ def prepare_package(report_type: str, date: dt.date, config: dict[str, str], run
     items = items_by_project(sessions, patches)
     write_report(package_dir, report_type, date, week_key, config, items, patches)
     summary = overview_text(report_type, items, patches)
+    report_project = ""
+    project_path = ""
+    if report_type == "daily":
+        report_project, project_payload = infer_report_project(report_type, summary, items, sessions, patches)
+        project_path = write_default_evidence(
+            package_dir,
+            materials_rel("evidence", "project_inference.json"),
+            {
+                "kind": "project_inference",
+                "payload": project_payload,
+            },
+        )
 
     evidence = {
         "source": "android-knowledge-intake",
@@ -2828,7 +2846,7 @@ def prepare_package(report_type: str, date: dt.date, config: dict[str, str], run
     reports_dir.mkdir(parents=True, exist_ok=True)
     shutil.move(str(package_dir / f"{report_type}.md"), reports_dir / f"{report_type}.md")
     source = write_package_source(package_dir, config, "android-knowledge-intake")
-    manifest = incoming_report_manifest(report_type, date, week_key, config, summary, source, run_id)
+    manifest = incoming_report_manifest(report_type, date, week_key, config, summary, source, run_id, report_project, project_path)
     if search_path:
         manifest["files"]["evidence"].append(search_path)
     write_json(package_dir / "manifest.json", manifest)
@@ -2976,7 +2994,49 @@ def source_context_clues(source_contexts: list[dict[str, Any]]) -> list[tuple[st
 
 
 def related_report_project_clues(config: dict[str, str], run_ids: list[str]) -> list[tuple[str, str]]:
-    return []
+    out_dir = expanded_path(config.get("out_dir", ""))
+    member_alias = config.get("member_alias", "")
+    clues: list[tuple[str, str]] = []
+    for run_id in unique_strings(run_ids):
+        if not run_id:
+            continue
+        manifests_by_path: dict[Path, Path] = {}
+        for bucket in ("pending", "submitted"):
+            patterns = [f"*/*/{run_id}/manifest.json"]
+            if member_alias:
+                patterns.insert(0, f"*/{member_alias}/{run_id}/manifest.json")
+            for pattern in patterns:
+                for manifest_path in sorted((out_dir / bucket).glob(pattern)):
+                    manifests_by_path[manifest_path] = manifest_path
+        for manifest_path in manifests_by_path:
+            package_dir = manifest_path.parent
+            manifest = read_json_file(manifest_path)
+            if manifest.get("package_kind") not in {"daily_trace", "weekly_trace"}:
+                continue
+            label_prefix = "关联日报" if manifest.get("package_kind") == "daily_trace" else "关联周报"
+            project = str(manifest.get("project") or "").strip()
+            if project:
+                clues.append((f"{label_prefix} project", project))
+            summary = str(manifest.get("summary") or "").strip()
+            if summary:
+                clues.append((f"{label_prefix} summary", summary))
+            report_path = manifest.get("report_path")
+            if isinstance(report_path, str) and report_path:
+                report_text = read_text_sample(package_dir / report_path)
+                if report_text:
+                    clues.append((f"{label_prefix}正文", report_text))
+            files = manifest.get("files") if isinstance(manifest.get("files"), dict) else {}
+            evidence_paths = files.get("evidence", []) if isinstance(files, dict) else []
+            if isinstance(evidence_paths, list):
+                for rel in evidence_paths:
+                    if not isinstance(rel, str) or Path(rel).name != "project_inference.json":
+                        continue
+                    evidence = read_json_file(package_dir / rel)
+                    payload = evidence.get("payload") if isinstance(evidence.get("payload"), dict) else {}
+                    for value in [payload.get("project"), *(payload.get("basis") or []), *(payload.get("raw_inputs") or [])]:
+                        if isinstance(value, str) and value.strip():
+                            clues.append((f"{label_prefix} project_inference", value))
+    return clues
 
 
 def read_text_sample(path: Path, limit: int = 12000) -> str:
@@ -3079,6 +3139,67 @@ def infer_project(
     if weak_capture_projects:
         limits.append("capture package project 未匹配公司项目型号规范，未作为项目名写入上传包")
     return "unknown", project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
+
+
+def infer_report_project(
+    report_type: str,
+    summary: str,
+    items: dict[str, list[tuple[str, str]]],
+    sessions: list[SessionWork],
+    patches: list[PatchInfo],
+) -> tuple[str, dict[str, Any]]:
+    label_prefix = "日报上下文" if report_type == "daily" else "周报上下文"
+    clues: list[tuple[str, str]] = []
+    if summary:
+        clues.append((f"{label_prefix} summary", summary))
+    for project, entries in sorted(items.items()):
+        if project:
+            clues.append((f"{label_prefix} 项目分组", project))
+        for title, progress in entries:
+            if title:
+                clues.append((f"{label_prefix} 工作项", title))
+            if progress:
+                clues.append((f"{label_prefix} 进展", progress))
+    for session in sessions:
+        for label, value in (
+            ("session project", session.project),
+            ("session cwd", session.cwd),
+            ("session thread", session.thread_name),
+        ):
+            if value:
+                clues.append((f"{label_prefix} {label}", value))
+    for patch in patches:
+        for label, value in (("patch project", patch.project), ("patch name", patch.name), ("patch path", str(patch.path))):
+            if value:
+                clues.append((f"{label_prefix} {label}", value))
+
+    checked_sources = sorted(dict.fromkeys(label for label, value in clues if str(value).strip()))
+    raw_inputs = [f"{label}: {value}" for label, value in clues if str(value).strip()]
+    matched: list[tuple[str, str, str]] = []
+    for label, value in clues:
+        project = find_company_project(str(value))
+        if project:
+            matched.append((project, label, str(value)))
+
+    unique_projects = sorted(dict.fromkeys(project for project, _, _ in matched))
+    if len(unique_projects) == 1:
+        project, label, value = matched[0]
+        return project, project_inference_payload(project, [f"{label}: {value}"], checked_sources, raw_inputs)
+    if len(unique_projects) > 1:
+        return "unknown", project_inference_payload(
+            "unknown",
+            [],
+            checked_sources,
+            raw_inputs,
+            [f"{label_prefix}包含多个项目型号: {', '.join(unique_projects)}，不能写成单一项目"],
+        )
+    return "unknown", project_inference_payload(
+        "unknown",
+        [],
+        checked_sources,
+        raw_inputs,
+        [f"{label_prefix}未识别到 TVE/TVA/TVI 项目型号"],
+    )
 
 
 def write_default_evidence(package_dir: Path, rel: str, payload: dict[str, Any]) -> str:

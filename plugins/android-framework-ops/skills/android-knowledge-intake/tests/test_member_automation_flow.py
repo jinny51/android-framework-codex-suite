@@ -539,8 +539,14 @@ class MemberAutomationFlowTests(unittest.TestCase):
             package = prepare_daily_package(env, "2026-06-03", "20260603-210000-daily")
             report = read_package_report(package)
             findings = read_package_findings(package)
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            project_inference = json.loads((package / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
             finding_text = json.dumps(findings, ensure_ascii=False)
 
+            self.assertEqual(manifest["project"], "TVA10A2R")
+            self.assertIn("materials/evidence/project_inference.json", manifest["files"]["evidence"])
+            self.assertEqual(project_inference["payload"]["project"], "TVA10A2R")
+            self.assertIn("日报上下文", " ".join(project_inference["payload"]["basis"]))
             self.assertIn("### TVA10A2R", report)
             self.assertIn("视频通话", report)
             self.assertIn("视频监控", report)
@@ -591,7 +597,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
 
             package = prepare_daily_package(env, "2026-06-03", "20260603-211000-daily")
             report = read_package_report(package)
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
 
+            self.assertEqual(manifest["project"], "TVE1086U")
             self.assertIn("### TVE1086U", report)
             self.assertIn("整体项目交接", report)
             self.assertNotIn("### TVE1086U整体项目交接", report)

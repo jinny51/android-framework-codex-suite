@@ -247,6 +247,10 @@ patch/feature README/diff/summary text
 explicit related daily or weekly report context
 ```
 
+Daily reports are not just prose. When a daily package context contains exactly one traceable TVE/TVA/TVI project model, `manifest.project` and `materials/evidence/project_inference.json` must carry it so the database repository can show accurate member work context and later curation can use it as evidence. If the daily context contains multiple projects, keep the single `project` field unknown and preserve the checked candidates and limits in project inference evidence.
+
+Patch packages should not depend on the UI or server to guess the project. Prefer explicit project evidence from the capture package or `--project`; otherwise attach the related daily run id so the patch can inherit that daily context. If no traceable project exists, the package can still be preserved, but curation must treat the missing project as an evidence gap and must not promote it to high-confidence reusable knowledge.
+
 Current automatic project recognition scope:
 
 ```text
