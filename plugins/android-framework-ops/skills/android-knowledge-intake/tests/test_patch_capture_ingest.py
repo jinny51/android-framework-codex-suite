@@ -943,8 +943,8 @@ class PatchCaptureIngestTests(unittest.TestCase):
         )
 
         self.assertEqual(project, "TVE1067M1_H031")
-        self.assertEqual(payload["base_model"], "TVE1067M")
-        self.assertEqual(payload["suffix"], "1_H031")
+        self.assertEqual(payload["base_model"], "TVE1067M1")
+        self.assertEqual(payload["suffix"], "H031")
         self.assertTrue(payload["company_rule_match"])
 
     def test_daily_project_inference_collapses_same_base_model_candidates(self) -> None:
@@ -959,10 +959,10 @@ class PatchCaptureIngestTests(unittest.TestCase):
             [],
         )
 
-        self.assertEqual(project, "TVE1067M")
-        self.assertEqual(payload["project"], "TVE1067M")
-        self.assertEqual(payload["base_model"], "TVE1067M")
-        self.assertIn("多个候选共享基础项目 TVE1067M", " ".join(payload["limits"]))
+        self.assertEqual(project, "TVE1067M1")
+        self.assertEqual(payload["project"], "TVE1067M1")
+        self.assertEqual(payload["base_model"], "TVE1067M1")
+        self.assertIn("多个候选共享基础项目 TVE1067M1", " ".join(payload["limits"]))
 
     def test_patch_project_inference_uses_related_daily_report_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

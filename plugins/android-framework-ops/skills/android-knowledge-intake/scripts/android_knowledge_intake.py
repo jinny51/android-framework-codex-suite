@@ -46,7 +46,10 @@ PLATFORM_PREFIX_ALIASES = {
     "u": "unisoc",
 }
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
-PROJECT_MODEL_RE = re.compile(r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{5}(?:[A-Z0-9_]+)?(?![A-Z0-9])", re.I)
+PROJECT_MODEL_RE = re.compile(
+    r"(?<![A-Z0-9])(?P<base>TV[EAI][A-Z0-9]{5}(?:\d)?)(?P<suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
+    re.I,
+)
 PROJECT_ANCHOR_RE = re.compile(r"(?i)(TVA\d{2}[A-Z]\d[A-Z]|TV[EI]\d{4}[A-Z]\d?)")
 REMOTE_PATH_RE = re.compile(r"(?:/[A-Za-z0-9_.@+-]+){2,}")
 BANNED_LOG_PATTERNS = (
@@ -2989,17 +2992,29 @@ def first_evidence_payload(package_dir: Path, entries: list[dict[str, Any]], kin
     return read_json_file(package_dir / rel)
 
 
+def split_company_project(value: str) -> tuple[str, str]:
+    match = PROJECT_MODEL_RE.fullmatch(str(value or "").strip().upper())
+    if not match:
+        return "", ""
+    base = match.group("base")
+    suffix = match.group("suffix").lstrip("_")
+    return base, suffix
+
+
 def parse_company_project(value: str) -> dict[str, Any]:
-    base = value[:8]
+    base, suffix = split_company_project(value)
+    if not base:
+        base = value[:8]
+        suffix = value[8:].lstrip("_")
     return {
         "base_model": base,
         "product_prefix": base[:2],
         "form_code": base[2],
         "mold_code": base[3:7],
-        "soc_code": base[7],
-        "suffix": value[8:].lstrip("_"),
+        "soc_code": base[7:],
+        "suffix": suffix,
         "recognition_scope": "TVE/TVA/TVI",
-        "company_rule_match": bool(re.fullmatch(r"TV[EAI][A-Z0-9]{5}", base)),
+        "company_rule_match": bool(base),
     }
 
 
@@ -3281,7 +3296,7 @@ def infer_report_project(
         project, label, value = matched[0]
         return project, project_inference_payload(project, [f"{label}: {value}"], checked_sources, raw_inputs)
     if len(unique_projects) > 1:
-        base_models = sorted(dict.fromkeys(project[:8] for project in unique_projects))
+        base_models = sorted(dict.fromkeys(parse_company_project(project).get("base_model", "") for project in unique_projects))
         if len(base_models) == 1:
             base_project = base_models[0]
             payload = project_inference_payload(
