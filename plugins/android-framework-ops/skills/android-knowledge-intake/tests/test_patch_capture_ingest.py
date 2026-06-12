@@ -117,6 +117,9 @@ def create_capture_package(
         "feature": "nav-policy-toggle",
         "readme": "README.md",
         "project": project,
+        "platform_token": "rk14",
+        "platform": "rk",
+        "android_version": "14",
         "summary": "Allow nav policy toggle",
         "status": status,
         "implementation_origin": "manual",
@@ -143,6 +146,9 @@ def create_capture_package(
                 "status": status,
                 "reuse_hint": status == "validated",
                 "project": project,
+                "platform_token": "rk14",
+                "platform": "rk",
+                "android_version": "14",
                 "implementation_origin": "manual",
                 "captured_by": "codex",
                 "facts": {"modified_files": ["frameworks/base/services/core/java/X.java"]},
@@ -227,6 +233,9 @@ def create_feature_capture_package(root: Path) -> Path:
         "feature": "cross-repo-display-policy",
         "readme": "README.md",
         "project": "TVE1234A",
+        "platform_token": "rk14",
+        "platform": "rk",
+        "android_version": "14",
         "summary": "跨源码仓库调整显示策略和设置入口",
         "status": "validated",
         "implementation_origin": "manual",
@@ -251,6 +260,9 @@ def create_feature_capture_package(root: Path) -> Path:
                 "status": "validated",
                 "reuse_hint": True,
                 "project": "TVE1234A",
+                "platform_token": "rk14",
+                "platform": "rk",
+                "android_version": "14",
                 "implementation_origin": "manual",
                 "captured_by": "codex",
                 "facts": {"modified_files": ["services/core/java/com/android/server/wm/DisplayPolicy.java"], "modules": ["frameworks-base"]},
@@ -263,6 +275,9 @@ def create_feature_capture_package(root: Path) -> Path:
                 "status": "validated",
                 "reuse_hint": True,
                 "project": "TVE1234A",
+                "platform_token": "rk14",
+                "platform": "rk",
+                "android_version": "14",
                 "implementation_origin": "manual",
                 "captured_by": "codex",
                 "facts": {"modified_files": ["src/com/android/settings/DisplaySettings.java"], "modules": ["settings"]},
@@ -378,6 +393,81 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("materials/evidence/project_inference.json", evidence_files)
             self.assertIn("materials/evidence/verification_result.json", evidence_files)
             self.assertFalse(any(str(path).startswith("knowledge/") for path in manifest["files"]["evidence"]))
+
+    def test_platform_token_parser_rejects_generic_android_prefix(self) -> None:
+        self.assertEqual(
+            intake.parse_platform_token(
+                [
+                    {
+                        "path": "patches/android14-frameworks-base@cmss_logical_main_display.patch",
+                    }
+                ]
+            ),
+            ("unknown", "14"),
+        )
+        self.assertEqual(
+            intake.parse_platform_token(
+                [
+                    {
+                        "path": "patches/app15-manager@force-wifi-on.patch",
+                    }
+                ]
+            ),
+            ("unknown", "15"),
+        )
+
+    def test_platform_token_parser_accepts_only_supported_platforms(self) -> None:
+        self.assertEqual(
+            intake.parse_platform_token(
+                [
+                    {
+                        "path": "patches/sprd14-frameworks-base@display-policy.patch",
+                    },
+                    {
+                        "path": "patches/u14-settings@display-policy.patch",
+                    },
+                ]
+            ),
+            ("unisoc", "14"),
+        )
+        self.assertEqual(
+            intake.parse_platform_token(
+                [
+                    {
+                        "path": "patches/rk90-frameworks-base@display-policy.patch",
+                    }
+                ]
+            ),
+            ("rk", "9.0"),
+        )
+
+    def test_framework_change_validation_rejects_fake_platform(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-120000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_capture_package(root))],
+                project="TVE1234A",
+                summary="Allow nav policy toggle",
+                status="validated",
+                schema_version="1",
+            )
+            manifest_path = package / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["platform"] = "android"
+            write_json(manifest_path, manifest)
+            variant_path = package / manifest["files"]["variant"]
+            variant = json.loads(variant_path.read_text(encoding="utf-8"))
+            variant["platform"] = "android"
+            write_json(variant_path, variant)
+
+            check = intake.validate_package(package)
+
+            self.assertEqual(check["status"], "FAIL")
+            self.assertTrue(any("platform 非法" in item for item in check["errors"]))
 
     def test_patch_package_carries_recent_member_search_usage_when_capture_lacks_it(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -100,6 +100,8 @@ Patch filename must follow:
 平台Android版本-模块名@补丁功能名.patch
 ```
 
+`--platform` 必须使用当前受控平台令牌：`mtk<Android版本>`、`rk<Android版本>` 或 `unisoc<Android版本>`。历史别名 `sprd<Android版本>` 和 `u<Android版本>` 会规范化为 `unisoc<Android版本>`。不要使用 `android14`、`app15` 这类泛化令牌；它们只能说明可能的 Android 版本，不能证明平台（platform）。
+
 Examples:
 
 ```text

@@ -17,7 +17,14 @@ from typing import Any
 
 SCHEMA_VERSION = "2.0"
 PATCH_NAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
-PLATFORM_RE = re.compile(r"^[a-z0-9]+[0-9]+$")
+PLATFORM_TOKEN_RE = re.compile(r"^(mtk|rk|unisoc|sprd|u)(\d{1,2})$")
+PLATFORM_PREFIX_ALIASES = {
+    "mtk": "mtk",
+    "rk": "rk",
+    "unisoc": "unisoc",
+    "sprd": "unisoc",
+    "u": "unisoc",
+}
 PROJECT_MODEL_RE = re.compile(r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{5}(?:[A-Z0-9_]+)?(?![A-Z0-9])", re.I)
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
 BANNED_LOG_PATTERNS = (
@@ -85,6 +92,24 @@ def slug(value: str, *, lower: bool = True) -> str:
     value = re.sub(r"[^A-Za-z0-9._-]+", "-", value)
     value = re.sub(r"-+", "-", value).strip("-._")
     return value or "unnamed"
+
+
+def normalize_android_version(platform: str, version: str) -> str:
+    if platform == "rk" and version in {"71", "90"}:
+        return {"71": "7.1", "90": "9.0"}[version]
+    return version.lstrip("0") or version
+
+
+def parse_platform_arg(value: str) -> tuple[str, str, str]:
+    token = slug(value)
+    match = PLATFORM_TOKEN_RE.fullmatch(token)
+    if not match:
+        return "", "", ""
+    prefix, raw_version = match.groups()
+    platform = PLATFORM_PREFIX_ALIASES[prefix]
+    android_version = normalize_android_version(platform, raw_version)
+    filename_version = raw_version.lstrip("0") or raw_version
+    return f"{platform}{filename_version}", platform, android_version
 
 
 def sha1_text(value: str) -> str:
@@ -1297,10 +1322,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if not PLATFORM_RE.fullmatch(slug(args.platform)):
-        raise SystemExit("--platform 必须包含平台和 Android 版本，例如 rk14、mtk14、unisoc13。")
+    platform_token, platform_name, android_version = parse_platform_arg(args.platform)
+    if not platform_token:
+        raise SystemExit("--platform 必须使用受控平台和 Android 版本，例如 rk14、mtk14、unisoc13；不能使用 android14、app15 这类泛化令牌。")
 
-    platform = slug(args.platform)
+    platform = platform_token
     feature = slug(args.feature)
     args.feature = feature
     captures = collect_repository_captures(args, platform, feature)
@@ -1417,6 +1443,9 @@ def main() -> int:
             "status": args.status,
             "reuse_hint": args.status == "validated",
             "project": args.project,
+            "platform_token": platform_token,
+            "platform": platform_name,
+            "android_version": android_version,
             "implementation_origin": args.implementation_origin,
             "captured_by": "codex",
             "facts": capture.facts,
@@ -1429,6 +1458,9 @@ def main() -> int:
         "feature": feature,
         "readme": "README.md",
         "project": args.project,
+        "platform_token": platform_token,
+        "platform": platform_name,
+        "android_version": android_version,
         "summary": args.summary,
         "status": args.status,
         "implementation_origin": args.implementation_origin,

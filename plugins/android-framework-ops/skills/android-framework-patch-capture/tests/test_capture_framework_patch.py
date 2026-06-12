@@ -215,13 +215,81 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(manifest["related_report_run_ids"], ["20260601-210000-daily"])
             self.assertEqual(manifest["implementation_origin"], "manual")
             self.assertEqual(manifest["captured_by"], "codex")
+            self.assertEqual(manifest["platform_token"], "rk14")
+            self.assertEqual(manifest["platform"], "rk")
+            self.assertEqual(manifest["android_version"], "14")
             self.assertTrue(manifest["coding_standard_check"]["required"])
             self.assertEqual(manifest["coding_standard_check"]["mode"], "capture_gate")
             self.assertEqual(manifest["patches"][0]["implementation_origin"], "manual")
+            self.assertEqual(manifest["patches"][0]["platform"], "rk")
+            self.assertEqual(manifest["patches"][0]["android_version"], "14")
             self.assertEqual(manifest["patches"][0]["reuse_hint"], True)
             self.assertNotIn("reusable", manifest["patches"][0])
             self.assertEqual(coding_check["implementation_origin"], "manual")
             self.assertTrue(coding_check["review_required"])
+
+    def test_rejects_generic_android_platform_token(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260611-130000-patch",
+                    "--platform",
+                    "android14",
+                    "--feature",
+                    "nav-policy-toggle",
+                    "--summary",
+                    "Allow navigation policy toggle",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("不能使用 android14", result.stderr or result.stdout)
+
+    def test_normalizes_unisoc_platform_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260611-131000-patch",
+                    "--platform",
+                    "sprd14",
+                    "--feature",
+                    "nav-policy-toggle",
+                    "--summary",
+                    "Allow navigation policy toggle",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["platform_token"], "unisoc14")
+            self.assertEqual(manifest["platform"], "unisoc")
+            self.assertEqual(manifest["android_version"], "14")
+            self.assertTrue(manifest["patches"][0]["path"].startswith("patches/unisoc14-"))
 
     def test_writes_pre_change_reuse_decision_and_remote_to_local_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

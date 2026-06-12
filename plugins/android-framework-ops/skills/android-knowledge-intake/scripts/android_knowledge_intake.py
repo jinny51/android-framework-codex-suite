@@ -35,6 +35,16 @@ DEFAULT_SUBMISSION_SSH_HOST = "test35"
 DEFAULT_SUBMISSION_COMMAND = "/home/test35/work/knowledge/database-worktree/scripts/knowledge-submit"
 DEFAULT_KNOWLEDGE_REPO_URL = "test35:/home/test35/work/knowledge/knowledge.git"
 PATCH_FILENAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
+PLATFORM_TOKEN_RE = re.compile(r"^(mtk|rk|unisoc|sprd|u)(\d{1,2})(?:-|$)")
+VERSION_ONLY_TOKEN_RE = re.compile(r"^(?:android|app)(\d{1,2})(?:-|$)")
+VALID_FRAMEWORK_PLATFORMS = {"mtk", "rk", "unisoc"}
+PLATFORM_PREFIX_ALIASES = {
+    "mtk": "mtk",
+    "rk": "rk",
+    "unisoc": "unisoc",
+    "sprd": "unisoc",
+    "u": "unisoc",
+}
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
 PROJECT_MODEL_RE = re.compile(r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{5}(?:[A-Z0-9_]+)?(?![A-Z0-9])", re.I)
 PROJECT_ANCHOR_RE = re.compile(r"(?i)(TVA\d{2}[A-Z]\d[A-Z]|TV[EI]\d{4}[A-Z]\d?)")
@@ -1403,6 +1413,9 @@ def copy_patch_capture_packages(
                     "status": entry_status,
                     "reuse_hint": bool(item.get("reuse_hint", entry_status == "validated")),
                     "project": item.get("project") or manifest.get("project") or default_project,
+                    "platform_token": str(item.get("platform_token") or manifest.get("platform_token") or ""),
+                    "platform": str(item.get("platform") or manifest.get("platform") or ""),
+                    "android_version": str(item.get("android_version") or manifest.get("android_version") or ""),
                     "implementation_origin": str(item.get("implementation_origin") or implementation_origin),
                     "captured_by": str(item.get("captured_by") or captured_by),
                     "coding_standard_check": coding_standard_check,
@@ -2181,6 +2194,12 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         for field in ("case_id", "variant_id", "package_status", "platform", "android_version", "project"):
             if not manifest.get(field):
                 errors.append(f"framework_change 缺少 {field}")
+        manifest_platform = str(manifest.get("platform") or "").strip().lower()
+        manifest_android_version = str(manifest.get("android_version") or "").strip().lower()
+        if manifest_platform and not is_valid_platform_value(manifest_platform):
+            errors.append(f"framework_change platform 非法: {manifest_platform}；只能使用 mtk/rk/unisoc/unknown")
+        if manifest_android_version and not is_valid_android_version_value(manifest_android_version):
+            errors.append(f"framework_change android_version 非法: {manifest_android_version}")
         if "maturity" in manifest:
             errors.append("framework_change manifest 不允许使用 maturity；请使用 package_status")
         package_status = str(manifest.get("package_status", ""))
@@ -2233,6 +2252,12 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             for field in ("platform", "android_version", "project", "repo_paths", "package_status"):
                 if not variant.get(field):
                     errors.append(f"variant 缺少 {field}")
+            variant_platform = str(variant.get("platform") or "").strip().lower()
+            variant_android_version = str(variant.get("android_version") or "").strip().lower()
+            if variant_platform and not is_valid_platform_value(variant_platform):
+                errors.append(f"variant.platform 非法: {variant_platform}；只能使用 mtk/rk/unisoc/unknown")
+            if variant_android_version and not is_valid_android_version_value(variant_android_version):
+                errors.append(f"variant.android_version 非法: {variant_android_version}")
         evidence_by_kind = load_evidence(evidence_paths)
         for rel in evidence_paths:
             if not isinstance(rel, str):
@@ -2681,6 +2706,9 @@ def incoming_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[
     facts = {
         "content_sha1": content_sha1,
         "repo_path": repo_path,
+        "platform_token": str(patch_entry.get("platform_token") or ""),
+        "platform": str(patch_entry.get("platform") or ""),
+        "android_version": str(patch_entry.get("android_version") or ""),
         "implementation_origin": implementation_origin,
         "captured_by": captured_by,
         "modified_files": modified_files,
@@ -2871,18 +2899,68 @@ def prepare_package(report_type: str, date: dt.date, config: dict[str, str], run
     return package_dir
 
 
-def parse_platform_token(patch_entries: list[dict[str, Any]]) -> tuple[str, str]:
-    if not patch_entries:
-        return "unknown", "unknown"
-    name = Path(str(patch_entries[0].get("path", ""))).name.lower()
-    match = re.match(r"^([a-z]+)(\d{1,2})-", name)
-    if not match:
-        return "unknown", "unknown"
-    platform = "unisoc" if match.group(1) == "sprd" else match.group(1)
-    version = match.group(2)
+def normalize_android_version(platform: str, version: str) -> str:
     if platform == "rk" and version in {"71", "90"}:
-        version = {"71": "7.1", "90": "9.0"}[version]
-    return platform, version
+        return {"71": "7.1", "90": "9.0"}[version]
+    return version.lstrip("0") or version
+
+
+def is_valid_platform_value(value: str) -> bool:
+    return value in VALID_FRAMEWORK_PLATFORMS or value == "unknown"
+
+
+def is_valid_android_version_value(value: str) -> bool:
+    return value == "unknown" or bool(re.fullmatch(r"\d+(?:\.\d+)?", value))
+
+
+def parse_known_platform_token(value: str) -> tuple[str, str]:
+    token = Path(str(value or "")).name.lower()
+    match = PLATFORM_TOKEN_RE.match(token)
+    if not match:
+        return "", ""
+    prefix, raw_version = match.groups()
+    platform = PLATFORM_PREFIX_ALIASES[prefix]
+    return platform, normalize_android_version(platform, raw_version)
+
+
+def parse_version_only_token(value: str) -> str:
+    token = Path(str(value or "")).name.lower()
+    match = VERSION_ONLY_TOKEN_RE.match(token)
+    if not match:
+        return ""
+    return match.group(1).lstrip("0") or match.group(1)
+
+
+def parse_platform_token(patch_entries: list[dict[str, Any]]) -> tuple[str, str]:
+    explicit: list[tuple[str, str]] = []
+    filename_tokens: list[tuple[str, str]] = []
+    version_only: list[str] = []
+    for item in patch_entries:
+        platform = str(item.get("platform") or "").strip().lower()
+        android_version = str(item.get("android_version") or "").strip().lower()
+        if platform in VALID_FRAMEWORK_PLATFORMS and is_valid_android_version_value(android_version) and android_version != "unknown":
+            explicit.append((platform, android_version))
+        for key in ("platform_token", "path", "id", "name"):
+            value = str(item.get(key) or "")
+            parsed = parse_known_platform_token(value)
+            if parsed != ("", ""):
+                filename_tokens.append(parsed)
+        for key in ("path", "id", "name"):
+            version = parse_version_only_token(str(item.get(key) or ""))
+            if version:
+                version_only.append(version)
+
+    for candidates in (explicit, filename_tokens):
+        unique = sorted(set(candidates))
+        if len(unique) == 1:
+            return unique[0]
+        if len(unique) > 1:
+            return "unknown", "unknown"
+
+    unique_versions = sorted(set(version_only))
+    if len(unique_versions) == 1:
+        return "unknown", unique_versions[0]
+    return "unknown", "unknown"
 
 
 def repo_paths_from_files(files: list[str]) -> list[str]:
