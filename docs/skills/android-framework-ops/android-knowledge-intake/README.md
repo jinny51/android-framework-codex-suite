@@ -22,7 +22,9 @@
 
 严格健康检查（doctor strict check）会要求 `knowledge_repo_worktree` 存在且是 Git 仓库（git repository）。成员端只克隆知识库仓库（knowledge repository），不能克隆或直接读取数据库仓库（database repository）。
 
-日报、周报和补丁生成入口会先做插件新鲜度检查（plugin freshness check）。如果能确认当前插件落后远端，脚本会停止本次生成并给出更新命令，避免成员继续用过期协议生成上传包。
+日报、周报和补丁生成入口会先做插件新鲜度检查（plugin freshness check）。Git checkout 会和上游分支比较；Codex 插件缓存安装会读取 `.codex-plugin/plugin.json` 的版本，并在可访问 GitHub marketplace 源时比较远端版本。如果能确认当前插件落后远端，脚本会停止本次生成并提示先更新插件，避免成员继续用过期协议生成上传包。
+
+生成出的上传包会在 `materials/evidence/source.json` 写入 `plugin_name`、`plugin_version`、`skill_version`、`plugin_installation` 和可用的 `plugin_commit`。服务器新上传严格校验会拒绝缺少这些版本证据的包，避免项目（project）、平台（platform）或 Android 版本（Android version）错误时无法追溯生成入口。
 
 ## 典型场景
 

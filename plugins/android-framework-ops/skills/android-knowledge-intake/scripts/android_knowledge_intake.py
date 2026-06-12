@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import urllib.request
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +31,7 @@ INCOMING_SCHEMA_VERSION = "1"
 ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
 PLUGIN_UPDATE_SKIP_ENV = "CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"
 PLUGIN_UPDATE_REQUIRE_ENV = "CODEX_REPORT_REQUIRE_PLUGIN_UPDATE_CHECK"
+PLUGIN_REMOTE_MANIFEST_TIMEOUT = 6
 DEFAULT_SUBMISSION_METHOD = "ssh"
 DEFAULT_SUBMISSION_SSH_HOST = "test35"
 DEFAULT_SUBMISSION_COMMAND = "/home/test35/work/knowledge/database-worktree/scripts/knowledge-submit"
@@ -228,6 +230,115 @@ def plugin_update_unknown(message: str, require: bool, git_root: Path | None = N
     return payload
 
 
+def plugin_manifest_path() -> Path | None:
+    for directory in [PLUGIN_ROOT, *PLUGIN_ROOT.parents]:
+        candidate = directory / ".codex-plugin" / "plugin.json"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def plugin_install_metadata() -> dict[str, str]:
+    manifest_path = plugin_manifest_path()
+    payload: dict[str, Any] = {}
+    if manifest_path:
+        try:
+            loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                payload = loaded
+        except Exception:
+            payload = {}
+    return {
+        "plugin_name": str(payload.get("name") or "android-framework-ops"),
+        "plugin_version": str(payload.get("version") or ""),
+        "repository": str(payload.get("repository") or payload.get("homepage") or ""),
+        "plugin_installation": "packaged" if manifest_path else "unknown",
+    }
+
+
+def version_parts(value: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for item in str(value or "").split("."):
+        match = re.match(r"^(\d+)", item)
+        if match:
+            parts.append(int(match.group(1)))
+        else:
+            parts.append(0)
+    return tuple(parts)
+
+
+def compare_versions(left: str, right: str) -> int:
+    left_parts = list(version_parts(left))
+    right_parts = list(version_parts(right))
+    size = max(len(left_parts), len(right_parts), 1)
+    left_parts.extend([0] * (size - len(left_parts)))
+    right_parts.extend([0] * (size - len(right_parts)))
+    return (left_parts > right_parts) - (left_parts < right_parts)
+
+
+def github_raw_plugin_manifest_url(metadata: dict[str, str]) -> str:
+    repository = str(metadata.get("repository") or "").strip().removesuffix(".git")
+    match = re.search(r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/#?]+)", repository)
+    plugin_name = str(metadata.get("plugin_name") or "android-framework-ops").strip()
+    if not match or not plugin_name:
+        return ""
+    owner = match.group("owner")
+    repo = match.group("repo")
+    return f"https://raw.githubusercontent.com/{owner}/{repo}/main/plugins/{plugin_name}/.codex-plugin/plugin.json"
+
+
+def fetch_remote_plugin_manifest(metadata: dict[str, str]) -> dict[str, Any]:
+    url = github_raw_plugin_manifest_url(metadata)
+    if not url:
+        raise RuntimeError("插件仓库不是可识别的 GitHub 仓库，不能读取远端插件版本。")
+    with urllib.request.urlopen(url, timeout=PLUGIN_REMOTE_MANIFEST_TIMEOUT) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("远端插件清单不是 JSON 对象。")
+    return payload
+
+
+def packaged_plugin_freshness(metadata: dict[str, str], fetch: bool, require: bool) -> dict[str, Any]:
+    local_version = str(metadata.get("plugin_version") or "")
+    payload: dict[str, Any] = {
+        "status": "PASS" if local_version else "UNKNOWN",
+        "blocking": False,
+        "plugin_name": metadata.get("plugin_name") or "android-framework-ops",
+        "local_version": local_version,
+        "installation": metadata.get("plugin_installation") or "packaged",
+        "message": "插件缓存版本已记录。",
+    }
+    if not local_version:
+        return plugin_update_unknown("无法读取插件缓存版本，不能确认是否有更新。", require)
+    if not fetch:
+        return payload
+    try:
+        remote_manifest = fetch_remote_plugin_manifest(metadata)
+    except Exception as exc:
+        return plugin_update_unknown(f"无法读取插件远端版本，不能确认是否有更新: {exc}", require)
+    remote_version = str(remote_manifest.get("version") or "")
+    payload["remote_version"] = remote_version
+    if remote_version and compare_versions(local_version, remote_version) < 0:
+        payload.update(
+            {
+                "status": "STALE",
+                "blocking": True,
+                "message": "插件有更新，已停止本次生成。请先在 Codex 插件市场更新 Android Framework Ops 插件后重新运行原命令。",
+            }
+        )
+    elif remote_version:
+        payload["message"] = "插件缓存版本已是当前远端版本。"
+    else:
+        payload.update(
+            {
+                "status": "UNKNOWN",
+                "blocking": require,
+                "message": "远端插件清单缺少版本号，不能确认是否有更新。",
+            }
+        )
+    return payload
+
+
 def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[str, Any]:
     require = require or env_enabled(PLUGIN_UPDATE_REQUIRE_ENV)
     if env_enabled(PLUGIN_UPDATE_SKIP_ENV):
@@ -239,6 +350,9 @@ def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[st
 
     root_cp = run(["git", "-C", str(PLUGIN_ROOT), "rev-parse", "--show-toplevel"])
     if root_cp.returncode != 0:
+        metadata = plugin_install_metadata()
+        if metadata.get("plugin_version"):
+            return packaged_plugin_freshness(metadata, fetch, require)
         return plugin_update_unknown(
             "无法确认插件版本：当前插件目录不是 Git 仓库（git repository）。请在 Codex 插件市场更新 Android Framework Ops 插件后重新运行。",
             require,
@@ -302,6 +416,9 @@ def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[st
         "remote_commit": remote_commit[:12],
         "update_command": update_command,
     }
+    metadata = plugin_install_metadata()
+    if metadata.get("plugin_version"):
+        payload["local_version"] = metadata["plugin_version"]
     if warnings:
         payload["warnings"] = warnings
 
@@ -1743,11 +1860,18 @@ def plugin_commit() -> str:
 
 
 def source_metadata(config: dict[str, str], skill: str) -> dict[str, Any]:
+    metadata = plugin_install_metadata()
+    plugin_version = metadata.get("plugin_version") or ""
+    root_cp = run(["git", "-C", str(PLUGIN_ROOT), "rev-parse", "--show-toplevel"])
+    plugin_installation = "git" if root_cp.returncode == 0 else metadata.get("plugin_installation", "unknown")
     return {
         "source": "android-framework-ops",
         "tool": skill,
         "skill": skill,
-        "skill_version": "",
+        "skill_version": plugin_version,
+        "plugin_name": metadata.get("plugin_name") or "android-framework-ops",
+        "plugin_version": plugin_version,
+        "plugin_installation": plugin_installation,
         "plugin_commit": plugin_commit(),
         "member_alias": config["member_alias"],
         "generated_at": local_now(config).isoformat(),

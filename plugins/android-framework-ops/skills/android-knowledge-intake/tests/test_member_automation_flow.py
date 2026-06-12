@@ -113,6 +113,28 @@ def seed_stale_plugin_checkout(root: Path) -> Path:
     return skill_root
 
 
+def seed_packaged_plugin_install(root: Path, version: str = "1.0.24") -> Path:
+    plugin_root = root / "codex-plugin-cache" / "android-framework-ops" / version
+    skill_root = plugin_root / "skills" / "android-knowledge-intake"
+    skill_root.mkdir(parents=True)
+    manifest_path = plugin_root / ".codex-plugin" / "plugin.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "name": "android-framework-ops",
+                "version": version,
+                "repository": "https://github.com/jinny51/android-framework-codex-suite",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return skill_root
+
+
 def write_member_config(root: Path, knowledge_remote: Path, submit_command: str | None = None, synthetic_data: bool = True) -> dict[str, str]:
     codex_home = root / "codex-home"
     config_dir = codex_home / "report"
@@ -434,6 +456,36 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertFalse(result["blocking"])
             self.assertEqual(forced["status"], "UNKNOWN")
             self.assertTrue(forced["blocking"])
+
+    def test_packaged_plugin_freshness_detects_newer_marketplace_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plugin_root = seed_packaged_plugin_install(root, version="1.0.24")
+            module = load_intake_module()
+            module.PLUGIN_ROOT = plugin_root
+            module.fetch_remote_plugin_manifest = lambda metadata: {"version": "1.0.26"}
+
+            result = module.plugin_freshness_check(fetch=True)
+
+            self.assertEqual(result["status"], "STALE")
+            self.assertTrue(result["blocking"])
+            self.assertEqual(result["local_version"], "1.0.24")
+            self.assertEqual(result["remote_version"], "1.0.26")
+            self.assertIn("插件有更新", result["message"])
+
+    def test_source_metadata_records_packaged_plugin_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            plugin_root = seed_packaged_plugin_install(root, version="1.0.24")
+            module = load_intake_module()
+            module.PLUGIN_ROOT = plugin_root
+
+            source = module.source_metadata({"member_alias": "member01"}, "android-knowledge-intake")
+
+            self.assertEqual(source["plugin_name"], "android-framework-ops")
+            self.assertEqual(source["plugin_version"], "1.0.24")
+            self.assertEqual(source["skill_version"], "1.0.24")
+            self.assertEqual(source["plugin_installation"], "packaged")
 
     def test_member_generation_modes_stop_when_plugin_checkout_is_stale(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
