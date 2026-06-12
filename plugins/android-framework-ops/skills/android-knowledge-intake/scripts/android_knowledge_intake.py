@@ -1497,6 +1497,10 @@ def validate_patch_readme(path: Path) -> list[str]:
     return errors
 
 
+def patch_readme_usable_for_inference(path: Path) -> bool:
+    return path.is_file() and not validate_patch_readme(path)
+
+
 def validate_patch_file(path: Path) -> list[str]:
     errors: list[str] = []
     if not PATCH_FILENAME_RE.fullmatch(path.name):
@@ -2238,6 +2242,8 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
                 errors.append(f"patch 文件必须是 .patch 或 .diff: {patch_path}")
         if readme_path:
             errors.extend(validate_patch_readme(readme_path))
+        for patch_readme_path in sorted((package_dir / "patches").glob("*.readme.md")):
+            errors.extend(validate_patch_readme(patch_readme_path))
         if case_path:
             case = read_json_file(case_path)
             if case.get("case_id") != manifest.get("case_id"):
@@ -3211,7 +3217,10 @@ def infer_project(
             if isinstance(value, str) and value:
                 patch_clues.append((label, value))
             if package_dir and key in {"path", "readme"} and isinstance(value, str) and value:
-                sample = read_text_sample(package_dir / value)
+                source = package_dir / value
+                if key == "readme" and not patch_readme_usable_for_inference(source):
+                    continue
+                sample = read_text_sample(source)
                 if sample:
                     patch_clues.append((label.replace("路径", "内容"), sample))
     for item in patch_sources:

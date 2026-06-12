@@ -961,6 +961,47 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 {"manual"},
             )
 
+    def test_template_patch_companion_readme_is_rejected_even_with_feature_readme(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            standalone_patch = root / "rk14-frameworks-base@template-companion.patch"
+            standalone_patch.write_text(
+                "diff --git a/frameworks/base/services/core/java/Y.java b/frameworks/base/services/core/java/Y.java\n"
+                "--- a/frameworks/base/services/core/java/Y.java\n"
+                "+++ b/frameworks/base/services/core/java/Y.java\n"
+                "@@ -1 +1,2 @@\n"
+                "+//gyf 20260608@ template companion case\n",
+                encoding="utf-8",
+            )
+            standalone_patch.with_suffix(".readme.md").write_text(
+                intake.patch_readme_template(
+                    intake.PatchInfo(path=standalone_patch, name=standalone_patch.name, project="TVE1234A"),
+                    self.config(root),
+                    status="validated",
+                    reuse_hint=True,
+                ),
+                encoding="utf-8",
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 8),
+                self.config(root),
+                run_id="20260608-121000-template-companion",
+                patch_paths=[str(standalone_patch)],
+                patch_package_paths=[str(create_capture_package(root))],
+                project="TVE1234A",
+                summary="功能级说明合格但补丁说明未补齐",
+                status="validated",
+                schema_version="1",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            project_inference = json.loads((package / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "FAIL")
+            self.assertTrue(any("template-companion.readme.md" in item and "TODO" in item for item in check["errors"]))
+            self.assertFalse(any("TODO" in item for item in project_inference["payload"]["raw_inputs"]))
+
     def test_project_inference_keeps_full_model_and_base_model(self) -> None:
         project, payload = intake.infer_project(
             "unknown",
