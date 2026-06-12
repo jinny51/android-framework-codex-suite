@@ -42,6 +42,14 @@ python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
   --delete-not-in-keep --keep-ids THREAD_ID... --dry-run --summary
 ```
 
+For readable approval output, pass UI titles as display-only labels when available:
+
+```bash
+python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
+  --delete-not-in-keep --keep-ids THREAD_ID... \
+  --keep-label "THREAD_ID=知识库系统" --dry-run --summary
+```
+
 5. After the user confirms the dry-run plan, tell them to fully exit Codex Desktop.
 6. Execute from external WSL/PowerShell, not from inside Codex:
 
@@ -52,6 +60,13 @@ python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
 ```
 
 The script backs up changed stores by default. The `--require-codex-exited-for-global-state` guard must abort before writes if Codex Desktop still appears to be running, because `.codex-global-state.json` can otherwise be rewritten from the app's in-memory state.
+
+Dry-run output is an approval view for a human, not an internal log. In UI keep-set mode it must separate:
+
+- `保留，不会删除`: UI-visible threads and linked subagents, with readable titles.
+- `计划删除/清理`: non-UI DB sessions, archived transcript remnants, search index entries, and thread-keyed global-state entries.
+- `不会自动删除，只提示`: health warnings and ambiguous residue that needs separate review.
+- `下一步`: exactly how to execute after exiting Codex Desktop.
 
 ## Separate Subagent History Diagnosis
 

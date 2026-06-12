@@ -45,6 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--current-thread-id", help="Thread ID to preserve when using --all-except-current.")
     parser.add_argument("--delete-not-in-keep", action="store_true", help="Select every DB/index/global-state thread not in --keep-ids.")
     parser.add_argument("--keep-ids", nargs="*", default=[], help="Thread IDs or unique prefixes to preserve with --delete-not-in-keep.")
+    parser.add_argument("--keep-label", action="append", default=[], metavar="THREAD_ID=TITLE", help="Optional UI title label for a kept thread; display only, repeatable.")
     parser.add_argument("--no-keep-spawn-children", action="store_true", help="Do not recursively preserve child threads from thread_spawn_edges.")
     parser.add_argument("--ids", nargs="*", default=[], help="Thread IDs or unique prefixes to select.")
     parser.add_argument("--allow-ambiguous-ids", action="store_true", help="Allow an --ids term to match multiple threads.")
@@ -1156,11 +1157,289 @@ def render_thread_samples(samples: Any, limit: int = 3) -> str:
     return "：" + "；".join(rendered) if rendered else ""
 
 
+def compact_display_text(text: str, limit: int = 64) -> str:
+    compacted = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(compacted) <= limit:
+        return compacted
+    return compacted[: max(1, limit - 1)].rstrip() + "…"
+
+
+def subagent_nickname_from_source(source: str) -> str:
+    text = str(source or "").strip()
+    if not text.startswith("{"):
+        return ""
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return ""
+    subagent = payload.get("subagent") if isinstance(payload, dict) else None
+    if not isinstance(subagent, dict):
+        return ""
+    spawn = subagent.get("thread_spawn")
+    if not isinstance(spawn, dict):
+        return ""
+    return compact_display_text(str(spawn.get("agent_nickname") or ""), limit=32)
+
+
+def source_display_label(source: str) -> tuple[str, str]:
+    nickname = subagent_nickname_from_source(source)
+    if nickname:
+        return (f"subagent:{nickname}", nickname)
+    value = str(source or "").strip()
+    lowered = value.lower()
+    if lowered == "cli":
+        return ("CLI", "")
+    if lowered in {"vscode", "desktop", "user"}:
+        return ("UI", "")
+    if value.startswith("{"):
+        return ("subagent", "")
+    return (compact_display_text(value, limit=24), "")
+
+
+def thread_row_sample(row: ThreadRow) -> dict[str, Any]:
+    path = normalize_cwd_path(row.cwd)
+    project = (path.name if path else "") or project_name(row.cwd)
+    source_label, subagent_nickname = source_display_label(row.source)
+    title = compact_display_text(row.title)
+    if subagent_nickname:
+        title = f"子智能体 {subagent_nickname}"
+    elif source_label == "CLI":
+        title = "CLI 会话"
+    return {
+        "id": row.id,
+        "id_prefix": row.id[:12],
+        "title": title or "(无标题)",
+        "source": source_label,
+        "project": compact_display_text(project, limit=32),
+        "archived": int(row.archived or 0),
+    }
+
+
+def describe_thread_rows(rows: list[ThreadRow], limit: int = 50) -> list[dict[str, Any]]:
+    return [thread_row_sample(row) for row in rows[:limit]]
+
+
+def describe_thread_ids(thread_ids: set[str], rows: list[ThreadRow], limit: int = 50) -> list[dict[str, Any]]:
+    remaining = set(thread_ids)
+    samples: list[dict[str, Any]] = []
+    for row in rows:
+        if row.id not in remaining:
+            continue
+        samples.append(thread_row_sample(row))
+        remaining.remove(row.id)
+        if len(samples) >= limit:
+            return samples
+    for thread_id in sorted(remaining):
+        samples.append(
+            {
+                "id": thread_id,
+                "id_prefix": thread_id[:12],
+                "title": "(UI 保留 ID，当前 DB 未找到标题)",
+                "source": "",
+                "project": "",
+                "archived": 0,
+            }
+        )
+        if len(samples) >= limit:
+            break
+    return samples
+
+
+def parse_keep_labels(items: list[str]) -> dict[str, str]:
+    labels: dict[str, str] = {}
+    for item in items:
+        if "=" not in item:
+            raise SystemExit("--keep-label must be THREAD_ID=TITLE.")
+        thread_id, title = item.split("=", 1)
+        thread_id = thread_id.strip()
+        if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", thread_id, re.IGNORECASE):
+            raise SystemExit("--keep-label requires a full thread ID before '='.")
+        labels[thread_id] = compact_display_text(title, limit=64) or "(无标题)"
+    return labels
+
+
+def apply_keep_labels(samples: list[dict[str, Any]], labels: dict[str, str]) -> list[dict[str, Any]]:
+    if not labels:
+        return samples
+    labeled: list[dict[str, Any]] = []
+    for item in samples:
+        copy = dict(item)
+        item_id = str(copy.get("id") or "")
+        for thread_id, title in labels.items():
+            if thread_id == item_id:
+                copy["title"] = title
+                break
+        labeled.append(copy)
+    return labeled
+
+
+def render_approval_sample_lines(samples: Any, *, limit: int = 20, indent: str = "  - ") -> list[str]:
+    if not isinstance(samples, list) or not samples:
+        return []
+    lines: list[str] = []
+    rendered = 0
+    for item in samples:
+        if not isinstance(item, dict):
+            continue
+        prefix = str(item.get("id_prefix") or "").strip()
+        title = str(item.get("title") or "(无标题)").strip()
+        source = str(item.get("source") or "").strip()
+        project = str(item.get("project") or item.get("workspace") or "").strip()
+        tags: list[str] = []
+        if source:
+            tags.append(source)
+        if project:
+            tags.append(project)
+        if int(item.get("archived") or 0):
+            tags.append("archived")
+        tag_text = f" [{' / '.join(tags)}]" if tags else ""
+        id_text = f"{prefix} " if prefix else ""
+        lines.append(f"{indent}{id_text}{title}{tag_text}")
+        rendered += 1
+        if rendered >= limit:
+            break
+    if isinstance(samples, list) and len(samples) > rendered:
+        lines.append(f"{indent}... 还有 {len(samples) - rendered} 条未展开")
+    return lines
+
+
+def render_ui_keep_set_summary(summary: dict[str, Any]) -> str:
+    mode = summary.get("mode")
+    dry_run = mode != "execute"
+    lines: list[str] = []
+    lines.append("Codex UI 保留集清理计划")
+    lines.append(f"模式：{'预览，不会修改任何文件' if dry_run else '执行，已按计划修改'}")
+
+    keep_set = summary.get("keep_set") if isinstance(summary.get("keep_set"), dict) else {}
+    keep_count = int(keep_set.get("keep_thread_count") or 0)
+    keep_reason = "UI 可见会话"
+    if keep_set.get("spawn_children_preserved"):
+        keep_reason += " + 关联子智能体"
+    lines.append("")
+    lines.append("【保留，不会删除】")
+    lines.append(f"- 共 {keep_count} 个线程：{keep_reason}")
+    lines.extend(render_approval_sample_lines(keep_set.get("keep_samples"), limit=25))
+
+    selected_thread_count = sum(
+        int(db.get("selected_count") or 0)
+        for db in summary.get("databases", [])
+        if isinstance(db, dict)
+    )
+    selected_samples: list[dict[str, Any]] = []
+    for db in summary.get("databases", []):
+        if isinstance(db, dict):
+            selected_samples.extend(db.get("selected_samples") or [])
+
+    archived = summary.get("archived_files") if isinstance(summary.get("archived_files"), dict) else {}
+    protected_archived = int(archived.get("protected_archived_transcript_files_skipped") or 0) if archived else 0
+    archived_count = int(archived.get("unreferenced_archived_transcript_files") or 0) if archived else 0
+    archived_deleted = int(archived.get("deleted_archived_transcript_files") or 0) if archived else 0
+
+    index_report = summary.get("session_index", {}) if isinstance(summary.get("session_index"), dict) else {}
+    stale_index = int(index_report.get("stale_records_removed") or 0)
+    selected_index = int(index_report.get("selected_records_removed") or 0)
+    not_in_keep_index = int(index_report.get("not_in_keep_records_removed") or 0)
+    index_total = stale_index + selected_index + not_in_keep_index
+
+    keep_global_cleanup = summary.get("global_state_keep_cleanup") if isinstance(summary.get("global_state_keep_cleanup"), dict) else {}
+    global_projectless = int(keep_global_cleanup.get("projectless_thread_ids_removed") or 0) if keep_global_cleanup else 0
+    global_hints = int(keep_global_cleanup.get("thread_workspace_hints_removed") or 0) if keep_global_cleanup else 0
+    global_prompts = int(keep_global_cleanup.get("prompt_history_threads_removed") or 0) if keep_global_cleanup else 0
+
+    lines.append("")
+    lines.append("【计划删除/清理】")
+    planned_any = False
+    if selected_thread_count:
+        planned_any = True
+        lines.append(f"- DB 会话记录：{'将删除' if dry_run else '已删除'} {selected_thread_count} 条（不在 UI 保留集）")
+        lines.extend(render_approval_sample_lines(selected_samples, limit=10))
+    if archived:
+        planned_any = planned_any or bool(archived_count or archived_deleted)
+        if dry_run:
+            lines.append(f"- 归档 transcript 残留：将删除 {archived_count} 个文件")
+        else:
+            lines.append(f"- 归档 transcript 残留：已删除 {archived_deleted} 个文件")
+    if index_total:
+        planned_any = True
+        parts = []
+        if selected_index:
+            parts.append(f"关联待删会话 {selected_index} 条")
+        if not_in_keep_index:
+            parts.append(f"非保留集 {not_in_keep_index} 条")
+        if stale_index:
+            parts.append(f"stale {stale_index} 条")
+        lines.append(f"- 搜索索引 session_index：{'将清理' if dry_run else '已清理'} " + "、".join(parts))
+    if global_projectless or global_hints or global_prompts:
+        planned_any = True
+        action = "将清理" if dry_run else "已清理"
+        lines.append(
+            "- 全局状态 .codex-global-state.json："
+            f"{action} projectless {global_projectless} 个、workspace hint {global_hints} 个、prompt-history {global_prompts} 个"
+        )
+    if not planned_any:
+        lines.append("- 未发现需要按当前保留集删除或清理的内容")
+
+    health = summary.get("health", {}) if isinstance(summary.get("health"), dict) else {}
+    sqlite_dbs = health.get("sqlite_primary_dbs", []) if isinstance(health.get("sqlite_primary_dbs"), list) else []
+    sqlite_bad: list[str] = []
+    for db in sqlite_dbs:
+        if not isinstance(db, dict):
+            continue
+        name = str(db.get("db", "sqlite"))
+        if db.get("quick_check") != "ok":
+            sqlite_bad.append(f"{name}: quick_check={db.get('quick_check')}")
+        if db.get("integrity_check") != "ok":
+            sqlite_bad.append(f"{name}: integrity_check={db.get('integrity_check')}")
+        if int(db.get("foreign_key_violations") or 0):
+            sqlite_bad.append(f"{name}: 外键违规 {db.get('foreign_key_violations')}")
+
+    transcripts = health.get("transcripts") if isinstance(health.get("transcripts"), dict) else {}
+    missing_transcripts = int(transcripts.get("missing_thread_rollout_files") or 0) if transcripts else 0
+    ordinary_orphans = (
+        int(transcripts.get("orphan_transcript_files") or 0) - int(transcripts.get("orphan_archived_transcript_files") or 0)
+        if transcripts
+        else 0
+    )
+    health_index = health.get("session_index", {}) if isinstance(health.get("session_index"), dict) else {}
+    parse_errors = int(index_report.get("parse_errors") or health_index.get("parse_errors") or 0)
+
+    notes: list[str] = []
+    notes.append("- SQLite：" + ("正常" if not sqlite_bad else "需要先处理 - " + "；".join(sqlite_bad[:4])))
+    if protected_archived:
+        notes.append(f"- 归档副本保护：跳过 UI 保留集相关文件 {protected_archived} 个，不删除")
+    if missing_transcripts:
+        notes.append(f"- 普通会话 transcript 缺文件：{missing_transcripts} 条，仅提示，不按本计划自动删除")
+    if ordinary_orphans:
+        notes.append(f"- 普通孤儿 transcript：{ordinary_orphans} 个，仅提示，不按本计划自动删除")
+    if parse_errors:
+        notes.append(f"- 搜索索引 JSONL 解析错误：{parse_errors} 条，需要单独检查")
+    lines.append("")
+    lines.append("【不会自动删除，只提示】")
+    lines.extend(notes)
+
+    lines.append("")
+    lines.append("【下一步】")
+    if sqlite_bad:
+        lines.append("- 先不要执行删除；SQLite 主库检查有风险，需要看 JSON 详情。")
+    elif dry_run and planned_any:
+        lines.append("- 确认上面的保留清单和删除计划无误后，完全退出 Codex 桌面端。")
+        lines.append("- 在外部 WSL/PowerShell 用同一条命令执行：把 --dry-run 换成 --execute，并加 --require-codex-exited-for-global-state。")
+        if global_projectless or global_hints or global_prompts:
+            lines.append("- 这次会改 .codex-global-state.json，所以必须退出 Codex，避免桌面端把旧内存状态写回。")
+    elif dry_run:
+        lines.append("- 当前没有需要执行的清理项。")
+    else:
+        lines.append("- 重新打开 Codex 后复查 UI 会话列表和搜索结果。")
+    return "\n".join(lines)
+
+
 def render_summary(summary: dict[str, Any]) -> str:
     mode = summary.get("mode")
     dry_run = mode != "execute"
     actions = summary.get("actions_requested", {}) if isinstance(summary.get("actions_requested"), dict) else {}
     simple_archived_sqlite = bool(actions.get("archived_sqlite_cleanup"))
+    if actions.get("delete_not_in_keep"):
+        return render_ui_keep_set_summary(summary)
     lines: list[str] = []
     lines.append("Codex 本地状态检查结果")
     lines.append(f"模式：{'预览，不会修改' if dry_run else '执行，已按参数修改'}")
@@ -1417,6 +1696,7 @@ def main() -> int:
 
     keep_ids_all: set[str] = set()
     keep_ids_by_db: dict[Path, set[str]] = {}
+    keep_labels = parse_keep_labels(args.keep_label)
     if args.delete_not_in_keep:
         base_keep_ids = resolve_id_terms(
             all_rows,
@@ -1466,9 +1746,11 @@ def main() -> int:
         "databases": [],
     }
     if args.delete_not_in_keep:
+        keep_samples = describe_thread_ids(keep_ids_all, all_rows, limit=50)
         summary["keep_set"] = {
             "keep_thread_count": len(keep_ids_all),
             "keep_id_prefixes": [thread_id[:12] for thread_id in sorted(keep_ids_all)[:25]],
+            "keep_samples": apply_keep_labels(keep_samples, keep_labels),
             "spawn_children_preserved": not args.no_keep_spawn_children,
         }
 
@@ -1482,6 +1764,7 @@ def main() -> int:
             "thread_count": len(rows),
             "selected_count": len(selected),
             "selected_id_prefixes": [row.id[:12] for row in selected],
+            "selected_samples": describe_thread_rows(selected, limit=50),
             "selected_existing_session_files": count_existing_rollouts(codex_home, selected),
         }
         if args.delete_not_in_keep:

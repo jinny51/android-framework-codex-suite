@@ -51,6 +51,14 @@ python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
   --delete-not-in-keep --keep-ids THREAD_ID... --dry-run --summary
 ```
 
+为了让审批输出显示 UI 上的人类标题，可以额外传只影响展示、不影响删除判断的标签：
+
+```bash
+python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
+  --delete-not-in-keep --keep-ids THREAD_ID... \
+  --keep-label "THREAD_ID=知识库系统" --dry-run --summary
+```
+
 用户确认后，完全退出 Codex 桌面端，再从外部 WSL/PowerShell 执行：
 
 ```bash
@@ -60,6 +68,8 @@ python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
 ```
 
 `--delete-not-in-keep` 会保留 `--keep-ids` 以及这些父会话通过 `thread_spawn_edges` 关联的子智能体；不在保留集里的 DB 线程、搜索索引记录、归档残留和 thread-keyed global-state 会进入删除计划。
+
+UI 保留集模式的 dry-run 输出是给人确认用的审批视图，不是内部日志。它会按“保留，不会删除”“计划删除/清理”“不会自动删除，只提示”“下一步”分段展示，避免用户只能看到 DB、index、global-state 这些内部计数。
 
 确认 dry-run 结果后，删除本地已归档的 Codex 会话：
 

@@ -166,6 +166,102 @@ def test_clean_global_state_not_in_keep_removes_thread_keyed_residue(tmp_path: P
     }
 
 
+def test_ui_keep_set_summary_reads_like_approval_plan() -> None:
+    summary = {
+        "mode": "dry-run",
+        "actions_requested": {"delete_not_in_keep": True},
+        "keep_set": {
+            "keep_thread_count": 3,
+            "spawn_children_preserved": True,
+            "keep_samples": [
+                {"id_prefix": "019ekeep-001", "title": "知识库系统", "source": "user", "project": "knowledge"},
+                {"id_prefix": "019ekeep-002", "title": "Zeno", "source": "subagent", "project": "knowledge"},
+                {"id_prefix": "019ekeep-003", "title": "CLI", "source": "cli", "project": "Codex"},
+            ],
+        },
+        "databases": [
+            {
+                "selected_count": 2,
+                "selected_samples": [
+                    {"id_prefix": "019edead-001", "title": "旧归档会话", "source": "user", "project": "old"},
+                    {"id_prefix": "019edead-002", "title": "旧子智能体", "source": "subagent", "project": "old"},
+                ],
+            }
+        ],
+        "archived_files": {
+            "unreferenced_archived_transcript_files": 4,
+            "protected_archived_transcript_files_skipped": 1,
+        },
+        "session_index": {
+            "selected_records_removed": 2,
+            "not_in_keep_records_removed": 1,
+        },
+        "global_state_keep_cleanup": {
+            "projectless_thread_ids_removed": 3,
+            "thread_workspace_hints_removed": 2,
+            "prompt_history_threads_removed": 5,
+            "would_modify": True,
+        },
+        "health": {
+            "sqlite_primary_dbs": [
+                {"db": "state_1.sqlite", "quick_check": "ok", "integrity_check": "ok", "foreign_key_violations": 0}
+            ],
+            "transcripts": {
+                "missing_thread_rollout_files": 7,
+                "orphan_transcript_files": 9,
+                "orphan_archived_transcript_files": 4,
+            },
+            "session_index": {"parse_errors": 0},
+        },
+    }
+
+    text = clean_codex_history.render_summary(summary)
+
+    assert "Codex UI 保留集清理计划" in text
+    assert "【保留，不会删除】" in text
+    assert "知识库系统" in text
+    assert "Zeno" in text
+    assert "【计划删除/清理】" in text
+    assert "DB 会话记录：将删除 2 条（不在 UI 保留集）" in text
+    assert "旧归档会话" in text
+    assert "归档 transcript 残留：将删除 4 个文件" in text
+    assert "搜索索引 session_index：将清理 关联待删会话 2 条、非保留集 1 条" in text
+    assert ".codex-global-state.json" in text
+    assert "【不会自动删除，只提示】" in text
+    assert "普通会话 transcript 缺文件：7 条，仅提示" in text
+    assert "归档副本保护：跳过 UI 保留集相关文件 1 个，不删除" in text
+    assert "【下一步】" in text
+    assert "完全退出 Codex 桌面端" in text
+
+
+def test_thread_row_sample_humanizes_subagent_metadata() -> None:
+    source = json.dumps(
+        {
+            "subagent": {
+                "thread_spawn": {
+                    "parent_thread_id": "019e0000-0000-7000-8000-000000000001",
+                    "agent_nickname": "Zeno",
+                }
+            }
+        }
+    )
+    row = clean_codex_history.ThreadRow(
+        "019e0000-0000-7000-8000-000000000002",
+        "你是一个只读 UI 信息架构审视子智能体。\n请不要修改任何文件。" * 3,
+        0,
+        "",
+        "/home/jinny/work/knowledge",
+        source,
+    )
+
+    sample = clean_codex_history.thread_row_sample(row)
+
+    assert sample["title"] == "子智能体 Zeno"
+    assert sample["source"] == "subagent:Zeno"
+    assert sample["project"] == "knowledge"
+    assert "thread_spawn" not in sample["source"]
+
+
 def test_global_state_health_ignores_old_wsl_paths(tmp_path: Path) -> None:
     write_global_state(
         tmp_path,
