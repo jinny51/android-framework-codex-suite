@@ -67,6 +67,9 @@ Dry-run output is an approval view for a human, not an internal log. In UI keep-
 - `计划删除/清理`: non-UI DB sessions, archived transcript remnants, search index entries, and thread-keyed global-state entries.
 - `不会自动删除，只提示`: health warnings and ambiguous residue that needs separate review.
 - `下一步`: exactly how to execute after exiting Codex Desktop.
+- `完整执行命令`: a copyable command with all keep IDs, display labels, `--execute`, and `--require-codex-exited-for-global-state`.
+
+Subagents must be shown under their parent thread. Do not render subagents as a flat list unless their parent cannot be found in the same keep/delete set. For example, show `知识库系统` with child rows `子智能体 Zeno` and `子智能体 Fermat`.
 
 ## Separate Subagent History Diagnosis
 

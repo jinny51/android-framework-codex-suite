@@ -236,6 +236,14 @@ def expand_keep_ids_with_spawn_children(db_path: Path, keep_ids: set[str]) -> se
     return expanded
 
 
+def spawn_parent_map(db_paths: list[Path]) -> dict[str, str]:
+    parents: dict[str, str] = {}
+    for db_path in db_paths:
+        for parent, child in fetch_spawn_edges(db_path):
+            parents.setdefault(child, parent)
+    return parents
+
+
 def select_threads(rows: list[ThreadRow], args: argparse.Namespace, keep_ids: set[str] | None = None) -> list[ThreadRow]:
     if args.delete_not_in_keep:
         keep = keep_ids or set()
@@ -1136,6 +1144,34 @@ def optional_global_cleanup_command(codex_home: str) -> str:
     )
 
 
+def ui_keep_set_execute_command(args: argparse.Namespace, codex_home: Path) -> str:
+    parts: list[Any] = [
+        "python3",
+        Path(__file__).resolve(),
+        "--codex-home",
+        str(codex_home),
+        "--delete-not-in-keep",
+        "--keep-ids",
+    ]
+    parts.extend(args.keep_ids)
+    for label in args.keep_label:
+        parts.extend(["--keep-label", label])
+    if args.no_keep_spawn_children:
+        parts.append("--no-keep-spawn-children")
+    if args.allow_ambiguous_ids:
+        parts.append("--allow-ambiguous-ids")
+    if args.no_backup:
+        parts.append("--no-backup")
+    if args.show_full_ids:
+        parts.append("--show-full-ids")
+    if args.skip_health_check:
+        parts.append("--skip-health-check")
+    if args.skip_logs_db:
+        parts.append("--skip-logs-db")
+    parts.extend(["--execute", "--require-codex-exited-for-global-state", "--summary"])
+    return shell_command(parts)
+
+
 def render_thread_samples(samples: Any, limit: int = 3) -> str:
     if not isinstance(samples, list):
         return ""
@@ -1196,7 +1232,7 @@ def source_display_label(source: str) -> tuple[str, str]:
     return (compact_display_text(value, limit=24), "")
 
 
-def thread_row_sample(row: ThreadRow) -> dict[str, Any]:
+def thread_row_sample(row: ThreadRow, parent_by_child: dict[str, str] | None = None) -> dict[str, Any]:
     path = normalize_cwd_path(row.cwd)
     project = (path.name if path else "") or project_name(row.cwd)
     source_label, subagent_nickname = source_display_label(row.source)
@@ -1212,20 +1248,30 @@ def thread_row_sample(row: ThreadRow) -> dict[str, Any]:
         "source": source_label,
         "project": compact_display_text(project, limit=32),
         "archived": int(row.archived or 0),
+        "parent_id": (parent_by_child or {}).get(row.id, ""),
     }
 
 
-def describe_thread_rows(rows: list[ThreadRow], limit: int = 50) -> list[dict[str, Any]]:
-    return [thread_row_sample(row) for row in rows[:limit]]
+def describe_thread_rows(
+    rows: list[ThreadRow],
+    limit: int = 50,
+    parent_by_child: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    return [thread_row_sample(row, parent_by_child) for row in rows[:limit]]
 
 
-def describe_thread_ids(thread_ids: set[str], rows: list[ThreadRow], limit: int = 50) -> list[dict[str, Any]]:
+def describe_thread_ids(
+    thread_ids: set[str],
+    rows: list[ThreadRow],
+    limit: int = 50,
+    parent_by_child: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
     remaining = set(thread_ids)
     samples: list[dict[str, Any]] = []
     for row in rows:
         if row.id not in remaining:
             continue
-        samples.append(thread_row_sample(row))
+        samples.append(thread_row_sample(row, parent_by_child))
         remaining.remove(row.id)
         if len(samples) >= limit:
             return samples
@@ -1273,33 +1319,72 @@ def apply_keep_labels(samples: list[dict[str, Any]], labels: dict[str, str]) -> 
     return labeled
 
 
-def render_approval_sample_lines(samples: Any, *, limit: int = 20, indent: str = "  - ") -> list[str]:
-    if not isinstance(samples, list) or not samples:
-        return []
-    lines: list[str] = []
-    rendered = 0
+def render_approval_item_line(item: dict[str, Any], *, indent: str, orphan_subagent: bool = False) -> str:
+    prefix = str(item.get("id_prefix") or "").strip()
+    title = str(item.get("title") or "(无标题)").strip()
+    if orphan_subagent and title.startswith("子智能体 "):
+        title = "孤立" + title
+    source = str(item.get("source") or "").strip()
+    project = str(item.get("project") or item.get("workspace") or "").strip()
+    tags: list[str] = []
+    if source:
+        tags.append(source)
+    if project:
+        tags.append(project)
+    if int(item.get("archived") or 0):
+        tags.append("archived")
+    tag_text = f" [{' / '.join(tags)}]" if tags else ""
+    id_text = f"{prefix} " if prefix else ""
+    return f"{indent}{id_text}{title}{tag_text}"
+
+
+def group_approval_samples(samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_id = {str(item.get("id") or ""): item for item in samples if isinstance(item, dict) and item.get("id")}
+    groups: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+
     for item in samples:
         if not isinstance(item, dict):
             continue
-        prefix = str(item.get("id_prefix") or "").strip()
-        title = str(item.get("title") or "(无标题)").strip()
-        source = str(item.get("source") or "").strip()
-        project = str(item.get("project") or item.get("workspace") or "").strip()
-        tags: list[str] = []
-        if source:
-            tags.append(source)
-        if project:
-            tags.append(project)
-        if int(item.get("archived") or 0):
-            tags.append("archived")
-        tag_text = f" [{' / '.join(tags)}]" if tags else ""
-        id_text = f"{prefix} " if prefix else ""
-        lines.append(f"{indent}{id_text}{title}{tag_text}")
-        rendered += 1
-        if rendered >= limit:
-            break
-    if isinstance(samples, list) and len(samples) > rendered:
-        lines.append(f"{indent}... 还有 {len(samples) - rendered} 条未展开")
+        item_id = str(item.get("id") or "")
+        if not item_id:
+            continue
+        parent_id = str(item.get("parent_id") or "")
+        parent_is_in_same_set = bool(parent_id and parent_id in by_id)
+        group_id = parent_id if parent_is_in_same_set else item_id
+        if group_id not in groups:
+            groups[group_id] = {
+                "parent": by_id.get(group_id, item),
+                "children": [],
+                "orphan_subagent": bool(parent_id and not parent_is_in_same_set),
+            }
+            order.append(group_id)
+        if item_id == group_id:
+            groups[group_id]["parent"] = item
+        else:
+            groups[group_id]["children"].append(item)
+
+    return [groups[group_id] for group_id in order]
+
+
+def render_grouped_approval_sample_lines(samples: Any, *, group_limit: int = 20) -> list[str]:
+    if not isinstance(samples, list) or not samples:
+        return []
+    groups = group_approval_samples([item for item in samples if isinstance(item, dict)])
+    lines: list[str] = []
+    rendered_groups = 0
+    for group in groups[:group_limit]:
+        parent = group.get("parent")
+        if not isinstance(parent, dict):
+            continue
+        lines.append(render_approval_item_line(parent, indent="  - ", orphan_subagent=bool(group.get("orphan_subagent"))))
+        children = group.get("children") if isinstance(group.get("children"), list) else []
+        for child in children:
+            if isinstance(child, dict):
+                lines.append(render_approval_item_line(child, indent="    - "))
+        rendered_groups += 1
+    if len(groups) > rendered_groups:
+        lines.append(f"  - ... 还有 {len(groups) - rendered_groups} 组未展开")
     return lines
 
 
@@ -1318,7 +1403,7 @@ def render_ui_keep_set_summary(summary: dict[str, Any]) -> str:
     lines.append("")
     lines.append("【保留，不会删除】")
     lines.append(f"- 共 {keep_count} 个线程：{keep_reason}")
-    lines.extend(render_approval_sample_lines(keep_set.get("keep_samples"), limit=25))
+    lines.extend(render_grouped_approval_sample_lines(keep_set.get("keep_samples"), group_limit=25))
 
     selected_thread_count = sum(
         int(db.get("selected_count") or 0)
@@ -1352,7 +1437,7 @@ def render_ui_keep_set_summary(summary: dict[str, Any]) -> str:
     if selected_thread_count:
         planned_any = True
         lines.append(f"- DB 会话记录：{'将删除' if dry_run else '已删除'} {selected_thread_count} 条（不在 UI 保留集）")
-        lines.extend(render_approval_sample_lines(selected_samples, limit=10))
+        lines.extend(render_grouped_approval_sample_lines(selected_samples, group_limit=10))
     if archived:
         planned_any = planned_any or bool(archived_count or archived_deleted)
         if dry_run:
@@ -1423,13 +1508,20 @@ def render_ui_keep_set_summary(summary: dict[str, Any]) -> str:
         lines.append("- 先不要执行删除；SQLite 主库检查有风险，需要看 JSON 详情。")
     elif dry_run and planned_any:
         lines.append("- 确认上面的保留清单和删除计划无误后，完全退出 Codex 桌面端。")
-        lines.append("- 在外部 WSL/PowerShell 用同一条命令执行：把 --dry-run 换成 --execute，并加 --require-codex-exited-for-global-state。")
+        lines.append("- 在外部 WSL/PowerShell 执行下面的完整命令。")
         if global_projectless or global_hints or global_prompts:
             lines.append("- 这次会改 .codex-global-state.json，所以必须退出 Codex，避免桌面端把旧内存状态写回。")
     elif dry_run:
         lines.append("- 当前没有需要执行的清理项。")
     else:
         lines.append("- 重新打开 Codex 后复查 UI 会话列表和搜索结果。")
+    command = str(summary.get("external_execute_command") or "").strip()
+    if dry_run and planned_any and command and not sqlite_bad:
+        lines.append("")
+        lines.append("【完整执行命令】")
+        lines.append("```bash")
+        lines.append(command)
+        lines.append("```")
     return "\n".join(lines)
 
 
@@ -1692,6 +1784,7 @@ def main() -> int:
 
     db_rows = {db_path: fetch_threads(db_path) for db_path in dbs}
     all_rows = [row for rows in db_rows.values() for row in rows]
+    parent_by_child = spawn_parent_map(dbs)
     validate_id_selectors(all_rows, args)
 
     keep_ids_all: set[str] = set()
@@ -1746,13 +1839,14 @@ def main() -> int:
         "databases": [],
     }
     if args.delete_not_in_keep:
-        keep_samples = describe_thread_ids(keep_ids_all, all_rows, limit=50)
+        keep_samples = describe_thread_ids(keep_ids_all, all_rows, limit=50, parent_by_child=parent_by_child)
         summary["keep_set"] = {
             "keep_thread_count": len(keep_ids_all),
             "keep_id_prefixes": [thread_id[:12] for thread_id in sorted(keep_ids_all)[:25]],
             "keep_samples": apply_keep_labels(keep_samples, keep_labels),
             "spawn_children_preserved": not args.no_keep_spawn_children,
         }
+        summary["external_execute_command"] = ui_keep_set_execute_command(args, codex_home)
 
     backup_done: set[Path] = set()
     selected_all: list[ThreadRow] = []
@@ -1764,7 +1858,7 @@ def main() -> int:
             "thread_count": len(rows),
             "selected_count": len(selected),
             "selected_id_prefixes": [row.id[:12] for row in selected],
-            "selected_samples": describe_thread_rows(selected, limit=50),
+            "selected_samples": describe_thread_rows(selected, limit=50, parent_by_child=parent_by_child),
             "selected_existing_session_files": count_existing_rollouts(codex_home, selected),
         }
         if args.delete_not_in_keep:

@@ -167,6 +167,11 @@ def test_clean_global_state_not_in_keep_removes_thread_keyed_residue(tmp_path: P
 
 
 def test_ui_keep_set_summary_reads_like_approval_plan() -> None:
+    keep_parent = "019e0000-0000-7000-8000-000000000001"
+    keep_child = "019e0000-0000-7000-8000-000000000002"
+    keep_cli = "019e0000-0000-7000-8000-000000000003"
+    old_parent = "019e0000-0000-7000-8000-000000000004"
+    old_child = "019e0000-0000-7000-8000-000000000005"
     summary = {
         "mode": "dry-run",
         "actions_requested": {"delete_not_in_keep": True},
@@ -174,17 +179,37 @@ def test_ui_keep_set_summary_reads_like_approval_plan() -> None:
             "keep_thread_count": 3,
             "spawn_children_preserved": True,
             "keep_samples": [
-                {"id_prefix": "019ekeep-001", "title": "知识库系统", "source": "user", "project": "knowledge"},
-                {"id_prefix": "019ekeep-002", "title": "Zeno", "source": "subagent", "project": "knowledge"},
-                {"id_prefix": "019ekeep-003", "title": "CLI", "source": "cli", "project": "Codex"},
+                {
+                    "id": keep_parent,
+                    "id_prefix": keep_parent[:12],
+                    "title": "知识库系统",
+                    "source": "UI",
+                    "project": "knowledge",
+                },
+                {
+                    "id": keep_child,
+                    "id_prefix": keep_child[:12],
+                    "title": "子智能体 Zeno",
+                    "source": "subagent:Zeno",
+                    "project": "knowledge",
+                    "parent_id": keep_parent,
+                },
+                {"id": keep_cli, "id_prefix": keep_cli[:12], "title": "CLI", "source": "CLI", "project": "Codex"},
             ],
         },
         "databases": [
             {
                 "selected_count": 2,
                 "selected_samples": [
-                    {"id_prefix": "019edead-001", "title": "旧归档会话", "source": "user", "project": "old"},
-                    {"id_prefix": "019edead-002", "title": "旧子智能体", "source": "subagent", "project": "old"},
+                    {"id": old_parent, "id_prefix": old_parent[:12], "title": "旧归档会话", "source": "UI", "project": "old"},
+                    {
+                        "id": old_child,
+                        "id_prefix": old_child[:12],
+                        "title": "子智能体 Avicenna",
+                        "source": "subagent:Avicenna",
+                        "project": "old",
+                        "parent_id": old_parent,
+                    },
                 ],
             }
         ],
@@ -213,6 +238,12 @@ def test_ui_keep_set_summary_reads_like_approval_plan() -> None:
             },
             "session_index": {"parse_errors": 0},
         },
+        "external_execute_command": (
+            "python3 /tmp/clean_codex_history.py --codex-home /tmp/.codex "
+            "--delete-not-in-keep --keep-ids "
+            f"{keep_parent} {keep_cli} --keep-label '{keep_parent}=知识库系统' "
+            "--execute --require-codex-exited-for-global-state --summary"
+        ),
     }
 
     text = clean_codex_history.render_summary(summary)
@@ -220,10 +251,12 @@ def test_ui_keep_set_summary_reads_like_approval_plan() -> None:
     assert "Codex UI 保留集清理计划" in text
     assert "【保留，不会删除】" in text
     assert "知识库系统" in text
-    assert "Zeno" in text
+    assert f"  - {keep_parent[:12]} 知识库系统" in text
+    assert f"    - {keep_child[:12]} 子智能体 Zeno" in text
     assert "【计划删除/清理】" in text
     assert "DB 会话记录：将删除 2 条（不在 UI 保留集）" in text
     assert "旧归档会话" in text
+    assert f"    - {old_child[:12]} 子智能体 Avicenna" in text
     assert "归档 transcript 残留：将删除 4 个文件" in text
     assert "搜索索引 session_index：将清理 关联待删会话 2 条、非保留集 1 条" in text
     assert ".codex-global-state.json" in text
@@ -232,6 +265,8 @@ def test_ui_keep_set_summary_reads_like_approval_plan() -> None:
     assert "归档副本保护：跳过 UI 保留集相关文件 1 个，不删除" in text
     assert "【下一步】" in text
     assert "完全退出 Codex 桌面端" in text
+    assert "【完整执行命令】" in text
+    assert "--execute --require-codex-exited-for-global-state --summary" in text
 
 
 def test_thread_row_sample_humanizes_subagent_metadata() -> None:
