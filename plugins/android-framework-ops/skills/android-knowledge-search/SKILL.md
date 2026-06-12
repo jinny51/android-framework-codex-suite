@@ -79,6 +79,7 @@ When handling a new Android Framework requirement:
 5. Compare facts: modified files, touched symbols, artifact, risk notes, build evidence, device verification, rollback path.
 6. If a prior patch looks relevant, report the evidence and remaining uncertainty before applying or adapting it.
 7. Use explicit `--type report`, `--type event`, or `--type evidence` only for administrator trace-back or debugging archive material. Default `--type all` is the AI reuse view and does not return report/event archive rows.
+8. Default member search filters out retracted cases, variants, patch assets, symbols, and evidence rows. The knowledge repository can retain those rows for traceability, but they must not appear as reusable member results. Explicit archive/debug queries may still show archived or retracted material.
 
 For `android-framework-change-workflow`, this is the pre-analysis search gate. Search first; if no useful result exists, continue with normal requirement analysis and implementation.
 

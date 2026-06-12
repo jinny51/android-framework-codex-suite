@@ -559,6 +559,35 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertIn("TVA10A2R", finding_text)
             self.assertNotIn("Enter passphrase", finding_text)
 
+    def test_daily_validation_requires_project_inference_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            codex_home = Path(env["CODEX_HOME"])
+            source_root = create_framework_repo(root)
+            write_codex_session(
+                codex_home,
+                "55555555-2222-3333-4444-555555555555",
+                source_root,
+                dt.date(2026, 6, 3),
+                "今天处理 TVA10A2R 状态栏策略，进度60%。",
+                thread_name="TVA10A2R 状态栏策略",
+            )
+            package = prepare_daily_package(env, "2026-06-03", "20260603-212000-daily")
+            manifest_path = package / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["files"]["evidence"] = [
+                rel for rel in manifest["files"]["evidence"] if rel != "materials/evidence/project_inference.json"
+            ]
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            module = load_intake_module()
+
+            check = module.validate_package(package)
+
+            self.assertEqual(check["status"], "FAIL")
+            self.assertIn("daily_trace 缺少 project_inference evidence", check["errors"])
+
     def test_daily_package_carries_member_search_usage_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

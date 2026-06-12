@@ -304,6 +304,77 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         self.assertIn("[variant]", text)
         self.assertIn("平台/Android/项目", text)
 
+    def test_default_search_filters_retracted_objects_left_in_lower_indexes(self):
+        root = Path(tempfile.mkdtemp())
+        write_jsonl(
+            root / "index" / "case-index.jsonl",
+            [
+                {"case_id": "case-active", "title": "ActiveFeature", "status": "active"},
+                {"case_id": "case-retracted", "title": "BadFeature", "status": "retracted", "retracted": True},
+            ],
+        )
+        write_jsonl(
+            root / "index" / "variant-index.jsonl",
+            [
+                {"variant_id": "variant-active", "case_id": "case-active", "project": "TVE8402M", "status": "validated"},
+                {"variant_id": "variant-retracted", "case_id": "case-retracted", "project": "unknown", "status": "retracted"},
+            ],
+        )
+        write_jsonl(
+            root / "index" / "symbol-index.jsonl",
+            [
+                {"symbol_id": "symbol-active", "case_id": "case-active", "patch_id": "patch-active", "value": "GoodSymbol"},
+                {"symbol_id": "symbol-retracted", "case_id": "case-retracted", "patch_id": "patch-retracted", "value": "BadSymbol"},
+            ],
+        )
+        write_jsonl(
+            root / "index" / "evidence-index.jsonl",
+            [
+                {"evidence_id": "evidence-active", "case_id": "case-active", "kind": "verification_result", "result": "PASS"},
+                {
+                    "evidence_id": "evidence-retracted",
+                    "case_id": "case-retracted",
+                    "kind": "verification_result",
+                    "result": "RETRACTED",
+                },
+            ],
+        )
+        write_jsonl(
+            root / "index" / "search-docs.jsonl",
+            [{"type": "case", "case_id": "case-active", "title": "ActiveFeature", "text": "ActiveFeature GoodSymbol"}],
+        )
+        write_json(
+            root / "patches" / "by-id" / "patch-active" / "patch.json",
+            {"patch_id": "patch-active", "case_id": "case-active", "title": "Active patch", "status": "validated"},
+        )
+        write_json(
+            root / "patches" / "by-id" / "patch-retracted" / "patch.json",
+            {
+                "patch_id": "patch-retracted",
+                "case_id": "case-retracted",
+                "title": "BadFeature patch",
+                "status": "retracted",
+                "retracted": True,
+            },
+        )
+
+        rows = search.load_rows(root)
+        row_ids = {row.get("id") for row in rows}
+        text = search.format_markdown(root, "BadFeature BadSymbol", search.search(rows, "BadFeature BadSymbol", "all", 10, False), None)
+
+        self.assertIn("case-active", row_ids)
+        self.assertNotIn("case-retracted", row_ids)
+        self.assertNotIn("variant-retracted", row_ids)
+        self.assertNotIn("patch-retracted", row_ids)
+        self.assertNotIn("symbol-retracted", row_ids)
+        self.assertNotIn("evidence-retracted", row_ids)
+        self.assertIn("未找到匹配结果", text)
+
+        archive_rows = search.load_rows(root, include_archive=True)
+        archive_ids = {row.get("id") for row in archive_rows}
+        self.assertIn("case-retracted", archive_ids)
+        self.assertIn("patch-retracted", archive_ids)
+
     def test_search_docs_priority_breaks_case_ties(self):
         root = Path(tempfile.mkdtemp())
         write_jsonl(

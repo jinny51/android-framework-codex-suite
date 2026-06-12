@@ -468,6 +468,29 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def object_status(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def is_retracted_object(item: dict[str, Any]) -> bool:
+    validity = item.get("knowledge_validity") if isinstance(item.get("knowledge_validity"), dict) else {}
+    return (
+        bool(item.get("retracted"))
+        or bool(validity.get("retracted"))
+        or object_status(item.get("status")) == "retracted"
+        or object_status(item.get("status_maturity")) == "retracted"
+        or object_status(item.get("result")) == "retracted"
+    )
+
+
+def row_case_id(item: dict[str, Any]) -> str:
+    return str(item.get("case_id") or "").strip()
+
+
+def case_is_searchable(case_id: str, active_case_ids: set[str]) -> bool:
+    return not active_case_ids or not case_id or case_id in active_case_ids
+
+
 def evidence_row(item: dict[str, Any]) -> dict[str, Any]:
     row = dict(item)
     row["evidence_kind"] = row.pop("kind", "")
@@ -480,8 +503,17 @@ def evidence_row(item: dict[str, Any]) -> dict[str, Any]:
 def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     search_docs = {str(item.get("case_id", "")): item for item in read_jsonl(root / "index" / "search-docs.jsonl")}
+    active_case_ids = {
+        case_id
+        for case_id, item in search_docs.items()
+        if case_id and (include_archive or not is_retracted_object(item))
+    }
+    rejected_patch_ids: set[str] = set()
+    active_patch_ids: set[str] = set()
     for item in read_jsonl(root / "index" / "case-index.jsonl"):
         case_id = str(item.get("case_id", ""))
+        if not include_archive and (is_retracted_object(item) or not case_is_searchable(case_id, active_case_ids)):
+            continue
         doc = search_docs.get(case_id, {})
         replacement_fields = {
             key: doc.get(key, item.get(key))
@@ -500,10 +532,14 @@ def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str,
             }
         )
     for item in read_jsonl(root / "index" / "variant-index.jsonl"):
+        case_id = row_case_id(item)
+        if not include_archive and (is_retracted_object(item) or not case_is_searchable(case_id, active_case_ids)):
+            continue
         rows.append({"kind": "variant", "id": item.get("variant_id", ""), **item})
-    for item in read_jsonl(root / "index" / "symbol-index.jsonl"):
-        rows.append({"kind": "symbol", "id": item.get("symbol_id", ""), "symbol": item.get("value", ""), **item})
     for item in read_jsonl(root / "index" / "evidence-index.jsonl"):
+        case_id = row_case_id(item)
+        if not include_archive and (is_retracted_object(item) or not case_is_searchable(case_id, active_case_ids)):
+            continue
         rows.append(evidence_row(item))
     loaded_evidence_ids = {str(row.get("evidence_id") or row.get("id") or "") for row in rows if row.get("kind") == "evidence"}
     if include_archive:
@@ -512,10 +548,32 @@ def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str,
             evidence_id = str(item.get("evidence_id") or "")
             if isinstance(item, dict) and evidence_id not in loaded_evidence_ids:
                 rows.append(evidence_row({**item, "path": str(path.relative_to(root))}))
+    patch_rows: list[dict[str, Any]] = []
     for path in sorted(root.glob("patches/by-id/*/patch.json")):
         item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})
         if isinstance(item, dict):
-            rows.append({"kind": "patch", "id": item.get("patch_id", ""), "path": str(path.relative_to(root)), **item})
+            patch_id = str(item.get("patch_id") or "")
+            if not include_archive and (
+                is_retracted_object(item) or not case_is_searchable(row_case_id(item), active_case_ids)
+            ):
+                if patch_id:
+                    rejected_patch_ids.add(patch_id)
+                continue
+            if patch_id:
+                active_patch_ids.add(patch_id)
+            patch_rows.append({"kind": "patch", "id": patch_id, "path": str(path.relative_to(root)), **item})
+    for item in read_jsonl(root / "index" / "symbol-index.jsonl"):
+        case_id = row_case_id(item)
+        patch_id = str(item.get("patch_id") or "")
+        if not include_archive and (
+            is_retracted_object(item)
+            or not case_is_searchable(case_id, active_case_ids)
+            or patch_id in rejected_patch_ids
+            or (active_patch_ids and patch_id and patch_id not in active_patch_ids)
+        ):
+            continue
+        rows.append({"kind": "symbol", "id": item.get("symbol_id", ""), "symbol": item.get("value", ""), **item})
+    rows.extend(patch_rows)
     if include_archive:
         for path in sorted(root.glob("reports/by-id/*.json")):
             item = parse_json(path.read_text(encoding="utf-8", errors="ignore"), {})

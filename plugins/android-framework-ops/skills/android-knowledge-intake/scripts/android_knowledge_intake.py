@@ -2148,6 +2148,22 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         for kind in TRACE_REQUIRED_EVIDENCE_KINDS:
             if kind not in evidence_by_kind:
                 errors.append(f"report trace 缺少 {kind} evidence")
+        if package_kind == "daily_trace":
+            project_inference = evidence_by_kind.get("project_inference")
+            if not project_inference:
+                errors.append("daily_trace 缺少 project_inference evidence")
+            else:
+                project_payload = project_inference.get("payload", {}) if isinstance(project_inference, dict) else {}
+                project = str(project_payload.get("project") or "")
+                if not project:
+                    errors.append("project_inference.project 必须提供")
+                if project == "unknown":
+                    if not isinstance(project_payload.get("checked_sources"), list) or not project_payload.get("checked_sources"):
+                        errors.append("unknown project_inference 必须记录 checked_sources")
+                    if not isinstance(project_payload.get("limits"), list) or not project_payload.get("limits"):
+                        errors.append("unknown project_inference 必须记录 limits")
+                elif manifest.get("project") != project:
+                    errors.append("daily_trace manifest.project 必须等于 project_inference.project")
         work_findings = evidence_by_kind.get("work_findings", {})
         payload = work_findings.get("payload", {}) if isinstance(work_findings, dict) else {}
         if not isinstance(payload.get("scanned_sources"), list) or not payload.get("scanned_sources"):
