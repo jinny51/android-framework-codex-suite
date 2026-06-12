@@ -3152,8 +3152,12 @@ def parse_company_project(value: str) -> dict[str, Any]:
 
 
 def find_company_project(text: str) -> str:
-    match = PROJECT_MODEL_RE.search(text.upper())
+    match = PROJECT_MODEL_RE.search(str(text or "").upper())
     return match.group(0) if match else ""
+
+
+def find_company_projects(text: str) -> list[str]:
+    return sorted(dict.fromkeys(match.group(0).upper() for match in PROJECT_MODEL_RE.finditer(str(text or "").upper())))
 
 
 def parse_shell_array(text: str, name: str) -> list[str]:
@@ -3368,11 +3372,22 @@ def infer_project(
     clues = [(label, value) for _, values in groups for label, value in values if str(value).strip()]
     checked_sources = sorted(dict.fromkeys(label for label, _ in clues))
     raw_inputs = [f"{label}: {value}" for label, value in clues]
+    matched: list[tuple[str, str, str]] = []
     for _, values in groups:
         for label, value in values:
-            project = find_company_project(value)
-            if project:
-                return project, project_inference_payload(project, [f"{label}: {value}"], checked_sources, raw_inputs)
+            matched.extend((candidate, label, value) for candidate in find_company_projects(value))
+    unique_projects = sorted(dict.fromkeys(project for project, _, _ in matched))
+    if len(unique_projects) == 1:
+        project = unique_projects[0]
+        basis = [f"{label}: {value}" for matched_project, label, value in matched if matched_project == project]
+        return project, project_inference_payload(project, basis[:5], checked_sources, raw_inputs)
+    if len(unique_projects) > 1:
+        limits = [f"识别到多个项目型号: {', '.join(unique_projects)}，不能写成单一项目"]
+        if explicit_project and explicit_project.strip() not in {"", "unknown"}:
+            limits.append("命令参数 project 与其他项目线索不一致，未作为项目名写入上传包")
+        payload = project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
+        payload["candidates"] = unique_projects
+        return "unknown", payload
 
     limits = ["未从命令参数、capture package、source_root/git/registry、补丁内容或关联报告中识别到 TVE/TVA/TVI 项目型号"]
     if explicit_project and explicit_project.strip() not in {"", "unknown"}:

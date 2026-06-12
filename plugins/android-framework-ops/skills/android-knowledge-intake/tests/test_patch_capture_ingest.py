@@ -474,6 +474,38 @@ class PatchCaptureIngestTests(unittest.TestCase):
             ("rk", "9.0"),
         )
 
+    def test_conflicting_project_clues_keep_project_unknown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-130000-patch",
+                patch_paths=[],
+                patch_package_paths=[
+                    str(
+                        create_capture_package(
+                            root,
+                            project="TVE1234A",
+                            source_root="/work/android/TVE9999U/frameworks/base",
+                            git_branch="feature/TVE9999U-nav-policy",
+                        )
+                    )
+                ],
+                project="unknown",
+                summary="Allow nav policy toggle",
+                status="validated",
+                schema_version="1",
+            )
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            project_inference = json.loads((package / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "unknown")
+            self.assertEqual(manifest["package_status"], "candidate")
+            self.assertEqual(project_inference["payload"]["candidates"], ["TVE1234A", "TVE9999U"])
+            self.assertTrue(any("多个项目型号" in item for item in project_inference["payload"]["limits"]))
+
     def test_framework_change_validation_rejects_fake_platform(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -75,9 +75,11 @@ Patch upload is package-status based:
 ```text
 validated
   Clear scope, clean diff, build pass, and device or accepted equivalent verification pass.
+  Project, platform, and Android version are traceable and non-conflicting.
 
 candidate
   Clear implementation evidence, but validation or acceptance evidence is incomplete.
+  Also used when project, platform, or Android version metadata is missing, unknown, or conflicting.
 
 draft
   Partial or WIP implementation evidence.

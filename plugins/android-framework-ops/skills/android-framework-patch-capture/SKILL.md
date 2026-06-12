@@ -13,6 +13,8 @@ The generated package includes patch content `sha1` for server-side deduplicatio
 
 `--project` is a high-priority hint only when it contains a company project anchor in the current recognition scope (`TVE`, `TVA`, or `TVI`). If `--project` is omitted or contains a generic label such as `mtk android16 Camera2`, the capture script must continue looking at source roots, repository paths, git branches/remotes, the WSL source-access registry, and feature README/diff/summary text before falling back to `unknown`.
 
+Project inference must be conservative. If `--project`, source roots, repository paths, git branches/remotes, WSL source-access registry, feature summary, or diff text expose multiple different TVE/TVA/TVI project models, the package must write `project=unknown`, preserve all candidates in `project_inference.candidates`, and record the conflict in `project_inference.limits`; later `android-knowledge-intake` will keep it out of `validated` status until a 补证包（evidence supplement package）closes the ambiguity.
+
 ## Boundary
 
 - `android-framework-change-workflow`: owns requirement analysis, source changes, risk, build/deploy coordination, and final verification.

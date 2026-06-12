@@ -642,6 +642,44 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(manifest["project"], "unknown")
             self.assertEqual(manifest["patches"][0]["project"], "unknown")
 
+    def test_conflicting_project_clues_keep_project_unknown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "work" / "rk" / "TVA10A2R"
+            root.mkdir(parents=True)
+            create_plain_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260604-131000-patch",
+                    "--platform",
+                    "mtk16",
+                    "--feature",
+                    "camera-policy",
+                    "--summary",
+                    "Camera2 reversePortrait direction compensation",
+                    "--project",
+                    "TVE1234A",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "unknown")
+            self.assertEqual(manifest["patches"][0]["project"], "unknown")
+            self.assertEqual(manifest["project_inference"]["candidates"], ["TVA10A2R", "TVE1234A"])
+            self.assertTrue(any("多个项目型号" in item for item in manifest["project_inference"]["limits"]))
+
     def test_multi_repo_feature_package_has_one_readme_and_multiple_patches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             workspace = Path(tmp)
