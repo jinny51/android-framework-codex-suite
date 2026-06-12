@@ -68,6 +68,18 @@ When the patch was packaged by `android-framework-patch-capture`, submit the cap
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "TVE8402M" --summary "功能补丁摘要" --status validated
 ```
 
+When member view UI shows a previous patch package needs evidence, do not create a fourth package type. Regenerate or resubmit a normal `framework_change` patch package with the missing evidence and link it to the original incoming package:
+
+```bash
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare \
+  --patch-package /path/to/.codex/patch-packages/20260612-171820-feature \
+  --project "TVE1234A" \
+  --summary "功能补丁摘要" \
+  --status validated \
+  --supplement-for-package-key 20260612/lincong/20260612-172836-patch \
+  --supplement-reason "补充项目（project）证据"
+```
+
 Submit the latest prepared patch package:
 
 ```bash
@@ -100,6 +112,8 @@ Synthetic profiles are only for protocol and gray-flow testing. Use `doctor --st
 Framework change submission is automatic when the member-side Codex can identify a clean change, enough evidence, and a safe package status. If validation evidence is missing, submit as `candidate` or `draft`; do not discard the work. Administrator patch contribution remains manual by default.
 
 Prefer `--patch-package` for Framework changes packaged by `android-framework-patch-capture`; it carries one feature README, one or more repository-level patches, build evidence, verification evidence, and pre-change knowledge search evidence together. Use `--patch` only when directly packaging a standalone patch file into the current incoming protocol.
+
+If member view UI reports 需补证据（needs_evidence）, the member-side action is usually to rerun patch capture/intake with the missing evidence, then pass `--supplement-for-package-key <date/member/run-id>` and `--supplement-reason <reason>` during patch prepare or upload. This creates another normal补丁包（patch package）with `evidence_supplement` evidence. It does not create a fourth incoming type and does not let members decide curation.
 
 For successful automation runs, launch `scripts/archive_automation_runs.py` with `setsid -f` and a short delay so the automation conversation is archived after Codex marks the run complete.
 

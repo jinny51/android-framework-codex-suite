@@ -394,6 +394,39 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("materials/evidence/verification_result.json", evidence_files)
             self.assertFalse(any(str(path).startswith("knowledge/") for path in manifest["files"]["evidence"]))
 
+    def test_patch_package_can_reference_original_needs_evidence_package(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = "20260612/lincong/20260612-172836-patch"
+            reason = "补充项目（project）证据，原包 project=unknown。"
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 12),
+                self.config(root),
+                run_id="20260612-190000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_capture_package(root, project="TVE1234A"))],
+                project="TVE1234A",
+                summary="Allow nav policy toggle",
+                status="validated",
+                schema_version="1",
+                supplement_for_package_key=target,
+                supplement_reason=reason,
+            )
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            supplement = json.loads((package / "materials" / "evidence" / "evidence_supplement.json").read_text(encoding="utf-8"))
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "PASS")
+            self.assertEqual(manifest["package_kind"], "framework_change")
+            self.assertEqual(manifest["supplement_for_package_key"], target)
+            self.assertEqual(manifest["supplement_reason"], reason)
+            self.assertIn("materials/evidence/evidence_supplement.json", manifest["files"]["evidence"])
+            self.assertEqual(supplement["kind"], "evidence_supplement")
+            self.assertEqual(supplement["payload"]["target_package_key"], target)
+            self.assertEqual(supplement["payload"]["reason"], reason)
+            self.assertEqual(supplement["payload"]["project"], "TVE1234A")
+
     def test_platform_token_parser_rejects_generic_android_prefix(self) -> None:
         self.assertEqual(
             intake.parse_platform_token(

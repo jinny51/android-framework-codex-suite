@@ -73,6 +73,14 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --s
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "TVE8402M" --summary "功能补丁摘要" --status validated
 ```
 
+成员查看界面如果提示某个补丁包需补证据（needs_evidence），不要新建第四类上传包。成员端 Codex 应重新生成或提交普通补丁包（patch package），补齐缺失证据，并用原始上传包键关联：
+
+```bash
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260612-171820-feature --project "TVE1234A" --summary "功能补丁摘要" --status validated --supplement-for-package-key 20260612/lincong/20260612-172836-patch --supplement-reason "补充项目（project）证据"
+```
+
+该命令仍生成 `framework_change` 上传包，只是额外携带 `materials/evidence/evidence_supplement.json`，用于说明它补充哪个原始上传包。
+
 `--project` 只有包含 `TVE`/`TVA`/`TVI` 公司项目号时才作为高优先级项目名。对 capture 包，intake 还会读取 capture manifest/patch item、`source_root`、repo 路径、git 分支/remote、WSL source-access registry、功能 README/diff/summary，以及显式关联的日报/周报上下文来识别项目；泛化标签不会写入 `manifest.project`。
 
 补丁包的平台（platform）只允许 `mtk`、`rk`、`unisoc` 或 `unknown`。`android14`、`app15` 这类前缀不能写成平台，只能在数字可信时作为 Android 版本线索；平台未知的补丁包可以被服务器归档，但管理端本地沉淀技能必须把它作为需补证据处理。

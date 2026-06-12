@@ -174,6 +174,8 @@ Manifest excerpt:
   "android_version": "15",
   "project": "TVE8402M",
   "related_report_run_ids": ["20260601-210000-daily"],
+  "supplement_for_package_key": "20260612/lincong/20260612-172836-patch",
+  "supplement_reason": "补充项目（project）证据",
   "files": {
     "case": "materials/case.json",
     "variant": "materials/variant.json",
@@ -185,7 +187,8 @@ Manifest excerpt:
       "materials/evidence/patch_problem_summary.json",
       "materials/evidence/risk_surface.json",
       "materials/evidence/verification_result.json",
-      "materials/evidence/search_before_change.json"
+      "materials/evidence/search_before_change.json",
+      "materials/evidence/evidence_supplement.json"
     ]
   }
 }
@@ -196,6 +199,26 @@ Manifest excerpt:
 `validated` requires `verification_result.payload.result = PASS`.
 
 `candidate`, `draft`, `failed`, and `blocked` are uploaded as curation input materials only. They must not be presented as knowledge entries or reuse-ready validated solutions by member-side tooling.
+
+If a previous `framework_change` package is marked 需补证据（needs_evidence）, the supplement remains a normal `framework_change` package. Set `supplement_for_package_key` to the original incoming package key and include `materials/evidence/evidence_supplement.json`:
+
+```json
+{
+  "kind": "evidence_supplement",
+  "case_id": "case-...",
+  "variant_id": "variant-...",
+  "payload": {
+    "target_package_key": "20260612/lincong/20260612-172836-patch",
+    "reason": "补充项目（project）证据",
+    "project": "TVE1234A",
+    "platform": "mtk",
+    "android_version": "16",
+    "package_status": "validated"
+  }
+}
+```
+
+This association only says the new patch package supplements evidence for an earlier package. It is not a curation decision and does not create another allowed `package_kind`.
 
 `materials/evidence/search_before_change.json` records member-side knowledge use before or during the change. It can come from an explicit patch capture package, or from same-day `android-knowledge-search` usage records:
 

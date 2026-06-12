@@ -105,6 +105,7 @@ EVIDENCE_KINDS = {
     "device_verification",
     "equivalent_verification",
     "search_before_change",
+    "evidence_supplement",
     "package_check",
     "summary",
 }
@@ -3327,6 +3328,8 @@ def prepare_patch_package(
     status: str = "validated",
     schema_version: str = INCOMING_SCHEMA_VERSION,
     related_report_run_ids: list[str] | None = None,
+    supplement_for_package_key: str = "",
+    supplement_reason: str = "",
 ) -> Path:
     require_config(config)
     if schema_version != INCOMING_SCHEMA_VERSION:
@@ -3599,6 +3602,32 @@ def prepare_patch_package(
             )
             required_generated[kind] = fallback
 
+    supplement_for_package_key = str(supplement_for_package_key or "").strip()
+    supplement_reason = str(supplement_reason or "").strip()
+    supplement_path = ""
+    if supplement_for_package_key:
+        if not supplement_reason:
+            supplement_reason = "补充原始上传包的沉淀证据。"
+        supplement_path = write_default_evidence(
+            package_dir,
+            materials_rel("evidence", "evidence_supplement.json"),
+            {
+                "kind": "evidence_supplement",
+                "case_id": case_id,
+                "variant_id": variant_id,
+                "payload": {
+                    "target_package_key": supplement_for_package_key,
+                    "reason": supplement_reason,
+                    "source_package_key": f"{ymd(date)}/{config['member_alias']}/{run_id}",
+                    "project": project,
+                    "platform": platform,
+                    "android_version": android_version,
+                    "package_status": package_status,
+                    "summary": summary,
+                },
+            },
+        )
+
     write_json(
         package_dir / variant_path,
         {
@@ -3645,12 +3674,16 @@ def prepare_patch_package(
                 required_generated["risk_surface"],
                 verification_path,
                 search_path,
+                *([supplement_path] if supplement_path else []),
                 *optional_evidence_paths,
             ],
         },
     }
     if all_related_report_run_ids:
         manifest["related_report_run_ids"] = all_related_report_run_ids
+    if supplement_for_package_key:
+        manifest["supplement_for_package_key"] = supplement_for_package_key
+        manifest["supplement_reason"] = supplement_reason
     for evidence_rel in manifest["files"]["evidence"]:
         bind_framework_evidence(package_dir, evidence_rel, case_id, variant_id)
     write_json(package_dir / "manifest.json", manifest)
@@ -3920,6 +3953,8 @@ def parse_args() -> argparse.Namespace:
             sub.add_argument("--project", default="unknown", help="project name for framework_change incoming")
             sub.add_argument("--summary", default="Framework 修改沉淀", help="summary for framework_change incoming")
             sub.add_argument("--related-report-run-id", dest="related_report_run_ids", action="append", default=[], help="daily/weekly incoming run_id related to this framework_change; repeatable")
+            sub.add_argument("--supplement-for-package-key", default="", help="original incoming package key that this framework_change package supplements")
+            sub.add_argument("--supplement-reason", default="", help="why this package supplements the original incoming package")
             sub.add_argument(
                 "--status",
                 choices=["draft", "candidate", "validated", "failed", "blocked"],
@@ -3970,7 +4005,20 @@ def main() -> int:
     if args.prepare:
         schema_version = args.schema_version or config.get("incoming_schema_version", INCOMING_SCHEMA_VERSION)
         if args.report_type == "patch":
-            package_dir = prepare_patch_package(date, config, args.run_id, args.patches, args.patch_packages, args.project, args.summary, args.status, schema_version, args.related_report_run_ids)
+            package_dir = prepare_patch_package(
+                date,
+                config,
+                args.run_id,
+                args.patches,
+                args.patch_packages,
+                args.project,
+                args.summary,
+                args.status,
+                schema_version,
+                args.related_report_run_ids,
+                args.supplement_for_package_key,
+                args.supplement_reason,
+            )
         else:
             package_dir = prepare_package(args.report_type, date, config, args.run_id, schema_version)
         result = json.loads((package_dir / "local-check.json").read_text(encoding="utf-8"))
@@ -3984,7 +4032,20 @@ def main() -> int:
     if args.upload:
         schema_version = args.schema_version or config.get("incoming_schema_version", INCOMING_SCHEMA_VERSION)
         if args.report_type == "patch":
-            package_dir = prepare_patch_package(date, config, args.run_id, args.patches, args.patch_packages, args.project, args.summary, args.status, schema_version, args.related_report_run_ids)
+            package_dir = prepare_patch_package(
+                date,
+                config,
+                args.run_id,
+                args.patches,
+                args.patch_packages,
+                args.project,
+                args.summary,
+                args.status,
+                schema_version,
+                args.related_report_run_ids,
+                args.supplement_for_package_key,
+                args.supplement_reason,
+            )
         else:
             package_dir = prepare_package(args.report_type, date, config, args.run_id, schema_version)
         result = submit_package(package_dir, config)
