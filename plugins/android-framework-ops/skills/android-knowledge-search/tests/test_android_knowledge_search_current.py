@@ -343,6 +343,53 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
 
         self.assertEqual([item["case_id"] for item in results[:2]], ["case-high", "case-low"])
 
+    def test_case_search_result_displays_replacement_recommendation(self):
+        root = Path(tempfile.mkdtemp())
+        write_jsonl(
+            root / "index" / "case-index.jsonl",
+            [
+                {"case_id": "case-old", "title": "旧显示区域方案", "problem": "旧方案后续验证失败", "status": "obsolete"},
+                {"case_id": "case-new", "title": "新显示区域方案", "problem": "已验证的新方案", "status": "active"},
+            ],
+        )
+        write_jsonl(root / "index" / "variant-index.jsonl", [])
+        write_jsonl(root / "index" / "symbol-index.jsonl", [])
+        write_jsonl(root / "index" / "evidence-index.jsonl", [])
+        write_jsonl(
+            root / "index" / "search-docs.jsonl",
+            [
+                {
+                    "type": "case",
+                    "case_id": "case-old",
+                    "title": "旧显示区域方案",
+                    "source_priority": 10,
+                    "text": "旧显示区域方案 推荐替代 case-new 新显示区域方案",
+                    "variant_ids": [],
+                    "replacement_case_id": "case-new",
+                    "replacement_title": "新显示区域方案",
+                },
+                {
+                    "type": "case",
+                    "case_id": "case-new",
+                    "title": "新显示区域方案",
+                    "source_priority": 130,
+                    "text": "新显示区域方案",
+                    "variant_ids": [],
+                    "replaces_case_ids": ["case-old"],
+                },
+            ],
+        )
+
+        rows = search.load_rows(root)
+        old_row = next(row for row in rows if row.get("case_id") == "case-old")
+        replacement_row = next(row for row in rows if row.get("case_id") == "case-new")
+        text = search.format_markdown(root, "旧显示区域", [old_row, replacement_row], None)
+
+        self.assertEqual(old_row["replacement_case_id"], "case-new")
+        self.assertEqual(replacement_row["replaces_case_ids"], ["case-old"])
+        self.assertIn("推荐替代: case-new / 新显示区域方案", text)
+        self.assertIn("替代旧案例: case-old", text)
+
     def test_patch_analysis_fields_are_searchable_and_formatted(self):
         root = Path(tempfile.mkdtemp())
         write_jsonl(root / "index" / "case-index.jsonl", [])

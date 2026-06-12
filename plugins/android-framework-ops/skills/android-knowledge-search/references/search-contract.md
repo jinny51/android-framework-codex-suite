@@ -17,6 +17,16 @@ Current repositories are case/variant first. `case-index.jsonl` and `variant-ind
 
 Search must not automatically use the database repository or member incoming worktree. It may inspect those only when an administrator passes an explicit `--root`.
 
+When `search-docs.jsonl` includes replacement fields, case results must preserve and display them:
+
+```text
+replacement_case_id
+replacement_title
+replaces_case_ids
+```
+
+These fields mean the local curation skill has marked an old case as obsolete or contradicted and linked a recommended replacement case. Search should surface the relationship as guidance, not as a final reuse decision.
+
 Default `--type all` is the AI reuse view. It returns only `case`, `variant`, `patch`, `symbol`, and AI evidence kinds:
 
 - `patch_diff_facts`

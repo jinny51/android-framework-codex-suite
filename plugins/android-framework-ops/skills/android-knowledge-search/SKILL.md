@@ -11,6 +11,8 @@ This skill does not submit reports, create patches, edit source, or decide corre
 
 Each normal search writes a member-side search usage record under the intake artifact directory so later daily and patch packages can carry the pre-change knowledge use evidence. The record is development evidence only; it is not a curation decision.
 
+If a search result shows a recommended replacement case, treat it as curation guidance from the local knowledge loop: inspect the replacement before reusing the obsolete or contradicted case. The replacement hint is still evidence, not an automatic reuse decision.
+
 ## Quick Command
 
 ```bash

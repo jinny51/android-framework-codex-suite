@@ -483,6 +483,11 @@ def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str,
     for item in read_jsonl(root / "index" / "case-index.jsonl"):
         case_id = str(item.get("case_id", ""))
         doc = search_docs.get(case_id, {})
+        replacement_fields = {
+            key: doc.get(key, item.get(key))
+            for key in ("replacement_case_id", "replacement_title", "replaces_case_ids")
+            if doc.get(key, item.get(key))
+        }
         rows.append(
             {
                 **item,
@@ -491,6 +496,7 @@ def load_from_jsonl(root: Path, include_archive: bool = False) -> list[dict[str,
                 "source_priority": doc.get("source_priority", item.get("source_priority", 0)),
                 "text": doc.get("text", item.get("text", "")),
                 "variant_ids": doc.get("variant_ids", item.get("variant_ids", [])),
+                **replacement_fields,
             }
         )
     for item in read_jsonl(root / "index" / "variant-index.jsonl"):
@@ -839,6 +845,10 @@ def format_case(root: Path, row: dict[str, Any], index: int) -> str:
         lines.append(f"   - 方案摘要: {row.get('solution_summary')}")
     if row.get("variant_ids"):
         lines.append(f"   - variants: {compact_list(row.get('variant_ids'), 6)}")
+    if row.get("replacement_case_id"):
+        lines.append(f"   - 推荐替代: {row.get('replacement_case_id')} / {row.get('replacement_title', '')}")
+    if row.get("replaces_case_ids"):
+        lines.append(f"   - 替代旧案例: {compact_list(row.get('replaces_case_ids'), 6)}")
     if row.get("source_priority"):
         lines.append(f"   - source_priority: {row.get('source_priority')}")
     if row.get("_matched_terms"):
