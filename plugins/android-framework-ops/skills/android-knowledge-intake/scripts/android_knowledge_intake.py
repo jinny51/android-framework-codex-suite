@@ -2731,6 +2731,7 @@ def incoming_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[
         "content_sha1": content_sha1,
         "status": patch_entry.get("status", "candidate"),
         "reuse_hint": reuse_hint if isinstance(reuse_hint, bool) else reuse_hint,
+        "note": str(patch_entry.get("note") or ""),
         "repo_path": repo_path,
         "implementation_origin": implementation_origin,
         "captured_by": captured_by,
@@ -2774,6 +2775,8 @@ def aggregate_patch_diff_facts(patch_items: list[dict[str, Any]]) -> dict[str, A
                 "repo_path": item.get("repo_path", ""),
                 "content_sha1": content_sha1,
                 "status": item.get("status", "candidate"),
+                "reuse_hint": bool(item.get("reuse_hint")),
+                "note": str(item.get("note") or ""),
                 "implementation_origin": implementation_origin,
                 "captured_by": captured_by,
                 "modified_files": list_string_values(facts.get("modified_files")),
@@ -3344,6 +3347,24 @@ def framework_package_status_from_patch_statuses(statuses: set[str], has_pass_ve
     return "candidate"
 
 
+def downgrade_validated_patch_entries(patch_entries: list[dict[str, Any]], note: str) -> None:
+    for item in patch_entries:
+        if item.get("status") == "validated":
+            item["status"] = "candidate"
+            item["reuse_hint"] = False
+            previous_note = str(item.get("note") or "").strip()
+            item["note"] = f"{previous_note}；{note}" if previous_note else note
+
+
+def framework_metadata_is_traceable(project: str, platform: str, android_version: str) -> bool:
+    return (
+        project not in {"", "unknown"}
+        and platform in VALID_FRAMEWORK_PLATFORMS
+        and is_valid_android_version_value(android_version)
+        and android_version != "unknown"
+    )
+
+
 def prepare_patch_package(
     date: dt.date,
     config: dict[str, str],
@@ -3436,21 +3457,22 @@ def prepare_patch_package(
     )
     ensure_patch_analysis_evidence(package_dir, patch_entries, capture_evidence_entries, summary)
     if not has_pass_verification:
-        for item in patch_entries:
-            if item.get("status") == "validated":
-                item["status"] = "candidate"
-                item["reuse_hint"] = False
-                item["note"] = "未携带 PASS 设备验证或合格等价验证，已按 candidate 提交"
+        downgrade_validated_patch_entries(patch_entries, "未携带 PASS 设备验证或合格等价验证，已按 candidate 提交")
     for item in patch_entries:
         if item.get("status") in {"failed", "blocked"}:
             item["reuse_hint"] = False
-    statuses = {str(item.get("status", "")) for item in patch_entries}
-    source = write_package_source(package_dir, config, "android-knowledge-intake")
-    package_status = framework_package_status_from_patch_statuses(statuses, has_pass_verification)
 
     platform, android_version = parse_platform_token(patch_entries)
     related_project_clues = related_report_project_clues(config, all_related_report_run_ids)
     project, project_payload = infer_project(project, patch_entries, patch_sources, summary, package_dir, source_contexts, related_project_clues)
+    if not framework_metadata_is_traceable(project, platform, android_version):
+        downgrade_validated_patch_entries(
+            patch_entries,
+            "项目（project）、平台（platform）或 Android 版本（Android version）缺少可追溯元数据，已按 candidate 提交",
+        )
+    statuses = {str(item.get("status", "")) for item in patch_entries}
+    source = write_package_source(package_dir, config, "android-knowledge-intake")
+    package_status = framework_package_status_from_patch_statuses(statuses, has_pass_verification)
     all_patch_items = [incoming_patch_item(package_dir, item) for item in patch_entries]
     implementation_origins = unique_strings(
         str(item.get("implementation_origin") or "")

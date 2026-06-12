@@ -741,6 +741,33 @@ class PatchCaptureIngestTests(unittest.TestCase):
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["package_status"], "candidate")
 
+    def test_validated_capture_with_unknown_project_is_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 3),
+                self.config(root),
+                run_id="20260603-120000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_capture_package(root, project="mtk android16 Camera2"))],
+                project="mtk android16 Camera2",
+                summary="Camera2 reversePortrait 方向补偿",
+                status="validated",
+                schema_version="1",
+            )
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            variant = json.loads((package / "materials" / "variant.json").read_text(encoding="utf-8"))
+            diff_facts = json.loads((package / "materials" / "evidence" / "patch_diff_facts.json").read_text(encoding="utf-8"))
+            project_inference = json.loads((package / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "unknown")
+            self.assertEqual(manifest["package_status"], "candidate")
+            self.assertEqual(variant["package_status"], "candidate")
+            self.assertFalse(diff_facts["payload"]["patches"][0]["reuse_hint"])
+            self.assertIn("项目", diff_facts["payload"]["patches"][0]["note"])
+            self.assertIn("命令参数 project 未匹配公司项目型号规范", " ".join(project_inference["payload"]["limits"]))
+
     def test_standalone_patch_without_verification_is_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
