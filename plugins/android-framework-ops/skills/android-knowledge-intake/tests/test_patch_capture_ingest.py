@@ -49,6 +49,7 @@ def create_capture_package(
     source_root: str | None = None,
     git_branch: str = "",
     git_remote: str = "",
+    search_payload: dict | None = None,
 ) -> Path:
     package = root / "capture"
     patch = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
@@ -64,7 +65,12 @@ def create_capture_package(
     )
     readme.write_text(valid_patch_readme(), encoding="utf-8")
     write_json(package / "evidence" / "verification-result.json", {"result": "PASS", "method": "device", "summary": "device pass"})
-    write_json(package / "evidence" / "search-before-change.json", {"result": "INFO", "method": "knowledge_search", "queries": ["nav policy"]})
+    write_json(
+        package / "evidence" / "search-before-change.json",
+        search_payload
+        if search_payload is not None
+        else {"result": "INFO", "method": "knowledge_search", "queries": ["nav policy"], "searched": True},
+    )
     if include_build_result:
         write_json(
             package / "evidence" / "build-result.json",
@@ -397,6 +403,42 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 project="TVE1234A",
                 summary="显示策略适配",
                 status="candidate",
+                schema_version="1",
+            )
+
+            search_evidence = json.loads((package / "materials" / "evidence" / "search_before_change.json").read_text(encoding="utf-8"))
+            payload = search_evidence["payload"]
+            self.assertTrue(payload["searched"])
+            self.assertEqual(payload["reuse_decision"], "adapt")
+            self.assertEqual(payload["queries"], ["显示策略 split screen"])
+            self.assertEqual(payload["targets"], ["case-display-policy"])
+
+    def test_patch_package_uses_member_search_usage_when_capture_search_is_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = self.config(root)
+            write_member_search_usage(Path(config["out_dir"]), "2026-05-26", decision="adapt")
+            capture_package = create_capture_package(
+                root,
+                search_payload={
+                    "result": "INFO",
+                    "method": "knowledge_search",
+                    "searched": False,
+                    "queries": [],
+                    "results": [],
+                    "summary": "not provided by capture command",
+                },
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                config,
+                run_id="20260526-133000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture_package)],
+                project="TVE1234A",
+                summary="显示策略适配",
+                status="validated",
                 schema_version="1",
             )
 

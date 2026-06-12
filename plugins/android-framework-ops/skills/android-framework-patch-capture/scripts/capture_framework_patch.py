@@ -1084,8 +1084,27 @@ def feature_readme_text(
     facts: dict[str, Any],
     package_check: dict[str, Any],
     coding_check: dict[str, Any],
+    verification_payload: dict[str, Any],
 ) -> str:
-    verification = args.verification or []
+    remote_build = verification_payload.get("remote_build") if isinstance(verification_payload.get("remote_build"), dict) else {}
+    local_delivery = verification_payload.get("local_delivery") if isinstance(verification_payload.get("local_delivery"), dict) else {}
+    verification = args.verification or string_list(verification_payload.get("build"))
+    device_verification = args.device_verification or string_list(verification_payload.get("steps"))
+    remote_artifacts = args.remote_artifact or [
+        " ".join(
+            item
+            for item in (
+                str(artifact.get("path") or "").strip(),
+                f"sha1={artifact.get('sha1')}" if artifact.get("sha1") else "",
+            )
+            if item
+        )
+        for artifact in remote_build.get("artifacts", [])
+        if isinstance(artifact, dict)
+    ]
+    local_artifacts = args.local_artifact or string_list(local_delivery.get("local_artifacts"))
+    adb_actions = args.adb_action or string_list(local_delivery.get("adb_actions"))
+    device_restarts = args.device_restart or string_list(local_delivery.get("device_restarts"))
     risk = args.risk or "待结合当前项目、触发路径和验证结果补充。"
     rollback = args.rollback or "在对应源码仓库逐个执行 `git apply -R <patch>`，或回退对应源码仓库提交。"
     repo_lines = "\n".join(f"- `{capture.repo_path}` -> `{capture.patch_rel}`" for capture in captures)
@@ -1161,7 +1180,7 @@ def feature_readme_text(
 
 ## 设备验证
 
-{plain_bullets(args.device_verification or [])}
+{plain_bullets(device_verification)}
 
 ## 开发前知识库检索
 
@@ -1184,19 +1203,19 @@ def feature_readme_text(
 
 ## 远端构建链路
 
-- remote_build_host: {args.remote_build_host or "待补充"}
-- remote_source_root: {args.remote_source_root or "待补充"}
-- remote_build_profile: {args.remote_build_profile or "待补充"}
-- remote_build_command: {args.remote_build_command or "待补充"}
-- remote_artifacts: {", ".join(args.remote_artifact or []) if args.remote_artifact else "待补充"}
+- remote_build_host: {args.remote_build_host or str(remote_build.get("host") or "") or "待补充"}
+- remote_source_root: {args.remote_source_root or str(remote_build.get("source_root") or "") or "待补充"}
+- remote_build_profile: {args.remote_build_profile or str(remote_build.get("profile") or "") or "待补充"}
+- remote_build_command: {args.remote_build_command or str(remote_build.get("command") or "") or "待补充"}
+- remote_artifacts: {", ".join(remote_artifacts) if remote_artifacts else "待补充"}
 
 ## 本机交付和设备验证链路
 
-- artifact_transfer: {args.artifact_transfer or "待补充"}
-- local_artifacts: {", ".join(args.local_artifact or []) if args.local_artifact else "待补充"}
-- adb_serial: {args.adb_serial or "待补充"}
-- adb_actions: {", ".join(args.adb_action or []) if args.adb_action else "待补充"}
-- device_restarts: {", ".join(args.device_restart or []) if args.device_restart else "待补充"}
+- artifact_transfer: {args.artifact_transfer or str(local_delivery.get("transfer") or "") or "待补充"}
+- local_artifacts: {", ".join(local_artifacts) if local_artifacts else "待补充"}
+- adb_serial: {args.adb_serial or str(local_delivery.get("adb_serial") or "") or "待补充"}
+- adb_actions: {", ".join(adb_actions) if adb_actions else "待补充"}
+- device_restarts: {", ".join(device_restarts) if device_restarts else "待补充"}
 
 ## 风险说明
 
@@ -1319,7 +1338,7 @@ def main() -> int:
 
     package_check = {"status": "FAIL" if errors else "PASS", "errors": errors, "warnings": warnings}
     readme_path = package_dir / "README.md"
-    readme_path.write_text(feature_readme_text(args, captures, feature_facts, package_check, coding_check), encoding="utf-8")
+    readme_path.write_text(feature_readme_text(args, captures, feature_facts, package_check, coding_check, verification_payload), encoding="utf-8")
     evidence_items = [
         {
             "id": "changed-files",

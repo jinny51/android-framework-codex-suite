@@ -381,6 +381,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             package_dir = Path(json.loads(result.stdout)["package"])
             verification = json.loads((package_dir / "evidence" / "verification-result.json").read_text(encoding="utf-8"))
             manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+            readme = (package_dir / "README.md").read_text(encoding="utf-8")
 
             self.assertEqual(verification["result"], "PASS")
             self.assertEqual(verification["method"], "device")
@@ -388,6 +389,11 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(verification["local_delivery"]["adb_serial"], "ABC123")
             self.assertIn("remote_build", manifest["verification_chain"])
             self.assertIn("local_delivery", manifest["verification_chain"])
+            self.assertIn("builder01", readme)
+            self.assertIn("/build/android/TVE8402M", readme)
+            self.assertIn("0123456789abcdef0123456789abcdef01234567", readme)
+            self.assertIn("ABC123", readme)
+            self.assertIn("adb -s ABC123 push services.jar /system/framework/services.jar", readme)
 
     def test_common_framework_paths_produce_specific_patch_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -1694,6 +1694,26 @@ def search_usage_payload(config: dict[str, str], date: dt.date) -> dict[str, Any
     }
 
 
+def search_payload_has_member_decision(payload: dict[str, Any]) -> bool:
+    if not payload:
+        return False
+    if isinstance(payload.get("payload"), dict):
+        payload = payload["payload"]
+    if payload.get("searched") is True:
+        return True
+    decision = str(payload.get("reuse_decision") or payload.get("decision") or "").strip()
+    if decision and decision != "unknown":
+        return True
+    for key in ("queries", "results", "targets", "match_points", "mismatch_points"):
+        values = payload.get(key)
+        if isinstance(values, list) and any(str(item).strip() for item in values):
+            return True
+    if str(payload.get("reason") or "").strip():
+        return True
+    outcome = str(payload.get("outcome") or "").strip()
+    return bool(outcome and outcome != "not_started")
+
+
 def plugin_commit() -> str:
     cp = run(["git", "-C", str(PLUGIN_ROOT), "rev-parse", "--short", "HEAD"])
     if cp.returncode == 0:
@@ -3287,9 +3307,14 @@ def prepare_patch_package(
     if package_status == "validated" and str(verification_payload.get("result", "")).upper() != "PASS":
         package_status = "candidate"
 
-    search_payload = first_evidence_payload(package_dir, capture_evidence_entries, "search_before_change")
-    if not search_payload:
-        search_payload = search_usage_payload(config, date)
+    capture_search_payload = first_evidence_payload(package_dir, capture_evidence_entries, "search_before_change")
+    member_search_payload = search_usage_payload(config, date)
+    if search_payload_has_member_decision(capture_search_payload):
+        search_payload = capture_search_payload
+    elif member_search_payload:
+        search_payload = member_search_payload
+    else:
+        search_payload = capture_search_payload
     if not search_payload:
         search_payload = {
             "result": "INFO",
