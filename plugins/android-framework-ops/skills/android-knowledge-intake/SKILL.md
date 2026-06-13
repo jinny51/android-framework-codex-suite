@@ -27,7 +27,7 @@ If project clues disagree, do not choose the first matching value. When explicit
 
 If a daily package contains multiple candidates that share one base model, such as `TVE1067M1` and `TVE1067M1_H031`, write the shared base model `TVE1067M1` and keep the complete candidates in `project_inference`. Do not truncate it to `TVE1067M`. If candidates have different base models, keep `project=unknown` and preserve the ambiguity.
 
-Platform and Android version metadata are also knowledge applicability boundaries. Framework change packages may only write `platform=mtk`, `platform=rk`, `platform=unisoc`, or `platform=unknown`. Patch filenames or capture packages with `sprd` or `u` aliases normalize to `unisoc`; generic prefixes such as `android14` or `app15` must never become `platform=android` or `platform=app`. If only the numeric Android version is traceable, keep `platform=unknown`; local curation must treat that as an evidence gap instead of materializing high-confidence knowledge.
+Platform and Android version metadata are also knowledge applicability boundaries. Framework change packages may only write `platform=mtk`, `platform=rk`, `platform=unisoc`, or `platform=unknown`. Patch filenames or capture packages with `sprd` or `u` aliases normalize to `unisoc`; generic prefixes such as `android14` or `app15` must never become `platform=android` or `platform=app`. If only the numeric Android version is traceable, keep `platform=unknown`; local curation must treat that as an evidence gap instead of materializing high-confidence knowledge. When member view UI asks the member to supplement platform or Android version and the capture package cannot prove it, patch prepare may use explicit `--platform mtk|rk|unisoc|unknown` and `--android-version <number>` so the supplement package carries the corrected applicability boundary.
 
 A patch package can still be preserved when project, platform, or Android version metadata is incomplete, but it must not stay `validated`. Even with PASS verification, if the project remains `unknown`, the platform is `unknown`, or the Android version is `unknown`, downgrade the package to `candidate`, clear direct reuse hints, and record the metadata reason in patch diff facts for later curation.
 
@@ -82,10 +82,12 @@ When member view UI shows a previous patch package needs evidence, do not create
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare \
   --patch-package /path/to/.codex/patch-packages/20260612-171820-feature \
   --project "TVE1234A" \
+  --platform mtk \
+  --android-version 16 \
   --summary "功能补丁摘要" \
   --status validated \
   --supplement-for-package-key 20260612/lincong/20260612-172836-patch \
-  --supplement-reason "补充项目（project）证据"
+  --supplement-reason "补充项目（project）、平台（platform）和 Android 版本（Android version）证据"
 ```
 
 Submit the latest prepared patch package:
@@ -123,7 +125,7 @@ Prefer `--patch-package` for Framework changes packaged by `android-framework-pa
 
 If member view UI reports 需补证据（needs_evidence）, the member-side action is usually to rerun patch capture/intake with the missing evidence, then pass `--supplement-for-package-key <date/member/run-id>` and `--supplement-reason <reason>` during patch prepare or upload. This creates another normal补丁包（patch package）with `evidence_supplement` evidence. It does not create a fourth incoming type and does not let members decide curation.
 
-When a supplement reason asks for 项目（project）, 平台（platform）, Android 版本（Android version）, or 验证（verification）, the local package check must fail if the new supplement package still carries `project=unknown`, `platform=unknown`, `android_version=unknown`, or non-PASS verification for the requested field. Do not submit a supplement package that only repeats the old gap; collect the missing source path, capture package, related daily context, platform token, build result, or device verification first.
+When a supplement reason asks for 项目（project）, 平台（platform）, Android 版本（Android version）, or 验证（verification）, the local package check must fail if the new supplement package still carries `project=unknown`, `platform=unknown`, `android_version=unknown`, or non-PASS verification for the requested field. Do not submit a supplement package that only repeats the old gap; collect the missing source path, capture package, related daily context, explicit `--platform` / `--android-version`, platform token, build result, or device verification first.
 
 For successful automation runs, launch `scripts/archive_automation_runs.py` with `setsid -f` and a short delay so the automation conversation is archived after Codex marks the run complete.
 

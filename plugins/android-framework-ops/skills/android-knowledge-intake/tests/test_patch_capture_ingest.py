@@ -457,6 +457,51 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "\n".join(check["errors"]),
             )
 
+    def test_patch_supplement_accepts_explicit_platform_and_android_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patch = root / "app16-frameworks-base@nav-policy-toggle.patch"
+            patch.write_text(
+                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+                "--- a/frameworks/base/services/core/java/X.java\n"
+                "+++ b/frameworks/base/services/core/java/X.java\n"
+                "@@ -1 +1,2 @@\n"
+                "+//gyf 20260526@ nav policy toggle\n",
+                encoding="utf-8",
+            )
+            (root / "app16-frameworks-base@nav-policy-toggle.readme.md").write_text(
+                valid_patch_readme(),
+                encoding="utf-8",
+            )
+            target = "20260612/lincong/20260612-172836-patch"
+            reason = "补充平台（platform）和 Android 版本（Android version）证据。"
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 12),
+                self.config(root),
+                run_id="20260612-190002-patch",
+                patch_paths=[str(patch)],
+                patch_package_paths=[],
+                project="TVE1234A",
+                summary="Allow nav policy toggle",
+                status="candidate",
+                schema_version="1",
+                supplement_for_package_key=target,
+                supplement_reason=reason,
+                platform_override="mtk",
+                android_version_override="16",
+            )
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            supplement = json.loads((package / "materials" / "evidence" / "evidence_supplement.json").read_text(encoding="utf-8"))
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "PASS")
+            self.assertEqual(manifest["platform"], "mtk")
+            self.assertEqual(manifest["android_version"], "16")
+            self.assertEqual(supplement["payload"]["platform"], "mtk")
+            self.assertEqual(supplement["payload"]["android_version"], "16")
+
     def test_platform_token_parser_rejects_generic_android_prefix(self) -> None:
         self.assertEqual(
             intake.parse_platform_token(

@@ -3173,6 +3173,27 @@ def parse_platform_token(patch_entries: list[dict[str, Any]]) -> tuple[str, str]
     return "unknown", "unknown"
 
 
+def apply_platform_overrides(
+    inferred_platform: str,
+    inferred_android_version: str,
+    platform_override: str = "",
+    android_version_override: str = "",
+) -> tuple[str, str]:
+    platform = str(inferred_platform or "unknown").strip().lower() or "unknown"
+    android_version = str(inferred_android_version or "unknown").strip().lower() or "unknown"
+    explicit_platform = str(platform_override or "").strip().lower()
+    explicit_android_version = str(android_version_override or "").strip().lower()
+    if explicit_platform:
+        if not is_valid_platform_value(explicit_platform):
+            raise SystemExit(f"--platform 只能使用 mtk/rk/unisoc/unknown，当前为: {explicit_platform}")
+        platform = explicit_platform
+    if explicit_android_version:
+        android_version = normalize_android_version(platform, explicit_android_version)
+        if not is_valid_android_version_value(android_version):
+            raise SystemExit(f"--android-version 必须是明确数字版本或 unknown，当前为: {explicit_android_version}")
+    return platform, android_version
+
+
 def repo_paths_from_files(files: list[str]) -> list[str]:
     repos: list[str] = []
     for path in files:
@@ -3634,6 +3655,8 @@ def prepare_patch_package(
     related_report_run_ids: list[str] | None = None,
     supplement_for_package_key: str = "",
     supplement_reason: str = "",
+    platform_override: str = "",
+    android_version_override: str = "",
 ) -> Path:
     require_config(config)
     if schema_version != INCOMING_SCHEMA_VERSION:
@@ -3718,7 +3741,11 @@ def prepare_patch_package(
         if item.get("status") in {"failed", "blocked"}:
             item["reuse_hint"] = False
 
-    platform, android_version = parse_platform_token(patch_entries)
+    platform, android_version = apply_platform_overrides(
+        *parse_platform_token(patch_entries),
+        platform_override=platform_override,
+        android_version_override=android_version_override,
+    )
     auto_related_report_run_ids: list[str] = []
     if not all_related_report_run_ids:
         auto_related_report_run_ids = same_day_daily_report_run_ids(config, date)
@@ -4264,6 +4291,8 @@ def parse_args() -> argparse.Namespace:
             sub.add_argument("--patch", dest="patches", action="append", default=[], help="patch file to include; repeatable")
             sub.add_argument("--patch-package", dest="patch_packages", action="append", default=[], help="android-framework-patch-capture package directory to include; repeatable")
             sub.add_argument("--project", default="unknown", help="project name for framework_change incoming")
+            sub.add_argument("--platform", default="", help="explicit platform for framework_change incoming: mtk, rk, unisoc, or unknown")
+            sub.add_argument("--android-version", default="", help="explicit Android version for framework_change incoming, for example 14, 16, or 9.0")
             sub.add_argument("--summary", default="Framework 修改沉淀", help="summary for framework_change incoming")
             sub.add_argument("--related-report-run-id", dest="related_report_run_ids", action="append", default=[], help="daily/weekly incoming run_id related to this framework_change; repeatable")
             sub.add_argument("--supplement-for-package-key", default="", help="original incoming package key that this framework_change package supplements")
@@ -4331,6 +4360,8 @@ def main() -> int:
                 args.related_report_run_ids,
                 args.supplement_for_package_key,
                 args.supplement_reason,
+                args.platform,
+                args.android_version,
             )
         else:
             package_dir = prepare_package(args.report_type, date, config, args.run_id, schema_version)
@@ -4358,6 +4389,8 @@ def main() -> int:
                 args.related_report_run_ids,
                 args.supplement_for_package_key,
                 args.supplement_reason,
+                args.platform,
+                args.android_version,
             )
         else:
             package_dir = prepare_package(args.report_type, date, config, args.run_id, schema_version)
