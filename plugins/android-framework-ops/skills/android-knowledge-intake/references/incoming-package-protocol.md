@@ -93,6 +93,8 @@ blocked
 
 Only sensitive material, mixed unrelated diffs, unclear task boundaries, or high-risk misleading reuse hints should stop patch upload. Even then, daily or weekly trace should record what happened and why it was blocked.
 
+Patch package project inference may use a same-member same-day daily package only when no explicit `related_report_run_ids` were provided and the daily context exposes exactly one TVE/TVA/TVI project candidate. This is a member-side generation convenience, not a server-side guess. Ambiguous daily context, multiple projects, or missing daily packages must keep `project=unknown` and rely on a later evidence supplement package.
+
 ## Daily Or Weekly Trace
 
 Required shape:

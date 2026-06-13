@@ -3313,7 +3313,13 @@ def source_context_clues(source_contexts: list[dict[str, Any]]) -> list[tuple[st
     return clues
 
 
-def related_report_project_clues(config: dict[str, str], run_ids: list[str]) -> list[tuple[str, str]]:
+def related_report_project_clues(
+    config: dict[str, str],
+    run_ids: list[str],
+    *,
+    daily_label_prefix: str = "关联日报",
+    weekly_label_prefix: str = "关联周报",
+) -> list[tuple[str, str]]:
     out_dir = expanded_path(config.get("out_dir", ""))
     member_alias = config.get("member_alias", "")
     clues: list[tuple[str, str]] = []
@@ -3333,10 +3339,15 @@ def related_report_project_clues(config: dict[str, str], run_ids: list[str]) -> 
             manifest = read_json_file(manifest_path)
             if manifest.get("package_kind") not in {"daily_trace", "weekly_trace"}:
                 continue
-            label_prefix = "关联日报" if manifest.get("package_kind") == "daily_trace" else "关联周报"
+            label_prefix = daily_label_prefix if manifest.get("package_kind") == "daily_trace" else weekly_label_prefix
             project = str(manifest.get("project") or "").strip()
             if project:
                 clues.append((f"{label_prefix} project", project))
+            projects = manifest.get("projects")
+            if isinstance(projects, list):
+                for item in projects:
+                    if isinstance(item, str) and item.strip():
+                        clues.append((f"{label_prefix} projects", item))
             summary = str(manifest.get("summary") or "").strip()
             if summary:
                 clues.append((f"{label_prefix} summary", summary))
@@ -3357,6 +3368,30 @@ def related_report_project_clues(config: dict[str, str], run_ids: list[str]) -> 
                         if isinstance(value, str) and value.strip():
                             clues.append((f"{label_prefix} project_inference", value))
     return clues
+
+
+def same_day_daily_report_run_ids(config: dict[str, str], date: dt.date) -> list[str]:
+    out_dir = expanded_path(config.get("out_dir", ""))
+    member_alias = config.get("member_alias", "")
+    run_ids: list[str] = []
+    for bucket in ("submitted", "pending"):
+        daily_root = out_dir / bucket / ymd(date) / member_alias
+        for manifest_path in sorted(daily_root.glob("*/manifest.json")):
+            manifest = read_json_file(manifest_path)
+            if manifest.get("package_kind") != "daily_trace":
+                continue
+            if str(manifest.get("date") or "") != date.isoformat():
+                continue
+            run_id = str(manifest.get("run_id") or manifest_path.parent.name)
+            if run_id:
+                run_ids.append(run_id)
+    run_ids = unique_strings(run_ids)
+    if not run_ids:
+        return []
+
+    clues = related_report_project_clues(config, run_ids, daily_label_prefix="自动关联同日日报")
+    projects = sorted(dict.fromkeys(project for _, text in clues for project in find_company_projects(text)))
+    return run_ids if len(projects) == 1 else []
 
 
 def read_text_sample(path: Path, limit: int = 12000) -> str:
@@ -3684,7 +3719,15 @@ def prepare_patch_package(
             item["reuse_hint"] = False
 
     platform, android_version = parse_platform_token(patch_entries)
-    related_project_clues = related_report_project_clues(config, all_related_report_run_ids)
+    auto_related_report_run_ids: list[str] = []
+    if not all_related_report_run_ids:
+        auto_related_report_run_ids = same_day_daily_report_run_ids(config, date)
+        all_related_report_run_ids.extend(auto_related_report_run_ids)
+    related_project_clues = related_report_project_clues(
+        config,
+        all_related_report_run_ids,
+        daily_label_prefix="自动关联同日日报" if auto_related_report_run_ids else "关联日报",
+    )
     project, project_payload = infer_project(project, patch_entries, patch_sources, summary, package_dir, source_contexts, related_project_clues)
     if not framework_metadata_is_traceable(project, platform, android_version):
         downgrade_validated_patch_entries(

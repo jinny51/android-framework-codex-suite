@@ -1228,6 +1228,67 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(project_inference["payload"]["project"], "TVE1086U")
             self.assertIn("关联日报", " ".join(project_inference["payload"]["basis"]))
 
+    def test_patch_project_inference_uses_same_day_unique_daily_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = self.config(root)
+            daily = Path(config["out_dir"]) / "submitted" / "20260612" / "admin_alias" / "20260612-210000-daily"
+            (daily / "materials" / "evidence").mkdir(parents=True)
+            write_json(
+                daily / "manifest.json",
+                {
+                    "schema": "knowledge-incoming-package",
+                    "schema_version": "1",
+                    "package_kind": "daily_trace",
+                    "member_alias": "admin_alias",
+                    "member_name": "Member One",
+                    "date": "2026-06-12",
+                    "run_id": "20260612-210000-daily",
+                    "project": "TVE8801M",
+                    "summary": "今天处理 TVE8801M 导航模式任务栏固定像素。",
+                    "files": {"evidence": ["materials/evidence/project_inference.json"]},
+                },
+            )
+            write_json(
+                daily / "materials" / "evidence" / "project_inference.json",
+                {
+                    "kind": "project_inference",
+                    "payload": {
+                        "project": "TVE8801M",
+                        "recognized": True,
+                        "basis": ["日报上下文: 今天处理 TVE8801M 导航模式任务栏固定像素。"],
+                    },
+                },
+            )
+            capture_package = create_capture_package(
+                root,
+                project="unknown",
+                source_root="/home/cong/work/mtk/b_mt8775_8792_tablet",
+                git_branch="master",
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 12),
+                config,
+                run_id="20260612-230000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture_package)],
+                project="unknown",
+                summary="导航模式任务栏固定像素",
+                status="candidate",
+                schema_version="1",
+            )
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            variant = json.loads((package / "materials" / "variant.json").read_text(encoding="utf-8"))
+            project_inference = json.loads((package / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "TVE8801M")
+            self.assertEqual(variant["project"], "TVE8801M")
+            self.assertEqual(manifest["related_report_run_ids"], ["20260612-210000-daily"])
+            self.assertEqual(project_inference["payload"]["project"], "TVE8801M")
+            self.assertIn("自动关联同日日报", " ".join(project_inference["payload"]["basis"]))
+
 
 if __name__ == "__main__":
     unittest.main()
