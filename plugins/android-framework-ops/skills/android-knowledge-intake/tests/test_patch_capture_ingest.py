@@ -634,6 +634,79 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(payload["queries"], ["显示策略 split screen"])
             self.assertEqual(payload["targets"], ["case-display-policy"])
 
+    def test_patch_package_prefers_member_search_usage_when_capture_decision_is_unknown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = self.config(root)
+            write_member_search_usage(Path(config["out_dir"]), "2026-05-26", decision="adapt")
+            capture_package = create_capture_package(
+                root,
+                search_payload={
+                    "result": "INFO",
+                    "method": "knowledge_search",
+                    "searched": True,
+                    "queries": ["navigation policy toggle"],
+                    "results": ["case-nav-policy matched modified files"],
+                    "decision": "unknown",
+                    "reuse_decision": "unknown",
+                    "summary": "capture command did not close usage decision",
+                },
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                config,
+                run_id="20260526-134000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture_package)],
+                project="TVE1234A",
+                summary="显示策略适配",
+                status="validated",
+                schema_version="1",
+            )
+
+            search_evidence = json.loads((package / "materials" / "evidence" / "search_before_change.json").read_text(encoding="utf-8"))
+            payload = search_evidence["payload"]
+            self.assertTrue(payload["searched"])
+            self.assertEqual(payload["reuse_decision"], "adapt")
+            self.assertEqual(payload["queries"], ["显示策略 split screen"])
+            self.assertEqual(payload["targets"], ["case-display-policy"])
+
+    def test_validated_patch_package_rejects_unknown_search_decision_for_hits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_package = create_capture_package(
+                root,
+                search_payload={
+                    "result": "INFO",
+                    "method": "knowledge_search",
+                    "searched": True,
+                    "queries": ["navigation policy toggle"],
+                    "results": ["case-nav-policy matched modified files"],
+                    "decision": "unknown",
+                    "reuse_decision": "unknown",
+                    "summary": "capture command did not close usage decision",
+                },
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-134500-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture_package)],
+                project="TVE1234A",
+                summary="显示策略适配",
+                status="validated",
+                schema_version="1",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            self.assertEqual(check["status"], "FAIL")
+            errors = "\n".join(check["errors"])
+            self.assertIn("搜索使用决策", errors)
+            self.assertIn("reuse/adapt/reference_only/not_applicable/not_found", errors)
+
     def test_capture_package_preserves_optional_build_result_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

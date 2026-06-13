@@ -46,6 +46,8 @@ python3 "scripts/capture_framework_patch.py" \
 
 如果构建交付流程已经由 `android-wsl-remote-build-deploy/scripts/push-artifacts.sh` 写出 `<source-root>/.codex/evidence/latest-build-delivery.json`，补丁采集会自动读取远端构建和本机 adb 证据，并合并进 `verification-result.json`。手工 `--remote-build-*` 和 `--adb-*` 参数只用于历史材料或异常路径补录。
 
+知识搜索命中后，补丁采集必须记录搜索使用证据（search usage evidence）。如果补丁包（patch package）状态是已验证（validated），并且搜索结果命中了候选知识，就不能继续保留未知（unknown）；必须通过 `--reuse-decision reuse|adapt|reference_only|not_applicable|not_found` 闭合为直接复用（reuse）、适配复用（adapt）、仅作参考（reference_only）、不适用（not_applicable）或未命中（not_found）。这些只是开发证据，不是沉淀结论（curation decision）。
+
 输出目录：
 
 ```text

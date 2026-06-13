@@ -228,6 +228,49 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(coding_check["implementation_origin"], "manual")
             self.assertTrue(coding_check["review_required"])
 
+    def test_validated_capture_requires_closed_search_decision_for_hits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260611-130000-patch",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "nav-policy-toggle",
+                    "--summary",
+                    "Allow navigation policy toggle",
+                    "--status",
+                    "validated",
+                    "--verification",
+                    "frameworks/base/services build PASS",
+                    "--device",
+                    "rk3576",
+                    "--device-verification",
+                    "Boot completed and navigation policy behavior matched expectation",
+                    "--search-query",
+                    "navigation policy toggle",
+                    "--search-result",
+                    "case-nav-policy matched modified files",
+                ],
+                root,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            payload = json.loads(result.stdout)
+            errors = "\n".join(payload["local_check"]["errors"])
+            self.assertIn("搜索使用决策", errors)
+            self.assertIn("reuse/adapt/reference_only/not_applicable/not_found", errors)
+
     def test_rejects_generic_android_platform_token(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

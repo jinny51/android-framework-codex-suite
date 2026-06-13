@@ -1837,12 +1837,10 @@ def search_payload_has_member_decision(payload: dict[str, Any]) -> bool:
         return False
     if isinstance(payload.get("payload"), dict):
         payload = payload["payload"]
-    if payload.get("searched") is True:
-        return True
     decision = str(payload.get("reuse_decision") or payload.get("decision") or "").strip()
     if decision and decision != "unknown":
         return True
-    for key in ("queries", "results", "targets", "match_points", "mismatch_points"):
+    for key in ("targets", "match_points", "mismatch_points"):
         values = payload.get(key)
         if isinstance(values, list) and any(str(item).strip() for item in values):
             return True
@@ -1850,6 +1848,23 @@ def search_payload_has_member_decision(payload: dict[str, Any]) -> bool:
         return True
     outcome = str(payload.get("outcome") or "").strip()
     return bool(outcome and outcome != "not_started")
+
+
+def search_payload_needs_closed_decision(payload: dict[str, Any]) -> bool:
+    if not payload:
+        return False
+    if isinstance(payload.get("payload"), dict):
+        payload = payload["payload"]
+    if payload.get("searched") is not True:
+        return False
+    decision = str(payload.get("reuse_decision") or payload.get("decision") or "").strip() or "unknown"
+    if decision != "unknown":
+        return False
+    results = payload.get("results")
+    if not isinstance(results, list) or not any(str(item).strip() for item in results):
+        return False
+    text = "\n".join(str(item) for item in results).lower()
+    return not any(token in text for token in ("未发现", "未命中", "no reuse", "no candidate", "not found"))
 
 
 def plugin_commit() -> str:
@@ -2476,6 +2491,13 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             errors.append("validated 必须提供 PASS 验证")
         if package_status == "failed" and result != "FAIL":
             errors.append("failed 必须提供 FAIL 验证")
+        search_evidence = evidence_by_kind.get("search_before_change", {})
+        search_payload = search_evidence.get("payload", search_evidence) if isinstance(search_evidence, dict) else {}
+        if package_status == "validated" and search_payload_needs_closed_decision(search_payload):
+            errors.append(
+                "已验证（validated）补丁包命中知识搜索结果时必须闭合搜索使用决策（search usage decision），"
+                "请使用 reuse/adapt/reference_only/not_applicable/not_found"
+            )
         if supplement_target:
             supplement_text = " ".join([str(manifest.get("supplement_reason") or ""), str(manifest.get("summary") or "")]).lower()
             if any(token in supplement_text for token in ("验证", "verification")) and result != "PASS":

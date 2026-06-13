@@ -747,6 +747,25 @@ def infer_reuse_decision(queries: list[str], results: list[str], summary: str) -
     return "unknown"
 
 
+def validate_search_decision_for_status(args: argparse.Namespace, search_payload: dict[str, Any]) -> list[str]:
+    if args.status != "validated":
+        return []
+    if search_payload.get("searched") is not True:
+        return []
+    decision = str(search_payload.get("reuse_decision") or search_payload.get("decision") or "").strip() or "unknown"
+    if decision != "unknown":
+        return []
+    results = search_payload.get("results")
+    has_results = isinstance(results, list) and any(str(item).strip() for item in results)
+    if not has_results:
+        return []
+    return [
+        "已验证（validated）补丁包命中知识搜索结果时必须闭合搜索使用决策（search usage decision），"
+        "请传 --reuse-decision reuse/adapt/reference_only/not_applicable/not_found，"
+        "并记录 --reuse-target、--reuse-match、--reuse-mismatch 或 --reuse-reason。"
+    ]
+
+
 def modules_from_files(files: list[str]) -> list[str]:
     modules: list[str] = []
     for path in files:
@@ -1376,6 +1395,7 @@ def main() -> int:
     errors.extend(coding_check["errors"])
     warnings.extend(coding_check["warnings"])
     errors.extend(validate_verification_for_status(args, verification_payload))
+    errors.extend(validate_search_decision_for_status(args, search_payload))
 
     package_check = {"status": "FAIL" if errors else "PASS", "errors": errors, "warnings": warnings}
     readme_path = package_dir / "README.md"

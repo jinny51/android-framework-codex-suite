@@ -26,6 +26,8 @@
 
 生成出的上传包会在 `materials/evidence/source.json` 写入 `plugin_name`、`plugin_version`、`skill_version`、`plugin_installation` 和可用的 `plugin_commit`。服务器新上传严格校验会拒绝缺少这些版本证据的包，避免项目（project）、平台（platform）或 Android 版本（Android version）错误时无法追溯生成入口。
 
+日报包（daily report package）和补丁包（patch package）会携带成员侧知识搜索使用证据（search usage evidence）。已验证（validated）补丁包如果命中了知识搜索候选，local-check 会要求把未知（unknown）闭合为直接复用（reuse）、适配复用（adapt）、仅作参考（reference_only）、不适用（not_applicable）或未命中（not_found）；捕获包（patch capture package）里只有未知（unknown）时，不会覆盖当天已有的明确搜索使用记录。这些值只说明开发时如何使用搜索结果，不是沉淀结论（curation decision）。
+
 ## 典型场景
 
 - 每天下班前，Codex 自动汇总当天会话、源码改动、候选 patch、失败路径、阻塞点和验证结果，生成 `pending`（待检查包）。
