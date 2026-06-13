@@ -83,6 +83,8 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 
 该命令仍生成 `framework_change` 上传包，只是额外携带 `materials/evidence/evidence_supplement.json`，用于说明它补充哪个原始上传包。
 
+补证包会先做本地校验。如果 `--supplement-reason` 说明在补项目（project）、平台（platform）、Android 版本（Android version）或验证（verification），新包不能继续保留对应的 `unknown` 或缺失状态：补项目时必须有可追溯 TVE/TVA/TVI 项目和 `project_inference` 依据；补平台或 Android 版本时对应字段不能为 `unknown`；补验证时 `verification_result` 必须为 `PASS`。不完整补证包会在 `local-check.json` 中失败，不应提交到服务器。
+
 `--project` 只有包含 `TVE`/`TVA`/`TVI` 公司项目号时才作为高优先级项目名。对 capture 包，intake 还会读取 capture manifest/patch item、`source_root`、repo 路径、git 分支/remote、WSL source-access registry、功能 README/diff/summary，以及显式关联的日报/周报上下文来识别项目；泛化标签不会写入 `manifest.project`。
 
 如果这些来源识别出多个不同项目（project）候选，成员上传技能不会任选一个写入包，而是写成 `project=unknown`，在 `project_inference.candidates` 保留全部候选，并把冲突写进 `project_inference.limits`。即便成员传入 `--status validated`，这类包也会降为候选（candidate），后续由补证包（evidence supplement package）闭合。

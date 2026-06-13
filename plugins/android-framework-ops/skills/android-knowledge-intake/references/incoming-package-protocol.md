@@ -222,6 +222,8 @@ If a previous `framework_change` package is marked 需补证据（needs_evidence
 
 This association only says the new patch package supplements evidence for an earlier package. It is not a curation decision and does not create another allowed `package_kind`.
 
+The member-side local check treats supplement packages as evidence closure attempts. If `supplement_reason` says the package补项目（project）, the new package must carry a traceable TVE/TVA/TVI project in `manifest.project` and `project_inference` must confirm `recognized=true`, `company_rule_match=true`, `basis`, and `checked_sources`. If it补平台（platform） or Android 版本（Android version）, the new package cannot keep the requested field as `unknown`. If it补验证（verification）, `verification_result` must be `PASS`. A supplement package that only repeats the original metadata or verification gap fails locally before submission.
+
 `materials/evidence/search_before_change.json` records member-side knowledge use before or during the change. It can come from an explicit patch capture package, or from same-day `android-knowledge-search` usage records:
 
 ```json

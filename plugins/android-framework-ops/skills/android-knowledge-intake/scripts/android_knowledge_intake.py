@@ -2418,6 +2418,53 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         for kind in FRAMEWORK_REQUIRED_EVIDENCE_KINDS:
             if kind not in evidence_by_kind:
                 errors.append(f"framework_change 缺少 {kind} evidence")
+        supplement_target = str(manifest.get("supplement_for_package_key") or "").strip()
+        if supplement_target:
+            supplement_reason = str(manifest.get("supplement_reason") or "").strip()
+            supplement = evidence_by_kind.get("evidence_supplement")
+            if not supplement:
+                errors.append("补证包必须包含 evidence_supplement evidence")
+                supplement_payload = {}
+            else:
+                supplement_payload = supplement.get("payload", supplement) if isinstance(supplement, dict) else {}
+            if isinstance(supplement_payload, dict):
+                expected_source_key = "/".join(
+                    [
+                        str(manifest.get("date") or "").replace("-", ""),
+                        str(manifest.get("member_alias") or ""),
+                        str(manifest.get("run_id") or ""),
+                    ]
+                )
+                if supplement_payload.get("target_package_key") != supplement_target:
+                    errors.append("evidence_supplement.target_package_key 必须等于 manifest.supplement_for_package_key")
+                if supplement_payload.get("reason") != supplement_reason:
+                    errors.append("evidence_supplement.reason 必须等于 manifest.supplement_reason")
+                if supplement_payload.get("source_package_key") != expected_source_key:
+                    errors.append("evidence_supplement.source_package_key 必须等于当前补证包 package key")
+                for field in ("project", "platform", "android_version", "package_status"):
+                    if supplement_payload.get(field) != manifest.get(field):
+                        errors.append(f"evidence_supplement.{field} 必须等于 manifest.{field}")
+
+            supplement_text = " ".join([supplement_reason, str(manifest.get("summary") or "")]).lower()
+            project_payload = {}
+            project_evidence = evidence_by_kind.get("project_inference")
+            if isinstance(project_evidence, dict):
+                project_payload = project_evidence.get("payload", project_evidence)
+                if not isinstance(project_payload, dict):
+                    project_payload = {}
+            if any(token in supplement_text for token in ("项目", "project")):
+                project = str(manifest.get("project") or "").strip()
+                base_model, _suffix = split_company_project(project)
+                if project == "unknown" or not base_model:
+                    errors.append("补项目（project）证据时，补证包 project 不能为 unknown，且必须是 TVE/TVA/TVI 项目型号")
+                if project_payload.get("recognized") is not True or project_payload.get("company_rule_match") is not True:
+                    errors.append("补项目（project）证据时，project_inference 必须确认 recognized=true 且 company_rule_match=true")
+                if not project_payload.get("basis") or not project_payload.get("checked_sources"):
+                    errors.append("补项目（project）证据时，project_inference 必须包含 basis 和 checked_sources")
+            if any(token in supplement_text for token in ("平台", "platform")) and manifest_platform == "unknown":
+                errors.append("补平台（platform）证据时，补证包 platform 不能为 unknown")
+            if any(token in supplement_text for token in ("android 版本", "android version", "android_version")) and manifest_android_version == "unknown":
+                errors.append("补 Android 版本（Android version）证据时，补证包 android_version 不能为 unknown")
         verification = evidence_by_kind.get("verification_result", {})
         verification_payload = verification.get("payload", verification) if isinstance(verification, dict) else {}
         result = str(verification_payload.get("result", "")).upper()
@@ -2429,6 +2476,10 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             errors.append("validated 必须提供 PASS 验证")
         if package_status == "failed" and result != "FAIL":
             errors.append("failed 必须提供 FAIL 验证")
+        if supplement_target:
+            supplement_text = " ".join([str(manifest.get("supplement_reason") or ""), str(manifest.get("summary") or "")]).lower()
+            if any(token in supplement_text for token in ("验证", "verification")) and result != "PASS":
+                errors.append("补验证（verification）证据时，补证包必须携带 PASS verification_result")
     return {"status": "FAIL" if errors else "PASS", "errors": errors, "warnings": warnings}
 
 

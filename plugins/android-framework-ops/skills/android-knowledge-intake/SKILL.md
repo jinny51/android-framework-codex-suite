@@ -121,6 +121,8 @@ Prefer `--patch-package` for Framework changes packaged by `android-framework-pa
 
 If member view UI reports 需补证据（needs_evidence）, the member-side action is usually to rerun patch capture/intake with the missing evidence, then pass `--supplement-for-package-key <date/member/run-id>` and `--supplement-reason <reason>` during patch prepare or upload. This creates another normal补丁包（patch package）with `evidence_supplement` evidence. It does not create a fourth incoming type and does not let members decide curation.
 
+When a supplement reason asks for 项目（project）, 平台（platform）, Android 版本（Android version）, or 验证（verification）, the local package check must fail if the new supplement package still carries `project=unknown`, `platform=unknown`, `android_version=unknown`, or non-PASS verification for the requested field. Do not submit a supplement package that only repeats the old gap; collect the missing source path, capture package, related daily context, platform token, build result, or device verification first.
+
 For successful automation runs, launch `scripts/archive_automation_runs.py` with `setsid -f` and a short delay so the automation conversation is archived after Codex marks the run complete.
 
 ## Member First Setup
