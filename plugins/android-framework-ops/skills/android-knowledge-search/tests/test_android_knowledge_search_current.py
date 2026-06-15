@@ -527,6 +527,76 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         self.assertIn("推荐替代: case-new / 新显示区域方案", text)
         self.assertIn("替代旧案例: case-old", text)
 
+    def test_case_search_result_displays_knowledge_validity(self):
+        root = Path(tempfile.mkdtemp())
+        write_jsonl(
+            root / "index" / "case-index.jsonl",
+            [
+                {
+                    "case_id": "case-camera2",
+                    "title": "Camera2 reversePortrait 方向补偿",
+                    "problem": "Camera2 reversePortrait 预览方向不一致",
+                    "status": "needs_review",
+                    "case_confidence": "medium",
+                    "knowledge_validity": {
+                        "confidence": "medium",
+                        "evidence_level": "static_review",
+                        "risk_level": "review_required",
+                        "reuse_score": 1,
+                    },
+                }
+            ],
+        )
+        write_jsonl(root / "index" / "variant-index.jsonl", [])
+        write_jsonl(root / "index" / "symbol-index.jsonl", [])
+        write_jsonl(root / "index" / "evidence-index.jsonl", [])
+
+        rows = search.load_rows(root)
+        results = search.search(rows, "Camera2 reversePortrait", "case", 5, include_synthetic=False)
+        text = search.format_markdown(root, "Camera2 reversePortrait", results, None)
+
+        self.assertIn(
+            "知识有效度: 可信度（confidence）=medium / 证据等级（evidence_level）=static_review / "
+            "风险等级（risk_level）=review_required / 复用分（reuse_score）=1",
+            text,
+        )
+
+    def test_variant_search_result_displays_knowledge_validity(self):
+        root = Path(tempfile.mkdtemp())
+        write_jsonl(root / "index" / "case-index.jsonl", [])
+        write_jsonl(
+            root / "index" / "variant-index.jsonl",
+            [
+                {
+                    "variant_id": "variant-mtk-16-camera2",
+                    "case_id": "case-camera2",
+                    "implementation_scope": "Camera2 reversePortrait 方向补偿",
+                    "status": "candidate",
+                    "platform": "mtk",
+                    "android_version": "16",
+                    "project": "TVE1067M1",
+                    "knowledge_validity": {
+                        "confidence": "low",
+                        "evidence_level": "contested",
+                        "risk_level": "high",
+                        "reuse_score": 0,
+                    },
+                }
+            ],
+        )
+        write_jsonl(root / "index" / "symbol-index.jsonl", [])
+        write_jsonl(root / "index" / "evidence-index.jsonl", [])
+
+        rows = search.load_rows(root)
+        results = search.search(rows, "Camera2 reversePortrait", "variant", 5, include_synthetic=False)
+        text = search.format_markdown(root, "Camera2 reversePortrait", results, None)
+
+        self.assertIn(
+            "知识有效度: 可信度（confidence）=low / 证据等级（evidence_level）=contested / "
+            "风险等级（risk_level）=high / 复用分（reuse_score）=0",
+            text,
+        )
+
     def test_patch_analysis_fields_are_searchable_and_formatted(self):
         root = Path(tempfile.mkdtemp())
         write_jsonl(root / "index" / "case-index.jsonl", [])

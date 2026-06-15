@@ -880,6 +880,23 @@ def compact_list(value: Any, limit: int = 4) -> str:
     return ", ".join(text_items)
 
 
+def format_knowledge_validity(row: dict[str, Any]) -> str:
+    validity = row.get("knowledge_validity") if isinstance(row.get("knowledge_validity"), dict) else {}
+    confidence = validity.get("confidence") or row.get("confidence") or row.get("case_confidence") or ""
+    evidence_level = validity.get("evidence_level") or row.get("evidence_level") or ""
+    risk_level = validity.get("risk_level") or row.get("risk_level") or ""
+    reuse_score = validity.get("reuse_score", row.get("reuse_score", ""))
+    if not any(str(value) for value in (confidence, evidence_level, risk_level, reuse_score)):
+        return ""
+    return (
+        "知识有效度: "
+        f"可信度（confidence）={confidence or 'unknown'} / "
+        f"证据等级（evidence_level）={evidence_level or 'unknown'} / "
+        f"风险等级（risk_level）={risk_level or 'unknown'} / "
+        f"复用分（reuse_score）={reuse_score if reuse_score != '' else 'unknown'}"
+    )
+
+
 def localized_analysis_text(value: str) -> str:
     raw = str(value or "").strip()
     if not raw:
@@ -959,6 +976,9 @@ def format_case(root: Path, row: dict[str, Any], index: int) -> str:
         lines.append(f"   - 问题/需求: {row.get('problem') or row.get('requirement_or_symptom')}")
     if row.get("solution_summary"):
         lines.append(f"   - 方案摘要: {row.get('solution_summary')}")
+    validity_line = format_knowledge_validity(row)
+    if validity_line:
+        lines.append(f"   - {validity_line}")
     if row.get("variant_ids"):
         lines.append(f"   - variants: {compact_list(row.get('variant_ids'), 6)}")
     if row.get("replacement_case_id"):
@@ -983,6 +1003,9 @@ def format_variant(root: Path, row: dict[str, Any], index: int) -> str:
         "   - 平台/Android/项目: "
         f"{row.get('platform') or 'unknown'} / {row.get('android_version') or 'unknown'} / {row.get('project') or 'unknown'}"
     )
+    validity_line = format_knowledge_validity(row)
+    if validity_line:
+        lines.append(f"   - {validity_line}")
     if row.get("repo_paths"):
         lines.append(f"   - 仓库路径: {compact_list(row.get('repo_paths'), 6)}")
     if row.get("modified_files"):

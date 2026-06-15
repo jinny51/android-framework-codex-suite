@@ -107,3 +107,15 @@ Full type filter:
 ```
 
 Markdown output is for humans and Codex final reports. JSON output is for other scripts or workflows.
+
+Human-facing `case` and `variant` results must surface knowledge validity directly when available:
+
+```text
+知识有效度
+可信度（confidence）
+证据等级（evidence_level）
+风险等级（risk_level）
+复用分（reuse_score）
+```
+
+This is required because a matching case may be only static review, contested, obsolete, or otherwise risky. Search output must not make members infer those limits only from raw evidence rows.
