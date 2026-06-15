@@ -126,6 +126,46 @@ def changed_files_from_diff(diff_text: str) -> list[str]:
     return files
 
 
+def split_diff_sections(diff_text: str) -> list[str]:
+    sections: list[str] = []
+    current: list[str] = []
+    for line in diff_text.splitlines(keepends=True):
+        if line.startswith("diff --git ") and current:
+            sections.append("".join(current))
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        sections.append("".join(current))
+    return sections
+
+
+def mode_only_diff_path(section: str) -> str:
+    lines = [line.strip() for line in section.splitlines() if line.strip()]
+    if not lines or not lines[0].startswith("diff --git "):
+        return ""
+    has_old_mode = any(line.startswith("old mode ") for line in lines)
+    has_new_mode = any(line.startswith("new mode ") for line in lines)
+    if not has_old_mode or not has_new_mode:
+        return ""
+    if not all(line.startswith(("diff --git ", "old mode ", "new mode ")) for line in lines):
+        return ""
+    match = re.match(r"^diff --git a/(.+?) b/(.+)$", lines[0])
+    return match.group(2) if match else ""
+
+
+def filter_mode_only_diff_sections(diff_text: str) -> tuple[str, list[str]]:
+    kept: list[str] = []
+    skipped_paths: list[str] = []
+    for section in split_diff_sections(diff_text):
+        path = mode_only_diff_path(section)
+        if path:
+            skipped_paths.append(path)
+            continue
+        kept.append(section)
+    return "".join(kept), skipped_paths
+
+
 def infer_module(files: list[str]) -> str:
     if not files:
         return "frameworks-base"
@@ -299,11 +339,18 @@ def collect_repository_captures(args: argparse.Namespace, platform: str, feature
 
     captures: list[RepositoryCapture] = []
     used_names: set[str] = set()
+    skipped_mode_only_roots: list[str] = []
     for root in roots:
         diff_cp = run(["git", "diff", "--binary", "--full-index", "HEAD", "--"], root, check=True)
-        diff_text = diff_cp.stdout
-        if not diff_text.strip():
+        raw_diff_text = diff_cp.stdout
+        diff_text, mode_only_paths = filter_mode_only_diff_sections(raw_diff_text)
+        if not raw_diff_text.strip():
             raise SystemExit(f"源码仓库没有发现相对 HEAD 的 git diff，无法生成补丁: {root}")
+        if mode_only_paths and not diff_text.strip():
+            skipped_mode_only_roots.append(f"{root}: {', '.join(mode_only_paths)}")
+            continue
+        if not diff_text.strip():
+            continue
 
         facts = facts_from_diff(diff_text)
         repo_path = infer_repo_path_from_root(root, roots, facts["modified_files"])
@@ -332,6 +379,11 @@ def collect_repository_captures(args: argparse.Namespace, platform: str, feature
                 patch_name=patch_name,
                 patch_rel=f"patches/{patch_name}",
             )
+        )
+    if not captures and skipped_mode_only_roots:
+        raise SystemExit(
+            "源码仓库只有文件权限变化，已过滤权限噪声，无法生成有效功能补丁；"
+            f"文件: {'; '.join(skipped_mode_only_roots)}"
         )
     return captures
 

@@ -123,6 +123,53 @@ def create_settings_repo(root: Path) -> None:
     )
 
 
+def create_mode_only_repo(root: Path) -> Path:
+    run(["git", "init"], root)
+    run(["git", "config", "user.email", "codex@example.invalid"], root)
+    run(["git", "config", "user.name", "Codex Test"], root)
+    source = root / "frameworks" / "base" / "services" / "core" / "java" / "com" / "android" / "server" / "wm"
+    source.mkdir(parents=True)
+    file_path = source / "DisplayPolicy.java"
+    file_path.write_text(
+        "class DisplayPolicy {\n"
+        "  //gyf 20260615@ existing feature marker\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    file_path.chmod(0o755)
+    run(["git", "add", "."], root)
+    run(["git", "update-index", "--chmod=+x", str(file_path.relative_to(root))], root)
+    run(["git", "commit", "-m", "initial executable mode"], root)
+    run(["git", "update-index", "--chmod=-x", str(file_path.relative_to(root))], root)
+    return file_path
+
+
+def create_repo_with_mode_noise(root: Path) -> tuple[Path, Path]:
+    run(["git", "init"], root)
+    run(["git", "config", "user.email", "codex@example.invalid"], root)
+    run(["git", "config", "user.name", "Codex Test"], root)
+    source = root / "frameworks" / "base" / "services" / "core" / "java" / "com" / "android" / "server" / "wm"
+    tool_dir = root / "tools"
+    source.mkdir(parents=True)
+    tool_dir.mkdir(parents=True)
+    file_path = source / "DisplayPolicy.java"
+    mode_noise_path = tool_dir / "mode-noise.sh"
+    file_path.write_text("class DisplayPolicy {}\n", encoding="utf-8")
+    mode_noise_path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    run(["git", "add", "."], root)
+    run(["git", "update-index", "--chmod=+x", str(mode_noise_path.relative_to(root))], root)
+    run(["git", "commit", "-m", "initial mixed mode repo"], root)
+    file_path.write_text(
+        "class DisplayPolicy {\n"
+        "  //gyf 20260615@ keep content diff while dropping mode noise\n"
+        "  static final String KEY = \"persist.sys.mode_noise\";\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    run(["git", "update-index", "--chmod=-x", str(mode_noise_path.relative_to(root))], root)
+    return file_path, mode_noise_path
+
+
 class CaptureFrameworkPatchTests(unittest.TestCase):
     def test_writes_verification_and_search_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -227,6 +274,74 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertNotIn("reusable", manifest["patches"][0])
             self.assertEqual(coding_check["implementation_origin"], "manual")
             self.assertTrue(coding_check["review_required"])
+
+    def test_rejects_mode_only_patch_noise(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_mode_only_repo(root)
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260615-120000-patch",
+                    "--platform",
+                    "mtk16",
+                    "--feature",
+                    "mode-only-noise",
+                    "--summary",
+                    "Ignore chmod-only diff noise",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("只有文件权限变化", result.stderr or result.stdout)
+
+    def test_filters_mode_only_sections_from_mixed_patch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _content_path, mode_noise_path = create_repo_with_mode_noise(root)
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260615-121000-patch",
+                    "--platform",
+                    "mtk16",
+                    "--feature",
+                    "mixed-mode-noise",
+                    "--summary",
+                    "Keep content diff and ignore chmod-only noise",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+            patch_path = package_dir / manifest["patches"][0]["path"]
+            patch_text = patch_path.read_text(encoding="utf-8")
+            changed = json.loads((package_dir / "evidence" / "changed-files.json").read_text(encoding="utf-8"))
+
+            self.assertIn("DisplayPolicy.java", patch_text)
+            self.assertNotIn("old mode 100755", patch_text)
+            self.assertNotIn("new mode 100644", patch_text)
+            self.assertNotIn(mode_noise_path.relative_to(root).as_posix(), patch_text)
+            self.assertFalse(any(path.endswith("mode-noise.sh") for path in changed["modified_files"]))
 
     def test_validated_capture_requires_closed_search_decision_for_hits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

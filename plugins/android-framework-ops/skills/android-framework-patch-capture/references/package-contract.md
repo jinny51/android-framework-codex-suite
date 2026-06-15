@@ -6,6 +6,8 @@ This package is a local handoff artifact. One package represents one Framework f
 
 Project metadata is an applicability boundary. If project clues conflict across `--project`, source roots, git metadata, WSL source-access registry, summary, or diff text, the capture package must keep `project=unknown`, preserve all candidate TVE/TVA/TVI models in `project_inference.candidates`, and record the conflict in `project_inference.limits`.
 
+Patch capture filters diff sections that contain only file mode metadata, such as `old mode 100755` / `new mode 100644`. Mode-only changes are not feature evidence and must not create a standalone patch package. If a file mode change is intentional, it must appear with content, summary, risk, and verification evidence explaining why executable permission is part of the feature.
+
 ## Directory
 
 ```text
