@@ -1867,6 +1867,12 @@ def search_payload_needs_closed_decision(payload: dict[str, Any]) -> bool:
     return not any(token in text for token in ("未发现", "未命中", "no reuse", "no candidate", "not found"))
 
 
+def search_payload_missing_required_pre_change_search(payload: dict[str, Any]) -> bool:
+    if isinstance(payload.get("payload"), dict):
+        payload = payload["payload"]
+    return payload.get("searched") is not True
+
+
 def plugin_commit() -> str:
     cp = run(["git", "-C", str(PLUGIN_ROOT), "rev-parse", "--short", "HEAD"])
     if cp.returncode == 0:
@@ -2493,6 +2499,11 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             errors.append("failed 必须提供 FAIL 验证")
         search_evidence = evidence_by_kind.get("search_before_change", {})
         search_payload = search_evidence.get("payload", search_evidence) if isinstance(search_evidence, dict) else {}
+        if package_status == "validated" and search_payload_missing_required_pre_change_search(search_payload):
+            errors.append(
+                "已验证（validated）补丁包必须携带开发前知识搜索（pre-change knowledge search）证据，"
+                "search_before_change.searched 必须为 true"
+            )
         if package_status == "validated" and search_payload_needs_closed_decision(search_payload):
             errors.append(
                 "已验证（validated）补丁包命中知识搜索结果时必须闭合搜索使用决策（search usage decision），"

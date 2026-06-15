@@ -203,7 +203,18 @@ def create_feature_capture_package(root: Path) -> Path:
         encoding="utf-8",
     )
     write_json(package / "evidence" / "verification-result.json", {"result": "PASS", "method": "device", "summary": "device pass"})
-    write_json(package / "evidence" / "search-before-change.json", {"result": "INFO", "method": "knowledge_search", "queries": ["display policy"]})
+    write_json(
+        package / "evidence" / "search-before-change.json",
+        {
+            "result": "INFO",
+            "method": "knowledge_search",
+            "searched": True,
+            "queries": ["display policy"],
+            "results": ["No reuse candidate found"],
+            "decision": "not_found",
+            "reuse_decision": "not_found",
+        },
+    )
     write_json(
         package / "evidence" / "patch-problem-summary.json",
         {
@@ -751,6 +762,39 @@ class PatchCaptureIngestTests(unittest.TestCase):
             errors = "\n".join(check["errors"])
             self.assertIn("搜索使用决策", errors)
             self.assertIn("reuse/adapt/reference_only/not_applicable/not_found", errors)
+
+    def test_validated_patch_package_rejects_missing_pre_change_search(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_package = create_capture_package(
+                root,
+                search_payload={
+                    "result": "INFO",
+                    "method": "knowledge_search",
+                    "searched": False,
+                    "queries": [],
+                    "results": [],
+                    "summary": "not provided by capture command",
+                },
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-134800-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture_package)],
+                project="TVE1234A",
+                summary="显示策略适配",
+                status="validated",
+                schema_version="1",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            self.assertEqual(check["status"], "FAIL")
+            errors = "\n".join(check["errors"])
+            self.assertIn("开发前知识搜索", errors)
+            self.assertIn("search_before_change.searched", errors)
 
     def test_capture_package_preserves_optional_build_result_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

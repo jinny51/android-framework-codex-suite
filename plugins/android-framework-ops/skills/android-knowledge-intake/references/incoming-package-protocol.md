@@ -202,6 +202,8 @@ Manifest excerpt:
 
 `validated` requires `verification_result.payload.result = PASS`.
 
+`validated` framework change packages also require pre-change knowledge search evidence: `materials/evidence/search_before_change.json` must have `payload.searched = true`. If no reusable knowledge was found, record the explicit search result as `not_found` instead of omitting the evidence.
+
 `candidate`, `draft`, `failed`, and `blocked` are uploaded as curation input materials only. They must not be presented as knowledge entries or reuse-ready validated solutions by member-side tooling.
 
 If a previous `framework_change` package is marked 需补证据（needs_evidence）, the supplement remains a normal `framework_change` package. Set `supplement_for_package_key` to the original incoming package key and include `materials/evidence/evidence_supplement.json`:
@@ -224,7 +226,7 @@ If a previous `framework_change` package is marked 需补证据（needs_evidence
 
 This association only says the new patch package supplements evidence for an earlier package. It is not a curation decision and does not create another allowed `package_kind`.
 
-The member-side local check treats supplement packages as evidence closure attempts. If `supplement_reason` says the package补项目（project）, the new package must carry a traceable TVE/TVA/TVI project in `manifest.project` and `project_inference` must confirm `recognized=true`, `company_rule_match=true`, `basis`, and `checked_sources`. If it补平台（platform） or Android 版本（Android version）, the new package cannot keep the requested field as `unknown`; when capture evidence cannot prove those fields, `android_knowledge_intake.py patch` may use explicit `--platform mtk|rk|unisoc|unknown` and `--android-version <number>` to write the corrected boundary into `manifest.json`, `materials/variant.json`, and `materials/evidence/evidence_supplement.json`. If it补验证（verification）, `verification_result` must be `PASS`. A supplement package that only repeats the original metadata or verification gap fails locally before submission.
+The member-side local check treats supplement packages as evidence closure attempts. If `supplement_reason` says the package补项目（project）, the new package must carry a traceable TVE/TVA/TVI project in `manifest.project` and `project_inference` must confirm `recognized=true`, `company_rule_match=true`, `basis`, and `checked_sources`. If it补平台（platform） or Android 版本（Android version）, the new package cannot keep the requested field as `unknown`; when capture evidence cannot prove those fields, `android_knowledge_intake.py patch` may use explicit `--platform mtk|rk|unisoc|unknown` and `--android-version <number>` to write the corrected boundary into `manifest.json`, `materials/variant.json`, and `materials/evidence/evidence_supplement.json`. If it补验证（verification）, `verification_result` must be `PASS`. If it补开发前知识搜索（pre-change knowledge search）, `search_before_change.payload.searched` must be `true`. A supplement package that only repeats the original metadata, verification, or search gap fails locally before submission.
 
 `materials/evidence/search_before_change.json` records member-side knowledge use before or during the change. It can come from an explicit patch capture package, or from same-day `android-knowledge-search` usage records:
 
