@@ -79,6 +79,10 @@ PATCH_README_FORBIDDEN_MARKERS = (
     "根据补丁 diff 自动生成",
     "当前说明仅根据 diff 自动生成",
 )
+DAILY_BUNDLE_SUMMARY_RE = re.compile(
+    r"(?:今日|本日|当天)补丁|补丁合集|(?:今日|本日|当天).*?(?:\d+\s*(?:个|项|份)|多个|若干).*?补丁"
+)
+MULTI_FEATURE_PATCH_COUNT_THRESHOLD = 4
 INCOMING_KINDS = {"daily_trace", "weekly_trace", "framework_change"}
 PACKAGE_STATUS_VALUES = {"validated", "candidate", "draft", "failed", "blocked"}
 MATERIALS_DIR = "materials"
@@ -1618,6 +1622,48 @@ def patch_readme_usable_for_inference(path: Path) -> bool:
     return path.is_file() and not validate_patch_readme(path)
 
 
+def evidence_payload(evidence: dict[str, Any]) -> dict[str, Any]:
+    payload = evidence.get("payload")
+    return payload if isinstance(payload, dict) else evidence
+
+
+def patch_count_from_framework_package(patch_paths: list[Any], evidence_by_kind: dict[str, dict[str, Any]]) -> int:
+    counts = [len(patch_paths)]
+    patch_diff = evidence_by_kind.get("patch_diff_facts", {})
+    payload = evidence_payload(patch_diff) if isinstance(patch_diff, dict) else {}
+    try:
+        counts.append(int(payload.get("patch_count") or 0))
+    except (TypeError, ValueError):
+        pass
+    patches = payload.get("patches")
+    if isinstance(patches, list):
+        counts.append(len(patches))
+    return max(counts or [0])
+
+
+def validate_framework_function_scope(
+    package_dir: Path,
+    manifest: dict[str, Any],
+    readme_path: Path | None,
+    patch_paths: list[Any],
+    evidence_by_kind: dict[str, dict[str, Any]],
+) -> list[str]:
+    patch_count = patch_count_from_framework_package(patch_paths, evidence_by_kind)
+    if patch_count < MULTI_FEATURE_PATCH_COUNT_THRESHOLD:
+        return []
+    readme_text = readme_path.read_text(encoding="utf-8", errors="ignore") if readme_path and readme_path.is_file() else ""
+    text = "\n".join([str(manifest.get("summary") or ""), readme_text])
+    if not DAILY_BUNDLE_SUMMARY_RE.search(text):
+        return []
+    return [
+        (
+            f"补丁包疑似按日期聚合了 {patch_count} 个独立功能补丁。"
+            "补丁包（patch package）必须按功能拆分（function split）；"
+            "一个补丁包只能对应一个功能，请按功能重新生成多个普通补丁包。"
+        )
+    ]
+
+
 def validate_patch_file(path: Path) -> list[str]:
     errors: list[str] = []
     if not PATCH_FILENAME_RE.fullmatch(path.name):
@@ -2439,6 +2485,7 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         for kind in FRAMEWORK_REQUIRED_EVIDENCE_KINDS:
             if kind not in evidence_by_kind:
                 errors.append(f"framework_change 缺少 {kind} evidence")
+        errors.extend(validate_framework_function_scope(package_dir, manifest, readme_path, patch_paths, evidence_by_kind))
         supplement_target = str(manifest.get("supplement_for_package_key") or "").strip()
         if supplement_target:
             supplement_reason = str(manifest.get("supplement_reason") or "").strip()
@@ -3672,6 +3719,11 @@ def prepare_patch_package(
     require_config(config)
     if schema_version != INCOMING_SCHEMA_VERSION:
         raise SystemExit(f"incoming 只支持 schema_version={INCOMING_SCHEMA_VERSION}")
+    if patch_paths and len(patch_paths) > 1:
+        raise SystemExit(
+            "直接 --patch 只允许单个独立补丁。多个补丁必须先用补丁采集技能（android-framework-patch-capture）"
+            "按功能生成补丁包（patch package）；一个补丁包只能对应一个功能。"
+        )
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}-patch"
     out_dir = expanded_path(config["out_dir"])
     package_dir = out_dir / "pending" / ymd(date) / config["member_alias"] / run_id

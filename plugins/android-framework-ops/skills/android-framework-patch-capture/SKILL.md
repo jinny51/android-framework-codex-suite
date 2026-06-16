@@ -98,6 +98,8 @@ Before packaging, inspect `git status --short` for every source repository and p
 
 One capture package represents one feature. If the feature spans multiple repo-managed Git repositories, pass every affected repository with repeated `--source-root`; the package will contain one root `README.md` and one patch per affected repository.
 
+Do not use one capture package for a date-bundled patch set such as “今日补丁合集” or “今天完成 6 个补丁”. A member may implement code manually, but the uploaded framework material must still be wrapped by this skill as a function-level patch package. Multiple independent features must be split into multiple patch packages; only multiple patches that belong to the same feature may stay in one package.
+
 Pure file mode diffs such as `old mode 100755` / `new mode 100644` are usually checkout or chmod noise, not a feature change. Patch capture filters diff sections that contain only mode changes. If every changed file is mode-only, stop with no package. If a repository has both real content changes and mode-only noise, keep the content diff and drop the mode-only sections. A chmod change may be preserved only when it is part of an intentional executable-script or tool behavior change and is accompanied by content, summary, risk, and verification evidence.
 
 Patch filename must follow:
@@ -148,6 +150,7 @@ Stop before upload when:
 
 - any generated patch is empty
 - every changed file is only a file mode change such as `old mode 100755` / `new mode 100644`
+- the summary or feature name describes a date-bundled patch set such as “今日补丁合集” instead of one function
 - the change set includes unrelated dirty files
 - a patch lacks the required author/date marker such as `//gyf 20251016@`, unless the user explicitly accepts a local-only draft
 - new added lines contain direct `Log.*` or `Slog.*`

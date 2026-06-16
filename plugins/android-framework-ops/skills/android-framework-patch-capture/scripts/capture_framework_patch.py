@@ -50,6 +50,9 @@ IMPLEMENTATION_ORIGINS = ("codex", "manual", "external", "historical", "mixed", 
 CAPTURE_REVIEW_REQUIRED_ORIGINS = {"manual", "external", "historical", "mixed", "unknown"}
 REUSE_DECISIONS = ("reuse", "adapt", "reference_only", "not_applicable", "not_found", "unknown")
 REUSE_OUTCOMES = ("not_started", "reused_success", "adapted_success", "failed", "partial", "unverified", "not_applicable")
+DAILY_BUNDLE_SUMMARY_RE = re.compile(
+    r"(?:今日|本日|当天)补丁|补丁合集|(?:今日|本日|当天).*?(?:\d+\s*(?:个|项|份)|多个|若干).*?补丁"
+)
 
 
 @dataclass
@@ -822,6 +825,16 @@ def validate_search_decision_for_status(args: argparse.Namespace, search_payload
     ]
 
 
+def validate_feature_scope(args: argparse.Namespace) -> list[str]:
+    text = " ".join([str(args.summary or ""), str(args.feature or "")])
+    if not DAILY_BUNDLE_SUMMARY_RE.search(text):
+        return []
+    return [
+        "补丁采集必须按功能生成一个补丁包（patch package），不能按日期生成“今日补丁”合集；"
+        "请按功能拆分（function split），一个补丁包只能对应一个功能。"
+    ]
+
+
 def modules_from_files(files: list[str]) -> list[str]:
     modules: list[str] = []
     for path in files:
@@ -1448,6 +1461,7 @@ def main() -> int:
     feature_facts = aggregate_feature_facts(captures)
     problem_payload, risk_payload = feature_problem_and_risk_payloads(args, captures, feature_facts)
     coding_check = coding_standard_check(args, captures)
+    errors.extend(validate_feature_scope(args))
     errors.extend(coding_check["errors"])
     warnings.extend(coding_check["warnings"])
     errors.extend(validate_verification_for_status(args, verification_payload))

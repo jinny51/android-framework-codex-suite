@@ -48,6 +48,8 @@ python3 "scripts/capture_framework_patch.py" \
 
 补丁采集会过滤只有文件模式元数据的 diff 段，例如 `old mode 100755` / `new mode 100644`。这类变化通常是 checkout 或 chmod 噪声，不会单独生成补丁包；如果同一仓库还有真实代码改动，会保留代码改动并剔除纯权限段。只有当可执行权限本身是功能的一部分，并且有内容修改、风险说明和验证证据时，才应作为功能补丁保留。
 
+补丁资料包必须按功能生成，不能按日期生成“今日补丁合集”。一个功能跨多个 repo 管理的 Git 仓库时，可以在一个补丁包（patch package）里保留多个仓库级 patch；多个独立功能必须拆成多个补丁包（patch package）。成员即使是手写代码，也应先用补丁采集技能把改动包装成功能级材料，再交给成员上传技能（android-knowledge-intake）。
+
 补丁采集必须记录开发前知识搜索（pre-change knowledge search）证据。如果补丁包（patch package）状态是已验证（validated），`search_before_change.searched` 必须为 `true`；没有找到可用知识时，也要通过 `--reuse-decision not_found` 记录未命中（not_found），不能省略搜索证据。如果搜索结果命中了候选知识，就不能继续保留未知（unknown）；必须通过 `--reuse-decision reuse|adapt|reference_only|not_applicable|not_found` 闭合为直接复用（reuse）、适配复用（adapt）、仅作参考（reference_only）、不适用（not_applicable）或未命中（not_found）。这些只是开发证据，不是沉淀结论（curation decision）。
 
 输出目录：

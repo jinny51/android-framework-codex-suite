@@ -942,6 +942,72 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("rk14-frameworks-base@cross-repo-display-policy.patch", readme)
             self.assertIn("rk14-settings@cross-repo-display-policy.patch", readme)
 
+    def test_daily_bundle_summary_fails_function_scope_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260612-233425-feature",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "daily-bundle",
+                    "--summary",
+                    "TVE1086U 青鸾云 2026-06-12 今日补丁：HD 版本云电脑跳转逻辑、系统弹窗副屏显示、移除 F7/F8/F10/F12 功能按键、移除 Alt+Tab 最近任务组合键。",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            payload = json.loads(result.stdout)
+            errors = "\n".join(payload["local_check"]["errors"])
+            self.assertIn("按功能拆分", errors)
+            self.assertIn("一个补丁包只能对应一个功能", errors)
+
+    def test_single_feature_summary_with_today_word_is_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260612-233500-feature",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "wifi-default-enable",
+                    "--summary",
+                    "今日完成 Wi-Fi 默认开启功能",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["local_check"]["status"], "PASS")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -305,6 +305,77 @@ def create_feature_capture_package(root: Path) -> Path:
     return package
 
 
+def create_multi_feature_capture_package(root: Path) -> Path:
+    package = create_capture_package(root, status="validated", project="TVE1086U")
+    summary = (
+        "TVE1086U 青鸾云 2026-06-12 今日补丁：HD 版本云电脑跳转逻辑、系统弹窗副屏显示、"
+        "移除 F7/F8/F10/F12 功能按键、移除 Alt+Tab 最近任务组合键、"
+        "云外设 App 录屏投屏申请自动允许、云外设 App USB 权限自动获取。"
+    )
+    readme = package / "README.md"
+    readme.write_text(
+        "# TVE1086U 青鸾云 2026-06-12 今日补丁\n\n"
+        "## 功能描述\n\n"
+        "面向 TVE1086U 青鸾云 sprd14 / Android 14 项目，整理 2026-06-12 今日完成的 6 个 Framework/SystemUI 相关补丁。"
+        "补丁范围包括 HD 版本云电脑跳转逻辑、系统弹窗副屏显示、移除指定快捷键功能、"
+        "移除 Alt+Tab 最近任务组合键、云外设 App 录屏/投屏授权自动允许，以及云外设 App USB 权限自动确认。\n\n"
+        "## 修改点\n\n"
+        "- 今日补丁按日期聚合了多个独立功能。\n\n"
+        "## 日志控制\n\n"
+        "无新增运行时日志。\n\n"
+        "## SystemProperties\n\n"
+        "无新增系统属性。\n\n"
+        "## 字符串国际化\n\n"
+        "无新增字符串资源。\n\n"
+        "## 可回滚性\n\n"
+        "应按功能拆分后分别回滚。\n",
+        encoding="utf-8",
+    )
+    features = [
+        ("rk14-frameworks-base@cloud-computer-intent.patch", "HD 版本云电脑跳转逻辑"),
+        ("rk14-frameworks-base@secondary-display-dialog.patch", "系统弹窗副屏显示"),
+        ("rk14-frameworks-base@remove-f7-f8-f10-f12.patch", "移除 F7/F8/F10/F12 功能按键"),
+        ("rk14-frameworks-base@remove-alt-tab.patch", "移除 Alt+Tab 最近任务组合键"),
+        ("rk14-systemui@allow-screen-recording.patch", "云外设 App 录屏投屏申请自动允许"),
+        ("rk14-systemui@usb-default-permission.patch", "云外设 App USB 权限自动获取"),
+    ]
+    patches = []
+    for name, label in features:
+        patch = package / "patches" / name
+        patch.write_text(
+            "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+            "--- a/frameworks/base/services/core/java/X.java\n"
+            "+++ b/frameworks/base/services/core/java/X.java\n"
+            "@@ -1 +1,2 @@\n"
+            f"+//gyf 20260612@ {label}\n",
+            encoding="utf-8",
+        )
+        patches.append(
+            {
+                "id": Path(name).stem,
+                "path": f"patches/{name}",
+                "repo_path": "frameworks/base",
+                "source_root": "/work/android/frameworks/base",
+                "status": "validated",
+                "reuse_hint": True,
+                "project": "TVE1086U",
+                "platform_token": "rk14",
+                "platform": "rk",
+                "android_version": "14",
+                "implementation_origin": "manual",
+                "captured_by": "codex",
+                "facts": {"modified_files": ["frameworks/base/services/core/java/X.java"], "modules": ["frameworks-base"]},
+            }
+        )
+    manifest_path = package / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["summary"] = summary
+    manifest["project"] = "TVE1086U"
+    manifest["patches"] = patches
+    write_json(manifest_path, manifest)
+    return package
+
+
 def write_member_search_usage(out_dir: Path, date: str, decision: str = "adapt") -> Path:
     record_dir = out_dir / "search-usage" / date.replace("-", "")
     record_dir.mkdir(parents=True, exist_ok=True)
@@ -404,6 +475,69 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("materials/evidence/project_inference.json", evidence_files)
             self.assertIn("materials/evidence/verification_result.json", evidence_files)
             self.assertFalse(any(str(path).startswith("knowledge/") for path in manifest["files"]["evidence"]))
+
+    def test_multi_feature_daily_bundle_fails_local_check_with_function_split_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            summary = (
+                "TVE1086U 青鸾云 2026-06-12 今日补丁：HD 版本云电脑跳转逻辑、系统弹窗副屏显示、"
+                "移除 F7/F8/F10/F12 功能按键、移除 Alt+Tab 最近任务组合键、"
+                "云外设 App 录屏投屏申请自动允许、云外设 App USB 权限自动获取。"
+            )
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 12),
+                self.config(root),
+                run_id="20260612-233425-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_multi_feature_capture_package(root))],
+                project="TVE1086U",
+                summary=summary,
+                status="validated",
+                schema_version="1",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "FAIL")
+            errors = "\n".join(check["errors"])
+            self.assertIn("按功能拆分", errors)
+            self.assertIn("一个补丁包只能对应一个功能", errors)
+            self.assertIn("普通补丁包", errors)
+
+    def test_multiple_raw_patch_files_fail_before_package_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patches: list[str] = []
+            for name in [
+                "rk14-frameworks-base@cloud-computer-intent.patch",
+                "rk14-systemui@usb-default-permission.patch",
+            ]:
+                patch = root / name
+                patch.write_text(
+                    "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+                    "--- a/frameworks/base/services/core/java/X.java\n"
+                    "+++ b/frameworks/base/services/core/java/X.java\n"
+                    "@@ -1 +1,2 @@\n"
+                    "+//gyf 20260612@ raw patch should be captured by skill first\n",
+                    encoding="utf-8",
+                )
+                patches.append(str(patch))
+
+            with self.assertRaises(SystemExit) as context:
+                intake.prepare_patch_package(
+                    dt.date(2026, 6, 12),
+                    self.config(root),
+                    run_id="20260612-235900-raw-multi",
+                    patch_paths=patches,
+                    patch_package_paths=[],
+                    project="TVE1086U",
+                    summary="两个原始 patch 直接上传",
+                    status="candidate",
+                    schema_version="1",
+                )
+
+            self.assertIn("直接 --patch 只允许单个独立补丁", str(context.exception))
+            self.assertFalse((root / "pending" / "20260612" / "member1" / "20260612-235900-raw-multi").exists())
 
     def test_patch_package_can_reference_original_needs_evidence_package(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
