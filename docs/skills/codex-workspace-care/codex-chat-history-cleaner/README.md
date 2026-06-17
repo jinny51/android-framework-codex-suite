@@ -8,6 +8,8 @@
 
 它适用于排查和清理归档会话、搜索索引残留、聊天记录文件、SQLite 外键孤儿记录、重复 workspace root，以及“清理过程本身又被当前会话记录下来，后续又被搜出来”的情况。
 
+Codex 0.139 之后会话 SQLite 仍在 `~/.codex/state_*.sqlite`，但本地状态面增加了 `thread-projectless-output-directories`、`agent_jobs`、`agent_job_items`、`thread_dynamic_tools` 等新版字段/表。本工具会把明确的 thread-keyed global-state 字段纳入清理计划；非外键 SQLite thread 引用会先作为 health/report-only 项展示，不默认删除。
+
 ## 典型场景
 
 - 用户删除或归档了 Codex 会话，但搜索结果里仍然能看到历史痕迹，需要检查本地索引和缓存。

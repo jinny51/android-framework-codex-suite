@@ -137,6 +137,10 @@ def test_clean_global_state_not_in_keep_removes_thread_keyed_residue(tmp_path: P
             keep: "/tmp/keep",
             old: "/tmp/old",
         },
+        "thread-projectless-output-directories": {
+            keep: "/tmp/keep-out",
+            old: "/tmp/old-out",
+        },
         "electron-persisted-atom-state": {
             "prompt-history": {
                 keep: ["keep prompt"],
@@ -157,13 +161,73 @@ def test_clean_global_state_not_in_keep_removes_thread_keyed_residue(tmp_path: P
 
     assert report["projectless_thread_ids_removed"] == 1
     assert report["thread_workspace_hints_removed"] == 1
+    assert report["thread_projectless_output_directories_removed"] == 1
     assert report["prompt_history_threads_removed"] == 1
     assert cleaned["projectless-thread-ids"] == [keep]
     assert cleaned["thread-workspace-root-hints"] == {keep: "/tmp/keep"}
+    assert cleaned["thread-projectless-output-directories"] == {keep: "/tmp/keep-out"}
     assert cleaned["electron-persisted-atom-state"]["prompt-history"] == {
         keep: ["keep prompt"],
         "new-conversation": ["keep new conversation"],
     }
+
+
+def test_global_state_health_reports_new_thread_keyed_output_dirs(tmp_path: Path) -> None:
+    keep = "019e0000-0000-7000-8000-000000000001"
+    old = "019e0000-0000-7000-8000-000000000003"
+    write_global_state(
+        tmp_path,
+        {
+            "projectless-thread-ids": [old],
+            "thread-workspace-root-hints": {old: "/tmp/old"},
+            "thread-projectless-output-directories": {
+                keep: "/tmp/keep-out",
+                old: "/tmp/old-out",
+            },
+        },
+    )
+
+    report = clean_codex_history.global_state_health(
+        tmp_path,
+        [clean_codex_history.ThreadRow(keep, "keep", 0, "", "", "vscode")],
+    )
+
+    assert report["stale_thread_projectless_output_directories"] == 1
+    assert report["stale_thread_projectless_output_directory_prefixes"] == [old[:12]]
+
+
+def test_sqlite_health_reports_non_fk_thread_reference_orphans(tmp_path: Path) -> None:
+    db_path = tmp_path / "state_5.sqlite"
+    keep = "019e0000-0000-7000-8000-000000000001"
+    missing = "019e0000-0000-7000-8000-000000000099"
+    with clean_codex_history.sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            create table threads (
+                id text primary key,
+                title text not null,
+                archived integer not null default 0,
+                rollout_path text not null,
+                cwd text not null default '',
+                source text not null default '',
+                updated_at_ms integer,
+                updated_at integer
+            );
+            create table agent_job_items (
+                id integer primary key,
+                assigned_thread_id text
+            );
+            """
+        )
+        conn.execute("insert into threads values (?,?,?,?,?,?,?,?)", (keep, "keep", 0, "", "", "vscode", 1, 1))
+        conn.executemany(
+            "insert into agent_job_items(assigned_thread_id) values (?)",
+            [(keep,), (missing,)],
+        )
+
+    report = clean_codex_history.sqlite_health(db_path)
+
+    assert report["thread_reference_orphans"] == {"agent_job_items.assigned_thread_id": 1}
 
 
 def test_ui_keep_set_summary_reads_like_approval_plan() -> None:
@@ -224,6 +288,7 @@ def test_ui_keep_set_summary_reads_like_approval_plan() -> None:
         "global_state_keep_cleanup": {
             "projectless_thread_ids_removed": 3,
             "thread_workspace_hints_removed": 2,
+            "thread_projectless_output_directories_removed": 4,
             "prompt_history_threads_removed": 5,
             "would_modify": True,
         },
@@ -260,6 +325,7 @@ def test_ui_keep_set_summary_reads_like_approval_plan() -> None:
     assert "归档 transcript 残留：将删除 4 个文件" in text
     assert "搜索索引 session_index：将清理 关联待删会话 2 条、非保留集 1 条" in text
     assert ".codex-global-state.json" in text
+    assert "output directory 4 个" in text
     assert "【不会自动删除，只提示】" in text
     assert "普通会话 transcript 缺文件：7 条，仅提示" in text
     assert "归档副本保护：跳过 UI 保留集相关文件 1 个，不删除" in text
@@ -354,6 +420,10 @@ def test_clean_global_state_for_ids_removes_only_selected_thread_residue(tmp_pat
             selected: "/tmp/selected",
             other: "/tmp/other",
         },
+        "thread-projectless-output-directories": {
+            selected: "/tmp/selected-out",
+            other: "/tmp/other-out",
+        },
         "electron-persisted-atom-state": {
             "prompt-history": {
                 selected: ["selected prompt"],
@@ -375,9 +445,11 @@ def test_clean_global_state_for_ids_removes_only_selected_thread_residue(tmp_pat
     assert report["would_modify"] is True
     assert report["projectless_thread_ids_removed"] == 1
     assert report["thread_workspace_hints_removed"] == 1
+    assert report["thread_projectless_output_directories_removed"] == 1
     assert report["prompt_history_threads_removed"] == 1
     assert cleaned["projectless-thread-ids"] == [other]
     assert cleaned["thread-workspace-root-hints"] == {other: "/tmp/other"}
+    assert cleaned["thread-projectless-output-directories"] == {other: "/tmp/other-out"}
     assert cleaned["electron-persisted-atom-state"]["prompt-history"] == {
         other: ["other prompt"],
         "new-conversation": ["keep this"],

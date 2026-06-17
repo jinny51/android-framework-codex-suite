@@ -24,7 +24,7 @@ Check these local Codex locations under `CODEX_HOME` or `~/.codex`:
 - `sessions/**/rollout-*.jsonl`: normal chat record files.
 - `archived_sessions/**/rollout-*.jsonl`: archived chat record files.
 - `session_index.jsonl`: lightweight search/list index.
-- `.codex-global-state.json`: workspace roots, project order, thread workspace hints, projectless thread IDs, and prompt history keyed by thread ID.
+- `.codex-global-state.json`: workspace roots, project order, thread workspace hints, projectless thread IDs, thread projectless output directories, and prompt history keyed by thread ID.
 - `generated_images/` and related artifact directories: optional per-thread artifacts.
 - `logs_*.sqlite`: diagnostic logs. On WSL/Windows, direct reads under `/mnt/c` can report `disk I/O error`; verify by copying `.sqlite`, `-wal`, and `-shm` to `/tmp` before calling it corruption.
 
@@ -60,6 +60,8 @@ python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
 ```
 
 The script backs up changed stores by default. The `--require-codex-exited-for-global-state` guard must abort before writes if Codex Desktop still appears to be running, because `.codex-global-state.json` can otherwise be rewritten from the app's in-memory state.
+
+Codex 0.139 keeps the chat SQLite under `~/.codex/state_*.sqlite`, but adds thread-keyed residue such as `.codex-global-state.json.thread-projectless-output-directories` and SQLite tables such as `agent_jobs`, `agent_job_items`, and `thread_dynamic_tools`. Treat `thread-projectless-output-directories` as an explicit cleanup target. Treat non-FK references like `agent_job_items.assigned_thread_id` as health/report-only unless the user explicitly approves a targeted repair.
 
 Dry-run output is an approval view for a human, not an internal log. In UI keep-set mode it must separate:
 

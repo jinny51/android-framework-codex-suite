@@ -531,6 +531,40 @@ def thread_fk_orphan_counts(conn: sqlite3.Connection) -> dict[str, int]:
     return counts
 
 
+def known_non_fk_thread_reference_columns(conn: sqlite3.Connection) -> list[tuple[str, str]]:
+    tables = {
+        row[0]
+        for row in conn.execute("select name from sqlite_master where type='table' and name not like 'sqlite_%'").fetchall()
+    }
+    columns: list[tuple[str, str]] = []
+    if "agent_job_items" in tables:
+        table_columns = {
+            row[1]
+            for row in conn.execute(f"pragma table_info({quote_ident('agent_job_items')})").fetchall()
+        }
+        if "assigned_thread_id" in table_columns:
+            columns.append(("agent_job_items", "assigned_thread_id"))
+    return columns
+
+
+def thread_reference_orphan_counts(conn: sqlite3.Connection) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for table, column in known_non_fk_thread_reference_columns(conn):
+        count = conn.execute(
+            f"""
+            select count(*)
+            from {quote_ident(table)}
+            where {quote_ident(column)} is not null
+              and not exists (
+                select 1 from threads where threads.id = {quote_ident(table)}.{quote_ident(column)}
+              )
+            """
+        ).fetchone()[0]
+        if count:
+            counts[f"{table}.{column}"] = int(count)
+    return counts
+
+
 def repair_thread_fk_orphans(db_path: Path) -> dict[str, int]:
     removed: dict[str, int] = {}
     with sqlite3.connect(db_path, timeout=5) as conn:
@@ -639,6 +673,15 @@ def describe_thread_refs(
     return samples
 
 
+def thread_keyed_dict_items(data: dict[str, Any], key: str) -> dict[str, Any]:
+    value = data.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def describe_thread_keyed_dict_refs(ids: list[str], names: dict[str, str], values: dict[str, Any]) -> list[dict[str, Any]]:
+    return describe_thread_refs(ids, names, {key: str(values.get(key, "")) for key in ids})
+
+
 def global_state_health(codex_home: Path, rows: list[ThreadRow]) -> dict[str, Any]:
     thread_ids = {row.id for row in rows}
     names = thread_name_lookup(codex_home, rows)
@@ -672,6 +715,15 @@ def global_state_health(codex_home: Path, rows: list[ThreadRow]) -> dict[str, An
         stale_hints,
         names,
         {key: str(hints.get(key, "")) for key in stale_hints} if isinstance(hints, dict) else {},
+    )
+    output_dirs = data.get("thread-projectless-output-directories", {})
+    stale_output_dirs = [key for key in output_dirs if key not in thread_ids] if isinstance(output_dirs, dict) else []
+    report["stale_thread_projectless_output_directories"] = len(stale_output_dirs) if isinstance(output_dirs, dict) else None
+    report["stale_thread_projectless_output_directory_prefixes"] = [item[:12] for item in stale_output_dirs[:10]]
+    report["stale_thread_projectless_output_directory_samples"] = describe_thread_refs(
+        stale_output_dirs,
+        names,
+        {key: str(output_dirs.get(key, "")) for key in stale_output_dirs} if isinstance(output_dirs, dict) else {},
     )
 
     by_name: dict[str, set[str]] = defaultdict(set)
@@ -719,6 +771,21 @@ def clean_global_state(codex_home: Path, thread_ids: set[str], execute: bool, no
         )
         if kept_hints != hints:
             data["thread-workspace-root-hints"] = kept_hints
+            changed = True
+
+    output_dirs = data.get("thread-projectless-output-directories")
+    if isinstance(output_dirs, dict):
+        stale_output_dir_ids = [key for key in output_dirs if key not in thread_ids]
+        kept_output_dirs = {key: value for key, value in output_dirs.items() if key in thread_ids}
+        report["thread_projectless_output_directories_removed"] = len(output_dirs) - len(kept_output_dirs)
+        report["thread_projectless_output_directory_prefixes_removed"] = [item[:12] for item in stale_output_dir_ids[:10]]
+        report["thread_projectless_output_directory_samples_removed"] = describe_thread_keyed_dict_refs(
+            stale_output_dir_ids,
+            names,
+            output_dirs,
+        )
+        if kept_output_dirs != output_dirs:
+            data["thread-projectless-output-directories"] = kept_output_dirs
             changed = True
 
     report["would_modify"] = changed
@@ -770,6 +837,21 @@ def clean_global_state_for_thread_ids(codex_home: Path, thread_ids: set[str], ex
         )
         if kept_hints != hints:
             data["thread-workspace-root-hints"] = kept_hints
+            changed = True
+
+    output_dirs = data.get("thread-projectless-output-directories")
+    if isinstance(output_dirs, dict):
+        removed_output_dir_ids = [key for key in output_dirs if key in target_ids]
+        kept_output_dirs = {key: value for key, value in output_dirs.items() if key not in target_ids}
+        report["thread_projectless_output_directories_removed"] = len(removed_output_dir_ids)
+        report["thread_projectless_output_directory_prefixes_removed"] = [item[:12] for item in removed_output_dir_ids[:10]]
+        report["thread_projectless_output_directory_samples_removed"] = describe_thread_keyed_dict_refs(
+            removed_output_dir_ids,
+            names,
+            output_dirs,
+        )
+        if kept_output_dirs != output_dirs:
+            data["thread-projectless-output-directories"] = kept_output_dirs
             changed = True
 
     atom = data.get("electron-persisted-atom-state")
@@ -835,6 +917,21 @@ def clean_global_state_not_in_keep(codex_home: Path, keep_thread_ids: set[str], 
             data["thread-workspace-root-hints"] = kept_hints
             changed = True
 
+    output_dirs = data.get("thread-projectless-output-directories")
+    if isinstance(output_dirs, dict):
+        removed_output_dir_ids = [key for key in output_dirs if key not in keep_ids]
+        kept_output_dirs = {key: value for key, value in output_dirs.items() if key in keep_ids}
+        report["thread_projectless_output_directories_removed"] = len(removed_output_dir_ids)
+        report["thread_projectless_output_directory_prefixes_removed"] = [item[:12] for item in removed_output_dir_ids[:10]]
+        report["thread_projectless_output_directory_samples_removed"] = describe_thread_keyed_dict_refs(
+            removed_output_dir_ids,
+            names,
+            output_dirs,
+        )
+        if kept_output_dirs != output_dirs:
+            data["thread-projectless-output-directories"] = kept_output_dirs
+            changed = True
+
     atom = data.get("electron-persisted-atom-state")
     prompt_history = atom.get("prompt-history") if isinstance(atom, dict) else None
     if isinstance(prompt_history, dict):
@@ -880,6 +977,7 @@ def sqlite_health(db_path: Path) -> dict[str, Any]:
                 report["migrations"] = {"count": count, "success": success, "max_version": max_version}
             if conn.execute("select count(*) from sqlite_master where type='table' and name='threads'").fetchone()[0]:
                 report["thread_fk_orphans"] = thread_fk_orphan_counts(conn)
+                report["thread_reference_orphans"] = thread_reference_orphan_counts(conn)
             return report
 
         return with_readonly_db(db_path, query)
@@ -1429,6 +1527,7 @@ def render_ui_keep_set_summary(summary: dict[str, Any]) -> str:
     keep_global_cleanup = summary.get("global_state_keep_cleanup") if isinstance(summary.get("global_state_keep_cleanup"), dict) else {}
     global_projectless = int(keep_global_cleanup.get("projectless_thread_ids_removed") or 0) if keep_global_cleanup else 0
     global_hints = int(keep_global_cleanup.get("thread_workspace_hints_removed") or 0) if keep_global_cleanup else 0
+    global_output_dirs = int(keep_global_cleanup.get("thread_projectless_output_directories_removed") or 0) if keep_global_cleanup else 0
     global_prompts = int(keep_global_cleanup.get("prompt_history_threads_removed") or 0) if keep_global_cleanup else 0
 
     lines.append("")
@@ -1454,12 +1553,13 @@ def render_ui_keep_set_summary(summary: dict[str, Any]) -> str:
         if stale_index:
             parts.append(f"stale {stale_index} 条")
         lines.append(f"- 搜索索引 session_index：{'将清理' if dry_run else '已清理'} " + "、".join(parts))
-    if global_projectless or global_hints or global_prompts:
+    if global_projectless or global_hints or global_output_dirs or global_prompts:
         planned_any = True
         action = "将清理" if dry_run else "已清理"
         lines.append(
             "- 全局状态 .codex-global-state.json："
-            f"{action} projectless {global_projectless} 个、workspace hint {global_hints} 个、prompt-history {global_prompts} 个"
+            f"{action} projectless {global_projectless} 个、workspace hint {global_hints} 个、"
+            f"output directory {global_output_dirs} 个、prompt-history {global_prompts} 个"
         )
     if not planned_any:
         lines.append("- 未发现需要按当前保留集删除或清理的内容")
@@ -1467,6 +1567,7 @@ def render_ui_keep_set_summary(summary: dict[str, Any]) -> str:
     health = summary.get("health", {}) if isinstance(summary.get("health"), dict) else {}
     sqlite_dbs = health.get("sqlite_primary_dbs", []) if isinstance(health.get("sqlite_primary_dbs"), list) else []
     sqlite_bad: list[str] = []
+    sqlite_reference_orphans = 0
     for db in sqlite_dbs:
         if not isinstance(db, dict):
             continue
@@ -1477,6 +1578,7 @@ def render_ui_keep_set_summary(summary: dict[str, Any]) -> str:
             sqlite_bad.append(f"{name}: integrity_check={db.get('integrity_check')}")
         if int(db.get("foreign_key_violations") or 0):
             sqlite_bad.append(f"{name}: 外键违规 {db.get('foreign_key_violations')}")
+        sqlite_reference_orphans += sum_dict_values(db.get("thread_reference_orphans"))
 
     transcripts = health.get("transcripts") if isinstance(health.get("transcripts"), dict) else {}
     missing_transcripts = int(transcripts.get("missing_thread_rollout_files") or 0) if transcripts else 0
@@ -1490,6 +1592,8 @@ def render_ui_keep_set_summary(summary: dict[str, Any]) -> str:
 
     notes: list[str] = []
     notes.append("- SQLite：" + ("正常" if not sqlite_bad else "需要先处理 - " + "；".join(sqlite_bad[:4])))
+    if sqlite_reference_orphans:
+        notes.append(f"- 新版 SQLite 非外键 thread 引用残留：{sqlite_reference_orphans} 条，仅提示，不按本计划自动删除")
     if protected_archived:
         notes.append(f"- 归档副本保护：跳过 UI 保留集相关文件 {protected_archived} 个，不删除")
     if missing_transcripts:
@@ -1509,7 +1613,7 @@ def render_ui_keep_set_summary(summary: dict[str, Any]) -> str:
     elif dry_run and planned_any:
         lines.append("- 确认上面的保留清单和删除计划无误后，完全退出 Codex 桌面端。")
         lines.append("- 在外部 WSL/PowerShell 执行下面的完整命令。")
-        if global_projectless or global_hints or global_prompts:
+        if global_projectless or global_hints or global_output_dirs or global_prompts:
             lines.append("- 这次会改 .codex-global-state.json，所以必须退出 Codex，避免桌面端把旧内存状态写回。")
     elif dry_run:
         lines.append("- 当前没有需要执行的清理项。")
@@ -1579,6 +1683,13 @@ def render_summary(summary: dict[str, Any]) -> str:
         lines.append(f"线程子表孤儿记录：发现 {db_orphans_before} 条，执行时会清理")
     else:
         lines.append("线程子表孤儿记录：无")
+    thread_reference_orphans = sum(
+        sum_dict_values(db.get("thread_reference_orphans"))
+        for db in sqlite_dbs
+        if isinstance(db, dict)
+    )
+    if thread_reference_orphans:
+        lines.append(f"新版 SQLite 非外键 thread 引用残留：{thread_reference_orphans} 条，仅列出不自动删除")
 
     selected_thread_count = sum(
         int(db.get("selected_count") or 0)
@@ -1633,29 +1744,47 @@ def render_summary(summary: dict[str, Any]) -> str:
     if keep_global_cleanup:
         removed_threads = int(keep_global_cleanup.get("projectless_thread_ids_removed") or 0)
         removed_hints = int(keep_global_cleanup.get("thread_workspace_hints_removed") or 0)
+        removed_output_dirs = int(keep_global_cleanup.get("thread_projectless_output_directories_removed") or 0)
         removed_prompts = int(keep_global_cleanup.get("prompt_history_threads_removed") or 0)
-        if removed_threads or removed_hints or removed_prompts:
+        if removed_threads or removed_hints or removed_output_dirs or removed_prompts:
             action = "会清理" if dry_run else "已清理"
-            lines.append(f"全局状态非保留集残留：{action} projectless {removed_threads} 个、workspace hint {removed_hints} 个、prompt-history {removed_prompts} 个")
+            lines.append(
+                f"全局状态非保留集残留：{action} projectless {removed_threads} 个、"
+                f"workspace hint {removed_hints} 个、output directory {removed_output_dirs} 个、"
+                f"prompt-history {removed_prompts} 个"
+            )
     if selected_global_cleanup:
         removed_threads = int(selected_global_cleanup.get("projectless_thread_ids_removed") or 0)
         removed_hints = int(selected_global_cleanup.get("thread_workspace_hints_removed") or 0)
+        removed_output_dirs = int(selected_global_cleanup.get("thread_projectless_output_directories_removed") or 0)
         removed_prompts = int(selected_global_cleanup.get("prompt_history_threads_removed") or 0)
-        if removed_threads or removed_hints or removed_prompts:
+        if removed_threads or removed_hints or removed_output_dirs or removed_prompts:
             action = "会清理" if dry_run else "已清理"
-            lines.append(f"全局状态关联残留：{action} projectless {removed_threads} 个、workspace hint {removed_hints} 个、prompt-history {removed_prompts} 个")
+            lines.append(
+                f"全局状态关联残留：{action} projectless {removed_threads} 个、"
+                f"workspace hint {removed_hints} 个、output directory {removed_output_dirs} 个、"
+                f"prompt-history {removed_prompts} 个"
+            )
     if global_cleanup:
         removed_threads = int(global_cleanup.get("projectless_thread_ids_removed") or 0)
         removed_hints = int(global_cleanup.get("thread_workspace_hints_removed") or 0)
+        removed_output_dirs = int(global_cleanup.get("thread_projectless_output_directories_removed") or 0)
         if dry_run:
-            lines.append(f"全局项目状态：会清理 stale 线程 {removed_threads} 个、workspace hint {removed_hints} 个")
+            lines.append(
+                f"全局项目状态：会清理 stale 线程 {removed_threads} 个、"
+                f"workspace hint {removed_hints} 个、output directory {removed_output_dirs} 个"
+            )
         else:
             lines.append(f"全局项目状态：{'已修改' if global_cleanup.get('modified') else '无需修改'}")
     elif global_health and not simple_archived_sqlite:
         stale_threads = int(global_health.get("stale_projectless_thread_ids") or 0)
         stale_hints = int(global_health.get("stale_thread_workspace_hints") or 0)
-        if stale_threads or stale_hints:
-            lines.append(f"全局项目状态：有 stale 线程 {stale_threads} 个、workspace hint {stale_hints} 个")
+        stale_output_dirs = int(global_health.get("stale_thread_projectless_output_directories") or 0)
+        if stale_threads or stale_hints or stale_output_dirs:
+            lines.append(
+                f"全局项目状态：有 stale 线程 {stale_threads} 个、"
+                f"workspace hint {stale_hints} 个、output directory {stale_output_dirs} 个"
+            )
         else:
             lines.append("全局项目状态：正常")
 
@@ -1697,31 +1826,39 @@ def render_summary(summary: dict[str, Any]) -> str:
         search_residual = 0
         global_stale_threads = 0
         global_stale_hints = 0
+        global_stale_output_dirs = 0
         global_samples = []
     else:
         search_residual = int(health_index.get("stale_thread_id_records") or 0) or (stale_index if dry_run else 0)
         if global_cleanup:
             global_stale_threads = int(global_cleanup.get("projectless_thread_ids_removed") or 0)
             global_stale_hints = int(global_cleanup.get("thread_workspace_hints_removed") or 0)
+            global_stale_output_dirs = int(global_cleanup.get("thread_projectless_output_directories_removed") or 0)
             global_samples = list(global_cleanup.get("projectless_thread_samples_removed") or [])
             global_samples.extend(global_cleanup.get("thread_workspace_hint_samples_removed") or [])
+            global_samples.extend(global_cleanup.get("thread_projectless_output_directory_samples_removed") or [])
         else:
             global_stale_threads = int(global_health.get("stale_projectless_thread_ids") or 0)
             global_stale_hints = int(global_health.get("stale_thread_workspace_hints") or 0)
+            global_stale_output_dirs = int(global_health.get("stale_thread_projectless_output_directories") or 0)
             global_samples = list(global_health.get("stale_projectless_thread_samples") or [])
             global_samples.extend(global_health.get("stale_thread_workspace_hint_samples") or [])
+            global_samples.extend(global_health.get("stale_thread_projectless_output_directory_samples") or [])
     residual_parts: list[str] = []
     if search_residual:
         residual_parts.append(f"搜索索引 stale {search_residual} 条")
-    if global_stale_threads or global_stale_hints:
-        residual_parts.append(f"全局状态 stale 线程 {global_stale_threads} 个、workspace hint {global_stale_hints} 个")
+    if global_stale_threads or global_stale_hints or global_stale_output_dirs:
+        residual_parts.append(
+            f"全局状态 stale 线程 {global_stale_threads} 个、workspace hint {global_stale_hints} 个、"
+            f"output directory {global_stale_output_dirs} 个"
+        )
     if residual_parts:
         lines.append("搜索/全局状态残留：" + "；".join(residual_parts))
         if health_index.get("stale_thread_samples"):
             lines.append("搜索索引 stale 会话示例" + render_thread_samples(health_index.get("stale_thread_samples"), limit=8))
         if global_samples:
             lines.append("全局 stale 会话示例" + render_thread_samples(global_samples, limit=8))
-        if global_stale_threads or global_stale_hints:
+        if global_stale_threads or global_stale_hints or global_stale_output_dirs:
             if actions.get("delete_not_in_keep"):
                 lines.append("退出 Codex 后执行：使用同一条 UI 保留集命令，把 --dry-run 换成 --execute，并加 --require-codex-exited-for-global-state。")
             else:
