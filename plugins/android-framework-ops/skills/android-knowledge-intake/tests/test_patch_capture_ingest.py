@@ -305,7 +305,7 @@ def create_feature_capture_package(root: Path) -> Path:
     return package
 
 
-def create_multi_feature_capture_package(root: Path) -> Path:
+def create_multi_feature_capture_package(root: Path, *, feature_limit: int | None = None) -> Path:
     package = create_capture_package(root, status="validated", project="TVE1086U")
     summary = (
         "TVE1086U 青鸾云 2026-06-12 今日补丁：HD 版本云电脑跳转逻辑、系统弹窗副屏显示、"
@@ -339,6 +339,8 @@ def create_multi_feature_capture_package(root: Path) -> Path:
         ("rk14-systemui@allow-screen-recording.patch", "云外设 App 录屏投屏申请自动允许"),
         ("rk14-systemui@usb-default-permission.patch", "云外设 App USB 权限自动获取"),
     ]
+    if feature_limit is not None:
+        features = features[:feature_limit]
     patches = []
     for name, label in features:
         patch = package / "patches" / name
@@ -503,6 +505,29 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("按功能拆分", errors)
             self.assertIn("一个补丁包只能对应一个功能", errors)
             self.assertIn("普通补丁包", errors)
+
+    def test_date_bundled_two_patch_package_fails_local_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            summary = "TVE1086U 青鸾云 2026-06-12 今日补丁：HD 版本云电脑跳转逻辑、系统弹窗副屏显示。"
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 12),
+                self.config(root),
+                run_id="20260612-233426-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_multi_feature_capture_package(root, feature_limit=2))],
+                project="TVE1086U",
+                summary=summary,
+                status="candidate",
+                schema_version="1",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "FAIL")
+            errors = "\n".join(check["errors"])
+            self.assertIn("按功能拆分", errors)
+            self.assertIn("一个补丁包只能对应一个功能", errors)
 
     def test_multiple_raw_patch_files_fail_before_package_generation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

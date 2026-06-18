@@ -99,7 +99,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --summary "功能补丁摘要" --status candidate --related-report-run-id 20260601-210000-daily
 ```
 
-只有直接指定单个独立 patch 文件时才使用 `--patch /path/to/*.patch`。多个原始 patch 文件不能直接塞进一个上传包；必须先用补丁采集技能（android-framework-patch-capture）按功能生成补丁包（patch package），再用 `--patch-package` 提交。补丁包（patch package）的单位是功能，不是日期；“今日补丁合集”或一个包包含多个独立功能会在本地校验失败，需要拆成多个普通补丁包。
+只有直接指定单个独立 patch 文件时才使用 `--patch /path/to/*.patch`。多个原始 patch 文件不能直接塞进一个上传包；必须先用补丁采集技能（android-framework-patch-capture）按功能生成补丁包（patch package），再用 `--patch-package` 提交。补丁包（patch package）的单位是功能，不是日期；“今日补丁合集”或一个包包含多个独立功能会在本地校验失败，不设补丁数量例外，需要拆成多个普通补丁包。已经生成的日期聚合包不要继续补证，应重新按功能生成并分别上传。
 
 管理员需要验证协议和服务器链路时，才使用临时合成测试 profile。普通成员不要用测试 profile 提交日报、周报或 patch。
 

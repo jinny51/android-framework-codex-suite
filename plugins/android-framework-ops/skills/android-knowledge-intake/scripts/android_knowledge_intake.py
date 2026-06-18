@@ -82,7 +82,6 @@ PATCH_README_FORBIDDEN_MARKERS = (
 DAILY_BUNDLE_SUMMARY_RE = re.compile(
     r"(?:今日|本日|当天)补丁|补丁合集|(?:今日|本日|当天).*?(?:\d+\s*(?:个|项|份)|多个|若干).*?补丁"
 )
-MULTI_FEATURE_PATCH_COUNT_THRESHOLD = 4
 INCOMING_KINDS = {"daily_trace", "weekly_trace", "framework_change"}
 PACKAGE_STATUS_VALUES = {"validated", "candidate", "draft", "failed", "blocked"}
 MATERIALS_DIR = "materials"
@@ -1649,15 +1648,13 @@ def validate_framework_function_scope(
     evidence_by_kind: dict[str, dict[str, Any]],
 ) -> list[str]:
     patch_count = patch_count_from_framework_package(patch_paths, evidence_by_kind)
-    if patch_count < MULTI_FEATURE_PATCH_COUNT_THRESHOLD:
-        return []
     readme_text = readme_path.read_text(encoding="utf-8", errors="ignore") if readme_path and readme_path.is_file() else ""
     text = "\n".join([str(manifest.get("summary") or ""), readme_text])
     if not DAILY_BUNDLE_SUMMARY_RE.search(text):
         return []
     return [
         (
-            f"补丁包疑似按日期聚合了 {patch_count} 个独立功能补丁。"
+            f"补丁包按日期聚合了 {patch_count} 个补丁。"
             "补丁包（patch package）必须按功能拆分（function split）；"
             "一个补丁包只能对应一个功能，请按功能重新生成多个普通补丁包。"
         )
