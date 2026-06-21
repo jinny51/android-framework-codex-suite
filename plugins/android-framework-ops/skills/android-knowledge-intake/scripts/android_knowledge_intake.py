@@ -49,10 +49,10 @@ PLATFORM_PREFIX_ALIASES = {
 }
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
 PROJECT_MODEL_RE = re.compile(
-    r"(?<![A-Z0-9])(?P<base>TV[EAI][A-Z0-9]{5}(?:\d)?)(?P<suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
+    r"(?<![A-Z0-9])(?P<base>TV[EAI][A-Z0-9]{4,6})(?P<suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
     re.I,
 )
-PROJECT_ANCHOR_RE = re.compile(r"(?i)(TVA\d{2}[A-Z]\d[A-Z]|TV[EI]\d{4}[A-Z]\d?)")
+PROJECT_ANCHOR_RE = re.compile(r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{4,6}(?:_[A-Z0-9]+)*(?![A-Z0-9_])", re.I)
 REMOTE_PATH_RE = re.compile(r"(?:/[A-Za-z0-9_.@+-]+){2,}")
 BANNED_LOG_PATTERNS = (
     "Log.v(",

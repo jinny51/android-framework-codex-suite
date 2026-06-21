@@ -1398,6 +1398,20 @@ class PatchCaptureIngestTests(unittest.TestCase):
         self.assertEqual(payload["suffix"], "H031")
         self.assertTrue(payload["company_rule_match"])
 
+    def test_project_inference_accepts_short_project_model(self) -> None:
+        project, payload = intake.infer_project(
+            "TVE8402",
+            [],
+            [],
+            "",
+        )
+
+        self.assertEqual(project, "TVE8402")
+        self.assertEqual(payload["project"], "TVE8402")
+        self.assertEqual(payload["base_model"], "TVE8402")
+        self.assertEqual(payload["suffix"], "")
+        self.assertTrue(payload["company_rule_match"])
+
     def test_daily_project_inference_collapses_same_base_model_candidates(self) -> None:
         project, payload = intake.infer_report_project(
             "daily",

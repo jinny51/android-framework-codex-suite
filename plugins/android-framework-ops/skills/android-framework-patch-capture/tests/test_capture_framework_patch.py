@@ -845,6 +845,41 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(manifest["project"], "unknown")
             self.assertEqual(manifest["patches"][0]["project"], "unknown")
 
+    def test_short_project_model_from_argument_is_recognized(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_plain_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260604-130500-patch",
+                    "--platform",
+                    "mtk16",
+                    "--feature",
+                    "camera-policy",
+                    "--summary",
+                    "Camera2 policy adjustment",
+                    "--project",
+                    "TVE8402",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "TVE8402")
+            self.assertEqual(manifest["patches"][0]["project"], "TVE8402")
+
     def test_conflicting_project_clues_keep_project_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "work" / "rk" / "TVA10A2R"

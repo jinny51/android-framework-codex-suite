@@ -25,7 +25,10 @@ PLATFORM_PREFIX_ALIASES = {
     "sprd": "unisoc",
     "u": "unisoc",
 }
-PROJECT_MODEL_RE = re.compile(r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{5}(?:[A-Z0-9_]+)?(?![A-Z0-9])", re.I)
+PROJECT_MODEL_RE = re.compile(
+    r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{4,6}(?:_[A-Z0-9]+)*(?![A-Z0-9_])",
+    re.I,
+)
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
 BANNED_LOG_PATTERNS = (
     "Log.v(",
