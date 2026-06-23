@@ -425,6 +425,21 @@ class PatchCaptureIngestTests(unittest.TestCase):
             "synthetic_data": "false",
         }
 
+    def test_patch_facts_extract_added_xml_string_resource_names(self) -> None:
+        facts = intake.patch_facts_from_text(
+            "diff --git a/res/values/strings.xml b/res/values/strings.xml\n"
+            "--- a/res/values/strings.xml\n"
+            "+++ b/res/values/strings.xml\n"
+            "@@ -1 +1,4 @@\n"
+            "+<string name=\"color_gamut\">Color gamut</string>\n"
+            "+<string-array name=\"proxy_array\"><item>None</item></string-array>\n"
+            "+<plurals name=\"ram_extender_size\"><item quantity=\"one\">1 GB</item></plurals>\n"
+        )
+
+        self.assertIn("color_gamut", facts["resource_keys"])
+        self.assertIn("proxy_array", facts["resource_keys"])
+        self.assertIn("ram_extender_size", facts["resource_keys"])
+
     def test_capture_package_generates_framework_change_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -528,6 +543,64 @@ class PatchCaptureIngestTests(unittest.TestCase):
             errors = "\n".join(check["errors"])
             self.assertIn("按功能拆分", errors)
             self.assertIn("一个补丁包只能对应一个功能", errors)
+
+    def test_scope_polluted_patch_package_fails_local_check_with_patch_asset_correction_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = create_capture_package(root, project="TVE8801M")
+            summary = "新增电池页性能模式三档，联动刷新率与 PowerHAL LOW/SUSTAINED 模式，并补齐中文/韩文节能文案"
+            (capture / "README.md").write_text(
+                "# add-device-performance-mode\n\n"
+                "## 功能描述\n\n"
+                f"{summary}\n\n"
+                "## 修改点\n\n"
+                "- 修改 MtkSettings 字符串和性能模式入口。\n\n"
+                "## 日志控制\n\n"
+                "无新增运行时日志。\n\n"
+                "## SystemProperties\n\n"
+                "无新增系统属性。\n\n"
+                "## 字符串国际化\n\n"
+                "新增性能模式中英韩文案。\n\n"
+                "## 可回滚性\n\n"
+                "回滚该 patch 后恢复原性能模式资源。\n",
+                encoding="utf-8",
+            )
+            patch_path = capture / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
+            patch_path.write_text(
+                "diff --git a/res/values/strings.xml b/res/values/strings.xml\n"
+                "--- a/res/values/strings.xml\n"
+                "+++ b/res/values/strings.xml\n"
+                "@@ -1,3 +1,20 @@\n"
+                "+//gyf 20260623@ add performance mode resources\n"
+                "+<string name=\"performance_mode_title\">Performance mode</string>\n"
+                "+<string name=\"performance_mode_power_save\">Eco mode</string>\n"
+                "+<string name=\"proxy_tip\">HTTP proxy used by the browser</string>\n"
+                "+<string name=\"select_ethernet_device\">Select Ethernet device</string>\n"
+                "+<string name=\"three_finger_swipe_down_action_screenshot\">Screenshot</string>\n"
+                "+<string name=\"ram_extender_title\">RAM Extender</string>\n"
+                "+<string name=\"zone_auto_summaryOn\">Use network-provided time zone</string>\n",
+                encoding="utf-8",
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 23),
+                self.config(root),
+                run_id="20260623-195544-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture)],
+                project="TVE8801M",
+                summary=summary,
+                status="validated",
+                schema_version="1",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "FAIL")
+            errors = "\n".join(check["errors"])
+            self.assertIn("补丁资产修正", errors)
+            self.assertIn("proxy_tip", errors)
+            self.assertNotIn("按日期聚合", errors)
 
     def test_multiple_raw_patch_files_fail_before_package_generation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

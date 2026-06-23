@@ -171,6 +171,27 @@ def create_repo_with_mode_noise(root: Path) -> tuple[Path, Path]:
 
 
 class CaptureFrameworkPatchTests(unittest.TestCase):
+    def test_facts_from_diff_extract_added_xml_string_resource_names(self) -> None:
+        spec = __import__("importlib.util").util.spec_from_file_location("capture_framework_patch_under_test", SCRIPT)
+        assert spec and spec.loader
+        module = __import__("importlib.util").util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+
+        facts = module.facts_from_diff(
+            "diff --git a/res/values/strings.xml b/res/values/strings.xml\n"
+            "--- a/res/values/strings.xml\n"
+            "+++ b/res/values/strings.xml\n"
+            "@@ -1 +1,4 @@\n"
+            "+<string name=\"color_gamut\">Color gamut</string>\n"
+            "+<string-array name=\"proxy_array\"><item>None</item></string-array>\n"
+            "+<plurals name=\"ram_extender_size\"><item quantity=\"one\">1 GB</item></plurals>\n"
+        )
+
+        self.assertIn("color_gamut", facts["resource_keys"])
+        self.assertIn("proxy_array", facts["resource_keys"])
+        self.assertIn("ram_extender_size", facts["resource_keys"])
+
     def test_writes_verification_and_search_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

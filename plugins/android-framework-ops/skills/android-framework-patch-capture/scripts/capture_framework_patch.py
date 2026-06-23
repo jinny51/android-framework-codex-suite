@@ -56,6 +56,9 @@ REUSE_OUTCOMES = ("not_started", "reused_success", "adapted_success", "failed", 
 DAILY_BUNDLE_SUMMARY_RE = re.compile(
     r"(?:今日|本日|当天)补丁|补丁合集|(?:今日|本日|当天).*?(?:\d+\s*(?:个|项|份)|多个|若干).*?补丁"
 )
+XML_RESOURCE_NAME_RE = re.compile(
+    r"<(?:string|string-array|array|plurals|bool|integer|color|dimen|style)\b[^>]*\bname=[\"']([^\"']+)[\"']"
+)
 
 
 @dataclass
@@ -198,6 +201,15 @@ def added_lines(diff_text: str) -> list[str]:
     return [line[1:] for line in diff_text.splitlines() if line.startswith("+") and not line.startswith("+++")]
 
 
+def resource_keys_from_patch_text(text: str) -> list[str]:
+    keys = {
+        *re.findall(r"R\.string\.([A-Za-z0-9_]+)", text),
+        *re.findall(r"@string/([A-Za-z0-9_]+)", text),
+        *XML_RESOURCE_NAME_RE.findall(text),
+    }
+    return sorted(key for key in keys if key)
+
+
 def facts_from_diff(diff_text: str) -> dict[str, Any]:
     files = changed_files_from_diff(diff_text)
     added = "\n".join(added_lines(diff_text))
@@ -207,7 +219,7 @@ def facts_from_diff(diff_text: str) -> dict[str, Any]:
         "modified_files": files,
         "system_properties": sorted(set(re.findall(r"\b(?:persist|ro|sys|debug|vendor)\.[A-Za-z0-9_.-]+", all_text))),
         "settings_keys": sorted(set(re.findall(r"Settings\.(?:System|Secure|Global)\.([A-Za-z0-9_.-]+)", all_text))),
-        "resource_keys": sorted(set([*re.findall(r"R\.string\.([A-Za-z0-9_]+)", all_text), *re.findall(r"@string/([A-Za-z0-9_]+)", all_text)])),
+        "resource_keys": resource_keys_from_patch_text(all_text),
         "framework_log_keys": sorted(set(re.findall(r"FrameworkLog\.([A-Za-z0-9_]+)", all_text))),
         "banned_log_hits": sorted(pattern for pattern in BANNED_LOG_PATTERNS if pattern in added),
         "author_date_marker_present": bool(AUTHOR_DATE_RE.search(all_text)),
@@ -349,6 +361,9 @@ def collect_repository_captures(args: argparse.Namespace, platform: str, feature
     for root in roots:
         diff_cp = run(["git", "diff", "--binary", "--full-index", "HEAD", "--"], root, check=True)
         raw_diff_text = diff_cp.stdout
+        if not raw_diff_text.strip():
+            cached_diff_cp = run(["git", "diff", "--cached", "--binary", "--full-index", "HEAD", "--"], root, check=True)
+            raw_diff_text = cached_diff_cp.stdout
         diff_text, mode_only_paths = filter_mode_only_diff_sections(raw_diff_text)
         if not raw_diff_text.strip():
             raise SystemExit(f"源码仓库没有发现相对 HEAD 的 git diff，无法生成补丁: {root}")

@@ -82,6 +82,53 @@ PATCH_README_FORBIDDEN_MARKERS = (
 DAILY_BUNDLE_SUMMARY_RE = re.compile(
     r"(?:今日|本日|当天)补丁|补丁合集|(?:今日|本日|当天).*?(?:\d+\s*(?:个|项|份)|多个|若干).*?补丁"
 )
+XML_RESOURCE_NAME_RE = re.compile(
+    r"<(?:string|string-array|array|plurals|bool|integer|color|dimen|style)\b[^>]*\bname=[\"']([^\"']+)[\"']"
+)
+SCOPE_POLLUTION_UNRELATED_ANCHOR_THRESHOLD = 4
+SCOPE_POLLUTION_REPORT_LIMIT = 8
+SCOPE_TEXT_ALIASES = {
+    "电池": ["battery"],
+    "性能": ["performance"],
+    "模式": ["mode"],
+    "三档": ["level"],
+    "刷新率": ["refresh", "rate"],
+    "刷新": ["refresh"],
+    "节能": ["power", "save", "eco"],
+    "省电": ["power", "save"],
+    "中文": ["chinese", "zh"],
+    "韩文": ["korean", "ko"],
+    "文案": ["string", "text"],
+    "颜色": ["color"],
+    "色域": ["color", "gamut"],
+    "代理": ["proxy"],
+    "以太网": ["ethernet"],
+    "手势": ["gesture"],
+    "截图": ["screenshot"],
+    "内存": ["ram", "memory"],
+    "时区": ["zone", "timezone"],
+    "蓝牙": ["bluetooth"],
+    "重置": ["reset"],
+}
+SCOPE_ANCHOR_GENERIC_TOKENS = {
+    "action",
+    "array",
+    "auto",
+    "color",
+    "config",
+    "device",
+    "mode",
+    "name",
+    "off",
+    "on",
+    "settings",
+    "status",
+    "string",
+    "summary",
+    "system",
+    "text",
+    "title",
+}
 INCOMING_KINDS = {"daily_trace", "weekly_trace", "framework_change"}
 PACKAGE_STATUS_VALUES = {"validated", "candidate", "draft", "failed", "blocked"}
 MATERIALS_DIR = "materials"
@@ -1640,6 +1687,108 @@ def patch_count_from_framework_package(patch_paths: list[Any], evidence_by_kind:
     return max(counts or [0])
 
 
+def scope_words(value: Any) -> set[str]:
+    text = str(value or "")
+    text = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", text)
+    text = text.replace("_", " ").replace("-", " ").replace("/", " ").replace(".", " ")
+    words = {
+        token.lower()
+        for token in re.findall(r"[a-zA-Z][a-zA-Z0-9]{1,}|[0-9]+|[\u4e00-\u9fff]{2,}", text)
+        if len(token.strip()) >= 2
+    }
+    for marker, aliases in SCOPE_TEXT_ALIASES.items():
+        if marker in str(value or ""):
+            words.update(aliases)
+    return words
+
+
+def scope_semantic_tokens(*values: Any) -> set[str]:
+    tokens: set[str] = set()
+    for value in values:
+        tokens.update(scope_words(value))
+    return {token for token in tokens if token not in SCOPE_ANCHOR_GENERIC_TOKENS}
+
+
+def scope_anchor_tokens(value: str) -> set[str]:
+    return {token for token in scope_words(value) if token not in SCOPE_ANCHOR_GENERIC_TOKENS}
+
+
+def scope_anchor_related(value: str, semantic_tokens: set[str]) -> bool:
+    anchor_tokens = scope_anchor_tokens(value)
+    if not anchor_tokens:
+        return False
+    if anchor_tokens & semantic_tokens:
+        return True
+    anchor_text = re.sub(r"[^a-z0-9]+", "", value.lower())
+    return any(len(token) >= 4 and token in anchor_text for token in semantic_tokens)
+
+
+def patch_resource_keys_from_evidence(evidence_by_kind: dict[str, dict[str, Any]]) -> list[str]:
+    keys: list[str] = []
+    patch_diff = evidence_by_kind.get("patch_diff_facts", {})
+    payload = evidence_payload(patch_diff) if isinstance(patch_diff, dict) else {}
+    keys.extend(list_string_values(payload.get("resource_keys")))
+    patches = payload.get("patches")
+    if isinstance(patches, list):
+        for patch in patches:
+            if isinstance(patch, dict):
+                keys.extend(list_string_values(patch.get("resource_keys")))
+    return sorted(set(keys))
+
+
+def patch_resource_keys_from_files(package_dir: Path, patch_paths: list[Any]) -> list[str]:
+    keys: list[str] = []
+    package_root = package_dir.resolve()
+    for rel in patch_paths:
+        if not isinstance(rel, str):
+            continue
+        path = (package_dir / rel).resolve()
+        try:
+            path.relative_to(package_root)
+        except ValueError:
+            continue
+        if not path.is_file():
+            continue
+        keys.extend(resource_keys_from_patch_text(path.read_text(encoding="utf-8", errors="replace")))
+    return sorted(set(keys))
+
+
+def validate_framework_scope_pollution(
+    package_dir: Path,
+    manifest: dict[str, Any],
+    readme_text: str,
+    patch_paths: list[Any],
+    evidence_by_kind: dict[str, dict[str, Any]],
+) -> list[str]:
+    semantic_tokens = scope_semantic_tokens(manifest.get("summary"), readme_text)
+    if not semantic_tokens:
+        return []
+    resource_keys = sorted(
+        set(
+            [
+                *patch_resource_keys_from_evidence(evidence_by_kind),
+                *patch_resource_keys_from_files(package_dir, patch_paths),
+            ]
+        )
+    )
+    anchors = [key for key in resource_keys if scope_anchor_tokens(key)]
+    related = [key for key in anchors if scope_anchor_related(key, semantic_tokens)]
+    if not related:
+        return []
+    unrelated = [key for key in anchors if not scope_anchor_related(key, semantic_tokens)]
+    if len(unrelated) < SCOPE_POLLUTION_UNRELATED_ANCHOR_THRESHOLD:
+        return []
+    sample = "、".join(unrelated[:SCOPE_POLLUTION_REPORT_LIMIT])
+    return [
+        (
+            "补丁包功能范围与补丁资源锚点不一致，疑似补丁资产污染。"
+            f"无关资源键示例：{sample}。"
+            "请执行补丁资产修正（patch asset correction）：在干净工作树重新采集同一功能补丁包；"
+            "如果实际是多个独立功能，请按功能拆分（function split）为多个普通补丁包。"
+        )
+    ]
+
+
 def validate_framework_function_scope(
     package_dir: Path,
     manifest: dict[str, Any],
@@ -1649,16 +1798,16 @@ def validate_framework_function_scope(
 ) -> list[str]:
     patch_count = patch_count_from_framework_package(patch_paths, evidence_by_kind)
     readme_text = readme_path.read_text(encoding="utf-8", errors="ignore") if readme_path and readme_path.is_file() else ""
+    errors: list[str] = []
+    errors.extend(validate_framework_scope_pollution(package_dir, manifest, readme_text, patch_paths, evidence_by_kind))
     text = "\n".join([str(manifest.get("summary") or ""), readme_text])
-    if not DAILY_BUNDLE_SUMMARY_RE.search(text):
-        return []
-    return [
-        (
+    if DAILY_BUNDLE_SUMMARY_RE.search(text):
+        errors.append(
             f"补丁包按日期聚合了 {patch_count} 个补丁。"
             "补丁包（patch package）必须按功能拆分（function split）；"
             "一个补丁包只能对应一个功能，请按功能重新生成多个普通补丁包。"
         )
-    ]
+    return errors
 
 
 def validate_patch_file(path: Path) -> list[str]:
@@ -2613,6 +2762,15 @@ def patch_added_lines(text: str) -> list[str]:
     return [line[1:] for line in text.splitlines() if line.startswith("+") and not line.startswith("+++")]
 
 
+def resource_keys_from_patch_text(text: str) -> list[str]:
+    keys = {
+        *re.findall(r"R\.string\.([A-Za-z0-9_]+)", text),
+        *re.findall(r"@string/([A-Za-z0-9_]+)", text),
+        *XML_RESOURCE_NAME_RE.findall(text),
+    }
+    return sorted(key for key in keys if key)
+
+
 def patch_modules_from_files(files: list[str]) -> list[str]:
     modules: list[str] = []
     for path in files:
@@ -2801,7 +2959,7 @@ def patch_facts_from_text(text: str) -> dict[str, Any]:
         "symbols": patch_symbols_from_text(text),
         "system_properties": sorted(set(re.findall(r"\b(?:persist|ro|sys|debug|vendor)\.[A-Za-z0-9_.-]+", text))),
         "settings_keys": sorted(set(re.findall(r"Settings\.(?:System|Secure|Global)\.([A-Za-z0-9_.-]+)", text))),
-        "resource_keys": sorted(set([*re.findall(r"R\.string\.([A-Za-z0-9_]+)", text), *re.findall(r"@string/([A-Za-z0-9_]+)", text)])),
+        "resource_keys": resource_keys_from_patch_text(text),
         "framework_log_keys": sorted(set(re.findall(r"FrameworkLog\.([A-Za-z0-9_]+)", text))),
         "modules": patch_modules_from_files(files),
         "banned_log_hits": sorted(pattern for pattern in BANNED_LOG_PATTERNS if pattern in added),
