@@ -349,3 +349,112 @@ def source_version_errors(payload: dict[str, Any] | None, *, expected_version: s
     else:
         errors.append("current plugin version is unavailable; server upload entry cannot verify latest plugin")
     return errors
+
+
+SUPPLEMENT_FIELD_POLICIES = {
+    "project": {
+        "member_label": "项目（project）",
+        "member_can_supplement": True,
+        "member_can_fabricate": False,
+        "historical_fact": False,
+        "guidance": "请从源码路径、分支名、构建目录或需求上下文补充可追溯项目型号。",
+    },
+    "platform": {
+        "member_label": "平台（platform）",
+        "member_can_supplement": True,
+        "member_can_fabricate": False,
+        "historical_fact": False,
+        "guidance": "请补充 mtk、rk 或 unisoc，并提供来源依据。",
+    },
+    "android_version": {
+        "member_label": "Android 版本（Android version）",
+        "member_can_supplement": True,
+        "member_can_fabricate": False,
+        "historical_fact": False,
+        "guidance": "请补充数字 Android 版本，并提供构建或源码依据。",
+    },
+    "verification": {
+        "member_label": "验证（verification）",
+        "member_can_supplement": True,
+        "member_can_fabricate": False,
+        "historical_fact": False,
+        "guidance": "请补充远端构建、本机产物、adb 设备验证和验证结论。",
+    },
+    "function_split": {
+        "member_label": "按功能拆分补丁包（function split）",
+        "member_can_supplement": False,
+        "member_can_fabricate": False,
+        "historical_fact": False,
+        "guidance": "无共同目标聚合包不能补证，请按功能重新生成普通补丁包。",
+    },
+    "patch_asset_correction": {
+        "member_label": "补丁资产修正（patch asset correction）",
+        "member_can_supplement": True,
+        "member_can_fabricate": False,
+        "historical_fact": False,
+        "guidance": "请在干净工作树重新采集同一功能补丁包，作为补证包关联原始包。",
+    },
+    "search_usage": {
+        "member_label": "开发前知识搜索（pre-change knowledge search）",
+        "member_can_supplement": False,
+        "member_can_fabricate": False,
+        "historical_fact": True,
+        "guidance": "开发前知识搜索不能事后补造；缺失时由管理端执行沉淀前重叠检索。",
+    },
+    "package_status": {
+        "member_label": "包状态（package status）",
+        "member_can_supplement": True,
+        "member_can_fabricate": False,
+        "historical_fact": False,
+        "guidance": "请根据验证结论重新生成 candidate、validated、failed 或 blocked 状态。",
+    },
+    "patch_companion_readme": {
+        "member_label": "模板化补丁配套说明（templated patch companion readme）",
+        "member_can_supplement": True,
+        "member_can_fabricate": False,
+        "historical_fact": False,
+        "guidance": "请删除空模板 patches/*.readme.md，或补成有效事实说明。",
+    },
+}
+
+
+def supplement_field_policy(field: str) -> dict[str, Any]:
+    key = str(field or "").strip()
+    policy = SUPPLEMENT_FIELD_POLICIES.get(key)
+    if policy:
+        return {"field": key, **policy}
+    return {
+        "field": key,
+        "member_label": key,
+        "member_can_supplement": True,
+        "member_can_fabricate": False,
+        "historical_fact": False,
+        "guidance": "请补充可追溯事实证据。",
+    }
+
+
+def classify_patch_asset_names(paths: list[Any]) -> dict[str, Any]:
+    uncontrolled = [str(path) for path in paths if has_uncontrolled_app_patch_asset_prefix(path)]
+    issue_codes: list[str] = []
+    if uncontrolled:
+        issue_codes.append("patch_asset_pollution")
+    return {
+        "status": "fail" if issue_codes else "pass",
+        "issue_codes": issue_codes,
+        "uncontrolled_app_prefixes": uncontrolled,
+    }
+
+
+def classify_function_scope(text: str, patch_count: int = 0) -> dict[str, Any]:
+    errors = aggregate_package_scope_errors(text, patch_count)
+    if errors:
+        return {
+            "status": "fail",
+            "issue_codes": ["aggregate_package"],
+            "messages": errors,
+        }
+    return {
+        "status": "pass",
+        "issue_codes": [],
+        "messages": [],
+    }

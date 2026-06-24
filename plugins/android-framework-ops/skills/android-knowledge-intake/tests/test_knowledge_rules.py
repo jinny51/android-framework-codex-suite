@@ -115,6 +115,47 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertIn(f"source evidence plugin_version must match current plugin version {current}", stale_errors)
         self.assertIn(f"source evidence skill_version must match current plugin version {current}", stale_errors)
 
+    def test_supplement_field_policy_contract(self) -> None:
+        from android_framework_ops.knowledge_rules import supplement_field_policy
+
+        project = supplement_field_policy("project")
+        self.assertTrue(project["member_can_supplement"])
+        self.assertFalse(project["historical_fact"])
+        self.assertIn("项目", project["member_label"])
+
+        search = supplement_field_policy("search_usage")
+        self.assertFalse(search["member_can_fabricate"])
+        self.assertTrue(search["historical_fact"])
+        self.assertIn("不能事后补造", search["guidance"])
+
+    def test_patch_asset_name_classification_contract(self) -> None:
+        from android_framework_ops.knowledge_rules import classify_patch_asset_names
+
+        result = classify_patch_asset_names(
+            [
+                "app15-frameworks-base@wifi.patch",
+                "mtk15-frameworks-base@wifi.patch",
+            ]
+        )
+        self.assertIn("patch_asset_pollution", result["issue_codes"])
+        self.assertIn("app15-frameworks-base@wifi.patch", result["uncontrolled_app_prefixes"])
+
+    def test_function_scope_classification_contract(self) -> None:
+        from android_framework_ops.knowledge_rules import classify_function_scope
+
+        good = classify_function_scope(
+            "基于同一 PCMODE 功能目标，拆分系统界面、快捷设置和任务栏三个子改动。",
+            patch_count=3,
+        )
+        self.assertEqual(good["status"], "pass")
+
+        bad = classify_function_scope(
+            "今日补丁：HD 版本云电脑跳转逻辑、系统弹窗副屏显示、移除 Alt+Tab 最近任务组合键。",
+            patch_count=3,
+        )
+        self.assertEqual(bad["status"], "fail")
+        self.assertIn("aggregate_package", bad["issue_codes"])
+
 
 if __name__ == "__main__":
     unittest.main()
