@@ -824,6 +824,8 @@ def validate_search_decision_for_status(args: argparse.Namespace, search_payload
     if args.status != "validated":
         return []
     if search_payload.get("searched") is not True:
+        if args.implementation_origin != "codex":
+            return []
         return [
             "已验证（validated）补丁包必须携带开发前知识搜索（pre-change knowledge search）证据，"
             "search_before_change.searched 必须为 true；请先运行 android-knowledge-search，"

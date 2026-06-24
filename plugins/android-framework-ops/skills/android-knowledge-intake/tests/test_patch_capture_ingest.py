@@ -50,6 +50,7 @@ def create_capture_package(
     git_branch: str = "",
     git_remote: str = "",
     search_payload: dict | None = None,
+    implementation_origin: str = "manual",
 ) -> Path:
     package = root / "capture"
     patch = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
@@ -122,7 +123,7 @@ def create_capture_package(
         "android_version": "14",
         "summary": "Allow nav policy toggle",
         "status": status,
-        "implementation_origin": "manual",
+        "implementation_origin": implementation_origin,
         "captured_by": "codex",
         "coding_standard_check": {
             "required": True,
@@ -149,7 +150,7 @@ def create_capture_package(
                 "platform_token": "rk14",
                 "platform": "rk",
                 "android_version": "14",
-                "implementation_origin": "manual",
+                "implementation_origin": implementation_origin,
                 "captured_by": "codex",
                 "facts": {"modified_files": ["frameworks/base/services/core/java/X.java"]},
             }
@@ -378,7 +379,21 @@ def create_multi_feature_capture_package(root: Path, *, feature_limit: int | Non
     return package
 
 
-def write_member_search_usage(out_dir: Path, date: str, decision: str = "adapt") -> Path:
+def write_member_search_usage(
+    out_dir: Path,
+    date: str,
+    decision: str = "adapt",
+    query: str = "显示策略 split screen",
+    targets: list[str] | None = None,
+    match_points: list[str] | None = None,
+    mismatch_points: list[str] | None = None,
+    reason: str = "复用思路但需要适配当前项目",
+    results: list[dict[str, str]] | None = None,
+) -> Path:
+    targets = targets or ["case-display-policy"]
+    match_points = match_points or ["同类显示策略"]
+    mismatch_points = mismatch_points or ["项目源码路径不同"]
+    results = results or [{"kind": "case", "id": "case-display-policy", "title": "显示策略"}]
     record_dir = out_dir / "search-usage" / date.replace("-", "")
     record_dir.mkdir(parents=True, exist_ok=True)
     path = record_dir / f"{date.replace('-', '')}-usage.json"
@@ -391,18 +406,18 @@ def write_member_search_usage(out_dir: Path, date: str, decision: str = "adapt")
                 "date": date,
                 "profile": "member01",
                 "member_alias": "admin_alias",
-                "query": "显示策略 split screen",
+                "query": query,
                 "type": "all",
                 "searched": True,
                 "decision": decision,
                 "reuse_decision": decision,
-                "targets": ["case-display-policy"],
-                "match_points": ["同类显示策略"],
-                "mismatch_points": ["项目源码路径不同"],
-                "reason": "复用思路但需要适配当前项目",
+                "targets": targets,
+                "match_points": match_points,
+                "mismatch_points": mismatch_points,
+                "reason": reason,
                 "outcome": "not_started",
                 "result_count": 1,
-                "results": [{"kind": "case", "id": "case-display-policy", "title": "显示策略"}],
+                "results": results,
             },
             ensure_ascii=False,
             indent=2,
@@ -901,6 +916,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                     "results": [],
                     "summary": "not provided by capture command",
                 },
+                implementation_origin="codex",
             )
 
             package = intake.prepare_patch_package(
@@ -1008,6 +1024,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                     "results": [],
                     "summary": "not provided by capture command",
                 },
+                implementation_origin="codex",
             )
 
             package = intake.prepare_patch_package(
@@ -1027,6 +1044,85 @@ class PatchCaptureIngestTests(unittest.TestCase):
             errors = "\n".join(check["errors"])
             self.assertIn("开发前知识搜索", errors)
             self.assertIn("search_before_change.searched", errors)
+
+    def test_manual_validated_patch_package_allows_missing_pre_change_search_without_faking_it(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_package = create_capture_package(
+                root,
+                search_payload={
+                    "result": "INFO",
+                    "method": "knowledge_search",
+                    "searched": False,
+                    "queries": [],
+                    "results": [],
+                    "summary": "手动实现（manual implementation）开发前未搜索，不能事后补造。",
+                },
+                implementation_origin="manual",
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-134900-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture_package)],
+                project="TVE1234A",
+                summary="显示策略适配",
+                status="validated",
+                schema_version="1",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            search_evidence = json.loads((package / "materials" / "evidence" / "search_before_change.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "PASS")
+            self.assertFalse(search_evidence["payload"]["searched"])
+            self.assertIn("手动实现", search_evidence["payload"]["summary"])
+
+    def test_patch_package_does_not_attach_unrelated_same_day_search_usage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = self.config(root)
+            write_member_search_usage(
+                Path(config["out_dir"]),
+                "2026-06-18",
+                decision="adapt",
+                query="DeviceCtrlService 后台网络权限",
+                targets=["case-device-ctrl-service-permission"],
+                match_points=["DeviceCtrlService 后台控制链路"],
+                mismatch_points=["权限配置不同"],
+                reason="同日搜索过 DeviceCtrlService 权限问题",
+                results=[{"kind": "case", "id": "case-device-ctrl-service-permission", "title": "DeviceCtrlService 权限配置"}],
+            )
+            capture_package = create_capture_package(
+                root,
+                search_payload={
+                    "result": "INFO",
+                    "method": "knowledge_search",
+                    "searched": False,
+                    "queries": [],
+                    "results": [],
+                    "summary": "capture package did not provide pre-change search",
+                },
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 18),
+                config,
+                run_id="20260618-204354-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture_package)],
+                project="TVE1234A",
+                summary="关闭低版本 APK 警告和 APK 不适配警告",
+                status="candidate",
+                schema_version="1",
+            )
+
+            search_evidence = json.loads((package / "materials" / "evidence" / "search_before_change.json").read_text(encoding="utf-8"))
+            payload = search_evidence["payload"]
+            self.assertFalse(payload["searched"])
+            self.assertNotIn("DeviceCtrlService 后台网络权限", payload.get("queries", []))
 
     def test_capture_package_preserves_optional_build_result_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

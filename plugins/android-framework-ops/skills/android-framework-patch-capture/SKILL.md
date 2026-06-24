@@ -11,7 +11,7 @@ Use it after `android-framework-change-workflow` has produced a concrete change,
 
 The generated package includes patch content `sha1` for server-side deduplication. If a known daily/weekly incoming run produced the work context, pass `--related-report-run-id <run_id>` so intake can preserve an explicit report link. Weekly links are provenance only; weekly packages are not knowledge repository materialization candidates.
 
-Search evidence is development evidence, not a curation decision. A `validated` patch package must carry pre-change knowledge search evidence with `search_before_change.searched=true`. If no usable knowledge was found, record `--reuse-decision not_found` instead of omitting search evidence. If search has hits, close the search usage decision with `--reuse-decision reuse`, `adapt`, `reference_only`, `not_applicable`, or `not_found`; do not leave it as `unknown`. Record `--reuse-target`, `--reuse-match`, `--reuse-mismatch`, or `--reuse-reason` when a hit influenced the implementation.
+Search evidence is development evidence, not a curation decision. A Codex-authored `validated` patch package must carry pre-change knowledge search evidence with `search_before_change.searched=true`. If no usable knowledge was found, record `--reuse-decision not_found` instead of omitting search evidence. If search has hits, close the search usage decision with `--reuse-decision reuse`, `adapt`, `reference_only`, `not_applicable`, or `not_found`; do not leave it as `unknown`. Record `--reuse-target`, `--reuse-match`, `--reuse-mismatch`, or `--reuse-reason` when a hit influenced the implementation. If the implementation origin is `manual`, `external`, `historical`, `mixed`, or `unknown` and no pre-change search happened, record that fact; do not invent a search record.
 
 `--project` is a high-priority hint only when it contains a company project anchor in the current recognition scope (`TVE`, `TVA`, or `TVI`). If `--project` is omitted or contains a generic label such as `mtk android16 Camera2`, the capture script must continue looking at source roots, repository paths, git branches/remotes, the WSL source-access registry, and feature README/diff/summary text before falling back to `unknown`.
 
@@ -159,12 +159,12 @@ Stop before upload when:
 - new added lines contain direct `Log.*` or `Slog.*`
 - README facts are unknown but presented as verified
 - build or device verification is missing but status is `validated`
-- status is `validated` and pre-change knowledge search evidence is missing
+- status is `validated`, implementation origin is `codex`, and pre-change knowledge search evidence is missing
 - status is `validated`, knowledge search returned hits, and search usage decision is still `unknown`
 
 Team or project coding rules, such as `jinny-framework-coding-standards`, should be applied during development. This skill only checks and records violations; it is not the place to retrofit coding style after the fact.
 
-When the code was not authored by Codex, pass `--implementation-origin manual`, `external`, `historical`, `mixed`, or `unknown`. The package records this as curation input material; it does not turn the change into curated knowledge.
+When the code was not authored by Codex, pass `--implementation-origin manual`, `external`, `historical`, `mixed`, or `unknown`. The package records this as curation input material; it does not turn the change into curated knowledge and does not fabricate pre-change knowledge search. Admin-side curation can later run post-change overlap check to decide new, merge, archive, or needs evidence.
 
 For `validated`, device verification is required by default. Use `--verification-method equivalent` only when device interaction is not the right proof, and provide `--equivalent-type`, `--equivalent-reason`, at least one `--equivalent-coverage`, and `--remaining-risk`.
 

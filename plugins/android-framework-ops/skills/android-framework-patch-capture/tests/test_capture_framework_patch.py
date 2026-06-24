@@ -446,6 +446,49 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("开发前知识搜索", errors)
             self.assertIn("search_before_change.searched", errors)
 
+    def test_manual_validated_capture_allows_missing_pre_change_search_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260611-131100-patch",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "nav-policy-toggle",
+                    "--summary",
+                    "Allow navigation policy toggle",
+                    "--implementation-origin",
+                    "manual",
+                    "--status",
+                    "validated",
+                    "--verification",
+                    "frameworks/base/services build PASS",
+                    "--device",
+                    "rk3576",
+                    "--device-verification",
+                    "Boot completed and navigation policy behavior matched expectation",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            search = json.loads((package_dir / "evidence" / "search-before-change.json").read_text(encoding="utf-8"))
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+            package_check = json.loads((package_dir / "evidence" / "package-check.json").read_text(encoding="utf-8"))
+
+            self.assertFalse(search["searched"])
+            self.assertEqual(manifest["implementation_origin"], "manual")
+            self.assertEqual(package_check["status"], "PASS")
+
     def test_rejects_generic_android_platform_token(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

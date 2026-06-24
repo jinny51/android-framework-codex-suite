@@ -129,6 +129,27 @@ SCOPE_ANCHOR_GENERIC_TOKENS = {
     "text",
     "title",
 }
+SEARCH_USAGE_GENERIC_TOKENS = SCOPE_ANCHOR_GENERIC_TOKENS | {
+    "android",
+    "app",
+    "apps",
+    "base",
+    "case",
+    "core",
+    "framework",
+    "frameworks",
+    "java",
+    "package",
+    "packages",
+    "res",
+    "service",
+    "services",
+    "src",
+    "value",
+    "values",
+    "xml",
+}
+CODEX_IMPLEMENTATION_ORIGINS = {"codex"}
 INCOMING_KINDS = {"daily_trace", "weekly_trace", "framework_change"}
 PACKAGE_STATUS_VALUES = {"validated", "candidate", "draft", "failed", "blocked"}
 MATERIALS_DIR = "materials"
@@ -889,7 +910,7 @@ def has_project_anchor(text: str) -> bool:
 
 def project_anchor(text: str) -> str:
     match = PROJECT_ANCHOR_RE.search(text or "")
-    return match.group(1).upper() if match else ""
+    return match.group(0).upper() if match else ""
 
 
 def strip_project_anchor(text: str, project: str) -> str:
@@ -1967,8 +1988,74 @@ def choose_search_usage_decision(records: list[dict[str, Any]]) -> str:
     return "unknown"
 
 
-def search_usage_payload(config: dict[str, str], date: dt.date) -> dict[str, Any]:
+def search_usage_tokens(*values: Any) -> set[str]:
+    return {token for token in scope_semantic_tokens(*values) if token not in SEARCH_USAGE_GENERIC_TOKENS}
+
+
+def cjk_token(value: str) -> bool:
+    return bool(re.search(r"[\u4e00-\u9fff]", value))
+
+
+def token_sets_related(left: set[str], right: set[str]) -> bool:
+    if not left or not right:
+        return False
+    if left & right:
+        return True
+    for a in left:
+        for b in right:
+            if len(a) >= 4 and len(b) >= 4 and (a in b or b in a):
+                return True
+            if (cjk_token(a) or cjk_token(b)) and len(a) >= 2 and len(b) >= 2 and (a in b or b in a):
+                return True
+    return False
+
+
+def search_usage_record_text_values(record: dict[str, Any]) -> list[Any]:
+    values: list[Any] = [
+        record.get("query"),
+        record.get("decision"),
+        record.get("reuse_decision"),
+        record.get("reason"),
+        record.get("outcome"),
+        *list_string_values(record.get("targets")),
+        *list_string_values(record.get("match_points")),
+        *list_string_values(record.get("mismatch_points")),
+    ]
+    results = record.get("results")
+    if isinstance(results, list):
+        for result in results:
+            values.append(summarize_usage_result(result))
+            if isinstance(result, dict):
+                values.extend([result.get("id"), result.get("case_id"), result.get("variant_id"), result.get("patch_id"), result.get("title"), result.get("summary")])
+            else:
+                values.append(result)
+    return values
+
+
+def search_usage_record_matches_feature(record: dict[str, Any], feature_tokens: set[str]) -> bool:
+    if not feature_tokens:
+        return False
+    return token_sets_related(search_usage_tokens(*search_usage_record_text_values(record)), feature_tokens)
+
+
+def patch_search_feature_tokens(summary: str, patch_items: list[dict[str, Any]], modified_files: list[str]) -> set[str]:
+    values: list[Any] = [summary, *modified_files]
+    for item in patch_items:
+        facts = item.get("facts") if isinstance(item.get("facts"), dict) else {}
+        values.extend([item.get("id"), item.get("path"), item.get("repo_path")])
+        for key in ("symbols", "system_properties", "settings_keys", "resource_keys", "framework_log_keys"):
+            values.extend(list_string_values(facts.get(key)))
+        for path in list_string_values(facts.get("modified_files")):
+            stem = Path(path).stem
+            if stem:
+                values.append(stem)
+    return search_usage_tokens(*values)
+
+
+def search_usage_payload(config: dict[str, str], date: dt.date, feature_tokens: set[str] | None = None) -> dict[str, Any]:
     records = load_search_usage_records(config, date)
+    if feature_tokens is not None:
+        records = [item for item in records if search_usage_record_matches_feature(item, feature_tokens)]
     if not records:
         return {}
     decision = choose_search_usage_decision(records)
@@ -2063,6 +2150,11 @@ def search_payload_missing_required_pre_change_search(payload: dict[str, Any]) -
     if isinstance(payload.get("payload"), dict):
         payload = payload["payload"]
     return payload.get("searched") is not True
+
+
+def implementation_origins_require_pre_change_search(origins: list[str]) -> bool:
+    normalized = {str(item or "").strip().lower() for item in origins if str(item or "").strip()}
+    return bool(normalized) and normalized <= CODEX_IMPLEMENTATION_ORIGINS
 
 
 def plugin_commit() -> str:
@@ -2692,7 +2784,17 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             errors.append("failed 必须提供 FAIL 验证")
         search_evidence = evidence_by_kind.get("search_before_change", {})
         search_payload = search_evidence.get("payload", search_evidence) if isinstance(search_evidence, dict) else {}
-        if package_status == "validated" and search_payload_missing_required_pre_change_search(search_payload):
+        implementation_origins = list_string_values(manifest.get("implementation_origins"))
+        if not implementation_origins:
+            patch_diff = evidence_by_kind.get("patch_diff_facts", {})
+            patch_diff_payload = patch_diff.get("payload", patch_diff) if isinstance(patch_diff, dict) else {}
+            if isinstance(patch_diff_payload, dict):
+                implementation_origins = list_string_values(patch_diff_payload.get("implementation_origins"))
+        if (
+            package_status == "validated"
+            and implementation_origins_require_pre_change_search(implementation_origins)
+            and search_payload_missing_required_pre_change_search(search_payload)
+        ):
             errors.append(
                 "已验证（validated）补丁包必须携带开发前知识搜索（pre-change knowledge search）证据，"
                 "search_before_change.searched 必须为 true"
@@ -4084,7 +4186,7 @@ def prepare_patch_package(
         package_status = "candidate"
 
     capture_search_payload = first_evidence_payload(package_dir, capture_evidence_entries, "search_before_change")
-    member_search_payload = search_usage_payload(config, date)
+    member_search_payload = search_usage_payload(config, date, feature_tokens=patch_search_feature_tokens(summary, all_patch_items, modified_files))
     if search_payload_has_member_decision(capture_search_payload):
         search_payload = capture_search_payload
     elif member_search_payload:

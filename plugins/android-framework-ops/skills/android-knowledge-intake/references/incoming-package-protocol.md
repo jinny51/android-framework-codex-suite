@@ -15,7 +15,7 @@ Member-side packages must provide enough deterministic anchors for the server to
 - variant natural key: `case_id + platform + android_version + project + repo_paths`
 - patch identity: patch file content `sha1`
 - optional report link: `related_report_run_ids`
-- pre-change knowledge use evidence: search queries, matched object ids, decision (`reuse`, `adapt`, `reference_only`, `not_applicable`, `not_found`, or `unknown`), match/mismatch points, reason, and outcome
+- pre-change knowledge use evidence when it happened: search queries, matched object ids, decision (`reuse`, `adapt`, `reference_only`, `not_applicable`, `not_found`, or `unknown`), match/mismatch points, reason, and outcome
 - cross-machine verification evidence: remote build host/source root/profile/artifact plus local transfer, adb serial, device push/install/restart, and verification result
 
 The server may merge two framework_change packages into the same variant when the natural key matches, even when the incoming `variant_id` differs. The server must not let a later `failed` or `blocked` package overwrite stronger existing evidence; that later package is retained as evidence.
@@ -202,7 +202,7 @@ Manifest excerpt:
 
 `validated` requires `verification_result.payload.result = PASS`.
 
-`validated` framework change packages also require pre-change knowledge search evidence: `materials/evidence/search_before_change.json` must have `payload.searched = true`. If no reusable knowledge was found, record the explicit search result as `not_found` instead of omitting the evidence.
+Codex-authored `validated` framework change packages also require pre-change knowledge search evidence: `materials/evidence/search_before_change.json` must have `payload.searched = true`. If no reusable knowledge was found, record the explicit search result as `not_found` instead of omitting the evidence. Manual, external, historical, mixed, or unknown implementation origin must not fabricate pre-change search; it can preserve `searched=false` and still carry verification and patch facts for later admin-side curation.
 
 `candidate`, `draft`, `failed`, and `blocked` are uploaded as curation input materials only. They must not be presented as knowledge entries or reuse-ready validated solutions by member-side tooling.
 
@@ -226,9 +226,9 @@ If a previous `framework_change` package is marked 需补证据（needs_evidence
 
 This association only says the new patch package supplements evidence for an earlier package. It is not a curation decision and does not create another allowed `package_kind`.
 
-The member-side local check treats supplement packages as evidence closure attempts. If `supplement_reason` says the package补项目（project）, the new package must carry a traceable TVE/TVA/TVI project in `manifest.project` and `project_inference` must confirm `recognized=true`, `company_rule_match=true`, `basis`, and `checked_sources`. If it补平台（platform） or Android 版本（Android version）, the new package cannot keep the requested field as `unknown`; when capture evidence cannot prove those fields, `android_knowledge_intake.py patch` may use explicit `--platform mtk|rk|unisoc|unknown` and `--android-version <number>` to write the corrected boundary into `manifest.json`, `materials/variant.json`, and `materials/evidence/evidence_supplement.json`. If it补验证（verification）, `verification_result` must be `PASS`. If it补开发前知识搜索（pre-change knowledge search）, `search_before_change.payload.searched` must be `true`. A supplement package that only repeats the original metadata, verification, or search gap fails locally before submission.
+The member-side local check treats supplement packages as evidence closure attempts. If `supplement_reason` says the package补项目（project）, the new package must carry a traceable TVE/TVA/TVI project in `manifest.project` and `project_inference` must confirm `recognized=true`, `company_rule_match=true`, `basis`, and `checked_sources`. If it补平台（platform） or Android 版本（Android version）, the new package cannot keep the requested field as `unknown`; when capture evidence cannot prove those fields, `android_knowledge_intake.py patch` may use explicit `--platform mtk|rk|unisoc|unknown` and `--android-version <number>` to write the corrected boundary into `manifest.json`, `materials/variant.json`, and `materials/evidence/evidence_supplement.json`. If it补验证（verification）, `verification_result` must be `PASS`. If the old gap is pre-change knowledge search but the implementation was manual or the search did not happen before development, the member must not fabricate it; record the implementation origin and let admin-side curation perform post-change overlap check.
 
-`materials/evidence/search_before_change.json` records member-side knowledge use before or during the change. It can come from an explicit patch capture package, or from same-day `android-knowledge-search` usage records:
+`materials/evidence/search_before_change.json` records member-side knowledge use before or during the change. It can come from an explicit patch capture package, or from same-day `android-knowledge-search` usage records only when those records match the current patch feature anchors. Same member and same day are not enough:
 
 ```json
 {
