@@ -26,7 +26,7 @@
 
 生成出的上传包会在 `materials/evidence/source.json` 写入 `plugin_name`、`plugin_version`、`skill_version`、`plugin_installation` 和可用的 `plugin_commit`。服务器新上传严格校验会拒绝缺少这些版本证据的包，避免项目（project）、平台（platform）或 Android 版本（Android version）错误时无法追溯生成入口。
 
-日报包（daily report package）和补丁包（patch package）会携带成员侧知识搜索使用证据（search usage evidence）。Codex 正常开发流程生成的已验证（validated）补丁包必须携带开发前知识搜索（pre-change knowledge search）证据，`search_before_change.searched` 必须为 `true`；没有找到可用知识时也要记录未命中（not_found）。如果命中了知识搜索候选，local-check 会要求把未知（unknown）闭合为直接复用（reuse）、适配复用（adapt）、仅作参考（reference_only）、不适用（not_applicable）或未命中（not_found）。手动实现（manual implementation）、外部实现、历史材料、混合实现或未知来源不能事后伪造开发前搜索；可以如实记录 `searched=false`，后续由管理端本地技能执行沉淀前重叠检索（post-change overlap check）。捕获包（patch capture package）里只有未知（unknown）时，只能用和当前功能锚点匹配的当天搜索记录补齐；同一成员同一天并不足以关联。这些值只说明开发时如何使用搜索结果，不是沉淀结论（curation decision）。
+日报包（daily report package）和补丁包（patch package）会携带成员侧知识搜索使用证据（search usage evidence）。Codex 正常开发流程应在开发前执行开发前知识搜索（pre-change knowledge search）；没有找到可用知识时也要记录未命中（not_found）。如果命中了知识搜索候选，local-check 会要求把未知（unknown）闭合为直接复用（reuse）、适配复用（adapt）、仅作参考（reference_only）、不适用（not_applicable）或未命中（not_found）。如果开发前搜索事实没有发生，成员上传技能会如实保留 `searched=false` 并给出警告，不要求成员补造搜索；后续由管理端本地技能执行沉淀前重叠检索（post-change overlap check），且不获得搜索闭环加分。手动实现（manual implementation）、外部实现、历史材料、混合实现或未知来源也不能事后伪造开发前搜索。捕获包（patch capture package）里只有未知（unknown）时，只能用和当前功能锚点匹配的当天搜索记录补齐；同一成员同一天并不足以关联。这些值只说明开发时如何使用搜索结果，不是沉淀结论（curation decision）。
 
 ## 典型场景
 

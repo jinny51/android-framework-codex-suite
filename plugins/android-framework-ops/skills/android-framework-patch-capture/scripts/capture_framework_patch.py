@@ -836,29 +836,29 @@ def infer_reuse_decision(queries: list[str], results: list[str], summary: str) -
     return "unknown"
 
 
-def validate_search_decision_for_status(args: argparse.Namespace, search_payload: dict[str, Any]) -> list[str]:
+def validate_search_decision_for_status(args: argparse.Namespace, search_payload: dict[str, Any]) -> tuple[list[str], list[str]]:
     if args.status != "validated":
-        return []
+        return [], []
     if search_payload.get("searched") is not True:
         if args.implementation_origin != "codex":
-            return []
-        return [
-            "已验证（validated）补丁包必须携带开发前知识搜索（pre-change knowledge search）证据，"
-            "search_before_change.searched 必须为 true；请先运行 android-knowledge-search，"
-            "或传 --search-query、--search-result/--search-summary 和 --reuse-decision。"
+            return [], []
+        return [], [
+            "开发前未搜索，不能事后补造开发前知识搜索（pre-change knowledge search）证据；"
+            "本包可保留已验证（validated）验证结论，但知识沉淀必须由管理端执行沉淀前重叠检索（post-change overlap check），"
+            "且不获得搜索闭环加分。"
         ]
     decision = str(search_payload.get("reuse_decision") or search_payload.get("decision") or "").strip() or "unknown"
     if decision != "unknown":
-        return []
+        return [], []
     results = search_payload.get("results")
     has_results = isinstance(results, list) and any(str(item).strip() for item in results)
     if not has_results:
-        return []
+        return [], []
     return [
         "已验证（validated）补丁包命中知识搜索结果时必须闭合搜索使用决策（search usage decision），"
         "请传 --reuse-decision reuse/adapt/reference_only/not_applicable/not_found，"
         "并记录 --reuse-target、--reuse-match、--reuse-mismatch 或 --reuse-reason。"
-    ]
+    ], []
 
 
 def validate_feature_scope(args: argparse.Namespace) -> list[str]:
@@ -1505,7 +1505,9 @@ def main() -> int:
     errors.extend(coding_check["errors"])
     warnings.extend(coding_check["warnings"])
     errors.extend(validate_verification_for_status(args, verification_payload))
-    errors.extend(validate_search_decision_for_status(args, search_payload))
+    search_errors, search_warnings = validate_search_decision_for_status(args, search_payload)
+    errors.extend(search_errors)
+    warnings.extend(search_warnings)
 
     package_check = {"status": "FAIL" if errors else "PASS", "errors": errors, "warnings": warnings}
     readme_path = package_dir / "README.md"

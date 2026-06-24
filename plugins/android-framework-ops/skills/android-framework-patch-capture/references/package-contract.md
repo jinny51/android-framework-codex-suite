@@ -209,7 +209,7 @@ not_found        未命中：搜索后没有找到可用知识。
 unknown          未记录：旧包或异常场景没有形成明确决策。
 ```
 
-For Codex-authored `validated` patch packages, pre-change knowledge search evidence is mandatory: `search_before_change.searched` must be `true`. If the search did not find reusable knowledge, set `reuse_decision=not_found` instead of leaving the package without search evidence. For manual, external, historical, mixed, or unknown implementation origin, do not fabricate pre-change search; record `searched=false` when no search happened and let admin-side curation run post-change overlap check.
+Codex normal development should record pre-change knowledge search before source edits. If the search did not find reusable knowledge, set `reuse_decision=not_found` instead of leaving the package without search evidence. If pre-change search did not really happen, do not fabricate it for `validated`; record `searched=false`, keep real verification evidence, and let admin-side curation run post-change overlap check without search-loop score. Manual, external, historical, mixed, or unknown implementation origin follows the same no-fabrication rule.
 
 ## Remote Build To Local ADB Evidence
 
@@ -275,7 +275,7 @@ Allowed statuses:
 - `failed`: retained as failed verification or failed implementation evidence
 - `blocked`: retained as blocked work evidence
 
-Status helps ranking member-side materials, but it is not a curation decision and must not be used as the only reuse decision. Codex-authored `validated` also requires pre-change knowledge search evidence and a closed search usage decision when hits exist. Non-Codex implementation origin may be validated by build/device evidence while still recording that pre-change search did not happen. `reuse_hint` is only a hint for later review by the user's local curation maintainer skill.
+Status helps ranking member-side materials, but it is not a curation decision and must not be used as the only reuse decision. `validated` means build/device or accepted equivalent verification passed; it does not prove the search loop happened. Actual search hits still require a closed search usage decision when they exist. A package may be validated by build/device evidence while recording that pre-change search did not happen; admin-side curation must then run post-change overlap check and avoid search-loop score. `reuse_hint` is only a hint for later review by the user's local curation maintainer skill.
 
 ## Project Recognition
 

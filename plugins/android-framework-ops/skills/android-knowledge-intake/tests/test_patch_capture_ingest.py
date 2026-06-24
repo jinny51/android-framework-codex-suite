@@ -1049,7 +1049,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("搜索使用决策", errors)
             self.assertIn("reuse/adapt/reference_only/not_applicable/not_found", errors)
 
-    def test_validated_patch_package_rejects_missing_pre_change_search(self) -> None:
+    def test_validated_patch_package_warns_missing_pre_change_search_without_faking_it(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_package = create_capture_package(
@@ -1078,10 +1078,13 @@ class PatchCaptureIngestTests(unittest.TestCase):
             )
 
             check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-            self.assertEqual(check["status"], "FAIL")
-            errors = "\n".join(check["errors"])
-            self.assertIn("开发前知识搜索", errors)
-            self.assertIn("search_before_change.searched", errors)
+            search_evidence = json.loads((package / "materials" / "evidence" / "search_before_change.json").read_text(encoding="utf-8"))
+            self.assertEqual(check["status"], "PASS")
+            self.assertFalse(check["errors"])
+            self.assertFalse(search_evidence["payload"]["searched"])
+            warnings = "\n".join(check["warnings"])
+            self.assertIn("开发前未搜索", warnings)
+            self.assertIn("沉淀前重叠检索", warnings)
 
     def test_manual_validated_patch_package_allows_missing_pre_change_search_without_faking_it(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

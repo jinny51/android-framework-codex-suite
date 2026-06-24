@@ -2835,9 +2835,10 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             and implementation_origins_require_pre_change_search(implementation_origins)
             and search_payload_missing_required_pre_change_search(search_payload)
         ):
-            errors.append(
-                "已验证（validated）补丁包必须携带开发前知识搜索（pre-change knowledge search）证据，"
-                "search_before_change.searched 必须为 true"
+            warnings.append(
+                "开发前未搜索，不能事后补造开发前知识搜索（pre-change knowledge search）证据；"
+                "本包可保留已验证（validated）验证结论，但知识沉淀必须由管理端执行沉淀前重叠检索（post-change overlap check），"
+                "且不获得搜索闭环加分。"
             )
         if package_status == "validated" and search_payload_needs_closed_decision(search_payload):
             errors.append(
