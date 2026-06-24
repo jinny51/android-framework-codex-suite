@@ -412,7 +412,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("搜索使用决策", errors)
             self.assertIn("reuse/adapt/reference_only/not_applicable/not_found", errors)
 
-    def test_validated_capture_without_pre_change_search_warns_without_blocking(self) -> None:
+    def test_codex_validated_capture_without_pre_change_search_blocks_generation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             create_repo(root)
@@ -442,19 +442,15 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "Boot completed and navigation policy behavior matched expectation",
                 ],
                 root,
+                check=False,
             )
 
+            self.assertNotEqual(result.returncode, 0)
             payload = json.loads(result.stdout)
-            package_dir = Path(payload["package"])
-            search = json.loads((package_dir / "evidence" / "search-before-change.json").read_text(encoding="utf-8"))
-            package_check = json.loads((package_dir / "evidence" / "package-check.json").read_text(encoding="utf-8"))
-
-            self.assertFalse(search["searched"])
-            self.assertEqual(package_check["status"], "PASS")
-            self.assertFalse(package_check["errors"])
-            warnings = "\n".join(package_check["warnings"])
-            self.assertIn("开发前未搜索", warnings)
-            self.assertIn("沉淀前重叠检索", warnings)
+            errors = "\n".join(payload["local_check"]["errors"])
+            self.assertIn("开发前知识搜索", errors)
+            self.assertIn("不能事后补造", errors)
+            self.assertIn("--implementation-origin manual", errors)
 
     def test_manual_validated_capture_allows_missing_pre_change_search_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

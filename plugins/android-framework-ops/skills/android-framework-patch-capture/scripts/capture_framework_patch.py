@@ -22,6 +22,7 @@ if PLUGIN_LIB.is_dir() and str(PLUGIN_LIB) not in sys.path:
 
 from android_framework_ops.knowledge_rules import (
     aggregate_package_scope_errors,
+    classify_patch_asset_names,
     classify_pre_change_search,
     find_company_project,
     find_company_projects,
@@ -805,11 +806,11 @@ def validate_search_decision_for_status(args: argparse.Namespace, search_payload
     if not bool(classification.get("searched")):
         if args.implementation_origin != "codex":
             return [], []
-        return [], [
-            "开发前未搜索，不能事后补造开发前知识搜索（pre-change knowledge search）证据；"
-            "本包可保留已验证（validated）验证结论，但知识沉淀必须由管理端执行沉淀前重叠检索（post-change overlap check），"
-            "且不获得搜索闭环加分。"
-        ]
+        return [
+            "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造。"
+            "如果代码不是通过 Codex 闭环开发，请重新生成时显式使用 --implementation-origin manual、external 或 mixed。"
+            "管理端后续会执行沉淀前重叠检索（post-change overlap check）。"
+        ], []
     if not bool(classification.get("member_can_supplement")):
         return [], []
     return [
@@ -822,6 +823,15 @@ def validate_search_decision_for_status(args: argparse.Namespace, search_payload
 def validate_feature_scope(args: argparse.Namespace) -> list[str]:
     text = " ".join([str(args.summary or ""), str(args.feature or "")])
     return aggregate_package_scope_errors(text)
+
+
+def validate_patch_asset_names(captures: list[RepositoryCapture]) -> list[str]:
+    classification = classify_patch_asset_names([capture.patch_name for capture in captures])
+    if classification.get("status") != "fail":
+        return []
+    return [
+        "补丁资产命名包含非受控 app 平台前缀，请使用 mtk/rk/unisoc 平台令牌重新采集。"
+    ]
 
 
 def modules_from_files(files: list[str]) -> list[str]:
@@ -1460,6 +1470,7 @@ def main() -> int:
     problem_payload, risk_payload = feature_problem_and_risk_payloads(args, captures, feature_facts)
     coding_check = coding_standard_check(args, captures)
     errors.extend(validate_feature_scope(args))
+    errors.extend(validate_patch_asset_names(captures))
     errors.extend(coding_check["errors"])
     warnings.extend(coding_check["warnings"])
     errors.extend(validate_verification_for_status(args, verification_payload))
