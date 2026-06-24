@@ -945,7 +945,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(manifest["project"], "unknown")
             self.assertEqual(manifest["patches"][0]["project"], "unknown")
 
-    def test_short_project_model_from_argument_is_recognized(self) -> None:
+    def test_confirmed_legacy_project_alias_is_normalized(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             create_plain_repo(root)
@@ -977,8 +977,43 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             package_dir = Path(json.loads(result.stdout)["package"])
             manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
 
-            self.assertEqual(manifest["project"], "TVE8402")
-            self.assertEqual(manifest["patches"][0]["project"], "TVE8402")
+            self.assertEqual(manifest["project"], "TVE8402M")
+            self.assertEqual(manifest["patches"][0]["project"], "TVE8402M")
+
+    def test_invalid_project_model_from_argument_is_not_recognized(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_plain_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260604-130505-patch",
+                    "--platform",
+                    "mtk16",
+                    "--feature",
+                    "camera-policy",
+                    "--summary",
+                    "Camera2 policy adjustment",
+                    "--project",
+                    "TVE1234A",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "unknown")
+            self.assertEqual(manifest["patches"][0]["project"], "unknown")
 
     def test_project_branch_suffix_is_normalized_to_project_model(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1060,7 +1095,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     self.assertEqual(manifest["project_inference"]["project"], expected_project)
                     self.assertIn(raw_project, " ".join(manifest["project_inference"]["raw_inputs"]))
 
-    def test_tvd_project_model_from_argument_is_recognized(self) -> None:
+    def test_tvi_project_model_from_argument_is_recognized(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             create_plain_repo(root)
@@ -1082,7 +1117,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "--summary",
                     "Camera2 policy adjustment",
                     "--project",
-                    "TVD1234M",
+                    "TVI3366R",
                     "--status",
                     "candidate",
                 ],
@@ -1092,8 +1127,8 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             package_dir = Path(json.loads(result.stdout)["package"])
             manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
 
-            self.assertEqual(manifest["project"], "TVD1234M")
-            self.assertEqual(manifest["patches"][0]["project"], "TVD1234M")
+            self.assertEqual(manifest["project"], "TVI3366R")
+            self.assertEqual(manifest["patches"][0]["project"], "TVI3366R")
 
     def test_conflicting_project_clues_keep_project_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1118,7 +1153,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "--summary",
                     "Camera2 reversePortrait direction compensation",
                     "--project",
-                    "TVE1234A",
+                    "TVE1067M",
                     "--status",
                     "candidate",
                 ],
@@ -1130,7 +1165,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
 
             self.assertEqual(manifest["project"], "unknown")
             self.assertEqual(manifest["patches"][0]["project"], "unknown")
-            self.assertEqual(manifest["project_inference"]["candidates"], ["TVA10A2R", "TVE1234A"])
+            self.assertEqual(manifest["project_inference"]["candidates"], ["TVA10A2R", "TVE1067M"])
             self.assertTrue(any("多个项目型号" in item for item in manifest["project_inference"]["limits"]))
 
     def test_multi_repo_feature_package_has_one_readme_and_multiple_patches(self) -> None:

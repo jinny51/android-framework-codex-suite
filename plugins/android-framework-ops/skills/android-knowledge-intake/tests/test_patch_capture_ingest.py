@@ -45,7 +45,7 @@ def create_capture_package(
     status: str = "validated",
     related_report_run_ids: list[str] | None = None,
     include_build_result: bool = False,
-    project: str = "TVE1234A",
+    project: str = "TVE1067M",
     source_root: str | None = None,
     git_branch: str = "",
     git_remote: str = "",
@@ -244,7 +244,7 @@ def create_feature_capture_package(root: Path) -> Path:
         "package_type": "framework_feature_patch",
         "feature": "cross-repo-display-policy",
         "readme": "README.md",
-        "project": "TVE1234A",
+        "project": "TVE1067M",
         "platform_token": "rk14",
         "platform": "rk",
         "android_version": "14",
@@ -271,7 +271,7 @@ def create_feature_capture_package(root: Path) -> Path:
                 "source_root": "/work/android/frameworks/base",
                 "status": "validated",
                 "reuse_hint": True,
-                "project": "TVE1234A",
+                "project": "TVE1067M",
                 "platform_token": "rk14",
                 "platform": "rk",
                 "android_version": "14",
@@ -286,7 +286,7 @@ def create_feature_capture_package(root: Path) -> Path:
                 "source_root": "/work/android/packages/apps/Settings",
                 "status": "validated",
                 "reuse_hint": True,
-                "project": "TVE1234A",
+                "project": "TVE1067M",
                 "platform_token": "rk14",
                 "platform": "rk",
                 "android_version": "14",
@@ -464,7 +464,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-120000-patch",
                 patch_paths=[],
                 patch_package_paths=[str(create_capture_package(root, related_report_run_ids=["20260601-210000-daily"]))],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="Allow nav policy toggle",
                 status="validated",
                 schema_version="1",
@@ -662,8 +662,8 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 self.config(root),
                 run_id="20260612-190000-patch",
                 patch_paths=[],
-                patch_package_paths=[str(create_capture_package(root, project="TVE1234A"))],
-                project="TVE1234A",
+                patch_package_paths=[str(create_capture_package(root, project="TVE1067M"))],
+                project="TVE1067M",
                 summary="Allow nav policy toggle",
                 status="validated",
                 schema_version="1",
@@ -683,7 +683,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(supplement["kind"], "evidence_supplement")
             self.assertEqual(supplement["payload"]["target_package_key"], target)
             self.assertEqual(supplement["payload"]["reason"], reason)
-            self.assertEqual(supplement["payload"]["project"], "TVE1234A")
+            self.assertEqual(supplement["payload"]["project"], "TVE1067M")
 
     def test_project_supplement_fails_when_project_is_still_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -740,7 +740,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260612-190002-patch",
                 patch_paths=[str(patch)],
                 patch_package_paths=[],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="Allow nav policy toggle",
                 status="candidate",
                 schema_version="1",
@@ -828,9 +828,9 @@ class PatchCaptureIngestTests(unittest.TestCase):
                     str(
                         create_capture_package(
                             root,
-                            project="TVE1234A",
-                            source_root="/work/android/TVE9999U/frameworks/base",
-                            git_branch="feature/TVE9999U-nav-policy",
+                            project="TVE1067M",
+                            source_root="/work/android/TVE1086U/frameworks/base",
+                            git_branch="feature/TVE1086U-nav-policy",
                         )
                     )
                 ],
@@ -845,7 +845,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
 
             self.assertEqual(manifest["project"], "unknown")
             self.assertEqual(manifest["package_status"], "candidate")
-            self.assertEqual(project_inference["payload"]["candidates"], ["TVE1234A", "TVE9999U"])
+            self.assertEqual(project_inference["payload"]["candidates"], ["TVE1067M", "TVE1086U"])
             self.assertTrue(any("多个项目型号" in item for item in project_inference["payload"]["limits"]))
 
     def test_framework_change_validation_rejects_fake_platform(self) -> None:
@@ -857,7 +857,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-120000-patch",
                 patch_paths=[],
                 patch_package_paths=[str(create_capture_package(root))],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="Allow nav policy toggle",
                 status="validated",
                 schema_version="1",
@@ -885,7 +885,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-120000-patch",
                 patch_paths=[],
                 patch_package_paths=[str(create_capture_package(root))],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="Allow nav policy toggle",
                 status="validated",
                 schema_version="1",
@@ -928,7 +928,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-130000-patch",
                 patch_paths=[str(patch_file)],
                 patch_package_paths=[],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="显示策略适配",
                 status="candidate",
                 schema_version="1",
@@ -965,7 +965,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-133000-patch",
                 patch_paths=[],
                 patch_package_paths=[str(capture_package)],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="显示策略适配",
                 status="validated",
                 schema_version="1",
@@ -1003,7 +1003,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-134000-patch",
                 patch_paths=[],
                 patch_package_paths=[str(capture_package)],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="显示策略适配",
                 status="validated",
                 schema_version="1",
@@ -1039,7 +1039,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-134500-patch",
                 patch_paths=[],
                 patch_package_paths=[str(capture_package)],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="显示策略适配",
                 status="validated",
                 schema_version="1",
@@ -1073,7 +1073,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-134800-patch",
                 patch_paths=[],
                 patch_package_paths=[str(capture_package)],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="显示策略适配",
                 status="validated",
                 schema_version="1",
@@ -1107,7 +1107,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-134900-patch",
                 patch_paths=[],
                 patch_package_paths=[str(capture_package)],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="显示策略适配",
                 status="validated",
                 schema_version="1",
@@ -1153,7 +1153,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260618-204354-patch",
                 patch_paths=[],
                 patch_package_paths=[str(capture_package)],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="关闭低版本 APK 警告和 APK 不适配警告",
                 status="candidate",
                 schema_version="1",
@@ -1173,7 +1173,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-120000-patch",
                 patch_paths=[],
                 patch_package_paths=[str(create_capture_package(root, include_build_result=True))],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="Allow nav policy toggle",
                 status="validated",
                 schema_version="1",
@@ -1238,7 +1238,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-130000-patch",
                 patch_paths=[str(patch)],
                 patch_package_paths=[],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="Blocked policy investigation",
                 status="blocked",
                 schema_version="1",
@@ -1269,7 +1269,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-140000-patch",
                 patch_paths=[str(patch)],
                 patch_package_paths=[],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="Empty readme case",
                 status="candidate",
                 schema_version="1",
@@ -1293,7 +1293,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             )
             patch.with_suffix(".readme.md").write_text(
                 intake.patch_readme_template(
-                    intake.PatchInfo(path=patch, name=patch.name, project="TVE1234A"),
+                    intake.PatchInfo(path=patch, name=patch.name, project="TVE1067M"),
                     self.config(root),
                 ),
                 encoding="utf-8",
@@ -1305,7 +1305,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-150000-patch",
                 patch_paths=[str(patch)],
                 patch_package_paths=[],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="Template readme case",
                 status="candidate",
                 schema_version="1",
@@ -1324,7 +1324,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260526-120000-patch",
                 patch_paths=[],
                 patch_package_paths=[str(create_capture_package(root, status="candidate"))],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="Allow nav policy toggle",
                 status="validated",
                 schema_version="1",
@@ -1561,7 +1561,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260608-120000-feature",
                 patch_paths=[],
                 patch_package_paths=[str(create_feature_capture_package(root))],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="跨源码仓库调整显示策略和设置入口",
                 status="validated",
                 schema_version="1",
@@ -1605,7 +1605,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             )
             standalone_patch.with_suffix(".readme.md").write_text(
                 intake.patch_readme_template(
-                    intake.PatchInfo(path=standalone_patch, name=standalone_patch.name, project="TVE1234A"),
+                    intake.PatchInfo(path=standalone_patch, name=standalone_patch.name, project="TVE1067M"),
                     self.config(root),
                     status="validated",
                     reuse_hint=True,
@@ -1619,7 +1619,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 run_id="20260608-121000-template-companion",
                 patch_paths=[str(standalone_patch)],
                 patch_package_paths=[str(create_capture_package(root))],
-                project="TVE1234A",
+                project="TVE1067M",
                 summary="功能级说明合格但补丁说明未补齐",
                 status="validated",
                 schema_version="1",
@@ -1667,7 +1667,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 self.assertTrue(payload["company_rule_match"])
                 self.assertIn(raw_project, " ".join(payload["raw_inputs"]))
 
-    def test_project_inference_accepts_short_project_model(self) -> None:
+    def test_project_inference_normalizes_confirmed_legacy_project_alias(self) -> None:
         project, payload = intake.infer_project(
             "TVE8402",
             [],
@@ -1675,23 +1675,35 @@ class PatchCaptureIngestTests(unittest.TestCase):
             "",
         )
 
-        self.assertEqual(project, "TVE8402")
-        self.assertEqual(payload["project"], "TVE8402")
-        self.assertEqual(payload["base_model"], "TVE8402")
+        self.assertEqual(project, "TVE8402M")
+        self.assertEqual(payload["project"], "TVE8402M")
+        self.assertEqual(payload["base_model"], "TVE8402M")
         self.assertEqual(payload["suffix"], "")
         self.assertTrue(payload["company_rule_match"])
 
-    def test_project_inference_accepts_tvd_scope(self) -> None:
+    def test_project_inference_rejects_invalid_project_model(self) -> None:
         project, payload = intake.infer_project(
-            "TVD1234M_H031",
+            "TVE1234A",
             [],
             [],
             "",
         )
 
-        self.assertEqual(project, "TVD1234M")
-        self.assertEqual(payload["project"], "TVD1234M")
-        self.assertEqual(payload["base_model"], "TVD1234M")
+        self.assertEqual(project, "unknown")
+        self.assertEqual(payload["project"], "unknown")
+        self.assertFalse(payload["company_rule_match"])
+
+    def test_project_inference_accepts_tvi_scope(self) -> None:
+        project, payload = intake.infer_project(
+            "TVI3366R_H031",
+            [],
+            [],
+            "",
+        )
+
+        self.assertEqual(project, "TVI3366R")
+        self.assertEqual(payload["project"], "TVI3366R")
+        self.assertEqual(payload["base_model"], "TVI3366R")
         self.assertEqual(payload["suffix"], "")
         self.assertTrue(payload["company_rule_match"])
 

@@ -216,7 +216,7 @@ If a previous `framework_change` package is marked 需补证据（needs_evidence
   "payload": {
     "target_package_key": "20260612/lincong/20260612-172836-patch",
     "reason": "补充项目（project）证据",
-    "project": "TVE1234A",
+    "project": "TVE1067M",
     "platform": "mtk",
     "android_version": "16",
     "package_status": "validated"
@@ -282,7 +282,7 @@ Daily reports are not just prose. When a daily package context contains exactly 
 
 If the daily context contains multiple traceable candidates that share one canonical project, such as `TVE1067M1` and `TVE1067M1_H031`, write the canonical project `TVE1067M1` to `manifest.project` and keep the full raw candidates in `project_inference`. Do not truncate it to `TVE1067M`, because `TVE1067M` and `TVE1067M1` are distinct projects.
 
-The structured project field stores only the company model that matches the TVD/TVE/TVA/TVI naming rule. Any text outside that model is evidence text, not part of `manifest.project` or `materials/variant.json project`: branch suffixes, customer suffixes, build branches, business labels, module labels, Chinese descriptions, and other non-standard trailing text must remain in `project_inference.raw_inputs` or `basis`. Examples: `TVE1067M1_H031` -> `TVE1067M1`, `TVE1086U_MAIN_HANGYAN` -> `TVE1086U`, `TVE1091U福建移动高清` -> `TVE1091U`. This is conservative normalization for one project model, not permission to merge unrelated TVD/TVE/TVA/TVI models.
+The structured project field stores only the company model that matches the TVD/TVE/TVA/TVI naming rule: `TV[D/E/A/I] + two LCD-size digits + two sequence characters + platform M/R/U + optional digit`. Any text outside that model is evidence text, not part of `manifest.project` or `materials/variant.json project`: branch suffixes, customer suffixes, build branches, business labels, module labels, Chinese descriptions, and other non-standard trailing text must remain in `project_inference.raw_inputs` or `basis`. Examples: `TVE1067M1_H031` -> `TVE1067M1`, `TVE1086U_MAIN_HANGYAN` -> `TVE1086U`, `TVE1091U福建移动高清` -> `TVE1091U`. Confirmed historical alias `TVE8402` must normalize to `TVE8402M`; new packages must not write `TVE8402` as the structured project. This is conservative normalization for one project model, not permission to merge unrelated TVD/TVE/TVA/TVI models.
 
 Patch packages should not depend on the UI or server to guess the project. Prefer explicit project evidence from the capture package or `--project`; otherwise attach the related daily run id so the patch can inherit that daily context. If no traceable project exists, the package can still be preserved, but curation must treat the missing project as an evidence gap and must not promote it to high-confidence reusable knowledge.
 

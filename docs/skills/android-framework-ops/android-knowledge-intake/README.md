@@ -80,7 +80,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 成员查看界面如果提示某个补丁包需补证据（needs_evidence），不要新建第四类上传包。成员端 Codex 应重新生成或提交普通补丁包（patch package），补齐缺失证据，并用原始上传包键关联：
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260612-171820-feature --project "TVE1234A" --platform mtk --android-version 16 --summary "功能补丁摘要" --status validated --supplement-for-package-key 20260612/lincong/20260612-172836-patch --supplement-reason "补充项目（project）、平台（platform）和 Android 版本（Android version）证据"
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260612-171820-feature --project "TVE1067M" --platform mtk --android-version 16 --summary "功能补丁摘要" --status validated --supplement-for-package-key 20260612/lincong/20260612-172836-patch --supplement-reason "补充项目（project）、平台（platform）和 Android 版本（Android version）证据"
 ```
 
 该命令仍生成 `framework_change` 上传包，只是额外携带 `materials/evidence/evidence_supplement.json`，用于说明它补充哪个原始上传包。

@@ -28,9 +28,10 @@ PLATFORM_PREFIX_ALIASES = {
     "u": "unisoc",
 }
 PROJECT_MODEL_RE = re.compile(
-    r"(?<![A-Z0-9])(?P<base>TV[DEAI][A-Z0-9]{4,6})(?P<branch_suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
+    r"(?<![A-Z0-9])(?P<base>TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?|TVE8402)(?P<branch_suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
     re.I,
 )
+PROJECT_ALIASES = {"TVE8402": "TVE8402M"}
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
 BANNED_LOG_PATTERNS = (
     "Log.v(",
@@ -465,11 +466,19 @@ def infer_capture_project_for_feature(args: argparse.Namespace, captures: list[R
 
 def find_company_project(text: str) -> str:
     match = PROJECT_MODEL_RE.search((text or "").upper())
-    return match.group("base").upper() if match else ""
+    if not match:
+        return ""
+    project = match.group("base").upper()
+    return PROJECT_ALIASES.get(project, project)
 
 
 def find_company_projects(text: str) -> list[str]:
-    return sorted(dict.fromkeys(match.group("base").upper() for match in PROJECT_MODEL_RE.finditer((text or "").upper())))
+    return sorted(
+        dict.fromkeys(
+            PROJECT_ALIASES.get(match.group("base").upper(), match.group("base").upper())
+            for match in PROJECT_MODEL_RE.finditer((text or "").upper())
+        )
+    )
 
 
 def parse_shell_array(text: str, name: str) -> list[str]:

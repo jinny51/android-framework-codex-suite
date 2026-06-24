@@ -53,11 +53,12 @@ PLATFORM_PREFIX_ALIASES = {
 }
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
 PROJECT_MODEL_RE = re.compile(
-    r"(?<![A-Z0-9])(?P<base>TV[DEAI][A-Z0-9]{4,6})(?P<branch_suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
+    r"(?<![A-Z0-9])(?P<base>TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?|TVE8402)(?P<branch_suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
     re.I,
 )
-PROJECT_FIELD_RE = re.compile(r"TV[DEAI][A-Z0-9]{4,6}", re.I)
+PROJECT_FIELD_RE = re.compile(r"TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?", re.I)
 PROJECT_ANCHOR_RE = PROJECT_MODEL_RE
+PROJECT_ALIASES = {"TVE8402": "TVE8402M"}
 REMOTE_PATH_RE = re.compile(r"(?:/[A-Za-z0-9_.@+-]+){2,}")
 BANNED_LOG_PATTERNS = (
     "Log.v(",
@@ -915,7 +916,7 @@ def has_project_anchor(text: str) -> bool:
 
 def project_anchor(text: str) -> str:
     match = PROJECT_ANCHOR_RE.search(text or "")
-    return match.group("base").upper() if match else ""
+    return canonical_company_project(match.group("base")) if match else ""
 
 
 def strip_project_anchor(text: str, project: str) -> str:
@@ -1043,7 +1044,7 @@ def synthetic_sessions(config: dict[str, str], dates: set[dt.date]) -> list[Sess
         count = max(1, min(6, int(config.get("synthetic_item_count", "3"))))
     except ValueError:
         count = 3
-    projects = ["TVE8402M", "TVA1001A", "TVI2010M"]
+    projects = ["TVE8402M", "TVA10A2R", "TVI2010M"]
     tasks = [
         "模拟设置项开关需求分析",
         "模拟 SystemUI 状态同步问题排查",
@@ -3615,6 +3616,11 @@ def split_company_project(value: str) -> tuple[str, str]:
     return match.group(0).upper(), ""
 
 
+def canonical_company_project(value: str) -> str:
+    project = str(value or "").strip().upper()
+    return PROJECT_ALIASES.get(project, project)
+
+
 def parse_company_project(value: str) -> dict[str, Any]:
     base, suffix = split_company_project(value)
     return {
@@ -3631,11 +3637,11 @@ def parse_company_project(value: str) -> dict[str, Any]:
 
 def find_company_project(text: str) -> str:
     match = PROJECT_MODEL_RE.search(str(text or "").upper())
-    return match.group("base").upper() if match else ""
+    return canonical_company_project(match.group("base")) if match else ""
 
 
 def find_company_projects(text: str) -> list[str]:
-    return sorted(dict.fromkeys(match.group("base").upper() for match in PROJECT_MODEL_RE.finditer(str(text or "").upper())))
+    return sorted(dict.fromkeys(canonical_company_project(match.group("base")) for match in PROJECT_MODEL_RE.finditer(str(text or "").upper())))
 
 
 def parse_shell_array(text: str, name: str) -> list[str]:

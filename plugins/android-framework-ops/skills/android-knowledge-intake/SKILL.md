@@ -83,7 +83,7 @@ When member view UI shows a previous patch package needs evidence, do not create
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare \
   --patch-package /path/to/.codex/patch-packages/20260612-171820-feature \
-  --project "TVE1234A" \
+  --project "TVE1067M" \
   --platform mtk \
   --android-version 16 \
   --summary "功能补丁摘要" \
