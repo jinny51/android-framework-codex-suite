@@ -22,7 +22,6 @@ PLATFORM_TOKEN_SEARCH_RE = re.compile(
     re.I,
 )
 VERSION_ONLY_TOKEN_RE = re.compile(r"^(?:android|app)(\d{1,2})(?:-|$)", re.I)
-UNCONTROLLED_APP_PATCH_ASSET_RE = re.compile(r"^app\d+(?:[-_@.]|$)", re.I)
 
 PROJECT_MODEL_RE = re.compile(
     r"(?<![A-Z0-9])(?P<base>TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?|TVE8402)"
@@ -63,8 +62,26 @@ def valid_framework_platform(value: str) -> bool:
     return str(value or "").strip().lower() in VALID_FRAMEWORK_PLATFORMS
 
 
+def patch_asset_name_prefix(value: Any) -> str:
+    name = Path(str(value or "")).name
+    if not name.lower().endswith(".patch"):
+        return ""
+    if "-" not in name:
+        return ""
+    return name.split("-", 1)[0]
+
+
+def has_uncontrolled_patch_asset_prefix(value: Any) -> bool:
+    prefix = patch_asset_name_prefix(value)
+    if not prefix:
+        return False
+    if parse_known_platform_token(Path(str(value or "")).name) != ("", ""):
+        return False
+    return not valid_project_model(prefix)
+
+
 def has_uncontrolled_app_patch_asset_prefix(value: Any) -> bool:
-    return bool(UNCONTROLLED_APP_PATCH_ASSET_RE.match(Path(str(value or "")).name))
+    return has_uncontrolled_patch_asset_prefix(value)
 
 
 def is_valid_android_version_value(value: str) -> bool:
@@ -257,8 +274,13 @@ def aggregate_package_scope_errors(text: str, patch_count: int = 0) -> list[str]
     ):
         return []
     count = f"当前约 {patch_count} 个补丁。" if patch_count else ""
+    snippet = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(snippet) > 360:
+        snippet = snippet[:180].rstrip() + " ... " + snippet[-180:].lstrip()
+    detail = f"疑似聚合内容：{snippet}。" if snippet else ""
     return [
         f"补丁包（patch package）不能是无共同目标的聚合包（aggregate package）。{count}"
+        f"{detail}"
         "请用补丁采集技能（android-framework-patch-capture）按功能拆分（function split）为多个普通补丁包；"
         "一个补丁包只能对应一个功能。"
     ]
@@ -312,7 +334,7 @@ def manifest_has_uncontrolled_app_patch_asset(manifest: dict[str, Any]) -> bool:
     files = manifest.get("files") if isinstance(manifest.get("files"), dict) else {}
     patches = files.get("patches") if isinstance(files.get("patches"), list) else []
     for rel in patches:
-        if has_uncontrolled_app_patch_asset_prefix(rel):
+        if has_uncontrolled_patch_asset_prefix(rel):
             return True
     return False
 
@@ -434,13 +456,14 @@ def supplement_field_policy(field: str) -> dict[str, Any]:
 
 
 def classify_patch_asset_names(paths: list[Any]) -> dict[str, Any]:
-    uncontrolled = [str(path) for path in paths if has_uncontrolled_app_patch_asset_prefix(path)]
+    uncontrolled = [str(path) for path in paths if has_uncontrolled_patch_asset_prefix(path)]
     issue_codes: list[str] = []
     if uncontrolled:
         issue_codes.append("patch_asset_pollution")
     return {
         "status": "fail" if issue_codes else "pass",
         "issue_codes": issue_codes,
+        "uncontrolled_prefixes": uncontrolled,
         "uncontrolled_app_prefixes": uncontrolled,
     }
 

@@ -829,8 +829,11 @@ def validate_patch_asset_names(captures: list[RepositoryCapture]) -> list[str]:
     classification = classify_patch_asset_names([capture.patch_name for capture in captures])
     if classification.get("status") != "fail":
         return []
+    names = "、".join(str(item) for item in classification.get("uncontrolled_prefixes", []))
     return [
-        "补丁资产命名包含非受控 app 平台前缀，请使用 mtk/rk/unisoc 平台令牌重新采集。"
+        "补丁资产命名包含非受控前缀"
+        + (f"：{names}" if names else "")
+        + "。前缀必须是合法项目名（project）或 mtk/rk/unisoc 受控平台 Android 版本前缀。"
     ]
 
 
@@ -1430,7 +1433,7 @@ def main() -> int:
     args = parse_args()
     platform_token, platform_name, android_version = parse_platform_arg(args.platform)
     if not platform_token:
-        raise SystemExit("--platform 必须使用受控平台和 Android 版本，例如 rk14、mtk14、unisoc13；不能使用 android14、app15 这类泛化令牌。")
+        raise SystemExit("--platform 必须使用受控平台和 Android 版本，例如 rk14、mtk14、unisoc13；不能使用泛化或非规范令牌。")
 
     platform = platform_token
     feature = slug(args.feature)

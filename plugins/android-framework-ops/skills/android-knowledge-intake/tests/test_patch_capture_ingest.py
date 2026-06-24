@@ -716,7 +716,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
     def test_patch_supplement_accepts_explicit_platform_and_android_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            patch = root / "custom16-frameworks-base@nav-policy-toggle.patch"
+            patch = root / "mtk16-frameworks-base@nav-policy-toggle.patch"
             patch.write_text(
                 "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
                 "--- a/frameworks/base/services/core/java/X.java\n"
@@ -725,7 +725,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "+//gyf 20260526@ nav policy toggle\n",
                 encoding="utf-8",
             )
-            (root / "custom16-frameworks-base@nav-policy-toggle.readme.md").write_text(
+            (root / "mtk16-frameworks-base@nav-policy-toggle.readme.md").write_text(
                 valid_patch_readme(),
                 encoding="utf-8",
             )

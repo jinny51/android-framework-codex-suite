@@ -114,7 +114,7 @@ Patch filename must follow:
 平台Android版本-模块名@补丁功能名.patch
 ```
 
-`--platform` 必须使用当前受控平台令牌：`mtk<Android版本>`、`rk<Android版本>` 或 `unisoc<Android版本>`。历史别名 `sprd<Android版本>` 和 `u<Android版本>` 会规范化为 `unisoc<Android版本>`。不要使用 `android14`、`app15` 这类泛化令牌；它们只能说明可能的 Android 版本，不能证明平台（platform）。生成的补丁资产（patch asset）文件名也必须使用受控平台前缀，例如 `mtk15-`、`rk14-` 或 `unisoc16-`；`app15-*.patch` 这类文件名不能上传，必须从正确项目和平台工作树重新采集。
+`--platform` 必须使用当前受控平台令牌：`mtk<Android版本>`、`rk<Android版本>` 或 `unisoc<Android版本>`。历史别名 `sprd<Android版本>` 和 `u<Android版本>` 会规范化为 `unisoc<Android版本>`。不要使用泛化或非规范令牌；它们只能说明可能的 Android 版本或模块线索，不能证明平台（platform）。生成的补丁资产（patch asset）文件名前缀必须是合法项目名（project）或受控平台 Android 版本前缀，例如 `TVE1067M1-`、`mtk15-`、`rk14-` 或 `unisoc16-`；其他非受控前缀不能上传，必须从正确项目和平台工作树重新采集。
 
 Examples:
 

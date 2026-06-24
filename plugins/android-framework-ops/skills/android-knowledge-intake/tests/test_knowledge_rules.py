@@ -41,6 +41,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         from android_framework_ops.knowledge_rules import (
             find_platform_tokens,
             has_uncontrolled_app_patch_asset_prefix,
+            has_uncontrolled_patch_asset_prefix,
             is_valid_android_version_value,
             is_valid_platform_value,
             parse_known_platform_token,
@@ -61,6 +62,12 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertTrue(is_valid_android_version_value("9.0"))
         self.assertFalse(is_valid_android_version_value("app15"))
         self.assertTrue(has_uncontrolled_app_patch_asset_prefix("app15-frameworks-base@permission.patch"))
+        self.assertTrue(has_uncontrolled_patch_asset_prefix("app15-frameworks-base@permission.patch"))
+        self.assertTrue(has_uncontrolled_patch_asset_prefix("android16-frameworks-base@permission.patch"))
+        self.assertTrue(has_uncontrolled_patch_asset_prefix("Camera2-frameworks-base@permission.patch"))
+        self.assertFalse(has_uncontrolled_patch_asset_prefix("mtk15-frameworks-base@permission.patch"))
+        self.assertFalse(has_uncontrolled_patch_asset_prefix("rk90-frameworks-base@permission.patch"))
+        self.assertFalse(has_uncontrolled_patch_asset_prefix("TVE1067M1-frameworks-base@permission.patch"))
 
     def test_pre_change_search_classification_contract(self) -> None:
         from android_framework_ops.knowledge_rules import classify_pre_change_search
@@ -134,11 +141,16 @@ class KnowledgeRulesTest(unittest.TestCase):
         result = classify_patch_asset_names(
             [
                 "app15-frameworks-base@wifi.patch",
+                "Camera2-frameworks-base@wifi.patch",
+                "TVE1067M1-frameworks-base@wifi.patch",
                 "mtk15-frameworks-base@wifi.patch",
             ]
         )
         self.assertIn("patch_asset_pollution", result["issue_codes"])
-        self.assertIn("app15-frameworks-base@wifi.patch", result["uncontrolled_app_prefixes"])
+        self.assertIn("app15-frameworks-base@wifi.patch", result["uncontrolled_prefixes"])
+        self.assertIn("Camera2-frameworks-base@wifi.patch", result["uncontrolled_prefixes"])
+        self.assertNotIn("TVE1067M1-frameworks-base@wifi.patch", result["uncontrolled_prefixes"])
+        self.assertNotIn("mtk15-frameworks-base@wifi.patch", result["uncontrolled_prefixes"])
 
     def test_function_scope_classification_contract(self) -> None:
         from android_framework_ops.knowledge_rules import classify_function_scope

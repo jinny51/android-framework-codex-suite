@@ -41,7 +41,7 @@ from android_framework_ops.knowledge_rules import (
     find_company_project,
     find_company_projects,
     find_platform_tokens,
-    has_uncontrolled_app_patch_asset_prefix,
+    has_uncontrolled_patch_asset_prefix,
     is_valid_android_version_value,
     is_valid_platform_value,
     normalize_android_version,
@@ -2691,10 +2691,10 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             path = require_file(patch_path, "patch")
             if path and path.suffix not in {".patch", ".diff"}:
                 errors.append(f"patch 文件必须是 .patch 或 .diff: {patch_path}")
-            if has_uncontrolled_app_patch_asset_prefix(patch_path):
+            if has_uncontrolled_patch_asset_prefix(patch_path):
                 errors.append(
-                    f"补丁资产（patch asset）不能使用 app15 这类非受控平台前缀: {patch_path}；"
-                    "请从正确项目环境重新生成 mtk/rk/unisoc 补丁包。"
+                    f"补丁资产（patch asset）不能使用非受控前缀: {patch_path}；"
+                    "前缀必须是合法项目名（project）或 mtk/rk/unisoc 受控平台 Android 版本前缀。"
                 )
         if readme_path:
             errors.extend(validate_patch_readme(readme_path))

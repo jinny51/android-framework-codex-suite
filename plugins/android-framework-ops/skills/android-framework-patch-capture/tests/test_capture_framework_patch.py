@@ -523,7 +523,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             )
 
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("不能使用 android14", result.stderr or result.stdout)
+            self.assertIn("不能使用泛化或非规范令牌", result.stderr or result.stdout)
 
     def test_normalizes_unisoc_platform_alias(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
