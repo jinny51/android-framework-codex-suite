@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
 
 
+SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 VALID_FRAMEWORK_PLATFORMS = {"mtk", "rk", "unisoc"}
 PLATFORM_PREFIX_ALIASES = {
     "mtk": "mtk",
@@ -313,3 +315,37 @@ def manifest_has_uncontrolled_app_patch_asset(manifest: dict[str, Any]) -> bool:
         if has_uncontrolled_app_patch_asset_prefix(rel):
             return True
     return False
+
+
+def current_plugin_version() -> str:
+    manifest_path = Path(__file__).resolve().parents[2] / ".codex-plugin" / "plugin.json"
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("version") or "").strip()
+
+
+def source_version_errors(payload: dict[str, Any] | None, *, expected_version: str | None = None) -> list[str]:
+    source = payload if isinstance(payload, dict) else {}
+    plugin_name = str(source.get("plugin_name") or "").strip()
+    plugin_version = str(source.get("plugin_version") or "").strip()
+    skill_version = str(source.get("skill_version") or "").strip()
+    current_version = str(expected_version if expected_version is not None else current_plugin_version()).strip()
+    errors: list[str] = []
+    if plugin_name != "android-framework-ops":
+        errors.append("source evidence plugin_name must be android-framework-ops")
+    if not SEMVER_RE.fullmatch(plugin_version):
+        errors.append("source evidence plugin_version is required for strict new uploads")
+    if not SEMVER_RE.fullmatch(skill_version):
+        errors.append("source evidence skill_version is required for strict new uploads")
+    if current_version:
+        if plugin_version and plugin_version != current_version:
+            errors.append(f"source evidence plugin_version must match current plugin version {current_version}")
+        if skill_version and skill_version != current_version:
+            errors.append(f"source evidence skill_version must match current plugin version {current_version}")
+    else:
+        errors.append("current plugin version is unavailable; server upload entry cannot verify latest plugin")
+    return errors

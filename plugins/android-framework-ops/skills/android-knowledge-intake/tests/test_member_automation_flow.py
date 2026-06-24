@@ -529,6 +529,57 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 os.environ.clear()
                 os.environ.update(old_env)
 
+    def test_member_generation_requires_confirmed_latest_plugin(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            clone_member_knowledge_worktree(root, remote)
+            env = write_member_config(root, remote)
+            env.pop("CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK", None)
+            module = load_intake_module()
+            calls: list[tuple[bool, bool]] = []
+
+            def unknown_freshness(fetch: bool = True, require: bool = False) -> dict:
+                calls.append((fetch, require))
+                return {
+                    "status": "UNKNOWN",
+                    "blocking": require,
+                    "message": "无法确认插件是否为最新版本。",
+                }
+
+            module.plugin_freshness_check = unknown_freshness
+            old_argv = sys.argv[:]
+            old_env = os.environ.copy()
+            try:
+                os.environ.clear()
+                os.environ.update(env)
+                sys.argv = [
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "daily",
+                    "--date",
+                    "2026-06-01",
+                    "--run-id",
+                    "20260601-210000-daily",
+                    "--prepare",
+                ]
+                stdout = io.StringIO()
+
+                with contextlib.redirect_stdout(stdout):
+                    code = module.main()
+
+                self.assertEqual(code, 1)
+                payload = json.loads(stdout.getvalue())
+                self.assertEqual(payload["status"], "FAIL")
+                self.assertEqual(payload["plugin_freshness"]["status"], "UNKNOWN")
+                self.assertTrue(payload["plugin_freshness"]["blocking"])
+                self.assertIn((True, True), calls)
+            finally:
+                sys.argv = old_argv
+                os.environ.clear()
+                os.environ.update(old_env)
+
     def test_current_submission_and_knowledge_config_doctor_uses_member_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

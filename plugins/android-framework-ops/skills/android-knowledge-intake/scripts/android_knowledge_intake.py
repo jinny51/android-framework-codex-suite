@@ -4477,7 +4477,7 @@ def doctor_strict_checks(
     if git_version.returncode != 0:
         error("找不到 git，无法检查知识库仓库。")
 
-    freshness = plugin_freshness_check(fetch=check_remote)
+    freshness = plugin_freshness_check(fetch=check_remote, require=check_remote)
     if freshness.get("blocking"):
         error(str(freshness.get("message") or "插件更新检查失败。"))
     elif freshness.get("status") == "UNKNOWN":
@@ -4603,7 +4603,7 @@ def main() -> int:
         return 0 if not args.strict or result.get("status") == "PASS" else 1
 
     if args.command in PACKAGE_TYPES and not args.validate and (args.prepare or args.submit_latest or args.upload):
-        freshness = plugin_freshness_check(fetch=True)
+        freshness = plugin_freshness_check(fetch=True, require=True)
         if freshness.get("blocking"):
             print(
                 json.dumps(

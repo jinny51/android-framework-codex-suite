@@ -90,6 +90,31 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertFalse(codex_closed["member_can_supplement"])
         self.assertFalse(codex_closed["requires_post_change_overlap_check"])
 
+    def test_source_version_contract_requires_current_plugin_version(self) -> None:
+        from android_framework_ops.knowledge_rules import current_plugin_version, source_version_errors
+
+        current = current_plugin_version()
+        self.assertEqual(current, "1.0.44")
+        self.assertEqual(
+            source_version_errors(
+                {
+                    "plugin_name": "android-framework-ops",
+                    "plugin_version": current,
+                    "skill_version": current,
+                }
+            ),
+            [],
+        )
+        stale_errors = source_version_errors(
+            {
+                "plugin_name": "android-framework-ops",
+                "plugin_version": "1.0.43",
+                "skill_version": "1.0.43",
+            }
+        )
+        self.assertIn(f"source evidence plugin_version must match current plugin version {current}", stale_errors)
+        self.assertIn(f"source evidence skill_version must match current plugin version {current}", stale_errors)
+
 
 if __name__ == "__main__":
     unittest.main()
