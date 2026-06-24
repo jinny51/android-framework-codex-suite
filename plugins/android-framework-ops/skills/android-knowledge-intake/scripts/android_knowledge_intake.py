@@ -2823,15 +2823,26 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             patch_diff_payload = patch_diff.get("payload", patch_diff) if isinstance(patch_diff, dict) else {}
             if isinstance(patch_diff_payload, dict):
                 implementation_origins = list_string_values(patch_diff_payload.get("implementation_origins"))
+        search_payload_body = search_payload.get("payload", search_payload) if isinstance(search_payload, dict) else {}
+        if not isinstance(search_payload_body, dict):
+            search_payload_body = {}
+        missing_pre_change_search = not bool(search_payload_body.get("searched"))
+        requires_pre_change_search = implementation_origins_require_pre_change_search(implementation_origins)
         if (
             package_status == "validated"
-            and implementation_origins_require_pre_change_search(implementation_origins)
+            and requires_pre_change_search
             and search_payload_missing_required_pre_change_search(search_payload)
         ):
+            errors.append(
+                "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造。"
+                "请改用手动实现（manual implementation）事实记录，或重新走开发前知识搜索后再开发。"
+                "管理端后续会执行沉淀前重叠检索（post-change overlap check）。"
+            )
+        elif package_status == "validated" and missing_pre_change_search:
             warnings.append(
-                "开发前未搜索，不能事后补造开发前知识搜索（pre-change knowledge search）证据；"
-                "本包可保留已验证（validated）验证结论，但知识沉淀必须由管理端执行沉淀前重叠检索（post-change overlap check），"
-                "且不获得搜索闭环加分。"
+                "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造；"
+                "本包按手动实现（manual implementation）等事实保留，"
+                "管理端后续会执行沉淀前重叠检索（post-change overlap check），且不获得搜索闭环加分。"
             )
         if package_status == "validated" and search_payload_needs_closed_decision(search_payload):
             errors.append(

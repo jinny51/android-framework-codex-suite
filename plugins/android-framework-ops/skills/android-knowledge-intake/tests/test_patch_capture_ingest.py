@@ -1049,7 +1049,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("搜索使用决策", errors)
             self.assertIn("reuse/adapt/reference_only/not_applicable/not_found", errors)
 
-    def test_validated_patch_package_warns_missing_pre_change_search_without_faking_it(self) -> None:
+    def test_codex_validated_patch_package_rejects_missing_pre_change_search_without_faking_it(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             capture_package = create_capture_package(
@@ -1079,12 +1079,12 @@ class PatchCaptureIngestTests(unittest.TestCase):
 
             check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
             search_evidence = json.loads((package / "materials" / "evidence" / "search_before_change.json").read_text(encoding="utf-8"))
-            self.assertEqual(check["status"], "PASS")
-            self.assertFalse(check["errors"])
+            self.assertEqual(check["status"], "FAIL")
             self.assertFalse(search_evidence["payload"]["searched"])
-            warnings = "\n".join(check["warnings"])
-            self.assertIn("开发前未搜索", warnings)
-            self.assertIn("沉淀前重叠检索", warnings)
+            errors = "\n".join(check["errors"])
+            self.assertIn("开发前知识搜索", errors)
+            self.assertIn("不能事后补造", errors)
+            self.assertIn("手动实现", errors)
 
     def test_manual_validated_patch_package_allows_missing_pre_change_search_without_faking_it(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1120,6 +1120,45 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(check["status"], "PASS")
             self.assertFalse(search_evidence["payload"]["searched"])
             self.assertIn("手动实现", search_evidence["payload"]["summary"])
+            warnings = "\n".join(check["warnings"])
+            self.assertIn("沉淀前重叠检索", warnings)
+
+    def test_verification_supplement_fails_when_verification_is_still_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_package = create_capture_package(root, status="candidate")
+            write_json(
+                capture_package / "evidence" / "verification-result.json",
+                {"result": "MISSING", "method": "not_provided", "summary": "验证证据仍缺失"},
+            )
+            capture_manifest_path = capture_package / "manifest.json"
+            capture_manifest = json.loads(capture_manifest_path.read_text(encoding="utf-8"))
+            for item in capture_manifest["evidence"]:
+                if item.get("kind") == "verification_result":
+                    item["result"] = "MISSING"
+            write_json(capture_manifest_path, capture_manifest)
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 12),
+                self.config(root),
+                run_id="20260612-190003-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture_package)],
+                project="TVE1067M",
+                summary="Allow nav policy toggle",
+                status="candidate",
+                schema_version="1",
+                supplement_for_package_key="20260612/lincong/20260612-172836-patch",
+                supplement_reason="补充验证（verification）证据。",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "FAIL")
+            self.assertIn(
+                "补验证（verification）证据时，补证包必须携带 PASS verification_result",
+                "\n".join(check["errors"]),
+            )
 
     def test_patch_package_does_not_attach_unrelated_same_day_search_usage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
