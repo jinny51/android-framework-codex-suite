@@ -1474,6 +1474,44 @@ class PatchCaptureIngestTests(unittest.TestCase):
         self.assertIn("相机行为", risk["risk_areas"])
         self.assertIn("产品配置/预置应用", risk["risk_areas"])
 
+    def test_statusbar_paths_do_not_trigger_usb_semantics(self) -> None:
+        files = [
+            "src/com/android/systemui/statusbar/notification/stack/MediaContainerView.kt",
+            "src/com/android/systemui/statusbar/notification/stack/NotificationStackScrollLayoutController.java",
+            "src/com/android/systemui/keyguard/ui/view/layout/sections/DefaultMediaSection.kt",
+        ]
+        modules = intake.patch_modules_from_files(files)
+        problem, risk = intake.patch_problem_and_risk_payloads(
+            "patch-systemui-media",
+            "patches/mtk16-systemui@Display_media_controls_in_portrait_mode.patch",
+            "SystemUI 锁屏媒体控件支持竖屏显示",
+            {"modified_files": files, "modules": modules, "symbols": []},
+        )
+
+        self.assertIn("SystemUI", modules)
+        self.assertNotIn("USB", modules)
+        self.assertNotIn("USB", problem["problem_summary"])
+        self.assertNotIn("USB", problem["solution_summary"])
+        self.assertNotIn("USB/设备权限", problem["keywords"])
+        self.assertNotIn("USB/设备权限", risk["risk_areas"])
+
+    def test_usb_paths_still_trigger_usb_semantics(self) -> None:
+        files = [
+            "packages/SystemUI/src/com/android/systemui/usb/UsbPermissionActivity.java",
+            "ueventd.rc",
+        ]
+        modules = intake.patch_modules_from_files(files)
+        problem, risk = intake.patch_problem_and_risk_payloads(
+            "patch-usb",
+            "patches/unisoc14-systemui@usb-default-permission.patch",
+            "云外设 App USB 权限自动获取",
+            {"modified_files": files, "modules": modules, "symbols": []},
+        )
+
+        self.assertIn("USB", modules)
+        self.assertIn("USB", problem["problem_summary"])
+        self.assertIn("USB/设备权限", risk["risk_areas"])
+
     def test_feature_capture_package_uses_one_feature_readme_for_multiple_patches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

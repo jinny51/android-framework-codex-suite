@@ -12,6 +12,15 @@ SKILL_DIR = Path(__file__).resolve().parents[1]
 SCRIPT = SKILL_DIR / "scripts" / "capture_framework_patch.py"
 
 
+def load_patch_capture_module():
+    spec = __import__("importlib.util").util.spec_from_file_location("capture_framework_patch_under_test", SCRIPT)
+    assert spec and spec.loader
+    module = __import__("importlib.util").util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def run(cmd: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         cmd,
@@ -172,11 +181,7 @@ def create_repo_with_mode_noise(root: Path) -> tuple[Path, Path]:
 
 class CaptureFrameworkPatchTests(unittest.TestCase):
     def test_facts_from_diff_extract_added_xml_string_resource_names(self) -> None:
-        spec = __import__("importlib.util").util.spec_from_file_location("capture_framework_patch_under_test", SCRIPT)
-        assert spec and spec.loader
-        module = __import__("importlib.util").util.module_from_spec(spec)
-        sys.modules[spec.name] = module
-        spec.loader.exec_module(module)
+        module = load_patch_capture_module()
 
         facts = module.facts_from_diff(
             "diff --git a/res/values/strings.xml b/res/values/strings.xml\n"
@@ -765,6 +770,37 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("音频录制", problem_summary["problem_summary"])
             self.assertIn("音频路由/音量行为", risk_surface["risk_areas"])
             self.assertIn("相机行为", risk_surface["risk_areas"])
+
+    def test_statusbar_paths_do_not_trigger_usb_semantics(self) -> None:
+        patch_capture = load_patch_capture_module()
+        files = [
+            "src/com/android/systemui/statusbar/notification/stack/MediaContainerView.kt",
+            "src/com/android/systemui/statusbar/notification/stack/NotificationStackScrollLayoutController.java",
+            "src/com/android/systemui/keyguard/ui/view/layout/sections/DefaultMediaSection.kt",
+        ]
+        modules = patch_capture.modules_from_files(files)
+        joined = " ".join(["SystemUI 锁屏媒体控件支持竖屏显示", " ".join(files), " ".join(modules)]).lower()
+        flags = patch_capture.semantic_flags(joined, modules)
+        problem, solution, _confidence = patch_capture.semantic_problem_solution(modules, flags)
+
+        self.assertIn("SystemUI", modules)
+        self.assertNotIn("USB", modules)
+        self.assertFalse(flags["usb"])
+        self.assertNotIn("USB", problem)
+        self.assertNotIn("USB", solution)
+
+    def test_usb_paths_still_trigger_usb_semantics(self) -> None:
+        patch_capture = load_patch_capture_module()
+        files = [
+            "packages/SystemUI/src/com/android/systemui/usb/UsbPermissionActivity.java",
+            "ueventd.rc",
+        ]
+        modules = patch_capture.modules_from_files(files)
+        joined = " ".join(["云外设 App USB 权限自动获取", " ".join(files), " ".join(modules)]).lower()
+        flags = patch_capture.semantic_flags(joined, modules)
+
+        self.assertIn("USB", modules)
+        self.assertTrue(flags["usb"])
 
     def test_external_evidence_rejects_unsupported_kind(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -39,6 +39,8 @@ DEFAULT_KNOWLEDGE_REPO_URL = "test35:/home/test35/work/knowledge/knowledge.git"
 PATCH_FILENAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 PLATFORM_TOKEN_RE = re.compile(r"^(mtk|rk|unisoc|sprd|u)(\d{1,2})(?:-|$)")
 VERSION_ONLY_TOKEN_RE = re.compile(r"^(?:android|app)(\d{1,2})(?:-|$)")
+USB_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])usb(?![A-Za-z0-9])", re.I)
+USB_CAMEL_PATH_RE = re.compile(r"(?:^|[/_.-])Usb(?=[A-Z0-9])")
 VALID_FRAMEWORK_PLATFORMS = {"mtk", "rk", "unisoc"}
 PLATFORM_PREFIX_ALIASES = {
     "mtk": "mtk",
@@ -2901,7 +2903,7 @@ def patch_modules_from_files(files: list[str]) -> list[str]:
             modules.append("Storage")
         if "wifiservice" in lower or "/wifi/" in lower:
             modules.append("Wifi")
-        if "ueventd" in lower or "/usb/" in lower or "usb" in lower:
+        if has_usb_semantic_anchor(path):
             modules.append("USB")
         if any(name in lower for name in ("rockchip_apps.mk", "apps.mk", "boardconfig.mk", "device.mk")):
             modules.append("ProductConfig")
@@ -2923,9 +2925,13 @@ def patch_semantic_flags(joined: str, modules: list[str]) -> dict[str, bool]:
         "camera": "Camera" in module_set or "camera" in joined or "qrcode" in joined or "preview" in joined,
         "storage": "Storage" in module_set or "storage" in joined or "vold" in joined or "volume" in joined or "obb" in joined,
         "wifi": "Wifi" in module_set or "wifi" in joined or "wlan" in joined,
-        "usb": "USB" in module_set or "usb" in joined or "ueventd" in joined,
+        "usb": "USB" in module_set or has_usb_semantic_anchor(joined),
         "product_config": "ProductConfig" in module_set or "boardconfig" in joined or "device.mk" in joined or "apps.mk" in joined,
     }
+
+
+def has_usb_semantic_anchor(text: str) -> bool:
+    return "ueventd" in text.lower() or bool(USB_TOKEN_RE.search(text) or USB_CAMEL_PATH_RE.search(text))
 
 
 def patch_semantic_keywords(flags: dict[str, bool]) -> list[str]:
