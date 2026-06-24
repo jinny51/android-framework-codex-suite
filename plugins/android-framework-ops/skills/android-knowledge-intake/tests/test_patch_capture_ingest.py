@@ -516,48 +516,46 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "移除 F7/F8/F10/F12 功能按键、移除 Alt+Tab 最近任务组合键、"
                 "云外设 App 录屏投屏申请自动允许、云外设 App USB 权限自动获取。"
             )
-            package = intake.prepare_patch_package(
-                dt.date(2026, 6, 12),
-                self.config(root),
-                run_id="20260612-233425-patch",
-                patch_paths=[],
-                patch_package_paths=[str(create_multi_feature_capture_package(root))],
-                project="TVE1086U",
-                summary=summary,
-                status="validated",
-                schema_version="1",
-            )
+            with self.assertRaises(SystemExit) as raised:
+                intake.prepare_patch_package(
+                    dt.date(2026, 6, 12),
+                    self.config(root),
+                    run_id="20260612-233425-patch",
+                    patch_paths=[],
+                    patch_package_paths=[str(create_multi_feature_capture_package(root))],
+                    project="TVE1086U",
+                    summary=summary,
+                    status="validated",
+                    schema_version="1",
+                )
 
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(check["status"], "FAIL")
-            errors = "\n".join(check["errors"])
-            self.assertIn("按功能拆分", errors)
-            self.assertIn("一个补丁包只能对应一个功能", errors)
-            self.assertIn("普通补丁包", errors)
+            message = str(raised.exception)
+            self.assertIn("聚合包", message)
+            self.assertIn("按功能拆分", message)
+            self.assertIn("普通补丁包", message)
+            self.assertFalse((root / "out" / "pending" / "20260612" / "admin_alias" / "20260612-233425-patch").exists())
 
     def test_date_bundled_two_patch_package_fails_local_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             summary = "TVE1086U 青鸾云 2026-06-12 今日补丁：HD 版本云电脑跳转逻辑、系统弹窗副屏显示。"
-            package = intake.prepare_patch_package(
-                dt.date(2026, 6, 12),
-                self.config(root),
-                run_id="20260612-233426-patch",
-                patch_paths=[],
-                patch_package_paths=[str(create_multi_feature_capture_package(root, feature_limit=2))],
-                project="TVE1086U",
-                summary=summary,
-                status="candidate",
-                schema_version="1",
-            )
+            with self.assertRaises(SystemExit) as raised:
+                intake.prepare_patch_package(
+                    dt.date(2026, 6, 12),
+                    self.config(root),
+                    run_id="20260612-233426-patch",
+                    patch_paths=[],
+                    patch_package_paths=[str(create_multi_feature_capture_package(root, feature_limit=2))],
+                    project="TVE1086U",
+                    summary=summary,
+                    status="candidate",
+                    schema_version="1",
+                )
 
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(check["status"], "FAIL")
-            errors = "\n".join(check["errors"])
-            self.assertIn("按功能拆分", errors)
-            self.assertIn("一个补丁包只能对应一个功能", errors)
+            message = str(raised.exception)
+            self.assertIn("聚合包", message)
+            self.assertIn("按功能拆分", message)
+            self.assertFalse((root / "out" / "pending" / "20260612" / "admin_alias" / "20260612-233426-patch").exists())
 
     def test_scope_polluted_patch_package_fails_local_check_with_patch_asset_correction_reason(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

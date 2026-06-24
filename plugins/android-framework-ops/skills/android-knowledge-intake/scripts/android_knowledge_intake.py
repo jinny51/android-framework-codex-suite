@@ -27,6 +27,13 @@ except ImportError:  # pragma: no cover
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+OPS_PLUGIN_LIB = Path(__file__).resolve().parents[3] / "lib"
+if OPS_PLUGIN_LIB.is_dir() and str(OPS_PLUGIN_LIB) not in sys.path:
+    sys.path.insert(0, str(OPS_PLUGIN_LIB))
+
+from android_framework_ops.function_scope import aggregate_package_scope_errors
+
+
 INCOMING_SCHEMA_VERSION = "1"
 ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
 PLUGIN_UPDATE_SKIP_ENV = "CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"
@@ -84,9 +91,6 @@ PATCH_README_FORBIDDEN_MARKERS = (
     "自动生成的草稿说明",
     "根据补丁 diff 自动生成",
     "当前说明仅根据 diff 自动生成",
-)
-DAILY_BUNDLE_SUMMARY_RE = re.compile(
-    r"(?:今日|本日|当天)补丁|补丁合集|(?:今日|本日|当天).*?(?:\d+\s*(?:个|项|份)|多个|若干).*?补丁"
 )
 XML_RESOURCE_NAME_RE = re.compile(
     r"<(?:string|string-array|array|plurals|bool|integer|color|dimen|style)\b[^>]*\bname=[\"']([^\"']+)[\"']"
@@ -1828,13 +1832,32 @@ def validate_framework_function_scope(
     errors: list[str] = []
     errors.extend(validate_framework_scope_pollution(package_dir, manifest, readme_text, patch_paths, evidence_by_kind))
     text = "\n".join([str(manifest.get("summary") or ""), readme_text])
-    if DAILY_BUNDLE_SUMMARY_RE.search(text):
-        errors.append(
-            f"补丁包按日期聚合了 {patch_count} 个补丁。"
-            "补丁包（patch package）必须按功能拆分（function split）；"
-            "一个补丁包只能对应一个功能，请按功能重新生成多个普通补丁包。"
-        )
+    errors.extend(aggregate_package_scope_errors(text, patch_count))
     return errors
+
+
+def patch_capture_package_scope_errors(package_paths: list[str] | None, summary: str, run_id: str) -> list[str]:
+    texts = [str(summary or ""), str(run_id or "")]
+    patch_count = 0
+    for raw in package_paths or []:
+        capture_dir = Path(raw).expanduser().resolve()
+        manifest = read_json_file(capture_dir / "manifest.json")
+        texts.append(str(manifest.get("summary") or ""))
+        texts.append(str(manifest.get("feature") or ""))
+        patches = manifest.get("patches")
+        if isinstance(patches, list):
+            patch_count = max(patch_count, len(patches))
+        readme_rel = str(manifest.get("readme") or "")
+        if readme_rel:
+            readme_path = (capture_dir / readme_rel).resolve()
+            root = capture_dir.resolve()
+            try:
+                readme_path.relative_to(root)
+            except ValueError as exc:
+                raise SystemExit(f"capture package readme 路径越界: {readme_rel}") from exc
+            if readme_path.is_file():
+                texts.append(readme_path.read_text(encoding="utf-8", errors="ignore"))
+    return aggregate_package_scope_errors("\n".join(texts), patch_count)
 
 
 def validate_patch_file(path: Path) -> list[str]:
@@ -4059,6 +4082,9 @@ def prepare_patch_package(
             "按功能生成补丁包（patch package）；一个补丁包只能对应一个功能。"
         )
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}-patch"
+    scope_errors = patch_capture_package_scope_errors(patch_package_paths, summary, run_id)
+    if scope_errors:
+        raise SystemExit("\n".join(scope_errors))
     out_dir = expanded_path(config["out_dir"])
     package_dir = out_dir / "pending" / ymd(date) / config["member_alias"] / run_id
     if package_dir.exists():

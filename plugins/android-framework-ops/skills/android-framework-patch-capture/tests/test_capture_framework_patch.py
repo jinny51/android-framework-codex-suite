@@ -1256,10 +1256,75 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             )
 
             self.assertNotEqual(result.returncode, 0)
-            payload = json.loads(result.stdout)
-            errors = "\n".join(payload["local_check"]["errors"])
-            self.assertIn("按功能拆分", errors)
-            self.assertIn("一个补丁包只能对应一个功能", errors)
+            self.assertIn("按功能拆分", result.stderr)
+            self.assertIn("一个补丁包只能对应一个功能", result.stderr)
+            self.assertFalse((root / "out" / "20260612-233425-feature").exists())
+
+    def test_unrelated_feature_collection_fails_before_package_generation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260615-215913-feature",
+                    "--platform",
+                    "unisoc14",
+                    "--feature",
+                    "mixed-window-video-miniapp",
+                    "--summary",
+                    "应用视窗设置、默认咪咕视频爱看版横屏全屏，以及爱奇艺小程序白边修复补丁包",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("聚合包", result.stderr)
+            self.assertIn("按功能拆分", result.stderr)
+            self.assertFalse((root / "out" / "20260615-215913-feature").exists())
+
+    def test_large_single_power_domain_summary_is_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260624-150200-feature",
+                    "--platform",
+                    "rk9",
+                    "--feature",
+                    "cmcc-power-screenoff-hibernate",
+                    "--summary",
+                    "按开关机.docx适配息屏/待机/亮屏/唤醒、电源弹窗和DevicePowerManager系统服务",
+                    "--project",
+                    "TVA10A2R",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            self.assertTrue((root / "out" / "20260624-150200-feature").is_dir())
 
     def test_single_feature_summary_with_today_word_is_allowed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

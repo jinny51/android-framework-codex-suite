@@ -15,6 +15,14 @@ from pathlib import Path
 from typing import Any
 
 
+PLUGIN_ROOT = Path(__file__).resolve().parents[3]
+PLUGIN_LIB = PLUGIN_ROOT / "lib"
+if PLUGIN_LIB.is_dir() and str(PLUGIN_LIB) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_LIB))
+
+from android_framework_ops.function_scope import aggregate_package_scope_errors
+
+
 SCHEMA_VERSION = "2.0"
 PATCH_NAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 PLATFORM_TOKEN_RE = re.compile(r"^(mtk|rk|unisoc|sprd|u)(\d{1,2})$")
@@ -56,9 +64,6 @@ IMPLEMENTATION_ORIGINS = ("codex", "manual", "external", "historical", "mixed", 
 CAPTURE_REVIEW_REQUIRED_ORIGINS = {"manual", "external", "historical", "mixed", "unknown"}
 REUSE_DECISIONS = ("reuse", "adapt", "reference_only", "not_applicable", "not_found", "unknown")
 REUSE_OUTCOMES = ("not_started", "reused_success", "adapted_success", "failed", "partial", "unverified", "not_applicable")
-DAILY_BUNDLE_SUMMARY_RE = re.compile(
-    r"(?:今日|本日|当天)补丁|补丁合集|(?:今日|本日|当天).*?(?:\d+\s*(?:个|项|份)|多个|若干).*?补丁"
-)
 XML_RESOURCE_NAME_RE = re.compile(
     r"<(?:string|string-array|array|plurals|bool|integer|color|dimen|style)\b[^>]*\bname=[\"']([^\"']+)[\"']"
 )
@@ -858,12 +863,7 @@ def validate_search_decision_for_status(args: argparse.Namespace, search_payload
 
 def validate_feature_scope(args: argparse.Namespace) -> list[str]:
     text = " ".join([str(args.summary or ""), str(args.feature or "")])
-    if not DAILY_BUNDLE_SUMMARY_RE.search(text):
-        return []
-    return [
-        "补丁采集必须按功能生成一个补丁包（patch package），不能按日期生成“今日补丁”合集；"
-        "请按功能拆分（function split），一个补丁包只能对应一个功能。"
-    ]
+    return aggregate_package_scope_errors(text)
 
 
 def modules_from_files(files: list[str]) -> list[str]:
@@ -1467,6 +1467,11 @@ def main() -> int:
     platform = platform_token
     feature = slug(args.feature)
     args.feature = feature
+    scope_errors = validate_feature_scope(args)
+    if scope_errors:
+        for error in scope_errors:
+            print(error, file=sys.stderr)
+        return 1
     captures = collect_repository_captures(args, platform, feature)
     resolved_project, project_inference = infer_capture_project_for_feature(args, captures)
     args.project = resolved_project
