@@ -38,7 +38,9 @@ python3 "scripts/capture_framework_patch.py" \
 
 如果代码不是 Codex 实现，而是成员手写、外部补丁或历史代码，传 `--implementation-origin manual`、`external`、`historical`、`mixed` 或 `unknown`。补丁采集只记录来源和规范检查结果，不做沉淀结论（curation decision）。
 
-如果 `--project` 未提供，或只提供了 `android16`、`Camera2`、`mtk android16 Camera2` 这类非公司项目标签，脚本会继续从 `source_root`、repo 路径、git 分支/remote、WSL source-access registry 和补丁内容中识别 `TVE`/`TVA`/`TVI` 项目号；识别不到时写入 `unknown`。
+如果 `--project` 未提供，或只提供了 `android16`、`Camera2`、`mtk android16 Camera2` 这类非公司项目标签，脚本会继续从 `source_root`、repo 路径、git 分支/remote、WSL source-access registry 和补丁内容中识别 `TVD`/`TVE`/`TVA`/`TVI` 项目号；识别不到时写入 `unknown`。
+
+结构化项目字段只写入符合公司命名规范的项目型号。分支后缀、客户后缀、构建分支、业务标签、模块标签、中文描述和其他规范外尾随内容只能保留在 `project_inference` 证据里，不能写进 `manifest.project`。例如 `TVE1067M1_H031` 规范化为 `TVE1067M1`，`TVE1086U_MAIN_HANGYAN` 规范化为 `TVE1086U`，`TVE1091U福建移动高清` 规范化为 `TVE1091U`。
 
 如果命令参数、源码路径、git 信息、WSL source-access registry、功能摘要或 diff 同时暴露多个不同项目（project）候选，脚本写入 `project=unknown`，并在 `project_inference.candidates` 和 `project_inference.limits` 中记录冲突。不要为了让界面字段完整而选择第一个命中的项目。
 

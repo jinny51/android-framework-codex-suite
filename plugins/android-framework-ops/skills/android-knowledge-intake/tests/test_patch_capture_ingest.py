@@ -718,7 +718,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
     def test_patch_supplement_accepts_explicit_platform_and_android_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            patch = root / "app16-frameworks-base@nav-policy-toggle.patch"
+            patch = root / "custom16-frameworks-base@nav-policy-toggle.patch"
             patch.write_text(
                 "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
                 "--- a/frameworks/base/services/core/java/X.java\n"
@@ -727,7 +727,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "+//gyf 20260526@ nav policy toggle\n",
                 encoding="utf-8",
             )
-            (root / "app16-frameworks-base@nav-policy-toggle.readme.md").write_text(
+            (root / "custom16-frameworks-base@nav-policy-toggle.readme.md").write_text(
                 valid_patch_readme(),
                 encoding="utf-8",
             )
@@ -807,6 +807,15 @@ class PatchCaptureIngestTests(unittest.TestCase):
             ("rk", "9.0"),
         )
 
+    def test_platform_metadata_uses_unique_verification_token_when_patch_name_lacks_platform(self) -> None:
+        self.assertEqual(
+            intake.infer_platform_metadata(
+                [{"path": "patches/A15A16-manager@app_distribution_fix.patch"}],
+                [{"payload": {"details": ["project model: TVE1067M1_H031", "platform: mtk15"]}}],
+            ),
+            ("mtk", "15"),
+        )
+
     def test_conflicting_project_clues_keep_project_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -866,6 +875,37 @@ class PatchCaptureIngestTests(unittest.TestCase):
 
             self.assertEqual(check["status"], "FAIL")
             self.assertTrue(any("platform 非法" in item for item in check["errors"]))
+
+    def test_framework_change_validation_rejects_uncontrolled_app_patch_asset_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-120000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_capture_package(root))],
+                project="TVE1234A",
+                summary="Allow nav policy toggle",
+                status="validated",
+                schema_version="1",
+            )
+            manifest_path = package / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            old_rel = manifest["files"]["patches"][0]
+            new_rel = "patches/app15-frameworks-base@nav-policy-toggle.patch"
+            (package / old_rel).rename(package / new_rel)
+            manifest["files"]["patches"][0] = new_rel
+            write_json(manifest_path, manifest)
+            facts_path = package / "materials" / "evidence" / "patch_diff_facts.json"
+            facts = json.loads(facts_path.read_text(encoding="utf-8"))
+            facts["payload"]["patches"][0]["path"] = new_rel
+            write_json(facts_path, facts)
+
+            check = intake.validate_package(package)
+
+            self.assertEqual(check["status"], "FAIL")
+            self.assertTrue(any("app15" in item and "补丁资产" in item for item in check["errors"]))
 
     def test_patch_package_carries_recent_member_search_usage_when_capture_lacks_it(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1592,7 +1632,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertTrue(any("template-companion.readme.md" in item and "TODO" in item for item in check["errors"]))
             self.assertFalse(any("TODO" in item for item in project_inference["payload"]["raw_inputs"]))
 
-    def test_project_inference_keeps_full_model_and_base_model(self) -> None:
+    def test_project_inference_normalizes_branch_suffix_to_project_model(self) -> None:
         project, payload = intake.infer_project(
             "unknown",
             [{"project": "TVE1067M1_H031", "path": "patches/mtk16-settings@lockscreen.patch"}],
@@ -1600,10 +1640,32 @@ class PatchCaptureIngestTests(unittest.TestCase):
             "",
         )
 
-        self.assertEqual(project, "TVE1067M1_H031")
+        self.assertEqual(project, "TVE1067M1")
         self.assertEqual(payload["base_model"], "TVE1067M1")
-        self.assertEqual(payload["suffix"], "H031")
+        self.assertEqual(payload["suffix"], "")
         self.assertTrue(payload["company_rule_match"])
+
+    def test_project_inference_strips_any_nonstandard_suffix_from_structured_project(self) -> None:
+        examples = [
+            ("TVE1086U_MAIN_HANGYAN", "TVE1086U"),
+            ("TVE1091U福建移动高清", "TVE1091U"),
+            ("TVA10A2R-camera-policy", "TVA10A2R"),
+        ]
+        for raw_project, expected_project in examples:
+            with self.subTest(raw_project=raw_project):
+                project, payload = intake.infer_project(
+                    raw_project,
+                    [{"project": raw_project, "path": "patches/mtk15-frameworks-base@feature.patch"}],
+                    [],
+                    f"{raw_project} display policy",
+                )
+
+                self.assertEqual(project, expected_project)
+                self.assertEqual(payload["project"], expected_project)
+                self.assertEqual(payload["base_model"], expected_project)
+                self.assertEqual(payload["suffix"], "")
+                self.assertTrue(payload["company_rule_match"])
+                self.assertIn(raw_project, " ".join(payload["raw_inputs"]))
 
     def test_project_inference_accepts_short_project_model(self) -> None:
         project, payload = intake.infer_project(
@@ -1616,6 +1678,20 @@ class PatchCaptureIngestTests(unittest.TestCase):
         self.assertEqual(project, "TVE8402")
         self.assertEqual(payload["project"], "TVE8402")
         self.assertEqual(payload["base_model"], "TVE8402")
+        self.assertEqual(payload["suffix"], "")
+        self.assertTrue(payload["company_rule_match"])
+
+    def test_project_inference_accepts_tvd_scope(self) -> None:
+        project, payload = intake.infer_project(
+            "TVD1234M_H031",
+            [],
+            [],
+            "",
+        )
+
+        self.assertEqual(project, "TVD1234M")
+        self.assertEqual(payload["project"], "TVD1234M")
+        self.assertEqual(payload["base_model"], "TVD1234M")
         self.assertEqual(payload["suffix"], "")
         self.assertTrue(payload["company_rule_match"])
 
@@ -1634,7 +1710,25 @@ class PatchCaptureIngestTests(unittest.TestCase):
         self.assertEqual(project, "TVE1067M1")
         self.assertEqual(payload["project"], "TVE1067M1")
         self.assertEqual(payload["base_model"], "TVE1067M1")
-        self.assertIn("多个候选共享基础项目 TVE1067M1", " ".join(payload["limits"]))
+        self.assertEqual(payload["limits"], [])
+        self.assertIn("TVE1067M1_H031", " ".join(payload["raw_inputs"]))
+
+    def test_project_inference_keeps_m_and_m1_as_distinct_projects(self) -> None:
+        project, payload = intake.infer_report_project(
+            "daily",
+            "今天同时提到 TVE1067M 和 TVE1067M1 两个不同项目。",
+            {
+                "TVE1067M": [("旧项目问题", "已完成")],
+                "TVE1067M1": [("新项目问题", "已完成")],
+            },
+            [],
+            [],
+        )
+
+        self.assertEqual(project, "unknown")
+        self.assertIn("TVE1067M", payload["candidates"])
+        self.assertIn("TVE1067M1", payload["candidates"])
+        self.assertIn("多个项目型号", " ".join(payload["limits"]))
 
     def test_patch_project_inference_uses_related_daily_report_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

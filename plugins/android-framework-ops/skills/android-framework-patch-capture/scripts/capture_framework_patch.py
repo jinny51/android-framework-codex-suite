@@ -28,7 +28,7 @@ PLATFORM_PREFIX_ALIASES = {
     "u": "unisoc",
 }
 PROJECT_MODEL_RE = re.compile(
-    r"(?<![A-Z0-9])TV[EAI][A-Z0-9]{4,6}(?:_[A-Z0-9]+)*(?![A-Z0-9_])",
+    r"(?<![A-Z0-9])(?P<base>TV[DEAI][A-Z0-9]{4,6})(?P<branch_suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
     re.I,
 )
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
@@ -457,7 +457,7 @@ def infer_capture_project_for_feature(args: argparse.Namespace, captures: list[R
         payload["candidates"] = unique_projects
         return "unknown", payload
 
-    limits = ["未从命令参数、source_root、repo_path、git branch、git remote、source-access registry、功能摘要或 diff 中识别到 TVE/TVA/TVI 项目型号"]
+    limits = ["未从命令参数、source_root、repo_path、git branch、git remote、source-access registry、功能摘要或 diff 中识别到 TVD/TVE/TVA/TVI 项目型号"]
     if args.project and args.project.strip() not in {"", "unknown"}:
         limits.append("命令参数 project 未匹配公司项目型号规范，未作为项目名写入补丁包")
     return "unknown", project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
@@ -465,11 +465,11 @@ def infer_capture_project_for_feature(args: argparse.Namespace, captures: list[R
 
 def find_company_project(text: str) -> str:
     match = PROJECT_MODEL_RE.search((text or "").upper())
-    return match.group(0) if match else ""
+    return match.group("base").upper() if match else ""
 
 
 def find_company_projects(text: str) -> list[str]:
-    return sorted(dict.fromkeys(match.group(0).upper() for match in PROJECT_MODEL_RE.finditer((text or "").upper())))
+    return sorted(dict.fromkeys(match.group("base").upper() for match in PROJECT_MODEL_RE.finditer((text or "").upper())))
 
 
 def parse_shell_array(text: str, name: str) -> list[str]:
@@ -539,7 +539,7 @@ def project_inference_payload(
         "checked_sources": checked_sources,
         "raw_inputs": raw_inputs[:20],
         "limits": limits or [],
-        "recognition_scope": "TVE/TVA/TVI",
+        "recognition_scope": "TVD/TVE/TVA/TVI",
         "company_rule_match": project != "unknown",
     }
 

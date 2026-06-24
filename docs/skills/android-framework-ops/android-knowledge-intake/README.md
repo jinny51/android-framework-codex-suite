@@ -85,15 +85,15 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 
 该命令仍生成 `framework_change` 上传包，只是额外携带 `materials/evidence/evidence_supplement.json`，用于说明它补充哪个原始上传包。
 
-补证包会先做本地校验。如果 `--supplement-reason` 说明在补项目（project）、平台（platform）、Android 版本（Android version）或验证（verification），新包不能继续保留对应的 `unknown`、缺失或未验证状态：补项目时必须有可追溯 TVE/TVA/TVI 项目和 `project_inference` 依据；补平台或 Android 版本时对应字段不能为 `unknown`，必要时使用显式 `--platform` 和 `--android-version`；补验证时 `verification_result` 必须为 `PASS`。如果缺口是开发前知识搜索（pre-change knowledge search），但事实是手动实现或开发前没有搜索，成员不能补造搜索；应记录实现来源，交给管理端本地技能做沉淀前重叠检索（post-change overlap check）。
+补证包会先做本地校验。如果 `--supplement-reason` 说明在补项目（project）、平台（platform）、Android 版本（Android version）或验证（verification），新包不能继续保留对应的 `unknown`、缺失或未验证状态：补项目时必须有可追溯 `TVD`/`TVE`/`TVA`/`TVI` 项目和 `project_inference` 依据；补平台或 Android 版本时对应字段不能为 `unknown`，必要时使用显式 `--platform` 和 `--android-version`；补验证时 `verification_result` 必须为 `PASS`。如果缺口是开发前知识搜索（pre-change knowledge search），但事实是手动实现或开发前没有搜索，成员不能补造搜索；应记录实现来源，交给管理端本地技能做沉淀前重叠检索（post-change overlap check）。
 
-`--project` 只有包含 `TVE`/`TVA`/`TVI` 公司项目号时才作为高优先级项目名。对 capture 包，intake 还会读取 capture manifest/patch item、`source_root`、repo 路径、git 分支/remote、WSL source-access registry、功能 README/diff/summary，以及显式关联的日报/周报上下文来识别项目；泛化标签不会写入 `manifest.project`。
+`--project` 只有包含 `TVD`/`TVE`/`TVA`/`TVI` 公司项目号时才作为高优先级项目名。对 capture 包，intake 还会读取 capture manifest/patch item、`source_root`、repo 路径、git 分支/remote、WSL source-access registry、功能 README/diff/summary，以及显式关联的日报/周报上下文来识别项目；泛化标签不会写入 `manifest.project`。结构化项目字段只保存规范项目型号；分支、客户、业务、模块、构建或中文描述等规范外尾随内容只进入 `project_inference` 证据，不能进入 `manifest.project`。
 
 如果这些来源识别出多个不同项目（project）候选，成员上传技能不会任选一个写入包，而是写成 `project=unknown`，在 `project_inference.candidates` 保留全部候选，并把冲突写进 `project_inference.limits`。即便成员传入 `--status validated`，这类包也会降为候选（candidate），后续由补证包（evidence supplement package）闭合。
 
 补丁包的平台（platform）只允许 `mtk`、`rk`、`unisoc` 或 `unknown`。`android14`、`app15` 这类前缀不能写成平台，只能在数字可信时作为 Android 版本线索；平台未知的补丁包可以被服务器归档，但管理端本地沉淀技能必须把它作为需补证据处理。补证时如果补丁捕获包或文件名不能证明平台和 Android 版本，可以通过 `--platform mtk|rk|unisoc|unknown` 和 `--android-version <number>` 显式写入边界字段。
 
-如果这个补丁包明确来自某个 `daily_trace` 或 `weekly_trace` 上传包，显式带上 run id，后续 AI 知识闭环会用它做确定性关联。没有显式 run id 时，补丁包生成会尝试读取同一成员同一天的日报包（daily report package）；只有日报上下文里能识别出唯一 TVE/TVA/TVI 项目时，才自动继承项目（project）并写入 `related_report_run_ids`。如果日报缺失、多项目或冲突，仍保持 `project=unknown` 并交给补证包（evidence supplement package）闭合。`weekly_trace` 只能作为背景关联，周报包本身固定仅归档：
+如果这个补丁包明确来自某个 `daily_trace` 或 `weekly_trace` 上传包，显式带上 run id，后续 AI 知识闭环会用它做确定性关联。没有显式 run id 时，补丁包生成会尝试读取同一成员同一天的日报包（daily report package）；只有日报上下文里能识别出唯一 `TVD`/`TVE`/`TVA`/`TVI` 项目时，才自动继承项目（project）并写入 `related_report_run_ids`。如果日报缺失、多项目或冲突，仍保持 `project=unknown` 并交给补证包（evidence supplement package）闭合。`weekly_trace` 只能作为背景关联，周报包本身固定仅归档：
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --summary "功能补丁摘要" --status candidate --related-report-run-id 20260601-210000-daily

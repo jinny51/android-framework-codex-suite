@@ -16,8 +16,8 @@
   2. remote git branch or local mounted source branch,
   3. build or lunch target,
   4. patch file name, patch readme, or changed source path,
-  5. explicit TVE/TVA/TVI project number in the conversation.
-- Normalize TVE/TVA/TVI project numbers before grouping report items.
+  5. explicit TVD/TVE/TVA/TVI project number in the conversation.
+- Normalize TVD/TVE/TVA/TVI project numbers before grouping report items.
 - Keep trailing business text out of the project name:
   - `TVE1086U整体项目交接` -> project `TVE1086U`, item `整体项目交接`.
   - `TVE1091UAOC移动高清` -> project `TVE1091U`, item or label `AOC移动高清`.

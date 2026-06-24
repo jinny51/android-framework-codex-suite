@@ -4,7 +4,9 @@ This package is a local handoff artifact. One package represents one Framework f
 
 `android-knowledge-intake` submits the whole feature package through the server submission channel as incoming. The user's local `android-knowledge-curation-maintainer` skill later decides whether and how material enters the knowledge repository.
 
-Project metadata is an applicability boundary. If project clues conflict across `--project`, source roots, git metadata, WSL source-access registry, summary, or diff text, the capture package must keep `project=unknown`, preserve all candidate TVE/TVA/TVI models in `project_inference.candidates`, and record the conflict in `project_inference.limits`.
+Project metadata is an applicability boundary. If project clues conflict across `--project`, source roots, git metadata, WSL source-access registry, summary, or diff text, the capture package must keep `project=unknown`, preserve all candidate TVD/TVE/TVA/TVI models in `project_inference.candidates`, and record the conflict in `project_inference.limits`.
+
+The manifest `project` field stores only the normalized company model. Branch suffixes, customer suffixes, build branches, business labels, module labels, Chinese descriptions, and other non-standard trailing text must stay in `project_inference` evidence. For example, `TVE1067M1_H031` becomes `TVE1067M1`, `TVE1086U_MAIN_HANGYAN` becomes `TVE1086U`, and `TVE1091U福建移动高清` becomes `TVE1091U`.
 
 Patch capture filters diff sections that contain only file mode metadata, such as `old mode 100755` / `new mode 100644`. Mode-only changes are not feature evidence and must not create a standalone patch package. If a file mode change is intentional, it must appear with content, summary, risk, and verification evidence explaining why executable permission is part of the feature.
 
@@ -72,7 +74,7 @@ There is no `patches/*.readme.md` in the capture package. The README is feature-
     "basis": ["source_root: /home/<wsl-user>/work/rk/TVE8402M"],
     "checked_sources": ["命令参数 project", "source_root", "repo_path", "git branch", "git remote"],
     "limits": [],
-    "recognition_scope": "TVE/TVA/TVI"
+    "recognition_scope": "TVD/TVE/TVA/TVI"
   },
   "verification_chain": {
     "remote_build": true,

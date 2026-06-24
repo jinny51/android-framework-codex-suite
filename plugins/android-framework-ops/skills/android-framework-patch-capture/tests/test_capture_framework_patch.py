@@ -980,6 +980,121 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(manifest["project"], "TVE8402")
             self.assertEqual(manifest["patches"][0]["project"], "TVE8402")
 
+    def test_project_branch_suffix_is_normalized_to_project_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_plain_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260604-130510-patch",
+                    "--platform",
+                    "mtk15",
+                    "--feature",
+                    "usage-time-fix",
+                    "--summary",
+                    "TVE1067M1_H031 usage time fix",
+                    "--project",
+                    "TVE1067M1_H031",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "TVE1067M1")
+            self.assertEqual(manifest["patches"][0]["project"], "TVE1067M1")
+            self.assertEqual(manifest["project_inference"]["project"], "TVE1067M1")
+
+    def test_nonstandard_project_suffix_is_kept_out_of_structured_project(self) -> None:
+        examples = [
+            ("TVE1086U_MAIN_HANGYAN", "TVE1086U"),
+            ("TVE1091U福建移动高清", "TVE1091U"),
+            ("TVA10A2R-camera-policy", "TVA10A2R"),
+        ]
+        for raw_project, expected_project in examples:
+            with self.subTest(raw_project=raw_project):
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    create_plain_repo(root)
+
+                    result = run(
+                        [
+                            sys.executable,
+                            str(SCRIPT),
+                            "--source-root",
+                            str(root),
+                            "--out-dir",
+                            "out",
+                            "--run-id",
+                            "20260604-130515-patch",
+                            "--platform",
+                            "mtk15",
+                            "--feature",
+                            "project-normalization",
+                            "--summary",
+                            f"{raw_project} project normalization",
+                            "--project",
+                            raw_project,
+                            "--status",
+                            "candidate",
+                        ],
+                        root,
+                    )
+
+                    package_dir = Path(json.loads(result.stdout)["package"])
+                    manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+                    self.assertEqual(manifest["project"], expected_project)
+                    self.assertEqual(manifest["patches"][0]["project"], expected_project)
+                    self.assertEqual(manifest["project_inference"]["project"], expected_project)
+                    self.assertIn(raw_project, " ".join(manifest["project_inference"]["raw_inputs"]))
+
+    def test_tvd_project_model_from_argument_is_recognized(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_plain_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260604-130520-patch",
+                    "--platform",
+                    "mtk15",
+                    "--feature",
+                    "camera-policy",
+                    "--summary",
+                    "Camera2 policy adjustment",
+                    "--project",
+                    "TVD1234M",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "TVD1234M")
+            self.assertEqual(manifest["patches"][0]["project"], "TVD1234M")
+
     def test_conflicting_project_clues_keep_project_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "work" / "rk" / "TVA10A2R"

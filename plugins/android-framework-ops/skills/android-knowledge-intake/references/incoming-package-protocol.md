@@ -93,7 +93,7 @@ blocked
 
 Only sensitive material, mixed unrelated diffs, unclear task boundaries, or high-risk misleading reuse hints should stop patch upload. Even then, daily or weekly trace should record what happened and why it was blocked.
 
-Patch package project inference may use a same-member same-day daily package only when no explicit `related_report_run_ids` were provided and the daily context exposes exactly one TVE/TVA/TVI project candidate. This is a member-side generation convenience, not a server-side guess. Ambiguous daily context, multiple projects, or missing daily packages must keep `project=unknown` and rely on a later evidence supplement package.
+Patch package project inference may use a same-member same-day daily package only when no explicit `related_report_run_ids` were provided and the daily context exposes exactly one TVD/TVE/TVA/TVI project candidate. This is a member-side generation convenience, not a server-side guess. Ambiguous daily context, multiple projects, or missing daily packages must keep `project=unknown` and rely on a later evidence supplement package.
 
 ## Daily Or Weekly Trace
 
@@ -226,7 +226,7 @@ If a previous `framework_change` package is marked 需补证据（needs_evidence
 
 This association only says the new patch package supplements evidence for an earlier package. It is not a curation decision and does not create another allowed `package_kind`.
 
-The member-side local check treats supplement packages as evidence closure attempts. If `supplement_reason` says the package补项目（project）, the new package must carry a traceable TVE/TVA/TVI project in `manifest.project` and `project_inference` must confirm `recognized=true`, `company_rule_match=true`, `basis`, and `checked_sources`. If it补平台（platform） or Android 版本（Android version）, the new package cannot keep the requested field as `unknown`; when capture evidence cannot prove those fields, `android_knowledge_intake.py patch` may use explicit `--platform mtk|rk|unisoc|unknown` and `--android-version <number>` to write the corrected boundary into `manifest.json`, `materials/variant.json`, and `materials/evidence/evidence_supplement.json`. If it补验证（verification）, `verification_result` must be `PASS`. If the old gap is pre-change knowledge search but the implementation was manual or the search did not happen before development, the member must not fabricate it; record the implementation origin and let admin-side curation perform post-change overlap check.
+The member-side local check treats supplement packages as evidence closure attempts. If `supplement_reason` says the package补项目（project）, the new package must carry a traceable TVD/TVE/TVA/TVI project in `manifest.project` and `project_inference` must confirm `recognized=true`, `company_rule_match=true`, `basis`, and `checked_sources`. If it补平台（platform） or Android 版本（Android version）, the new package cannot keep the requested field as `unknown`; when capture evidence cannot prove those fields, `android_knowledge_intake.py patch` may use explicit `--platform mtk|rk|unisoc|unknown` and `--android-version <number>` to write the corrected boundary into `manifest.json`, `materials/variant.json`, and `materials/evidence/evidence_supplement.json`. If it补验证（verification）, `verification_result` must be `PASS`. If it补补丁资产修正（patch asset correction）, patch filenames must use controlled platform prefixes such as `mtk15-`, `rk14-`, or `unisoc16-`; `app15-*.patch` remains invalid because it cannot prove the platform boundary. If the old gap is pre-change knowledge search but the implementation was manual or the search did not happen before development, the member must not fabricate it; record the implementation origin and let admin-side curation perform post-change overlap check.
 
 `materials/evidence/search_before_change.json` records member-side knowledge use before or during the change. It can come from an explicit patch capture package, or from same-day `android-knowledge-search` usage records only when those records match the current patch feature anchors. Same member and same day are not enough:
 
@@ -271,22 +271,25 @@ This is development evidence only. It must not be treated as a curation decision
 Project must come from traceable evidence:
 
 ```text
-explicit incoming project containing a TVE/TVA/TVI model
-capture package manifest or patch item project containing a TVE/TVA/TVI model
+explicit incoming project containing a TVD/TVE/TVA/TVI model
+capture package manifest or patch item project containing a TVD/TVE/TVA/TVI model
 source_root, repo_path, git branch, git remote, local mount path, or WSL source-access registry
 patch/feature README/diff/summary text
 explicit related daily or weekly report context
 ```
 
-Daily reports are not just prose. When a daily package context contains exactly one traceable TVE/TVA/TVI project model, `manifest.project` and `materials/evidence/project_inference.json` must carry it so the database repository can show accurate member work context and later curation can use it as evidence. If the daily context contains multiple projects, keep the single `project` field unknown and preserve the checked candidates and limits in project inference evidence.
+Daily reports are not just prose. When a daily package context contains exactly one traceable TVD/TVE/TVA/TVI project model, `manifest.project` and `materials/evidence/project_inference.json` must carry it so the database repository can show accurate member work context and later curation can use it as evidence. If the daily context contains multiple projects, keep the single `project` field unknown and preserve the checked candidates and limits in project inference evidence.
 
-If the daily context contains multiple traceable candidates that share the same base model, such as `TVE1067M1` and `TVE1067M1_H031`, write the shared base model `TVE1067M1` to `manifest.project` and keep the full candidates in `project_inference`. Do not truncate it to `TVE1067M`. This is a conservative normalization for one project family, not permission to merge unrelated TVE/TVA/TVI models.
+If the daily context contains multiple traceable candidates that share one canonical project, such as `TVE1067M1` and `TVE1067M1_H031`, write the canonical project `TVE1067M1` to `manifest.project` and keep the full raw candidates in `project_inference`. Do not truncate it to `TVE1067M`, because `TVE1067M` and `TVE1067M1` are distinct projects.
+
+The structured project field stores only the company model that matches the TVD/TVE/TVA/TVI naming rule. Any text outside that model is evidence text, not part of `manifest.project` or `materials/variant.json project`: branch suffixes, customer suffixes, build branches, business labels, module labels, Chinese descriptions, and other non-standard trailing text must remain in `project_inference.raw_inputs` or `basis`. Examples: `TVE1067M1_H031` -> `TVE1067M1`, `TVE1086U_MAIN_HANGYAN` -> `TVE1086U`, `TVE1091U福建移动高清` -> `TVE1091U`. This is conservative normalization for one project model, not permission to merge unrelated TVD/TVE/TVA/TVI models.
 
 Patch packages should not depend on the UI or server to guess the project. Prefer explicit project evidence from the capture package or `--project`; otherwise attach the related daily run id so the patch can inherit that daily context. If no traceable project exists, the package can still be preserved, but curation must treat the missing project as an evidence gap and must not promote it to high-confidence reusable knowledge.
 
 Current automatic project recognition scope:
 
 ```text
+TVD
 TVE
 TVA
 TVI

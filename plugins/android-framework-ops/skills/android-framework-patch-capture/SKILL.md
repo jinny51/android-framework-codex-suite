@@ -13,9 +13,11 @@ The generated package includes patch content `sha1` for server-side deduplicatio
 
 Search evidence is development evidence, not a curation decision. A Codex-authored `validated` patch package must carry pre-change knowledge search evidence with `search_before_change.searched=true`. If no usable knowledge was found, record `--reuse-decision not_found` instead of omitting search evidence. If search has hits, close the search usage decision with `--reuse-decision reuse`, `adapt`, `reference_only`, `not_applicable`, or `not_found`; do not leave it as `unknown`. Record `--reuse-target`, `--reuse-match`, `--reuse-mismatch`, or `--reuse-reason` when a hit influenced the implementation. If the implementation origin is `manual`, `external`, `historical`, `mixed`, or `unknown` and no pre-change search happened, record that fact; do not invent a search record.
 
-`--project` is a high-priority hint only when it contains a company project anchor in the current recognition scope (`TVE`, `TVA`, or `TVI`). If `--project` is omitted or contains a generic label such as `mtk android16 Camera2`, the capture script must continue looking at source roots, repository paths, git branches/remotes, the WSL source-access registry, and feature README/diff/summary text before falling back to `unknown`.
+`--project` is a high-priority hint only when it contains a company project anchor in the current recognition scope (`TVD`, `TVE`, `TVA`, or `TVI`). If `--project` is omitted or contains a generic label such as `mtk android16 Camera2`, the capture script must continue looking at source roots, repository paths, git branches/remotes, the WSL source-access registry, and feature README/diff/summary text before falling back to `unknown`.
 
-Project inference must be conservative. If `--project`, source roots, repository paths, git branches/remotes, WSL source-access registry, feature summary, or diff text expose multiple different TVE/TVA/TVI project models, the package must write `project=unknown`, preserve all candidates in `project_inference.candidates`, and record the conflict in `project_inference.limits`; later `android-knowledge-intake` will keep it out of `validated` status until a 补证包（evidence supplement package）closes the ambiguity.
+The structured project field must contain only the normalized company model. Any text outside that model is evidence text, not part of `project`: branch suffixes, customer suffixes, build branches, business labels, module labels, Chinese descriptions, and other non-standard trailing text stay in `project_inference.raw_inputs` or `basis`. Examples: `TVE1067M1_H031` -> `TVE1067M1`, `TVE1086U_MAIN_HANGYAN` -> `TVE1086U`, `TVE1091U福建移动高清` -> `TVE1091U`. Do not truncate `TVE1067M1` to `TVE1067M`; those are different projects.
+
+Project inference must be conservative. If `--project`, source roots, repository paths, git branches/remotes, WSL source-access registry, feature summary, or diff text expose multiple different TVD/TVE/TVA/TVI project models, the package must write `project=unknown`, preserve all candidates in `project_inference.candidates`, and record the conflict in `project_inference.limits`; later `android-knowledge-intake` will keep it out of `validated` status until a 补证包（evidence supplement package）closes the ambiguity.
 
 ## Boundary
 
@@ -110,7 +112,7 @@ Patch filename must follow:
 平台Android版本-模块名@补丁功能名.patch
 ```
 
-`--platform` 必须使用当前受控平台令牌：`mtk<Android版本>`、`rk<Android版本>` 或 `unisoc<Android版本>`。历史别名 `sprd<Android版本>` 和 `u<Android版本>` 会规范化为 `unisoc<Android版本>`。不要使用 `android14`、`app15` 这类泛化令牌；它们只能说明可能的 Android 版本，不能证明平台（platform）。
+`--platform` 必须使用当前受控平台令牌：`mtk<Android版本>`、`rk<Android版本>` 或 `unisoc<Android版本>`。历史别名 `sprd<Android版本>` 和 `u<Android版本>` 会规范化为 `unisoc<Android版本>`。不要使用 `android14`、`app15` 这类泛化令牌；它们只能说明可能的 Android 版本，不能证明平台（platform）。生成的补丁资产（patch asset）文件名也必须使用受控平台前缀，例如 `mtk15-`、`rk14-` 或 `unisoc16-`；`app15-*.patch` 这类文件名不能上传，必须从正确项目和平台工作树重新采集。
 
 Examples:
 
