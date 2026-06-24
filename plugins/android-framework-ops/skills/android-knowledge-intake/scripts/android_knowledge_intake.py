@@ -31,7 +31,27 @@ OPS_PLUGIN_LIB = Path(__file__).resolve().parents[3] / "lib"
 if OPS_PLUGIN_LIB.is_dir() and str(OPS_PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(OPS_PLUGIN_LIB))
 
-from android_framework_ops.function_scope import aggregate_package_scope_errors
+from android_framework_ops.knowledge_rules import (
+    PROJECT_ANCHOR_RE,
+    VALID_FRAMEWORK_PLATFORMS,
+    aggregate_package_scope_errors,
+    apply_platform_overrides,
+    canonical_company_project,
+    classify_pre_change_search,
+    find_company_project,
+    find_company_projects,
+    find_platform_tokens,
+    has_uncontrolled_app_patch_asset_prefix,
+    is_valid_android_version_value,
+    is_valid_platform_value,
+    normalize_android_version,
+    parse_company_project,
+    parse_known_platform_token,
+    parse_platform_token,
+    parse_version_only_token,
+    split_company_project,
+    implementation_requires_pre_change_search as shared_implementation_requires_pre_change_search,
+)
 
 
 INCOMING_SCHEMA_VERSION = "1"
@@ -44,28 +64,9 @@ DEFAULT_SUBMISSION_SSH_HOST = "test35"
 DEFAULT_SUBMISSION_COMMAND = "/home/test35/work/knowledge/database-worktree/scripts/knowledge-submit"
 DEFAULT_KNOWLEDGE_REPO_URL = "test35:/home/test35/work/knowledge/knowledge.git"
 PATCH_FILENAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
-PLATFORM_TOKEN_RE = re.compile(r"^(mtk|rk|unisoc|sprd|u)(\d{1,2})(?:-|$)")
-PLATFORM_TOKEN_SEARCH_RE = re.compile(r"(?<![A-Za-z0-9])(?:platform\s*[:=]\s*)?(mtk|rk|unisoc|sprd|u)(\d{1,2})(?![A-Za-z0-9])", re.I)
-VERSION_ONLY_TOKEN_RE = re.compile(r"^(?:android|app)(\d{1,2})(?:-|$)")
-UNCONTROLLED_APP_PATCH_ASSET_RE = re.compile(r"^app\d+(?:[-_@.]|$)", re.I)
 USB_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])usb(?![A-Za-z0-9])", re.I)
 USB_CAMEL_PATH_RE = re.compile(r"(?:^|[/_.-])Usb(?=[A-Z0-9])")
-VALID_FRAMEWORK_PLATFORMS = {"mtk", "rk", "unisoc"}
-PLATFORM_PREFIX_ALIASES = {
-    "mtk": "mtk",
-    "rk": "rk",
-    "unisoc": "unisoc",
-    "sprd": "unisoc",
-    "u": "unisoc",
-}
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
-PROJECT_MODEL_RE = re.compile(
-    r"(?<![A-Z0-9])(?P<base>TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?|TVE8402)(?P<branch_suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
-    re.I,
-)
-PROJECT_FIELD_RE = re.compile(r"TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?", re.I)
-PROJECT_ANCHOR_RE = PROJECT_MODEL_RE
-PROJECT_ALIASES = {"TVE8402": "TVE8402M"}
 REMOTE_PATH_RE = re.compile(r"(?:/[A-Za-z0-9_.@+-]+){2,}")
 BANNED_LOG_PATTERNS = (
     "Log.v(",
@@ -159,7 +160,6 @@ SEARCH_USAGE_GENERIC_TOKENS = SCOPE_ANCHOR_GENERIC_TOKENS | {
     "values",
     "xml",
 }
-CODEX_IMPLEMENTATION_ORIGINS = {"codex"}
 INCOMING_KINDS = {"daily_trace", "weekly_trace", "framework_change"}
 PACKAGE_STATUS_VALUES = {"validated", "candidate", "draft", "failed", "blocked"}
 MATERIALS_DIR = "materials"
@@ -2163,27 +2163,20 @@ def search_payload_needs_closed_decision(payload: dict[str, Any]) -> bool:
         return False
     if isinstance(payload.get("payload"), dict):
         payload = payload["payload"]
-    if payload.get("searched") is not True:
-        return False
-    decision = str(payload.get("reuse_decision") or payload.get("decision") or "").strip() or "unknown"
-    if decision != "unknown":
-        return False
-    results = payload.get("results")
-    if not isinstance(results, list) or not any(str(item).strip() for item in results):
-        return False
-    text = "\n".join(str(item) for item in results).lower()
-    return not any(token in text for token in ("未发现", "未命中", "no reuse", "no candidate", "not found"))
+    classification = classify_pre_change_search(payload, implementation_origin="codex", package_status="validated")
+    return bool(classification.get("member_can_supplement"))
 
 
 def search_payload_missing_required_pre_change_search(payload: dict[str, Any]) -> bool:
     if isinstance(payload.get("payload"), dict):
         payload = payload["payload"]
-    return payload.get("searched") is not True
+    classification = classify_pre_change_search(payload, implementation_origin="codex", package_status="validated")
+    return bool(classification.get("requires_pre_change_search")) and not bool(classification.get("searched"))
 
 
 def implementation_origins_require_pre_change_search(origins: list[str]) -> bool:
     normalized = {str(item or "").strip().lower() for item in origins if str(item or "").strip()}
-    return bool(normalized) and normalized <= CODEX_IMPLEMENTATION_ORIGINS
+    return bool(normalized) and all(shared_implementation_requires_pre_change_search(origin) for origin in normalized)
 
 
 def plugin_commit() -> str:
@@ -3469,46 +3462,6 @@ def prepare_package(report_type: str, date: dt.date, config: dict[str, str], run
     return package_dir
 
 
-def normalize_android_version(platform: str, version: str) -> str:
-    if platform == "rk" and version in {"71", "90"}:
-        return {"71": "7.1", "90": "9.0"}[version]
-    return version.lstrip("0") or version
-
-
-def is_valid_platform_value(value: str) -> bool:
-    return value in VALID_FRAMEWORK_PLATFORMS or value == "unknown"
-
-
-def has_uncontrolled_app_patch_asset_prefix(value: Any) -> bool:
-    return bool(UNCONTROLLED_APP_PATCH_ASSET_RE.match(Path(str(value or "")).name))
-
-
-def is_valid_android_version_value(value: str) -> bool:
-    return value == "unknown" or bool(re.fullmatch(r"\d+(?:\.\d+)?", value))
-
-
-def parse_known_platform_token(value: str) -> tuple[str, str]:
-    token = Path(str(value or "")).name.lower()
-    match = PLATFORM_TOKEN_RE.match(token)
-    if not match:
-        return "", ""
-    prefix, raw_version = match.groups()
-    platform = PLATFORM_PREFIX_ALIASES[prefix]
-    return platform, normalize_android_version(platform, raw_version)
-
-
-def find_platform_tokens(value: Any) -> list[tuple[str, str]]:
-    text = str(value or "")
-    tokens: list[tuple[str, str]] = []
-    for match in PLATFORM_TOKEN_SEARCH_RE.finditer(text):
-        prefix, raw_version = match.groups()
-        platform = PLATFORM_PREFIX_ALIASES[prefix.lower()]
-        token = (platform, normalize_android_version(platform, raw_version))
-        if token not in tokens:
-            tokens.append(token)
-    return tokens
-
-
 def evidence_text_values(value: Any) -> list[str]:
     values: list[str] = []
     if isinstance(value, dict):
@@ -3547,67 +3500,6 @@ def infer_platform_metadata(
     return platform or "unknown", android_version or "unknown"
 
 
-def parse_version_only_token(value: str) -> str:
-    token = Path(str(value or "")).name.lower()
-    match = VERSION_ONLY_TOKEN_RE.match(token)
-    if not match:
-        return ""
-    return match.group(1).lstrip("0") or match.group(1)
-
-
-def parse_platform_token(patch_entries: list[dict[str, Any]]) -> tuple[str, str]:
-    explicit: list[tuple[str, str]] = []
-    filename_tokens: list[tuple[str, str]] = []
-    version_only: list[str] = []
-    for item in patch_entries:
-        platform = str(item.get("platform") or "").strip().lower()
-        android_version = str(item.get("android_version") or "").strip().lower()
-        if platform in VALID_FRAMEWORK_PLATFORMS and is_valid_android_version_value(android_version) and android_version != "unknown":
-            explicit.append((platform, android_version))
-        for key in ("platform_token", "path", "id", "name"):
-            value = str(item.get(key) or "")
-            parsed = parse_known_platform_token(value)
-            if parsed != ("", ""):
-                filename_tokens.append(parsed)
-        for key in ("path", "id", "name"):
-            version = parse_version_only_token(str(item.get(key) or ""))
-            if version:
-                version_only.append(version)
-
-    for candidates in (explicit, filename_tokens):
-        unique = sorted(set(candidates))
-        if len(unique) == 1:
-            return unique[0]
-        if len(unique) > 1:
-            return "unknown", "unknown"
-
-    unique_versions = sorted(set(version_only))
-    if len(unique_versions) == 1:
-        return "unknown", unique_versions[0]
-    return "unknown", "unknown"
-
-
-def apply_platform_overrides(
-    inferred_platform: str,
-    inferred_android_version: str,
-    platform_override: str = "",
-    android_version_override: str = "",
-) -> tuple[str, str]:
-    platform = str(inferred_platform or "unknown").strip().lower() or "unknown"
-    android_version = str(inferred_android_version or "unknown").strip().lower() or "unknown"
-    explicit_platform = str(platform_override or "").strip().lower()
-    explicit_android_version = str(android_version_override or "").strip().lower()
-    if explicit_platform:
-        if not is_valid_platform_value(explicit_platform):
-            raise SystemExit(f"--platform 只能使用 mtk/rk/unisoc/unknown，当前为: {explicit_platform}")
-        platform = explicit_platform
-    if explicit_android_version:
-        android_version = normalize_android_version(platform, explicit_android_version)
-        if not is_valid_android_version_value(android_version):
-            raise SystemExit(f"--android-version 必须是明确数字版本或 unknown，当前为: {explicit_android_version}")
-    return platform, android_version
-
-
 def repo_paths_from_files(files: list[str]) -> list[str]:
     repos: list[str] = []
     for path in files:
@@ -3631,41 +3523,6 @@ def first_evidence_payload(package_dir: Path, entries: list[dict[str, Any]], kin
     if not rel:
         return {}
     return read_json_file(package_dir / rel)
-
-
-def split_company_project(value: str) -> tuple[str, str]:
-    match = PROJECT_FIELD_RE.fullmatch(str(value or "").strip().upper())
-    if not match:
-        return "", ""
-    return match.group(0).upper(), ""
-
-
-def canonical_company_project(value: str) -> str:
-    project = str(value or "").strip().upper()
-    return PROJECT_ALIASES.get(project, project)
-
-
-def parse_company_project(value: str) -> dict[str, Any]:
-    base, suffix = split_company_project(value)
-    return {
-        "base_model": base,
-        "product_prefix": base[:2],
-        "form_code": base[2:3],
-        "mold_code": base[3:7],
-        "soc_code": base[7:],
-        "suffix": suffix,
-        "recognition_scope": "TVD/TVE/TVA/TVI",
-        "company_rule_match": bool(base),
-    }
-
-
-def find_company_project(text: str) -> str:
-    match = PROJECT_MODEL_RE.search(str(text or "").upper())
-    return canonical_company_project(match.group("base")) if match else ""
-
-
-def find_company_projects(text: str) -> list[str]:
-    return sorted(dict.fromkeys(canonical_company_project(match.group("base")) for match in PROJECT_MODEL_RE.finditer(str(text or "").upper())))
 
 
 def parse_shell_array(text: str, name: str) -> list[str]:

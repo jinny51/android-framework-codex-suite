@@ -19,6 +19,8 @@ The structured project field must contain only the normalized company model. Any
 
 Project inference must be conservative. If `--project`, source roots, repository paths, git branches/remotes, WSL source-access registry, feature summary, or diff text expose multiple different TVD/TVE/TVA/TVI project models, the package must write `project=unknown`, preserve all candidates in `project_inference.candidates`, and record the conflict in `project_inference.limits`; later `android-knowledge-intake` will keep it out of `validated` status until a 补证包（evidence supplement package）closes the ambiguity.
 
+Patch capture uses the plugin shared deterministic rules layer (`android_framework_ops.knowledge_rules`) before writing a package. The same project normalization, platform/Android version parsing, aggregate package detection, pre-change knowledge search classification, search usage decision closure checks, and patch asset pollution basics are reused by `android-knowledge-intake` during upload preparation. These checks are deterministic gates only; admin-side local curation still owns new knowledge, merge, archive, reject, and knowledge validity decisions.
+
 ## Boundary
 
 - `android-framework-change-workflow`: owns requirement analysis, source changes, risk, build/deploy coordination, and final verification.

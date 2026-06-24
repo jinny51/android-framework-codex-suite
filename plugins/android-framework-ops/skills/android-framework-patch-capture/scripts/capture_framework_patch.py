@@ -20,26 +20,19 @@ PLUGIN_LIB = PLUGIN_ROOT / "lib"
 if PLUGIN_LIB.is_dir() and str(PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(PLUGIN_LIB))
 
-from android_framework_ops.function_scope import aggregate_package_scope_errors
+from android_framework_ops.knowledge_rules import (
+    aggregate_package_scope_errors,
+    classify_pre_change_search,
+    find_company_project,
+    find_company_projects,
+    parse_platform_arg,
+)
 
 
 SCHEMA_VERSION = "2.0"
 PATCH_NAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
-PLATFORM_TOKEN_RE = re.compile(r"^(mtk|rk|unisoc|sprd|u)(\d{1,2})$")
 USB_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])usb(?![A-Za-z0-9])", re.I)
 USB_CAMEL_PATH_RE = re.compile(r"(?:^|[/_.-])Usb(?=[A-Z0-9])")
-PLATFORM_PREFIX_ALIASES = {
-    "mtk": "mtk",
-    "rk": "rk",
-    "unisoc": "unisoc",
-    "sprd": "unisoc",
-    "u": "unisoc",
-}
-PROJECT_MODEL_RE = re.compile(
-    r"(?<![A-Z0-9])(?P<base>TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?|TVE8402)(?P<branch_suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
-    re.I,
-)
-PROJECT_ALIASES = {"TVE8402": "TVE8402M"}
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
 BANNED_LOG_PATTERNS = (
     "Log.v(",
@@ -109,24 +102,6 @@ def slug(value: str, *, lower: bool = True) -> str:
     value = re.sub(r"[^A-Za-z0-9._-]+", "-", value)
     value = re.sub(r"-+", "-", value).strip("-._")
     return value or "unnamed"
-
-
-def normalize_android_version(platform: str, version: str) -> str:
-    if platform == "rk" and version in {"71", "90"}:
-        return {"71": "7.1", "90": "9.0"}[version]
-    return version.lstrip("0") or version
-
-
-def parse_platform_arg(value: str) -> tuple[str, str, str]:
-    token = slug(value)
-    match = PLATFORM_TOKEN_RE.fullmatch(token)
-    if not match:
-        return "", "", ""
-    prefix, raw_version = match.groups()
-    platform = PLATFORM_PREFIX_ALIASES[prefix]
-    android_version = normalize_android_version(platform, raw_version)
-    filename_version = raw_version.lstrip("0") or raw_version
-    return f"{platform}{filename_version}", platform, android_version
 
 
 def sha1_text(value: str) -> str:
@@ -467,23 +442,6 @@ def infer_capture_project_for_feature(args: argparse.Namespace, captures: list[R
     if args.project and args.project.strip() not in {"", "unknown"}:
         limits.append("命令参数 project 未匹配公司项目型号规范，未作为项目名写入补丁包")
     return "unknown", project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
-
-
-def find_company_project(text: str) -> str:
-    match = PROJECT_MODEL_RE.search((text or "").upper())
-    if not match:
-        return ""
-    project = match.group("base").upper()
-    return PROJECT_ALIASES.get(project, project)
-
-
-def find_company_projects(text: str) -> list[str]:
-    return sorted(
-        dict.fromkeys(
-            PROJECT_ALIASES.get(match.group("base").upper(), match.group("base").upper())
-            for match in PROJECT_MODEL_RE.finditer((text or "").upper())
-        )
-    )
 
 
 def parse_shell_array(text: str, name: str) -> list[str]:
@@ -839,7 +797,12 @@ def infer_reuse_decision(queries: list[str], results: list[str], summary: str) -
 def validate_search_decision_for_status(args: argparse.Namespace, search_payload: dict[str, Any]) -> tuple[list[str], list[str]]:
     if args.status != "validated":
         return [], []
-    if search_payload.get("searched") is not True:
+    classification = classify_pre_change_search(
+        search_payload,
+        implementation_origin=str(args.implementation_origin or ""),
+        package_status=str(args.status or ""),
+    )
+    if not bool(classification.get("searched")):
         if args.implementation_origin != "codex":
             return [], []
         return [], [
@@ -847,12 +810,7 @@ def validate_search_decision_for_status(args: argparse.Namespace, search_payload
             "本包可保留已验证（validated）验证结论，但知识沉淀必须由管理端执行沉淀前重叠检索（post-change overlap check），"
             "且不获得搜索闭环加分。"
         ]
-    decision = str(search_payload.get("reuse_decision") or search_payload.get("decision") or "").strip() or "unknown"
-    if decision != "unknown":
-        return [], []
-    results = search_payload.get("results")
-    has_results = isinstance(results, list) and any(str(item).strip() for item in results)
-    if not has_results:
+    if not bool(classification.get("member_can_supplement")):
         return [], []
     return [
         "已验证（validated）补丁包命中知识搜索结果时必须闭合搜索使用决策（search usage decision），"
