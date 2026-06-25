@@ -874,6 +874,35 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(check["status"], "FAIL")
             self.assertTrue(any("platform 非法" in item for item in check["errors"]))
 
+    def test_framework_change_validation_rejects_garbled_question_mark_text(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-120000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_capture_package(root))],
+                project="TVE1067M",
+                summary="Allow nav policy toggle",
+                status="validated",
+                schema_version="1",
+            )
+            manifest_path = package / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["summary"] = "?????????????"
+            write_json(manifest_path, manifest)
+            case_path = package / manifest["files"]["case"]
+            case = json.loads(case_path.read_text(encoding="utf-8"))
+            case["title"] = "?????????????"
+            write_json(case_path, case)
+
+            check = intake.validate_package(package)
+
+            self.assertEqual(check["status"], "FAIL")
+            self.assertTrue(any("manifest.summary" in item and "问号乱码" in item for item in check["errors"]))
+            self.assertTrue(any("case.title" in item and "问号乱码" in item for item in check["errors"]))
+
     def test_framework_change_validation_rejects_uncontrolled_app_patch_asset_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

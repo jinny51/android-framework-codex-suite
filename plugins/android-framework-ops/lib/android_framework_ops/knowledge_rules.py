@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 from pathlib import Path
@@ -7,6 +8,8 @@ from typing import Any
 
 
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
+RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
+GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
 VALID_FRAMEWORK_PLATFORMS = {"mtk", "rk", "unisoc"}
 PLATFORM_PREFIX_ALIASES = {
     "mtk": "mtk",
@@ -92,6 +95,43 @@ def is_valid_android_version_value(value: str) -> bool:
 def valid_android_version(value: str) -> bool:
     value = str(value or "").strip().lower()
     return value not in {"", "unknown"} and bool(re.fullmatch(r"\d+(?:\.\d+)?", value))
+
+
+def text_field_quality_errors(fields: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    for label, raw_value in fields.items():
+        if raw_value is None:
+            continue
+        value = str(raw_value).strip()
+        if not value:
+            continue
+        if GARBLED_QUESTION_MARK_RE.search(value):
+            errors.append(f"{label} 含有问号乱码（garbled question marks），请重新生成包，不能上传损坏文本。")
+    return errors
+
+
+def run_id_local_datetime(run_id: Any) -> dt.datetime | None:
+    match = RUN_ID_TIMESTAMP_RE.match(str(run_id or "").strip())
+    if not match:
+        return None
+    try:
+        return dt.datetime.strptime(match.group("date") + match.group("time"), "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+
+
+def future_run_id_errors(run_id: Any, *, now: dt.datetime, tolerance_seconds: int = 60) -> list[str]:
+    run_at = run_id_local_datetime(run_id)
+    if run_at is None:
+        return []
+    now_local = now.astimezone().replace(tzinfo=None) if now.tzinfo else now
+    if run_at <= now_local + dt.timedelta(seconds=tolerance_seconds):
+        return []
+    return [
+        "run_id 时间晚于服务器当前时间（future upload timestamp）："
+        f"{run_at:%Y-%m-%d %H:%M:%S} > {now_local:%Y-%m-%d %H:%M:%S}。"
+        "请同步成员机器时间后重新生成包。"
+    ]
 
 
 def parse_known_platform_token(value: str) -> tuple[str, str]:

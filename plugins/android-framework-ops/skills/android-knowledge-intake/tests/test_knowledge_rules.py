@@ -101,7 +101,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         from android_framework_ops.knowledge_rules import current_plugin_version, source_version_errors
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.44")
+        self.assertEqual(current, "1.0.45")
         self.assertEqual(
             source_version_errors(
                 {
@@ -167,6 +167,28 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
         self.assertEqual(bad["status"], "fail")
         self.assertIn("aggregate_package", bad["issue_codes"])
+
+    def test_upload_text_and_run_id_quality_contract(self) -> None:
+        import datetime as dt
+
+        from android_framework_ops.knowledge_rules import future_run_id_errors, text_field_quality_errors
+
+        text_errors = text_field_quality_errors(
+            {
+                "manifest.summary": "?????????????",
+                "manifest.supplement_reason": "?????verification???",
+            }
+        )
+        self.assertEqual(len(text_errors), 2)
+        self.assertIn("问号乱码", text_errors[0])
+
+        time_errors = future_run_id_errors(
+            "20260625-160100-patch",
+            now=dt.datetime(2026, 6, 25, 15, 52, 57),
+            tolerance_seconds=60,
+        )
+        self.assertEqual(len(time_errors), 1)
+        self.assertIn("晚于服务器当前时间", time_errors[0])
 
 
 if __name__ == "__main__":

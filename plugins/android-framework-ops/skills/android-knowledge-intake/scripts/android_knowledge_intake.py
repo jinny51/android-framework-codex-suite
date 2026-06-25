@@ -50,6 +50,7 @@ from android_framework_ops.knowledge_rules import (
     parse_platform_token,
     parse_version_only_token,
     split_company_project,
+    text_field_quality_errors,
     implementation_requires_pre_change_search as shared_implementation_requires_pre_change_search,
 )
 
@@ -2594,6 +2595,14 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         errors.append("manifest.date 必须是 YYYY-MM-DD")
     if not RUN_ID_RE.fullmatch(str(manifest.get("run_id") or "")):
         errors.append("manifest.run_id 必须是 YYYYMMDD-HHMMSS 或 YYYYMMDD-HHMMSS-suffix")
+    errors.extend(
+        text_field_quality_errors(
+            {
+                "manifest.summary": manifest.get("summary"),
+                "manifest.supplement_reason": manifest.get("supplement_reason"),
+            }
+        )
+    )
     package_kind = manifest.get("package_kind")
     if package_kind not in INCOMING_KINDS:
         errors.append(f"package_kind 非法: {package_kind}")
@@ -2707,6 +2716,15 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             for field in ("title", "problem", "solution_summary"):
                 if not case.get(field):
                     errors.append(f"case 缺少 {field}")
+            errors.extend(
+                text_field_quality_errors(
+                    {
+                        "case.title": case.get("title"),
+                        "case.problem": case.get("problem"),
+                        "case.solution_summary": case.get("solution_summary"),
+                    }
+                )
+            )
         if variant_path:
             variant = read_json_file(variant_path)
             if variant.get("variant_id") != manifest.get("variant_id"):
