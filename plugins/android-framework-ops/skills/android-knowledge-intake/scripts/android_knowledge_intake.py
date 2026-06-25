@@ -4116,6 +4116,7 @@ def prepare_patch_package(
             "项目（project）、平台（platform）或 Android 版本（Android version）缺少可追溯元数据，已按 candidate 提交",
         )
     statuses = {str(item.get("status", "")) for item in patch_entries}
+    source_path = materials_rel("evidence", "source.json")
     source = write_package_source(package_dir, config, "android-knowledge-intake")
     package_status = framework_package_status_from_patch_statuses(statuses, has_pass_verification)
     all_patch_items = [incoming_patch_item(package_dir, item) for item in patch_entries]
@@ -4124,6 +4125,11 @@ def prepare_patch_package(
         for item in all_patch_items
         if str(item.get("implementation_origin") or "").strip()
     )
+    if implementation_origins:
+        source["implementation_origins"] = implementation_origins
+        if len(implementation_origins) == 1:
+            source["implementation_origin"] = implementation_origins[0]
+        write_json(package_dir / source_path, {"kind": "source", "payload": source})
     capture_tools = unique_strings(str(item.get("captured_by") or "") for item in all_patch_items if str(item.get("captured_by") or "").strip())
     modified_files = sorted(
         {
@@ -4186,7 +4192,6 @@ def prepare_patch_package(
         },
     )
 
-    source_path = materials_rel("evidence", "source.json")
     project_path = write_default_evidence(
         package_dir,
         materials_rel("evidence", "project_inference.json"),

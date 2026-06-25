@@ -1216,10 +1216,13 @@ class PatchCaptureIngestTests(unittest.TestCase):
 
             check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
             search_evidence = json.loads((package / "materials" / "evidence" / "search_before_change.json").read_text(encoding="utf-8"))
+            source_evidence = json.loads((package / "materials" / "evidence" / "source.json").read_text(encoding="utf-8"))
 
             self.assertEqual(check["status"], "PASS")
             self.assertFalse(search_evidence["payload"]["searched"])
             self.assertIn("手动实现", search_evidence["payload"]["summary"])
+            self.assertEqual(source_evidence["payload"]["implementation_origin"], "manual")
+            self.assertEqual(source_evidence["payload"]["implementation_origins"], ["manual"])
             warnings = "\n".join(check["warnings"])
             self.assertIn("沉淀前重叠检索", warnings)
 
