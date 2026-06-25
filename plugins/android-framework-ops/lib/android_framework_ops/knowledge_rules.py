@@ -46,6 +46,64 @@ LISTED_FEATURE_PACKAGE_RE = re.compile(r"[^，。；\n]+、[^，。；\n]+(?:，
 
 REUSE_DECISIONS = {"reuse", "adapt", "reference_only", "not_applicable", "not_found", "unknown"}
 CODEX_IMPLEMENTATION_ORIGINS = {"codex"}
+CURATION_TEXT_FIELD_ORDER = {
+    "patch_asset_correction": 0,
+    "function_split": 1,
+    "patch_companion_readme": 2,
+}
+FUNCTION_SPLIT_MARKERS = (
+    "按日期聚合",
+    "多功能混包",
+    "多个独立功能",
+    "一个补丁包只能对应一个功能",
+    "按功能拆分",
+    "今日补丁合集",
+    "功能拆分不足",
+)
+DECISIVE_FUNCTION_SPLIT_MARKERS = (
+    "按日期聚合",
+    "多功能混包",
+    "多个独立功能",
+    "一个补丁包只能对应一个功能",
+    "今日补丁合集",
+    "功能拆分不足",
+)
+PATCH_ASSET_CORRECTION_MARKERS = (
+    "补丁资产修正",
+    "patch asset correction",
+    "补丁资产被污染",
+    "补丁资产污染",
+    "补丁资产（patch asset）存在",
+    "补丁资产（patch asset）疑似",
+    "补丁资产仍使用",
+    "功能范围与补丁锚点不一致",
+    "混杂 diff",
+    "不能证明受控平台",
+    "受控平台（platform）边界",
+    "非受控前缀",
+    "干净补丁资产",
+    "脏工作树",
+    "干净工作树重新采集",
+    "重新采集同一功能补丁包",
+    "重新采集干净补丁",
+    "重新采集干净单功能",
+    "重新捕获只包含本功能",
+)
+PATCH_ASSET_SUPPRESSES_FUNCTION_SPLIT_MARKERS = (
+    "不是按功能拆分",
+    "不是功能拆分",
+    "不是 function split",
+    "not function split",
+    "脏工作树",
+    "干净工作树",
+    "混杂 diff",
+    "重新采集干净补丁",
+    "重新采集同一功能",
+    "重新采集干净单功能",
+    "重新捕获只包含本功能",
+    "干净补丁资产",
+)
+PATCH_COMPANION_README_MARKERS = ("补丁配套说明", "todo", "模板内容", "模板化")
 
 
 def normalize_android_version(platform: str, version: str) -> str:
@@ -546,3 +604,48 @@ def classify_function_scope(text: str, patch_count: int = 0) -> dict[str, Any]:
         "issue_codes": [],
         "messages": [],
     }
+
+
+def curation_text_requires_patch_asset_correction(text: str) -> bool:
+    normalized = str(text or "").lower()
+    return any(marker in normalized for marker in PATCH_ASSET_CORRECTION_MARKERS)
+
+
+def curation_text_requires_function_split(text: str) -> bool:
+    normalized = str(text or "").lower()
+    return any(marker in normalized for marker in FUNCTION_SPLIT_MARKERS)
+
+
+def strip_conditional_function_split_caveats(text: str) -> str:
+    stripped = str(text or "")
+    for pattern in (
+        r"如果实际是[^。；\n]*(?:多个独立功能|多功能混包)[^。；\n]*(?:按功能拆分|function split)[^。；\n]*[。；]?",
+        r"如果[^。；\n]*(?:多个独立功能|多功能混包)[^。；\n]*(?:按功能拆分|function split)[^。；\n]*[。；]?",
+    ):
+        stripped = re.sub(pattern, "", stripped)
+    return stripped
+
+
+def curation_text_patch_asset_suppresses_function_split(text: str) -> bool:
+    if not curation_text_requires_patch_asset_correction(text):
+        return False
+    decisive_text = strip_conditional_function_split_caveats(text).lower()
+    if any(marker in decisive_text for marker in DECISIVE_FUNCTION_SPLIT_MARKERS):
+        return False
+    return any(marker in decisive_text for marker in PATCH_ASSET_SUPPRESSES_FUNCTION_SPLIT_MARKERS)
+
+
+def curation_text_missing_fields(text: str) -> list[str]:
+    normalized = str(text or "").lower()
+    fields: list[str] = []
+    patch_asset_required = curation_text_requires_patch_asset_correction(normalized)
+    if (
+        curation_text_requires_function_split(normalized)
+        and not curation_text_patch_asset_suppresses_function_split(normalized)
+    ):
+        fields.append("function_split")
+    if patch_asset_required:
+        fields.append("patch_asset_correction")
+    if any(marker in normalized for marker in PATCH_COMPANION_README_MARKERS):
+        fields.append("patch_companion_readme")
+    return sorted(dict.fromkeys(fields), key=lambda field: (CURATION_TEXT_FIELD_ORDER.get(field, 99), field))

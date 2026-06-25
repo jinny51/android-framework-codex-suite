@@ -193,6 +193,24 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertEqual(bad["status"], "fail")
         self.assertIn("aggregate_package", bad["issue_codes"])
 
+    def test_curation_text_missing_fields_prefers_patch_asset_correction_over_conditional_split(self) -> None:
+        from android_framework_ops.knowledge_rules import curation_text_missing_fields
+
+        fields = curation_text_missing_fields(
+            "沉淀依据：补丁资产污染，需要补丁资产修正（patch asset correction），"
+            "请在干净工作树重新采集同一功能补丁包。"
+            "这不是按功能拆分（function split）问题。"
+            "如果实际是多个独立功能，再按功能拆分补丁包（function split）。"
+        )
+
+        self.assertEqual(fields, ["patch_asset_correction"])
+
+        aggregate_fields = curation_text_missing_fields(
+            "沉淀依据：该包是今日补丁合集，包含多个独立功能，必须按功能拆分补丁包。"
+        )
+
+        self.assertEqual(aggregate_fields, ["function_split"])
+
     def test_upload_text_and_run_id_quality_contract(self) -> None:
         import datetime as dt
 
