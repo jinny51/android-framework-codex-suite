@@ -70,7 +70,7 @@ rank by package status later
 
 Daily and weekly incoming automation should run even when no patch is complete. It must preserve session facts, git activity, discovered patch files, build or verification signals, WIP state, failed paths, blocked paths, and missing evidence.
 
-Patch upload is package-status based:
+Patch package status is evidence-quality based. Ordinary server upload is stricter: ordinary patch packages and evidence supplements must be `validated`; other statuses stay local or in daily/weekly context unless a separate archive-only path is explicitly designed.
 
 ```text
 validated
@@ -91,7 +91,7 @@ blocked
   Blocked work retained with cause and checked paths.
 ```
 
-Only sensitive material, mixed unrelated diffs, unclear task boundaries, or high-risk misleading reuse hints should stop patch upload. Even then, daily or weekly trace should record what happened and why it was blocked.
+Non-`validated` patch packages stop ordinary upload. Daily or weekly trace should still record what happened, why it is incomplete, failed, or blocked, and what evidence remains missing.
 
 Patch package project inference may use a same-member same-day daily package only when no explicit `related_report_run_ids` were provided and the daily context exposes exactly one TVD/TVE/TVA/TVI project candidate. This is a member-side generation convenience, not a server-side guess. Ambiguous daily context, multiple projects, or missing daily packages must keep `project=unknown` and rely on a later evidence supplement package.
 
@@ -204,7 +204,7 @@ Manifest excerpt:
 
 Codex normal development should carry pre-change knowledge search evidence in `materials/evidence/search_before_change.json`. If no reusable knowledge was found, record the explicit search result as `not_found` instead of omitting the evidence. When pre-change search did not really happen, `validated` still means the verification evidence passed; preserve `payload.searched = false`, warn locally, and let admin-side curation perform post-change overlap check without awarding search-loop reuse score. Manual, external, historical, mixed, or unknown implementation origin must not fabricate pre-change search and can still carry verification and patch facts for later admin-side curation.
 
-`candidate`, `draft`, `failed`, and `blocked` are uploaded as curation input materials only. They must not be presented as knowledge entries or reuse-ready validated solutions by member-side tooling.
+`candidate`, `draft`, `failed`, and `blocked` are local/report-context states by default. They must not be uploaded as ordinary patch packages, and they must not be presented as knowledge entries or reuse-ready validated solutions by member-side tooling.
 
 If a previous `framework_change` package is marked 需补证据（needs_evidence）, the supplement remains a normal `framework_change` package. Set `supplement_for_package_key` to the original incoming package key and include `materials/evidence/evidence_supplement.json`:
 

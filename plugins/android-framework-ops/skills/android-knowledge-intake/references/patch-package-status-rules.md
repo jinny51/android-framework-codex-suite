@@ -1,6 +1,6 @@
 # Patch Package Status Rules
 
-Daily work is always recorded. Framework change upload is package-status based. These statuses describe the member-side incoming package and its evidence quality; they are not curation decisions and do not decide whether anything enters the knowledge repository.
+Daily work is always recorded. Framework change package status describes member-side evidence quality; it is not a curation decision and does not decide whether anything enters the knowledge repository. Ordinary server upload is stricter than local preservation: ordinary patch packages and evidence supplements must be `validated`.
 
 ## Status
 
@@ -13,11 +13,11 @@ Daily work is always recorded. Framework change upload is package-status based. 
 ## Default Policy
 
 - No completed patch: record daily/weekly trace with `work_findings`.
-- Clear patch without validation evidence: upload as `candidate` or `draft`.
-- Patch with build and accepted device/equivalent verification: upload as `validated`.
-- Known failure: upload as `failed` when it helps future AI avoid repeating the path.
-- Blocked work: record as `blocked` when the missing condition is explicit.
-- Stop patch upload only for sensitive material, mixed unrelated diffs, unclear task boundaries, or high-risk misleading reuse hints.
+- Clear patch without validation evidence: keep it local or record it in daily/weekly context; do not upload as an ordinary patch package.
+- Patch with clean function scope, traceable project/platform/Android version, clean patch assets, and accepted device/equivalent verification: upload as `validated`.
+- Known failure: record it in daily/weekly context when it helps future AI avoid repeating the path.
+- Blocked work: record it in daily/weekly context when the missing condition is explicit.
+- Stop ordinary patch upload when status is not `validated`, or when sensitive material, mixed unrelated diffs, unclear task boundaries, high-risk misleading reuse hints, bad metadata, missing verification, or dirty patch assets are present.
 
 The user's local curation maintainer skill later reads the database repository and knowledge repository to produce the curation decision.
 

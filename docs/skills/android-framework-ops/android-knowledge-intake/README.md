@@ -12,7 +12,7 @@
 
 普通成员使用 `daily/weekly` 自动化生成成员级上传包；其中周报包（weekly report package）只做一周进度归档、成员查看和统计，不进入知识库仓库。完成或阶段性完成 Framework 修改时，通过 `patch` 模式生成 `framework_change` incoming。非成员 profile 只用于协议和服务器链路测试，不能和你本机的 `android-knowledge-curation-maintainer` 混为一谈。
 
-默认策略是先自动保存上传材料，再按包状态（package status）排序。缺少显式确认不等于丢弃；不满足 `validated` 时也应尽量按 `candidate`、`draft`、`failed` 或 `blocked` 保存证据。包状态不是沉淀结论（curation decision）。
+默认策略是先在成员本机保存材料，再只把达到普通上传门禁的包送到服务器。普通补丁包和补证包上传默认必须是 `validated`：功能边界清楚、项目（project）、平台（platform）、Android 版本（Android version）可追溯、补丁资产干净，并且构建与设备或等价验证通过。`candidate`、`draft`、`failed` 或 `blocked` 可以作为本地材料或日报/周报上下文保留，但不直接进入服务器上传队列。包状态不是沉淀结论（curation decision）。
 
 需要联调协议或服务器链路时，单独创建合成数据 profile；合成 profile 不读取真实 Codex 会话、不扫描真实源码、不上传真实 patch。
 
@@ -32,7 +32,7 @@
 
 ## 典型场景
 
-- 每天下班前，Codex 自动汇总当天会话、源码改动、候选 patch、失败路径、阻塞点和验证结果，生成 `pending`（待检查包）。
+- 每天下班前，Codex 自动汇总当天会话、源码改动、候选 patch、失败路径、阻塞点和验证结果，生成日报/周报 `pending`（待检查包）；只有已验证的功能级补丁包才进入普通补丁上传。
 - 成员在检查窗口内补充或修正内容；到点后通过服务器上传入口提交。
 - Framework 修改满足条件时，成员端 Codex 自动通过 `patch-capture -> intake` 生成功能级补丁资料上传包。
 - `framework_change` 会携带 patch 内容 `sha1`；如果明确来自某次日报或周报上下文，可显式携带 `related_report_run_ids`。周报 run id 只是来源背景，不代表周报包进入知识库仓库。
@@ -95,7 +95,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 
 `--project` 只有包含 `TVD`/`TVE`/`TVA`/`TVI` 公司项目号时才作为高优先级项目名。对 capture 包，intake 还会读取 capture manifest/patch item、`source_root`、repo 路径、git 分支/remote、WSL source-access registry、功能 README/diff/summary，以及显式关联的日报/周报上下文来识别项目；泛化标签不会写入 `manifest.project`。结构化项目字段只保存规范项目型号；分支、客户、业务、模块、构建或中文描述等规范外尾随内容只进入 `project_inference` 证据，不能进入 `manifest.project`。
 
-如果这些来源识别出多个不同项目（project）候选，成员上传技能不会任选一个写入包，而是写成 `project=unknown`，在 `project_inference.candidates` 保留全部候选，并把冲突写进 `project_inference.limits`。即便成员传入 `--status validated`，这类包也会降为候选（candidate），后续由补证包（evidence supplement package）闭合。
+如果这些来源识别出多个不同项目（project）候选，成员上传技能不会任选一个写入包，而是写成 `project=unknown`，在 `project_inference.candidates` 保留全部候选，并把冲突写进 `project_inference.limits`。即便成员传入 `--status validated`，这类包也会降为候选（candidate）；候选包不能普通上传，成员需要先补齐项目边界并重新生成已验证补丁包，或按成员查看界面给出的原始包键上传已验证补证包（evidence supplement package）。
 
 补丁包的平台（platform）只允许 `mtk`、`rk`、`unisoc` 或 `unknown`。`android14`、`app15` 这类前缀不能写成平台，只能在数字可信时作为 Android 版本线索；平台未知的补丁包可以被服务器归档，但管理端本地沉淀技能必须把它作为需补证据处理。补证时如果补丁捕获包或文件名不能证明平台和 Android 版本，可以通过 `--platform mtk|rk|unisoc|unknown` 和 `--android-version <number>` 显式写入边界字段。
 

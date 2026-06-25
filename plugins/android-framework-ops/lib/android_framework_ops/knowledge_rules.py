@@ -413,6 +413,31 @@ def source_version_errors(payload: dict[str, Any] | None, *, expected_version: s
     return errors
 
 
+def patch_upload_gate_errors(manifest: dict[str, Any] | None, *, allow_incomplete: bool = False) -> list[str]:
+    payload = manifest if isinstance(manifest, dict) else {}
+    if payload.get("package_kind") != "framework_change":
+        return []
+    if allow_incomplete:
+        return []
+    package_status = str(payload.get("package_status") or "").strip().lower()
+    if package_status == "validated":
+        return []
+    is_supplement = bool(str(payload.get("supplement_for_package_key") or "").strip())
+    if is_supplement:
+        return [
+            "补证包（evidence supplement package）上传必须是已验证（validated）状态。"
+            f"当前 package_status={package_status or 'missing'}。"
+            "如果补证后仍未通过验证或证据仍不完整，请先在成员本机继续补齐；"
+            "不要把半成品补证包送入服务器上传队列。"
+        ]
+    return [
+        "普通补丁包（patch package）上传必须是已验证（validated）状态。"
+        f"当前 package_status={package_status or 'missing'}。"
+        "候选（candidate）、草稿（draft）、失败（failed）或阻塞（blocked）工作请记录到日报包（daily report package）"
+        "或继续在成员本机补齐证据；完成构建和设备/等价验证后再重新生成并上传补丁包。"
+    ]
+
+
 SUPPLEMENT_FIELD_POLICIES = {
     "project": {
         "member_label": "项目（project）",

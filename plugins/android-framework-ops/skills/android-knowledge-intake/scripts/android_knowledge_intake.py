@@ -49,6 +49,7 @@ from android_framework_ops.knowledge_rules import (
     parse_known_platform_token,
     parse_platform_token,
     parse_version_only_token,
+    patch_upload_gate_errors,
     split_company_project,
     text_field_quality_errors,
     implementation_requires_pre_change_search as shared_implementation_requires_pre_change_search,
@@ -4407,6 +4408,10 @@ def submit_package(package_dir: Path, config: dict[str, str]) -> dict[str, Any]:
     write_json(package_dir / "local-check.json", check)
     if check["status"] != "PASS":
         raise SystemExit("本地工作包校验失败，已停止提交。请查看 local-check.json。")
+    manifest = read_json_file(package_dir / "manifest.json")
+    gate_errors = patch_upload_gate_errors(manifest)
+    if gate_errors:
+        raise SystemExit("\n".join(gate_errors))
 
     method = submission_method(config)
     return server_submit_package(package_dir, config, method)

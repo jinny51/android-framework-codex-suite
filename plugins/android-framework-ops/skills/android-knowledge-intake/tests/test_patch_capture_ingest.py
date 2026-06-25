@@ -829,6 +829,28 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(supplement["payload"]["platform"], "mtk")
             self.assertEqual(supplement["payload"]["android_version"], "16")
 
+    def test_submit_blocks_ordinary_candidate_patch_package_before_server_upload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 12),
+                self.config(root),
+                run_id="20260612-190003-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_capture_package(root, status="candidate"))],
+                project="TVE1067M",
+                summary="Allow nav policy toggle",
+                status="candidate",
+                schema_version="1",
+            )
+
+            with self.assertRaises(SystemExit) as raised:
+                intake.submit_package(package, self.config(root))
+
+            message = str(raised.exception)
+            self.assertIn("普通补丁包", message)
+            self.assertIn("已验证（validated）", message)
+
     def test_platform_token_parser_rejects_generic_android_prefix(self) -> None:
         self.assertEqual(
             intake.parse_platform_token(

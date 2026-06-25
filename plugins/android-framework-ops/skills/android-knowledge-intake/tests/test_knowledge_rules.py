@@ -101,7 +101,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         from android_framework_ops.knowledge_rules import current_plugin_version, source_version_errors
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.48")
+        self.assertEqual(current, "1.0.49")
         self.assertEqual(
             source_version_errors(
                 {
@@ -151,6 +151,31 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertIn("Camera2-frameworks-base@wifi.patch", result["uncontrolled_prefixes"])
         self.assertNotIn("TVE1067M1-frameworks-base@wifi.patch", result["uncontrolled_prefixes"])
         self.assertNotIn("mtk15-frameworks-base@wifi.patch", result["uncontrolled_prefixes"])
+
+    def test_patch_upload_gate_requires_validated_status_by_default(self) -> None:
+        from android_framework_ops.knowledge_rules import patch_upload_gate_errors
+
+        candidate_errors = patch_upload_gate_errors(
+            {
+                "package_kind": "framework_change",
+                "package_status": "candidate",
+                "summary": "导航策略调整",
+            }
+        )
+
+        self.assertTrue(candidate_errors)
+        self.assertIn("普通补丁包", candidate_errors[0])
+        self.assertIn("已验证（validated）", candidate_errors[0])
+
+        validated_errors = patch_upload_gate_errors(
+            {
+                "package_kind": "framework_change",
+                "package_status": "validated",
+                "summary": "导航策略调整",
+            }
+        )
+
+        self.assertEqual(validated_errors, [])
 
     def test_function_scope_classification_contract(self) -> None:
         from android_framework_ops.knowledge_rules import classify_function_scope

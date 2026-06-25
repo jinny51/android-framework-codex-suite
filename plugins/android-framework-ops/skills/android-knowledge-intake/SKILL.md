@@ -11,7 +11,7 @@ The member-side Codex agent is the material producer. It should collect session 
 
 Ordinary members use `daily` and `weekly` modes to generate member-level incoming packages on schedule, and use `patch` when a Framework change should be converted into a `framework_change` incoming package. Weekly packages are progress archives only; they do not become knowledge repository materialization candidates. Non-member profiles are only for protocol and server-chain tests; they must not be confused with the user's local `android-knowledge-curation-maintainer` skill.
 
-Default policy: preserve incoming materials automatically first, rank by package status later. Lack of manual confirmation is not a reason to drop daily or patch evidence. Daily traces must preserve `work_findings`; weekly traces preserve progress summaries for database archive and member view only. Framework changes use `package_status` values `validated`, `candidate`, `draft`, `failed`, or `blocked`. These values are not curation decisions.
+Default policy: preserve work facts locally first, then upload only packages that pass the member-side upload gate. Daily traces must preserve `work_findings`; weekly traces preserve progress summaries for database archive and member view only. Ordinary framework-change upload and evidence supplements must be `validated`: clear function boundary, traceable project/platform/Android version, clean patch assets, and PASS build plus device or accepted equivalent verification. `candidate`, `draft`, `failed`, and `blocked` are local or report-context states; they do not enter the server upload queue by default. These values are not curation decisions.
 
 Use configuration profiles for identity. Global config stores the submission channel and knowledge repository defaults; each `[profiles.<name>]` stores one member identity, knowledge worktree, git author, role, allowed modes, and optional test behavior. Prefer explicit `--profile <name>` in automations so a daily incoming run cannot accidentally use an administrator identity.
 
@@ -33,7 +33,7 @@ Platform and Android version metadata are also knowledge applicability boundarie
 
 Member-side generation and upload gates call the plugin shared deterministic rules layer (`android_framework_ops.knowledge_rules`). This layer owns project normalization, platform/Android version parsing, no-common-target aggregate package detection, pre-change knowledge search classification, search usage decision closure checks, patch asset pollution basics, and evidence supplement relationship checks. It only decides facts and gate failures; it does not decide curation decisions or knowledge validity, which remain admin-side local curation work.
 
-A patch package can still be preserved when project, platform, or Android version metadata is incomplete, but it must not stay `validated`. Even with PASS verification, if the project remains `unknown`, the platform is `unknown`, or the Android version is `unknown`, downgrade the package to `candidate`, clear direct reuse hints, and record the metadata reason in patch diff facts for later curation.
+A patch package can still be preserved locally when project, platform, or Android version metadata is incomplete, but it must not stay `validated` and must not be uploaded as an ordinary patch package. Even with PASS verification, if the project remains `unknown`, the platform is `unknown`, or the Android version is `unknown`, downgrade the package to `candidate`, clear direct reuse hints, and record the metadata reason in patch diff facts. The member-side Codex must fix the boundary evidence and regenerate a `validated` package before upload, or create a `validated` evidence supplement when closing an existing needs-evidence task.
 
 Synthetic profiles are for protocol and server testing only. Set `synthetic_data = true` for that temporary profile. In synthetic mode, `daily` and `weekly` generate random synthetic work items instead of reading real Codex sessions or source changes; `patch` can generate a synthetic framework_change package when no `--patch` is provided.
 
@@ -198,6 +198,6 @@ knowledge_repo_worktree = "$CODEX_HOME/worktrees/knowledge"
 
 Read `references/incoming-package-protocol.md` when changing package generation or debugging server validation failures.
 
-Read `references/patch-package-status-rules.md` before deciding whether a patch package should be omitted, uploaded as `draft`, or uploaded as `validated`.
+Read `references/patch-package-status-rules.md` before deciding whether a patch package should stay local/report-only, be regenerated, or be uploaded as `validated`.
 
 Read `references/android-framework-patch-rules.md` before generating patch readmes or validating Android Framework patch content.
