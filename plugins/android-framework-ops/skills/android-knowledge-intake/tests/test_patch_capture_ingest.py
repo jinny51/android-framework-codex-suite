@@ -1263,6 +1263,41 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "\n".join(check["errors"]),
             )
 
+    def test_verification_supplement_fails_when_pass_is_static_review(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_package = create_capture_package(root, status="candidate")
+            write_json(
+                capture_package / "evidence" / "verification-result.json",
+                {
+                    "result": "PASS",
+                    "method": "patch_static_review",
+                    "summary": "仅完成静态补丁审查，未执行设备验证。",
+                },
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 12),
+                self.config(root),
+                run_id="20260612-190004-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture_package)],
+                project="TVE1067M",
+                summary="Allow nav policy toggle",
+                status="candidate",
+                schema_version="1",
+                supplement_for_package_key="20260612/lincong/20260612-172836-patch",
+                supplement_reason="补充验证（verification）证据。",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "FAIL")
+            self.assertIn(
+                "设备验证或可接受的等价验证",
+                "\n".join(check["errors"]),
+            )
+
     def test_patch_package_does_not_attach_unrelated_same_day_search_usage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

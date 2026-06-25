@@ -2913,8 +2913,11 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             )
         if supplement_target:
             supplement_text = " ".join([str(manifest.get("supplement_reason") or ""), str(manifest.get("summary") or "")]).lower()
-            if any(token in supplement_text for token in ("验证", "verification")) and result != "PASS":
-                errors.append("补验证（verification）证据时，补证包必须携带 PASS verification_result")
+            if any(token in supplement_text for token in ("验证", "verification")) and not has_pass_verification(package_dir, manifest):
+                errors.append(
+                    "补验证（verification）证据时，补证包必须携带 PASS verification_result，"
+                    "且必须是设备验证或可接受的等价验证，不能只提供静态审查。"
+                )
     return {"status": "FAIL" if errors else "PASS", "errors": errors, "warnings": warnings}
 
 
