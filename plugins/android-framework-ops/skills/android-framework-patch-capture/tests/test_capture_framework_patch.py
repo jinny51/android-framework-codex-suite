@@ -1258,7 +1258,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
 
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("按功能拆分", result.stderr)
-            self.assertIn("一个补丁包只能对应一个功能", result.stderr)
+            self.assertIn("一个原始包只能对应一个共同功能目标", result.stderr)
             self.assertFalse((root / "out" / "20260612-233425-feature").exists())
 
     def test_unrelated_feature_collection_fails_before_package_generation(self) -> None:

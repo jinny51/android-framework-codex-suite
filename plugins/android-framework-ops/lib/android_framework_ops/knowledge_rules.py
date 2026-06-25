@@ -281,8 +281,8 @@ def aggregate_package_scope_errors(text: str, patch_count: int = 0) -> list[str]
     return [
         f"补丁包（patch package）不能是无共同目标的聚合包（aggregate package）。{count}"
         f"{detail}"
-        "请用补丁采集技能（android-framework-patch-capture）按功能拆分（function split）为多个普通补丁包；"
-        "一个补丁包只能对应一个功能。"
+        "请按功能拆分（function split）为多个新的原始包（original package）；"
+        "一个原始包只能对应一个共同功能目标。"
     ]
 
 
@@ -407,7 +407,7 @@ SUPPLEMENT_FIELD_POLICIES = {
         "member_can_supplement": False,
         "member_can_fabricate": False,
         "historical_fact": False,
-        "guidance": "无共同目标聚合包不能补证，请按功能重新生成普通补丁包。",
+        "guidance": "无共同目标聚合包不能补证，请按功能重新上传新的原始包（original package）。",
     },
     "patch_asset_correction": {
         "member_label": "补丁资产修正（patch asset correction）",

@@ -77,7 +77,9 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --s
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "TVE8402M" --summary "功能补丁摘要" --status validated
 ```
 
-成员查看界面如果提示某个补丁包需补证据（needs_evidence），不要新建第四类上传包。成员端 Codex 应重新生成或提交普通补丁包（patch package），补齐缺失证据，并用原始上传包键关联：
+成员查看界面如果提示某个补丁包需补证据（needs_evidence），不要新建第四类上传包。成员端 Codex 仍以成员上传技能（android-knowledge-intake）作为入口，但要按缺口分流：项目、平台、Android 版本、验证、风险和回滚等缺口只补真实证据并关联原始上传包；补丁资产修正（patch asset correction）才需要先重新采集补丁资料包；无共同目标聚合包（aggregate package）不补证，必须按功能重新上传新的原始包（original package）。
+
+证据补齐型补证示例：
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260612-171820-feature --project "TVE1067M" --platform mtk --android-version 16 --summary "功能补丁摘要" --status validated --supplement-for-package-key 20260612/lincong/20260612-172836-patch --supplement-reason "补充项目（project）、平台（platform）和 Android 版本（Android version）证据"
@@ -99,7 +101,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --summary "功能补丁摘要" --status candidate --related-report-run-id 20260601-210000-daily
 ```
 
-只有直接指定单个独立 patch 文件时才使用 `--patch /path/to/*.patch`。多个原始 patch 文件不能直接塞进一个上传包；必须先用补丁采集技能（android-framework-patch-capture）按功能生成补丁包（patch package），再用 `--patch-package` 提交。补丁包（patch package）的单位是功能，不是日期；“今日补丁合集”或一个包包含多个独立功能会在本地校验失败，不设补丁数量例外，需要拆成多个普通补丁包。已经生成的日期聚合包不要继续补证，应重新按功能生成并分别上传。
+只有直接指定单个独立 patch 文件时才使用 `--patch /path/to/*.patch`。多个原始 patch 文件不能直接塞进一个上传包；必须先用补丁采集技能（android-framework-patch-capture）按功能生成补丁包（patch package），再用 `--patch-package` 提交。补丁包（patch package）的单位是功能，不是日期；“今日补丁合集”或一个包包含多个独立功能会在本地校验失败，不设补丁数量例外，需要拆成多个新的原始包。已经生成的日期聚合包不要继续补证，应重新按功能生成并分别上传。
 
 管理员需要验证协议和服务器链路时，才使用临时合成测试 profile。普通成员不要用测试 profile 提交日报、周报或 patch。
 

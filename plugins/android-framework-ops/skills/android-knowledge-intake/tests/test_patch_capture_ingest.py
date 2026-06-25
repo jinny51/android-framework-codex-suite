@@ -532,7 +532,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             message = str(raised.exception)
             self.assertIn("聚合包", message)
             self.assertIn("按功能拆分", message)
-            self.assertIn("普通补丁包", message)
+            self.assertIn("新的原始包", message)
             self.assertFalse((root / "out" / "pending" / "20260612" / "admin_alias" / "20260612-233425-patch").exists())
 
     def test_date_bundled_two_patch_package_fails_local_check(self) -> None:

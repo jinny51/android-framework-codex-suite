@@ -1815,7 +1815,7 @@ def validate_framework_scope_pollution(
             "补丁包功能范围与补丁资源锚点不一致，疑似补丁资产污染。"
             f"无关资源键示例：{sample}。"
             "请执行补丁资产修正（patch asset correction）：在干净工作树重新采集同一功能补丁包；"
-            "如果实际是多个独立功能，请按功能拆分（function split）为多个普通补丁包。"
+            "如果实际是多个独立功能，请按功能拆分（function split）为多个新的原始包（original package）。"
         )
     ]
 
