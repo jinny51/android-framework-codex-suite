@@ -615,6 +615,77 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("proxy_tip", errors)
             self.assertNotIn("按日期聚合", errors)
 
+    def test_patch_asset_correction_supplement_rejects_unrelated_readme_anchor_lists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = create_capture_package(root, project="TVE1067M1")
+            summary = "Feature Settings 新增设备名称修改锁定项，并禁止 Client 端用户修改设备名称"
+            (capture / "README.md").write_text(
+                "# lock-device-name-change\n\n"
+                "## 功能描述\n\n"
+                f"{summary}\n\n"
+                "## 修改点\n\n"
+                "- 修改 DeviceNameFragment，增加设备名称修改锁定策略。\n\n"
+                "## 关键符号\n\n"
+                "- DeviceNameFragment\n"
+                "- UserManager.DISALLOW_CONFIG_DEVICE_NAME\n"
+                "- applied_policy_to_devices\n"
+                "- autorun_app_no_local_apk\n"
+                "- confirm_password_reset_init\n\n"
+                "### 字符串资源\n\n"
+                "- applied_policy_to_devices\n"
+                "- autorun_app_no_local_apk\n"
+                "- confirm_app_init\n"
+                "- confirm_device_init\n"
+                "- confirm_password_reset_init\n"
+                "- policy_autorun_missing_deploy_item\n\n"
+                "## 日志控制\n\n"
+                "无新增运行时日志。\n\n"
+                "## SystemProperties\n\n"
+                "无新增系统属性。\n\n"
+                "## 字符串国际化\n\n"
+                "新增设备名称修改锁定相关文案。\n\n"
+                "## 可回滚性\n\n"
+                "回滚该 patch 后恢复设备名称默认修改策略。\n",
+                encoding="utf-8",
+            )
+            patch_path = capture / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
+            patch_path.write_text(
+                "diff --git a/packages/apps/Settings/res/values/strings.xml b/packages/apps/Settings/res/values/strings.xml\n"
+                "--- a/packages/apps/Settings/res/values/strings.xml\n"
+                "+++ b/packages/apps/Settings/res/values/strings.xml\n"
+                "@@ -1,3 +1,20 @@\n"
+                "+<string name=\"applied_policy_to_devices\">Applied policy to devices</string>\n"
+                "+<string name=\"autorun_app_no_local_apk\">No local APK</string>\n"
+                "+<string name=\"confirm_app_init\">Confirm app init</string>\n"
+                "+<string name=\"confirm_device_init\">Confirm device init</string>\n"
+                "+<string name=\"confirm_password_reset_init\">Confirm password reset init</string>\n"
+                "+<string name=\"policy_autorun_missing_deploy_item\">Missing deploy item</string>\n",
+                encoding="utf-8",
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 25),
+                self.config(root),
+                run_id="20260625-190443-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture)],
+                project="TVE1067M1",
+                summary=summary,
+                status="validated",
+                schema_version="1",
+                supplement_for_package_key="20260624/jared/20260624-220103-lock-device-name-change",
+                supplement_reason="补充补丁资产修正（patch asset correction）证据。",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            errors = "\n".join(check["errors"])
+
+            self.assertEqual(check["status"], "FAIL")
+            self.assertIn("补丁资产修正", errors)
+            self.assertIn("补证包", errors)
+            self.assertIn("autorun_app_no_local_apk", errors)
+
     def test_multiple_raw_patch_files_fail_before_package_generation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

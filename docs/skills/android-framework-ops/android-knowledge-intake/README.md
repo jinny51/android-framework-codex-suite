@@ -91,6 +91,8 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 
 补证包会先做本地校验。如果 `--supplement-reason` 说明在补项目（project）、平台（platform）、Android 版本（Android version）或验证（verification），新包不能继续保留对应的 `unknown`、缺失或未验证状态：补项目时必须有可追溯 `TVD`/`TVE`/`TVA`/`TVI` 项目和 `project_inference` 依据；补平台或 Android 版本时对应字段不能为 `unknown`，必要时使用显式 `--platform` 和 `--android-version`；补验证时 `verification_result` 必须为 `PASS`。如果缺口是开发前知识搜索（pre-change knowledge search），但事实是手动实现或开发前没有搜索，成员不能补造搜索；应记录实现来源，交给管理端本地技能做沉淀前重叠检索（post-change overlap check）。
 
+如果缺口是补丁资产修正（patch asset correction），成员端 Codex 必须从干净工作树重新运行补丁采集技能（android-framework-patch-capture），再通过成员上传技能（android-knowledge-intake）关联原始包上传补证包。README 里的“关键符号”“字符串资源”等清单不能用来证明污染项属于当前功能；本地校验只把功能目标和修改说明作为范围依据。如果补证包仍包含大量与功能目标无关的资源、设置、属性或日志锚点，会在上传前失败。
+
 `--project` 只有包含 `TVD`/`TVE`/`TVA`/`TVI` 公司项目号时才作为高优先级项目名。对 capture 包，intake 还会读取 capture manifest/patch item、`source_root`、repo 路径、git 分支/remote、WSL source-access registry、功能 README/diff/summary，以及显式关联的日报/周报上下文来识别项目；泛化标签不会写入 `manifest.project`。结构化项目字段只保存规范项目型号；分支、客户、业务、模块、构建或中文描述等规范外尾随内容只进入 `project_inference` 证据，不能进入 `manifest.project`。
 
 如果这些来源识别出多个不同项目（project）候选，成员上传技能不会任选一个写入包，而是写成 `project=unknown`，在 `project_inference.candidates` 保留全部候选，并把冲突写进 `project_inference.limits`。即便成员传入 `--status validated`，这类包也会降为候选（candidate），后续由补证包（evidence supplement package）闭合。

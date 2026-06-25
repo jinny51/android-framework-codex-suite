@@ -99,6 +99,7 @@ XML_RESOURCE_NAME_RE = re.compile(
 )
 SCOPE_POLLUTION_UNRELATED_ANCHOR_THRESHOLD = 4
 SCOPE_POLLUTION_REPORT_LIMIT = 8
+PATCH_SCOPE_README_HEADINGS = {"功能描述", "修改点"}
 SCOPE_TEXT_ALIASES = {
     "电池": ["battery"],
     "性能": ["performance"],
@@ -1741,6 +1742,29 @@ def scope_semantic_tokens(*values: Any) -> set[str]:
     return {token for token in tokens if token not in SCOPE_ANCHOR_GENERIC_TOKENS}
 
 
+def patch_scope_readme_text(readme_text: str) -> str:
+    sections: list[str] = []
+    current_heading = ""
+    current_lines: list[str] = []
+    for line in readme_text.splitlines():
+        match = re.match(r"^##\s+(.+?)\s*$", line)
+        if match:
+            if current_heading in PATCH_SCOPE_README_HEADINGS:
+                sections.append("\n".join(current_lines).strip())
+            current_heading = match.group(1).strip()
+            current_lines = []
+            continue
+        current_lines.append(line)
+    if current_heading in PATCH_SCOPE_README_HEADINGS:
+        sections.append("\n".join(current_lines).strip())
+    return "\n\n".join(section for section in sections if section)
+
+
+def supplement_requests_patch_asset_correction(manifest: dict[str, Any]) -> bool:
+    text = " ".join([str(manifest.get("supplement_reason") or ""), str(manifest.get("summary") or "")]).lower()
+    return "补丁资产修正" in text or "patch asset correction" in text
+
+
 def scope_anchor_tokens(value: str) -> set[str]:
     return {token for token in scope_words(value) if token not in SCOPE_ANCHOR_GENERIC_TOKENS}
 
@@ -1791,6 +1815,7 @@ def validate_framework_scope_pollution(
     readme_text: str,
     patch_paths: list[Any],
     evidence_by_kind: dict[str, dict[str, Any]],
+    strict_patch_asset_correction: bool = False,
 ) -> list[str]:
     semantic_tokens = scope_semantic_tokens(manifest.get("summary"), readme_text)
     if not semantic_tokens:
@@ -1805,12 +1830,21 @@ def validate_framework_scope_pollution(
     )
     anchors = [key for key in resource_keys if scope_anchor_tokens(key)]
     related = [key for key in anchors if scope_anchor_related(key, semantic_tokens)]
-    if not related:
+    if not related and not strict_patch_asset_correction:
         return []
     unrelated = [key for key in anchors if not scope_anchor_related(key, semantic_tokens)]
     if len(unrelated) < SCOPE_POLLUTION_UNRELATED_ANCHOR_THRESHOLD:
         return []
     sample = "、".join(unrelated[:SCOPE_POLLUTION_REPORT_LIMIT])
+    if strict_patch_asset_correction:
+        return [
+            (
+                "补丁资产修正（patch asset correction）补证包仍包含与功能目标不一致的补丁资源锚点，"
+                f"无关资源键示例：{sample}。"
+                "请回到干净工作树重新采集同一功能补丁包；"
+                "如果实际是多个独立功能，请按功能拆分（function split）为多个新的原始包（original package）。"
+            )
+        ]
     return [
         (
             "补丁包功能范围与补丁资源锚点不一致，疑似补丁资产污染。"
@@ -1831,7 +1865,17 @@ def validate_framework_function_scope(
     patch_count = patch_count_from_framework_package(patch_paths, evidence_by_kind)
     readme_text = readme_path.read_text(encoding="utf-8", errors="ignore") if readme_path and readme_path.is_file() else ""
     errors: list[str] = []
-    errors.extend(validate_framework_scope_pollution(package_dir, manifest, readme_text, patch_paths, evidence_by_kind))
+    scope_readme_text = patch_scope_readme_text(readme_text) or readme_text
+    errors.extend(
+        validate_framework_scope_pollution(
+            package_dir,
+            manifest,
+            scope_readme_text,
+            patch_paths,
+            evidence_by_kind,
+            strict_patch_asset_correction=supplement_requests_patch_asset_correction(manifest),
+        )
+    )
     text = "\n".join([str(manifest.get("summary") or ""), readme_text])
     errors.extend(aggregate_package_scope_errors(text, patch_count))
     return errors
