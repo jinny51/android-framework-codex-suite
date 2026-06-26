@@ -455,6 +455,28 @@ class PatchCaptureIngestTests(unittest.TestCase):
         self.assertIn("proxy_array", facts["resource_keys"])
         self.assertIn("ram_extender_size", facts["resource_keys"])
 
+    def test_patch_facts_ignore_context_anchors_for_scope_evidence(self) -> None:
+        facts = intake.patch_facts_from_text(
+            "diff --git a/device/product/system.prop b/device/product/system.prop\n"
+            "--- a/device/product/system.prop\n"
+            "+++ b/device/product/system.prop\n"
+            "@@ -1,5 +1,6 @@\n"
+            " ro.product.csk.control.pkg=com.iflytek.xirimiddleware \\\n"
+            " ro.wifi.manufacturer=legacy\n"
+            " ro.wificlass=legacy\n"
+            "+persist.dlna.autostart=1\n"
+            " debug.old.context=1\n"
+            "diff --git a/res/values/strings.xml b/res/values/strings.xml\n"
+            "--- a/res/values/strings.xml\n"
+            "+++ b/res/values/strings.xml\n"
+            "@@ -1,4 +1,5 @@\n"
+            " <string name=\"legacy_context_key\">Legacy</string>\n"
+            "+<string name=\"dlna_autostart_title\">DLNA autostart</string>\n"
+        )
+
+        self.assertEqual(facts["system_properties"], ["persist.dlna.autostart"])
+        self.assertEqual(facts["resource_keys"], ["dlna_autostart_title"])
+
     def test_capture_package_generates_framework_change_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

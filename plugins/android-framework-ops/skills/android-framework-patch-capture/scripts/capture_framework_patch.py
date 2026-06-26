@@ -185,6 +185,14 @@ def added_lines(diff_text: str) -> list[str]:
     return [line[1:] for line in diff_text.splitlines() if line.startswith("+") and not line.startswith("+++")]
 
 
+def changed_lines(diff_text: str) -> list[str]:
+    return [
+        line[1:]
+        for line in diff_text.splitlines()
+        if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
+    ]
+
+
 def resource_keys_from_patch_text(text: str) -> list[str]:
     keys = {
         *re.findall(r"R\.string\.([A-Za-z0-9_]+)", text),
@@ -197,14 +205,15 @@ def resource_keys_from_patch_text(text: str) -> list[str]:
 def facts_from_diff(diff_text: str) -> dict[str, Any]:
     files = changed_files_from_diff(diff_text)
     added = "\n".join(added_lines(diff_text))
+    changed = "\n".join(changed_lines(diff_text))
     all_text = diff_text
     return {
         "content_sha1": sha1_text(diff_text),
         "modified_files": files,
-        "system_properties": sorted(set(re.findall(r"\b(?:persist|ro|sys|debug|vendor)\.[A-Za-z0-9_.-]+", all_text))),
-        "settings_keys": sorted(set(re.findall(r"Settings\.(?:System|Secure|Global)\.([A-Za-z0-9_.-]+)", all_text))),
-        "resource_keys": resource_keys_from_patch_text(all_text),
-        "framework_log_keys": sorted(set(re.findall(r"FrameworkLog\.([A-Za-z0-9_]+)", all_text))),
+        "system_properties": sorted(set(re.findall(r"\b(?:persist|ro|sys|debug|vendor)\.[A-Za-z0-9_.-]+", changed))),
+        "settings_keys": sorted(set(re.findall(r"Settings\.(?:System|Secure|Global)\.([A-Za-z0-9_.-]+)", changed))),
+        "resource_keys": resource_keys_from_patch_text(changed),
+        "framework_log_keys": sorted(set(re.findall(r"FrameworkLog\.([A-Za-z0-9_]+)", changed))),
         "banned_log_hits": sorted(pattern for pattern in BANNED_LOG_PATTERNS if pattern in added),
         "author_date_marker_present": bool(AUTHOR_DATE_RE.search(all_text)),
     }
@@ -1212,6 +1221,39 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
     }
 
 
+def function_boundary_text(args: argparse.Namespace, captures: list[RepositoryCapture], facts: dict[str, Any]) -> str:
+    modules = unique_preserve([module for capture in captures for module in capture.facts.get("modules", [])])
+    anchors = unique_preserve(
+        [
+            *facts.get("system_properties", []),
+            *facts.get("settings_keys", []),
+            *facts.get("resource_keys", []),
+            *facts.get("framework_log_keys", []),
+        ]
+    )
+    relation_lines = []
+    for capture in captures:
+        files = prefixed_files(capture.repo_path, capture.facts.get("modified_files", []))
+        modules_text = ", ".join(capture.facts.get("modules", [])) or "unknown"
+        files_text = "；".join(files[:5]) if files else "未识别具体文件"
+        relation_lines.append(
+            f"- `{capture.patch_rel}`：属于 `{capture.repo_path}`，模块 {modules_text}；"
+            f"本子改动通过 {files_text} 服务同一功能目标。"
+        )
+    if not relation_lines:
+        relation_lines.append("- 未识别补丁文件；请重新从干净工作树采集。")
+    anchor_text = ", ".join(anchors[:12]) if anchors else "未提取到关键锚点"
+    module_text = ", ".join(modules) if modules else "unknown"
+    return (
+        f"- 功能目标: {args.summary}\n"
+        f"- 模块范围: {module_text}\n"
+        f"- 关键锚点: {anchor_text}\n"
+        "- 关系说明: 以下子改动必须共同服务上述功能目标；如果某一项可独立删除且不影响该目标，"
+        "应停止上传并拆成独立补丁包。\n"
+        + "\n".join(relation_lines)
+    )
+
+
 def feature_readme_text(
     args: argparse.Namespace,
     captures: list[RepositoryCapture],
@@ -1257,6 +1299,10 @@ def feature_readme_text(
 ## 功能描述
 
 {args.summary}
+
+## 功能边界
+
+{function_boundary_text(args, captures, facts)}
 
 ## 实现来源
 

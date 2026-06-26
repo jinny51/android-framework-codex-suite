@@ -1806,7 +1806,8 @@ def patch_resource_keys_from_files(package_dir: Path, patch_paths: list[Any]) ->
             continue
         if not path.is_file():
             continue
-        keys.extend(resource_keys_from_patch_text(path.read_text(encoding="utf-8", errors="replace")))
+        patch_text = path.read_text(encoding="utf-8", errors="replace")
+        keys.extend(resource_keys_from_patch_text("\n".join(patch_changed_lines(patch_text))))
     return sorted(set(keys))
 
 
@@ -1821,14 +1822,9 @@ def validate_framework_scope_pollution(
     semantic_tokens = scope_semantic_tokens(manifest.get("summary"), readme_text)
     if not semantic_tokens:
         return []
-    resource_keys = sorted(
-        set(
-            [
-                *patch_resource_keys_from_evidence(evidence_by_kind),
-                *patch_resource_keys_from_files(package_dir, patch_paths),
-            ]
-        )
-    )
+    file_resource_keys = patch_resource_keys_from_files(package_dir, patch_paths)
+    evidence_resource_keys = [] if file_resource_keys else patch_resource_keys_from_evidence(evidence_by_kind)
+    resource_keys = sorted(set([*file_resource_keys, *evidence_resource_keys]))
     anchors = [key for key in resource_keys if scope_anchor_tokens(key)]
     related = [key for key in anchors if scope_anchor_related(key, semantic_tokens)]
     if not related and not strict_patch_asset_correction:
@@ -2975,6 +2971,14 @@ def patch_added_lines(text: str) -> list[str]:
     return [line[1:] for line in text.splitlines() if line.startswith("+") and not line.startswith("+++")]
 
 
+def patch_changed_lines(text: str) -> list[str]:
+    return [
+        line[1:]
+        for line in text.splitlines()
+        if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
+    ]
+
+
 def resource_keys_from_patch_text(text: str) -> list[str]:
     keys = {
         *re.findall(r"R\.string\.([A-Za-z0-9_]+)", text),
@@ -3171,13 +3175,14 @@ def patch_facts_from_text(text: str) -> dict[str, Any]:
         if path != "/dev/null" and path not in files:
             files.append(path)
     added = "\n".join(patch_added_lines(text))
+    changed = "\n".join(patch_changed_lines(text))
     return {
         "modified_files": files,
         "symbols": patch_symbols_from_text(text),
-        "system_properties": sorted(set(re.findall(r"\b(?:persist|ro|sys|debug|vendor)\.[A-Za-z0-9_.-]+", text))),
-        "settings_keys": sorted(set(re.findall(r"Settings\.(?:System|Secure|Global)\.([A-Za-z0-9_.-]+)", text))),
-        "resource_keys": resource_keys_from_patch_text(text),
-        "framework_log_keys": sorted(set(re.findall(r"FrameworkLog\.([A-Za-z0-9_]+)", text))),
+        "system_properties": sorted(set(re.findall(r"\b(?:persist|ro|sys|debug|vendor)\.[A-Za-z0-9_.-]+", changed))),
+        "settings_keys": sorted(set(re.findall(r"Settings\.(?:System|Secure|Global)\.([A-Za-z0-9_.-]+)", changed))),
+        "resource_keys": resource_keys_from_patch_text(changed),
+        "framework_log_keys": sorted(set(re.findall(r"FrameworkLog\.([A-Za-z0-9_]+)", changed))),
         "modules": patch_modules_from_files(files),
         "banned_log_hits": sorted(pattern for pattern in BANNED_LOG_PATTERNS if pattern in added),
         "author_date_marker_present": bool(AUTHOR_DATE_RE.search(text)),

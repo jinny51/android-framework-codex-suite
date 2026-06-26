@@ -197,6 +197,30 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
         self.assertIn("proxy_array", facts["resource_keys"])
         self.assertIn("ram_extender_size", facts["resource_keys"])
 
+    def test_facts_from_diff_ignores_context_anchors_for_scope_evidence(self) -> None:
+        module = load_patch_capture_module()
+
+        facts = module.facts_from_diff(
+            "diff --git a/device/product/system.prop b/device/product/system.prop\n"
+            "--- a/device/product/system.prop\n"
+            "+++ b/device/product/system.prop\n"
+            "@@ -1,5 +1,6 @@\n"
+            " ro.product.csk.control.pkg=com.iflytek.xirimiddleware \\\n"
+            " ro.wifi.manufacturer=legacy\n"
+            " ro.wificlass=legacy\n"
+            "+persist.dlna.autostart=1\n"
+            " debug.old.context=1\n"
+            "diff --git a/res/values/strings.xml b/res/values/strings.xml\n"
+            "--- a/res/values/strings.xml\n"
+            "+++ b/res/values/strings.xml\n"
+            "@@ -1,4 +1,5 @@\n"
+            " <string name=\"legacy_context_key\">Legacy</string>\n"
+            "+<string name=\"dlna_autostart_title\">DLNA autostart</string>\n"
+        )
+
+        self.assertEqual(facts["system_properties"], ["persist.dlna.autostart"])
+        self.assertEqual(facts["resource_keys"], ["dlna_autostart_title"])
+
     def test_writes_verification_and_search_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1227,6 +1251,10 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("packages/apps/Settings", readme)
             self.assertIn("rk14-frameworks-base@cross-repo-display-policy.patch", readme)
             self.assertIn("rk14-settings@cross-repo-display-policy.patch", readme)
+            self.assertIn("## 功能边界", readme)
+            self.assertIn("功能目标: 跨源码仓库调整显示策略和设置入口", readme)
+            self.assertIn("本子改动通过", readme)
+            self.assertIn("共同服务上述功能目标", readme)
 
     def test_daily_bundle_summary_fails_function_scope_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
