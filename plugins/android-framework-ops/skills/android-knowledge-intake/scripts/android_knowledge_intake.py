@@ -3916,7 +3916,10 @@ def infer_project(
         project = unique_projects[0]
         basis = [f"{label}: {value}" for matched_project, label, value in matched if matched_project == project]
         if trusted_platform and not any(project in str(value).upper() for matched_project, _, value in matched if matched_project == project):
-            basis.append(f"可信平台证据 platform={trusted_platform} 用于补齐缺失项目平台位，候选规范项目 {project}")
+            if project.startswith("TVI"):
+                basis.append(f"可信平台证据 platform={trusted_platform} 用于按 TVI 芯片字段补齐，候选规范项目 {project}")
+            else:
+                basis.append(f"可信平台证据 platform={trusted_platform} 用于补齐缺失项目平台位，候选规范项目 {project}")
         return project, project_inference_payload(project, basis[:5], checked_sources, raw_inputs)
     if len(unique_projects) > 1:
         limits = [f"识别到多个项目型号: {', '.join(unique_projects)}，不能写成单一项目"]

@@ -1155,6 +1155,79 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(manifest["project"], "TVI3366R")
             self.assertEqual(manifest["patches"][0]["project"], "TVI3366R")
 
+    def test_tvi_arm_project_model_from_argument_is_recognized(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_plain_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260604-130521-patch",
+                    "--platform",
+                    "rk90",
+                    "--feature",
+                    "industrial-policy",
+                    "--summary",
+                    "industrial policy adjustment",
+                    "--project",
+                    "TVI3315A",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "TVI3315A")
+            self.assertEqual(manifest["platform"], "rk")
+            self.assertEqual(manifest["patches"][0]["project"], "TVI3315A")
+
+    def test_tvi_short_project_model_completes_with_chip_field(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_plain_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260604-130522-patch",
+                    "--platform",
+                    "rk90",
+                    "--feature",
+                    "industrial-policy",
+                    "--summary",
+                    "industrial policy adjustment",
+                    "--project",
+                    "TVI3315",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["project"], "TVI3315A")
+            self.assertNotEqual(manifest["project"], "TVI3315R")
+            self.assertEqual(manifest["platform"], "rk")
+            self.assertEqual(manifest["patches"][0]["project"], "TVI3315A")
+
     def test_conflicting_project_clues_keep_project_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "work" / "rk" / "TVA10A2R"

@@ -32,7 +32,7 @@ PLATFORM_TOKEN_SEARCH_RE = re.compile(
 VERSION_ONLY_TOKEN_RE = re.compile(r"^(?:android|app)(\d{1,2})(?:-|$)", re.I)
 
 PROJECT_MODEL_RE = re.compile(
-    r"(?<![A-Z0-9])(?P<base>TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?|TVE8402)"
+    r"(?<![A-Z0-9])(?P<base>TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?|TVI[A-Z0-9]{5}[A-Z0-9]?|TVE8402)"
     r"(?P<branch_suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
     re.I,
 )
@@ -41,7 +41,7 @@ PROJECT_SHORT_MODEL_RE = re.compile(
     r"(?P<branch_suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
     re.I,
 )
-PROJECT_FIELD_RE = re.compile(r"TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?", re.I)
+PROJECT_FIELD_RE = re.compile(r"TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?|TVI[A-Z0-9]{5}[A-Z0-9]?", re.I)
 PROJECT_SHORT_FIELD_RE = re.compile(r"TV[DEAI]\d{2}[A-Z0-9]{2}", re.I)
 PROJECT_ANCHOR_RE = PROJECT_MODEL_RE
 PROJECT_ALIASES = {"TVE8402": "TVE8402M"}
@@ -351,10 +351,30 @@ def trusted_project_platform_code(platform: str) -> str:
     return PROJECT_PLATFORM_CODES.get(normalized, "")
 
 
-def complete_company_project_with_platform(value: str, platform: str) -> str:
+def trusted_tvi_chip_code(platform: str, evidence_text: str = "") -> str:
+    evidence = str(evidence_text or "").lower()
+    if re.search(r"(?<![a-z0-9])x86(?:_64)?(?![a-z0-9])", evidence):
+        return "X"
+    normalized = PLATFORM_PREFIX_ALIASES.get(str(platform or "").strip().lower(), str(platform or "").strip().lower())
+    if normalized in VALID_FRAMEWORK_PLATFORMS:
+        return "A"
+    return ""
+
+
+def complete_company_project_with_platform(value: str, platform: str, evidence_text: str = "") -> str:
     project = str(value or "").strip().upper()
+    if not PROJECT_SHORT_FIELD_RE.fullmatch(project):
+        return ""
+    if project.startswith("TVI"):
+        tvi_chip_code = trusted_tvi_chip_code(platform, evidence_text)
+        if not tvi_chip_code:
+            return ""
+        candidate = project + tvi_chip_code
+        if not PROJECT_FIELD_RE.fullmatch(candidate):
+            return ""
+        return candidate
     platform_code = trusted_project_platform_code(platform)
-    if not platform_code or not PROJECT_SHORT_FIELD_RE.fullmatch(project):
+    if not platform_code:
         return ""
     candidate = project + platform_code
     if not PROJECT_FIELD_RE.fullmatch(candidate):
@@ -410,7 +430,7 @@ def find_company_project(text: str, platform: str = "") -> str:
     short_match = PROJECT_SHORT_MODEL_RE.search(str(text or "").upper())
     if not short_match:
         return ""
-    return complete_company_project_with_platform(short_match.group("base"), platform)
+    return complete_company_project_with_platform(short_match.group("base"), platform, evidence_text=str(text or ""))
 
 
 def find_company_projects(text: str, platform: str = "") -> list[str]:
@@ -420,7 +440,7 @@ def find_company_projects(text: str, platform: str = "") -> list[str]:
         projects.extend(
             completed
             for match in PROJECT_SHORT_MODEL_RE.finditer(normalized_text)
-            for completed in [complete_company_project_with_platform(match.group("base"), platform)]
+            for completed in [complete_company_project_with_platform(match.group("base"), platform, evidence_text=normalized_text)]
             if completed
         )
     return sorted(dict.fromkeys(projects))

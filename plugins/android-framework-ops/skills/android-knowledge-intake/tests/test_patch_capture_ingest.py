@@ -2015,6 +2015,38 @@ class PatchCaptureIngestTests(unittest.TestCase):
         self.assertTrue(payload["company_rule_match"])
         self.assertTrue(any("platform=mtk" in item and "TVE1213M" in item for item in payload["basis"]))
 
+    def test_project_inference_accepts_tvi3315a_project_model(self) -> None:
+        project, payload = intake.infer_project(
+            "unknown",
+            [{"project": "TVI3315A", "path": "patches/rk90-frameworks-base@industrial.patch"}],
+            [],
+            "",
+            trusted_platform="rk",
+        )
+
+        self.assertEqual(project, "TVI3315A")
+        self.assertEqual(payload["project"], "TVI3315A")
+        self.assertEqual(payload["base_model"], "TVI3315A")
+        self.assertEqual(payload["soc_code"], "A")
+        self.assertTrue(payload["company_rule_match"])
+
+    def test_project_inference_completes_tvi_short_model_with_chip_field(self) -> None:
+        project, payload = intake.infer_project(
+            "unknown",
+            [{"project": "TVI3315", "path": "patches/rk90-frameworks-base@industrial.patch"}],
+            [],
+            "",
+            trusted_platform="rk",
+        )
+
+        self.assertEqual(project, "TVI3315A")
+        self.assertNotEqual(project, "TVI3315R")
+        self.assertEqual(payload["project"], "TVI3315A")
+        self.assertEqual(payload["base_model"], "TVI3315A")
+        self.assertEqual(payload["soc_code"], "A")
+        self.assertTrue(payload["company_rule_match"])
+        self.assertTrue(any("TVI 芯片字段" in item and "TVI3315A" in item for item in payload["basis"]))
+
     def test_project_inference_strips_any_nonstandard_suffix_from_structured_project(self) -> None:
         examples = [
             ("TVE1086U_MAIN_HANGYAN", "TVE1086U"),
@@ -2076,6 +2108,16 @@ class PatchCaptureIngestTests(unittest.TestCase):
         self.assertEqual(payload["base_model"], "TVI3366R")
         self.assertEqual(payload["suffix"], "")
         self.assertTrue(payload["company_rule_match"])
+
+        arm_project, arm_payload = intake.infer_project(
+            "TVI3315A_H031",
+            [],
+            [],
+            "",
+        )
+        self.assertEqual(arm_project, "TVI3315A")
+        self.assertEqual(arm_payload["project"], "TVI3315A")
+        self.assertTrue(arm_payload["company_rule_match"])
 
     def test_daily_project_inference_collapses_same_base_model_candidates(self) -> None:
         project, payload = intake.infer_report_project(

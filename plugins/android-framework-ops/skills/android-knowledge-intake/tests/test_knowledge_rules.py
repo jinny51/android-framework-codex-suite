@@ -34,18 +34,36 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertFalse(valid_project_model("app15"))
         self.assertEqual(complete_company_project_with_platform("TVE1213", "mtk"), "TVE1213M")
         self.assertEqual(complete_company_project_with_platform("TVA10A2", "rk"), "TVA10A2R")
-        self.assertEqual(complete_company_project_with_platform("TVI8899", "unisoc"), "TVI8899U")
+        self.assertEqual(complete_company_project_with_platform("TVI3315", "rk"), "TVI3315A")
+        self.assertEqual(complete_company_project_with_platform("TVI3315", "rk", evidence_text="x86 工控主板"), "TVI3315X")
+        self.assertNotEqual(complete_company_project_with_platform("TVI3315", "rk"), "TVI3315R")
         self.assertEqual(complete_company_project_with_platform("TVE1213", ""), "")
         self.assertEqual(complete_company_project_with_platform("TVE12", "mtk"), "")
         self.assertEqual(find_company_project("project: TVE1213", platform="mtk"), "TVE1213M")
         self.assertEqual(find_company_project("project: TVE1213"), "")
         self.assertEqual(find_company_projects("TVE1213 TVA10A2", platform="rk"), ["TVA10A2R", "TVE1213R"])
+        self.assertTrue(valid_project_model("TVI3315A"))
+        self.assertTrue(valid_project_model("TVI3315X"))
+        self.assertTrue(valid_project_model("TVI3366R"))
+        self.assertEqual(find_company_project("project: TVI3315A", platform="rk"), "TVI3315A")
+        self.assertEqual(find_company_project("project: TVI3315X", platform="rk"), "TVI3315X")
+        self.assertEqual(find_company_project("project: TVI3366R", platform="mtk"), "TVI3366R")
+        self.assertEqual(find_company_project("TVI3315A-camera-policy", platform="rk"), "TVI3315A")
+        self.assertEqual(find_company_project("project: TVI3315", platform="rk"), "TVI3315A")
+        self.assertEqual(find_company_project("project: TVI3315 x86", platform="rk"), "TVI3315X")
+        self.assertEqual(find_company_projects("TVI3315", platform="rk"), ["TVI3315A"])
 
         parsed = parse_company_project("TVE1067M1")
         self.assertEqual(parsed["base_model"], "TVE1067M1")
         self.assertEqual(parsed["mold_code"], "1067")
         self.assertEqual(parsed["soc_code"], "M")
         self.assertEqual(parsed["extension_code"], "1")
+
+        parsed_tvi = parse_company_project("TVI3315A")
+        self.assertEqual(parsed_tvi["base_model"], "TVI3315A")
+        self.assertEqual(parsed_tvi["mold_code"], "3315")
+        self.assertEqual(parsed_tvi["soc_code"], "A")
+        self.assertEqual(parsed_tvi["extension_code"], "")
 
     def test_platform_and_android_version_token_contract(self) -> None:
         from android_framework_ops.knowledge_rules import (
@@ -111,7 +129,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         from android_framework_ops.knowledge_rules import current_plugin_version, source_version_errors
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.52")
+        self.assertEqual(current, "1.0.53")
         self.assertEqual(
             source_version_errors(
                 {
