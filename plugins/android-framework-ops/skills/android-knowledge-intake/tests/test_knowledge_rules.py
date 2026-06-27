@@ -14,6 +14,7 @@ if str(PLUGIN_LIB) not in sys.path:
 class KnowledgeRulesTest(unittest.TestCase):
     def test_project_model_normalization_contract(self) -> None:
         from android_framework_ops.knowledge_rules import (
+            complete_company_project_with_platform,
             find_company_project,
             find_company_projects,
             parse_company_project,
@@ -29,7 +30,16 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertTrue(valid_project_model("TVE10A2R"))
         self.assertTrue(valid_project_model("TVE1067M1"))
         self.assertFalse(valid_project_model("TVE1234A"))
+        self.assertFalse(valid_project_model("TVE1213"))
         self.assertFalse(valid_project_model("app15"))
+        self.assertEqual(complete_company_project_with_platform("TVE1213", "mtk"), "TVE1213M")
+        self.assertEqual(complete_company_project_with_platform("TVA10A2", "rk"), "TVA10A2R")
+        self.assertEqual(complete_company_project_with_platform("TVI8899", "unisoc"), "TVI8899U")
+        self.assertEqual(complete_company_project_with_platform("TVE1213", ""), "")
+        self.assertEqual(complete_company_project_with_platform("TVE12", "mtk"), "")
+        self.assertEqual(find_company_project("project: TVE1213", platform="mtk"), "TVE1213M")
+        self.assertEqual(find_company_project("project: TVE1213"), "")
+        self.assertEqual(find_company_projects("TVE1213 TVA10A2", platform="rk"), ["TVA10A2R", "TVE1213R"])
 
         parsed = parse_company_project("TVE1067M1")
         self.assertEqual(parsed["base_model"], "TVE1067M1")
@@ -101,7 +111,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         from android_framework_ops.knowledge_rules import current_plugin_version, source_version_errors
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.51")
+        self.assertEqual(current, "1.0.52")
         self.assertEqual(
             source_version_errors(
                 {

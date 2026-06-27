@@ -3858,6 +3858,7 @@ def infer_project(
     package_dir: Path | None = None,
     source_contexts: list[dict[str, Any]] | None = None,
     related_report_clues: list[tuple[str, str]] | None = None,
+    trusted_platform: str = "",
 ) -> tuple[str, dict[str, Any]]:
     explicit_clues: list[tuple[str, str]] = []
     if explicit_project and explicit_project.strip() != "unknown":
@@ -3909,11 +3910,13 @@ def infer_project(
     matched: list[tuple[str, str, str]] = []
     for _, values in groups:
         for label, value in values:
-            matched.extend((candidate, label, value) for candidate in find_company_projects(value))
+            matched.extend((candidate, label, value) for candidate in find_company_projects(value, platform=trusted_platform))
     unique_projects = sorted(dict.fromkeys(project for project, _, _ in matched))
     if len(unique_projects) == 1:
         project = unique_projects[0]
         basis = [f"{label}: {value}" for matched_project, label, value in matched if matched_project == project]
+        if trusted_platform and not any(project in str(value).upper() for matched_project, _, value in matched if matched_project == project):
+            basis.append(f"可信平台证据 platform={trusted_platform} 用于补齐缺失项目平台位，候选规范项目 {project}")
         return project, project_inference_payload(project, basis[:5], checked_sources, raw_inputs)
     if len(unique_projects) > 1:
         limits = [f"识别到多个项目型号: {', '.join(unique_projects)}，不能写成单一项目"]
@@ -3929,7 +3932,7 @@ def infer_project(
     weak_capture_projects = [
         value
         for label, value in capture_project_clues
-        if value.strip() and value.strip() != "unknown" and not find_company_project(value)
+        if value.strip() and value.strip() != "unknown" and not find_company_project(value, platform=trusted_platform)
     ]
     if weak_capture_projects:
         limits.append("capture package project 未匹配公司项目型号规范，未作为项目名写入上传包")
@@ -4170,7 +4173,16 @@ def prepare_patch_package(
         all_related_report_run_ids,
         daily_label_prefix="自动关联同日日报" if auto_related_report_run_ids else "关联日报",
     )
-    project, project_payload = infer_project(project, patch_entries, patch_sources, summary, package_dir, source_contexts, related_project_clues)
+    project, project_payload = infer_project(
+        project,
+        patch_entries,
+        patch_sources,
+        summary,
+        package_dir,
+        source_contexts,
+        related_project_clues,
+        trusted_platform=platform,
+    )
     if not framework_metadata_is_traceable(project, platform, android_version):
         downgrade_validated_patch_entries(
             patch_entries,

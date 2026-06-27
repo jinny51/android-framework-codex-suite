@@ -403,7 +403,11 @@ def collect_repository_captures(args: argparse.Namespace, platform: str, feature
     return captures
 
 
-def infer_capture_project_for_feature(args: argparse.Namespace, captures: list[RepositoryCapture]) -> tuple[str, dict[str, Any]]:
+def infer_capture_project_for_feature(
+    args: argparse.Namespace,
+    captures: list[RepositoryCapture],
+    trusted_platform: str = "",
+) -> tuple[str, dict[str, Any]]:
     source_values: list[tuple[str, str]] = []
     for capture in captures:
         source_values.extend(
@@ -435,11 +439,13 @@ def infer_capture_project_for_feature(args: argparse.Namespace, captures: list[R
     matched: list[tuple[str, str, str]] = []
     for _, values in groups:
         for label, value in values:
-            matched.extend((candidate, label, value) for candidate in find_company_projects(value))
+            matched.extend((candidate, label, value) for candidate in find_company_projects(value, platform=trusted_platform))
     unique_projects = sorted(dict.fromkeys(project for project, _, _ in matched))
     if len(unique_projects) == 1:
         project = unique_projects[0]
         basis = [f"{label}: {value}" for matched_project, label, value in matched if matched_project == project]
+        if trusted_platform and not any(project in str(value).upper() for matched_project, _, value in matched if matched_project == project):
+            basis.append(f"可信平台证据 platform={trusted_platform} 用于补齐缺失项目平台位，候选规范项目 {project}")
         return project, project_inference_payload(project, basis[:5], checked_sources, raw_inputs)
     if len(unique_projects) > 1:
         limits = [f"识别到多个项目型号: {', '.join(unique_projects)}，不能写成单一项目"]
@@ -1491,7 +1497,7 @@ def main() -> int:
             print(error, file=sys.stderr)
         return 1
     captures = collect_repository_captures(args, platform, feature)
-    resolved_project, project_inference = infer_capture_project_for_feature(args, captures)
+    resolved_project, project_inference = infer_capture_project_for_feature(args, captures, trusted_platform=platform_name)
     args.project = resolved_project
 
     now = dt.datetime.now()

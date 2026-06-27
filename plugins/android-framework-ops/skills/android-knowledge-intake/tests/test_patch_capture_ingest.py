@@ -2000,6 +2000,21 @@ class PatchCaptureIngestTests(unittest.TestCase):
         self.assertEqual(payload["suffix"], "")
         self.assertTrue(payload["company_rule_match"])
 
+    def test_project_inference_completes_missing_platform_letter_with_trusted_platform(self) -> None:
+        project, payload = intake.infer_project(
+            "unknown",
+            [{"project": "TVE1213", "path": "patches/mtk14-frameworks-base@rotation.patch"}],
+            [],
+            "",
+            trusted_platform="mtk",
+        )
+
+        self.assertEqual(project, "TVE1213M")
+        self.assertEqual(payload["project"], "TVE1213M")
+        self.assertEqual(payload["base_model"], "TVE1213M")
+        self.assertTrue(payload["company_rule_match"])
+        self.assertTrue(any("platform=mtk" in item and "TVE1213M" in item for item in payload["basis"]))
+
     def test_project_inference_strips_any_nonstandard_suffix_from_structured_project(self) -> None:
         examples = [
             ("TVE1086U_MAIN_HANGYAN", "TVE1086U"),

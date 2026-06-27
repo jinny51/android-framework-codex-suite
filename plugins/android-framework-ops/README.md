@@ -35,6 +35,8 @@ Windows 原生 Codex 的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力�
 
 成员端补丁采集和成员上传共用插件内的共享确定性规则层（shared deterministic rules layer）：项目（project）规范化和校验、平台（platform）和 Android 版本（Android version）解析、无共同目标聚合包（aggregate package）判断、开发前知识搜索（pre-change knowledge search）状态分类、搜索使用决策（search usage decision）闭合、补丁资产污染（patch asset pollution）基础判断和补证包（evidence supplement package）关系判断都从同一份规则进入。管理端本地知识沉淀技能（local curation skill）也加载这层做沉淀前事实复核；新建知识、合并知识、仅归档、不沉淀和知识有效度（knowledge validity）仍只属于管理端 AI 知识闭环。
 
+公司项目型号必须写入带平台位的规范项目名，例如 `TVE1213M`。如果来源材料只写 7 位短型号，例如 `TVE1213`，共享规则层只有在同一推断流程已经拿到可信平台证据时才会补齐第八位平台字母：`mtk -> M`、`rk -> R`、`unisoc -> U`。没有可信平台证据时，短型号不能自动写入结构化项目字段；补齐后的候选值仍必须通过公司项目型号规则。
+
 ## 和其他 skill 的兼容方式
 
 如果用户或项目同时提供了自己的 skill，应按组合方式使用：

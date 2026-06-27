@@ -11,6 +11,11 @@ SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
 VALID_FRAMEWORK_PLATFORMS = {"mtk", "rk", "unisoc"}
+PROJECT_PLATFORM_CODES = {
+    "mtk": "M",
+    "rk": "R",
+    "unisoc": "U",
+}
 PLATFORM_PREFIX_ALIASES = {
     "mtk": "mtk",
     "rk": "rk",
@@ -31,7 +36,13 @@ PROJECT_MODEL_RE = re.compile(
     r"(?P<branch_suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
     re.I,
 )
+PROJECT_SHORT_MODEL_RE = re.compile(
+    r"(?<![A-Z0-9])(?P<base>TV[DEAI]\d{2}[A-Z0-9]{2})"
+    r"(?P<branch_suffix>(?:_[A-Z0-9]+)*)(?![A-Z0-9_])",
+    re.I,
+)
 PROJECT_FIELD_RE = re.compile(r"TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?", re.I)
+PROJECT_SHORT_FIELD_RE = re.compile(r"TV[DEAI]\d{2}[A-Z0-9]{2}", re.I)
 PROJECT_ANCHOR_RE = PROJECT_MODEL_RE
 PROJECT_ALIASES = {"TVE8402": "TVE8402M"}
 
@@ -335,26 +346,45 @@ def apply_platform_overrides(
     return platform, android_version
 
 
-def canonical_company_project(value: str) -> str:
-    project = str(value or "").strip().upper()
-    return PROJECT_ALIASES.get(project, project)
+def trusted_project_platform_code(platform: str) -> str:
+    normalized = PLATFORM_PREFIX_ALIASES.get(str(platform or "").strip().lower(), str(platform or "").strip().lower())
+    return PROJECT_PLATFORM_CODES.get(normalized, "")
 
 
-def split_company_project(value: str) -> tuple[str, str]:
+def complete_company_project_with_platform(value: str, platform: str) -> str:
     project = str(value or "").strip().upper()
+    platform_code = trusted_project_platform_code(platform)
+    if not platform_code or not PROJECT_SHORT_FIELD_RE.fullmatch(project):
+        return ""
+    candidate = project + platform_code
+    if not PROJECT_FIELD_RE.fullmatch(candidate):
+        return ""
+    return candidate
+
+
+def canonical_company_project(value: str, platform: str = "") -> str:
+    project = str(value or "").strip().upper()
+    project = PROJECT_ALIASES.get(project, project)
+    if PROJECT_FIELD_RE.fullmatch(project):
+        return project
+    return complete_company_project_with_platform(project, platform) or project
+
+
+def split_company_project(value: str, platform: str = "") -> tuple[str, str]:
+    project = canonical_company_project(value, platform)
     match = PROJECT_FIELD_RE.fullmatch(project)
     if not match:
         return "", ""
     return match.group(0).upper(), ""
 
 
-def valid_project_model(value: str) -> bool:
-    base, _suffix = split_company_project(value)
+def valid_project_model(value: str, platform: str = "") -> bool:
+    base, _suffix = split_company_project(value, platform)
     return bool(base)
 
 
-def parse_company_project(value: str) -> dict[str, Any]:
-    base, suffix = split_company_project(value)
+def parse_company_project(value: str, platform: str = "") -> dict[str, Any]:
+    base, suffix = split_company_project(value, platform)
     soc_code = base[7:8] if base else ""
     extension_code = base[8:] if len(base) > 8 else ""
     return {
@@ -370,15 +400,30 @@ def parse_company_project(value: str) -> dict[str, Any]:
     }
 
 
-def find_company_project(text: str) -> str:
+def find_company_project(text: str, platform: str = "") -> str:
     match = PROJECT_MODEL_RE.search(str(text or "").upper())
-    return canonical_company_project(match.group("base")) if match else ""
+    if match:
+        return canonical_company_project(match.group("base"))
+    platform_code = trusted_project_platform_code(platform)
+    if not platform_code:
+        return ""
+    short_match = PROJECT_SHORT_MODEL_RE.search(str(text or "").upper())
+    if not short_match:
+        return ""
+    return complete_company_project_with_platform(short_match.group("base"), platform)
 
 
-def find_company_projects(text: str) -> list[str]:
-    return sorted(
-        dict.fromkeys(canonical_company_project(match.group("base")) for match in PROJECT_MODEL_RE.finditer(str(text or "").upper()))
-    )
+def find_company_projects(text: str, platform: str = "") -> list[str]:
+    normalized_text = str(text or "").upper()
+    projects = [canonical_company_project(match.group("base")) for match in PROJECT_MODEL_RE.finditer(normalized_text)]
+    if trusted_project_platform_code(platform):
+        projects.extend(
+            completed
+            for match in PROJECT_SHORT_MODEL_RE.finditer(normalized_text)
+            for completed in [complete_company_project_with_platform(match.group("base"), platform)]
+            if completed
+        )
+    return sorted(dict.fromkeys(projects))
 
 
 def project_model_parts(project: str) -> dict[str, str]:
