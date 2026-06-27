@@ -54,6 +54,10 @@ python3 "scripts/capture_framework_patch.py" \
 
 功能边界说明由补丁采集技能自动生成，不由成员手写结论。生成的 README 会记录功能目标、模块范围、关键锚点，以及每个仓库级 patch 如何共同服务同一个功能目标；如果这些事实不足，成员端 Codex 应提示成员补充真实需求、目标功能或验证范围后再重新生成。
 
+补丁资产修正（patch asset correction）必须从干净源码工作树重新采集同一功能补丁包。不要用旧 patch、直接 `--patch` 或手写说明伪装为修正结果；后续成员上传技能会要求通过 `--patch-package <capture package dir>` 关联原始包键。若源工作树仍混有无关 diff，先拆分或清理，再采集。
+
+结构化问题/方案证据不能残留无关模板文本。比如功能摘要和修改文件都指向 E-Ink、显示模式或资源配置时，生成的 `case.json`、`patch_problem_summary`、`risk_surface` 不应出现 CameraService、Camera2、相机预览、拍照或扫码等相机模板内容；出现这类不一致时必须停止并重新生成。
+
 Codex 正常开发流程必须尽量在改代码前记录开发前知识搜索（pre-change knowledge search）证据。没有找到可用知识时，也要通过 `--reuse-decision not_found` 记录未命中（not_found），不能省略搜索证据。如果搜索结果命中了候选知识，就不能继续保留未知（unknown）；必须通过 `--reuse-decision reuse|adapt|reference_only|not_applicable|not_found` 闭合为直接复用（reuse）、适配复用（adapt）、仅作参考（reference_only）、不适用（not_applicable）或未命中（not_found）。如果开发前搜索事实没有发生，不能为了标记已验证（validated）补造搜索；补丁采集只保留真实验证结论并给出警告，后续由管理端本地技能执行沉淀前重叠检索（post-change overlap check），且不获得搜索闭环加分。手动实现（manual implementation）、外部实现、历史材料、混合实现或未知来源同样必须如实记录 `searched=false` 或未发生搜索。这些只是开发证据，不是沉淀结论（curation decision）。
 
 输出目录：

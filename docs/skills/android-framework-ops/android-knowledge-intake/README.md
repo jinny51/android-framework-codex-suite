@@ -81,6 +81,8 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 
 成员查看界面如果提示某个补丁包需补证据（needs_evidence），不要新建第四类上传包。成员端 Codex 仍以成员上传技能（android-knowledge-intake）作为入口，但要按缺口分流：项目、平台、Android 版本、验证、风险和回滚等缺口只补真实证据并关联原始上传包；补丁资产修正（patch asset correction）才需要先重新采集补丁资料包；无共同目标聚合包（aggregate package）不补证，必须按功能重新上传新的原始包（original package）。
 
+补证包必须关联最初被打回的原始上传包。`--supplement-for-package-key` 不能指向另一个补证包；如果目标 run id 看起来是 `verification-supplement`、`project-supplement` 等补证包，先找原始包键。原始包如果是无共同目标聚合包、日期合集或功能边界过宽，不继续套补证包，而是按功能上传新的原始补丁包。
+
 证据补齐型补证示例：
 
 ```bash
@@ -92,6 +94,10 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 补证包会先做本地校验。如果 `--supplement-reason` 说明在补项目（project）、平台（platform）、Android 版本（Android version）或验证（verification），新包不能继续保留对应的 `unknown`、缺失或未验证状态：补项目时必须有可追溯 `TVD`/`TVE`/`TVA`/`TVI` 项目和 `project_inference` 依据；补平台或 Android 版本时对应字段不能为 `unknown`，必要时使用显式 `--platform` 和 `--android-version`；补验证时 `verification_result` 必须为 `PASS`，且必须是设备验证或带理由、覆盖范围和剩余风险的等价验证，静态补丁审查不能闭合验证缺口。如果缺口是开发前知识搜索（pre-change knowledge search），但事实是手动实现或开发前没有搜索，成员不能补造搜索；应记录实现来源，交给管理端本地技能做沉淀前重叠检索（post-change overlap check）。
 
 如果缺口是补丁资产修正（patch asset correction），成员端 Codex 必须从干净工作树重新运行补丁采集技能（android-framework-patch-capture），再通过成员上传技能（android-knowledge-intake）关联原始包上传补证包。README 里的“关键符号”“字符串资源”等清单不能用来证明污染项属于当前功能；本地校验只把功能目标和修改说明作为范围依据。如果补证包仍包含大量与功能目标无关的资源、设置、属性或日志锚点，会在上传前失败。
+
+补丁资产修正补证必须使用 `--patch-package <capture package dir>`。直接 `--patch`、复制旧 patch 或手写说明不能证明已经从干净源码工作树重新采集；本地校验会停止上传。
+
+结构化证据不能残留无关模板文本。比如补丁摘要、补丁文件名和修改文件都指向 E-Ink/显示模式时，`case.json` 或 `patch_problem_summary` 里不能出现 CameraService、Camera2、相机预览、拍照、扫码等相机模板内容。出现这种情况必须重新生成补丁说明和问题/方案证据，不能上传。
 
 `--project` 只有包含 `TVD`/`TVE`/`TVA`/`TVI` 公司项目号时才作为高优先级项目名。对 capture 包，intake 还会读取 capture manifest/patch item、`source_root`、repo 路径、git 分支/remote、WSL source-access registry、功能 README/diff/summary，以及显式关联的日报/周报上下文来识别项目；泛化标签不会写入 `manifest.project`。结构化项目字段只保存规范项目型号；分支、客户、业务、模块、构建或中文描述等规范外尾随内容只进入 `project_inference` 证据，不能进入 `manifest.project`。
 

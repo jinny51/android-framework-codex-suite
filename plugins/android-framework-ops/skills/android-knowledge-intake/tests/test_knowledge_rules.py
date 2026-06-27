@@ -101,7 +101,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         from android_framework_ops.knowledge_rules import current_plugin_version, source_version_errors
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.50")
+        self.assertEqual(current, "1.0.51")
         self.assertEqual(
             source_version_errors(
                 {
@@ -152,6 +152,31 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertNotIn("TVE1067M1-frameworks-base@wifi.patch", result["uncontrolled_prefixes"])
         self.assertNotIn("mtk15-frameworks-base@wifi.patch", result["uncontrolled_prefixes"])
 
+    def test_template_leak_contract_blocks_camera_text_for_eink_package(self) -> None:
+        from android_framework_ops.knowledge_rules import template_leak_errors
+
+        errors = template_leak_errors(
+            summary="E-Ink 显示模式补丁资产修正",
+            problem="相机预览、扫码、拍照或相机权限行为可能不符合产品要求。",
+            solution="调整 CameraService、Camera2 或相机 HAL 相关路径，并验证目标相机场景。",
+            patch_paths=["patches/rk14-frameworks-base@eink-display-mode.patch"],
+            modified_files=["frameworks/base/core/res/res/values/config.xml"],
+        )
+
+        self.assertTrue(errors)
+        self.assertIn("模板文本泄漏", errors[0])
+        self.assertIn("相机", errors[0])
+
+        camera_errors = template_leak_errors(
+            summary="Camera2 reversePortrait 方向补偿",
+            problem="相机预览、扫码、拍照或相机权限行为可能不符合产品要求。",
+            solution="调整 CameraService、Camera2 或相机 HAL 相关路径，并验证目标相机场景。",
+            patch_paths=["patches/mtk16-camera2@reverseportrait.patch"],
+            modified_files=["frameworks/av/services/camera/libcameraservice/CameraService.cpp"],
+        )
+
+        self.assertEqual(camera_errors, [])
+
     def test_patch_upload_gate_requires_validated_status_by_default(self) -> None:
         from android_framework_ops.knowledge_rules import patch_upload_gate_errors
 
@@ -176,6 +201,28 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
 
         self.assertEqual(validated_errors, [])
+
+    def test_supplement_target_relation_blocks_nested_supplement(self) -> None:
+        from android_framework_ops.knowledge_rules import patch_upload_gate_errors, supplement_target_relation_errors
+
+        relation_errors = supplement_target_relation_errors(
+            "20260625/wangwei/20260625-221500-verification-supplement"
+        )
+
+        self.assertTrue(relation_errors)
+        self.assertIn("不能继续补证补证包", relation_errors[0])
+        self.assertIn("原始包", relation_errors[0])
+
+        upload_errors = patch_upload_gate_errors(
+            {
+                "package_kind": "framework_change",
+                "package_status": "validated",
+                "supplement_for_package_key": "20260625/wangwei/20260625-221500-verification-supplement",
+            }
+        )
+
+        self.assertTrue(upload_errors)
+        self.assertIn("不能继续补证补证包", "\n".join(upload_errors))
 
     def test_function_scope_classification_contract(self) -> None:
         from android_framework_ops.knowledge_rules import classify_function_scope

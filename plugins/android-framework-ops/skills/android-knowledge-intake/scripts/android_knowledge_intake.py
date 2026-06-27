@@ -49,8 +49,11 @@ from android_framework_ops.knowledge_rules import (
     parse_known_platform_token,
     parse_platform_token,
     parse_version_only_token,
+    patch_asset_correction_source_errors,
     patch_upload_gate_errors,
     split_company_project,
+    supplement_target_relation_errors,
+    template_leak_errors,
     text_field_quality_errors,
     implementation_requires_pre_change_search as shared_implementation_requires_pre_change_search,
 )
@@ -1502,6 +1505,16 @@ def read_json_file(path: Path) -> dict[str, Any]:
     return payload
 
 
+def read_optional_json_object(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def copy_capture_file(source_root: Path, rel: str, target: Path) -> None:
     source = (source_root / rel).resolve()
     root = source_root.resolve()
@@ -2750,6 +2763,8 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             errors.extend(validate_patch_readme(readme_path))
         for patch_readme_path in sorted((package_dir / "patches").glob("*.readme.md")):
             errors.extend(validate_patch_readme(patch_readme_path))
+        case_problem = ""
+        case_solution = ""
         if case_path:
             case = read_json_file(case_path)
             if case.get("case_id") != manifest.get("case_id"):
@@ -2766,6 +2781,8 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
                     }
                 )
             )
+            case_problem = str(case.get("problem") or "")
+            case_solution = str(case.get("solution_summary") or "")
         if variant_path:
             variant = read_json_file(variant_path)
             if variant.get("variant_id") != manifest.get("variant_id"):
@@ -2815,9 +2832,44 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         for kind in FRAMEWORK_REQUIRED_EVIDENCE_KINDS:
             if kind not in evidence_by_kind:
                 errors.append(f"framework_change 缺少 {kind} evidence")
+        patch_diff_payload = evidence_payload(evidence_by_kind.get("patch_diff_facts", {}))
+        modified_files = list_string_values(patch_diff_payload.get("modified_files"))
+        patch_items = patch_diff_payload.get("patches")
+        if isinstance(patch_items, list):
+            for item in patch_items:
+                if isinstance(item, dict):
+                    modified_files.extend(list_string_values(item.get("modified_files")))
+        modified_files = unique_strings(modified_files)
+        errors.extend(
+            template_leak_errors(
+                summary=manifest.get("summary"),
+                problem=case_problem,
+                solution=case_solution,
+                patch_paths=patch_paths,
+                modified_files=modified_files,
+            )
+        )
+        for rel in evidence_paths:
+            if not isinstance(rel, str):
+                continue
+            evidence = read_referenced_json(package_dir, rel)
+            if not isinstance(evidence, dict) or evidence.get("kind") != "patch_problem_summary":
+                continue
+            errors.extend(
+                template_leak_errors(
+                    summary=manifest.get("summary"),
+                    problem=evidence.get("problem_summary"),
+                    solution=evidence.get("solution_summary"),
+                    patch_paths=patch_paths,
+                    modified_files=modified_files,
+                )
+            )
         errors.extend(validate_framework_function_scope(package_dir, manifest, readme_path, patch_paths, evidence_by_kind))
+        framework_change_summary = read_optional_json_object(package_dir / materials_rel("evidence", "framework_change_summary.json"))
         supplement_target = str(manifest.get("supplement_for_package_key") or "").strip()
         if supplement_target:
+            errors.extend(supplement_target_relation_errors(supplement_target))
+            errors.extend(patch_asset_correction_source_errors(manifest, framework_change_summary))
             supplement_reason = str(manifest.get("supplement_reason") or "").strip()
             supplement = evidence_by_kind.get("evidence_supplement")
             if not supplement:

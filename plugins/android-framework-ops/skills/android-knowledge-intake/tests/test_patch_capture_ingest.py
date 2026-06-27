@@ -776,6 +776,90 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(supplement["payload"]["reason"], reason)
             self.assertEqual(supplement["payload"]["project"], "TVE1067M")
 
+    def test_patch_supplement_rejects_nested_supplement_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 25),
+                self.config(root),
+                run_id="20260625-230000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_capture_package(root, project="TVE1067M"))],
+                project="TVE1067M",
+                summary="Allow nav policy toggle",
+                status="validated",
+                schema_version="1",
+                supplement_for_package_key="20260625/wangwei/20260625-221500-verification-supplement",
+                supplement_reason="补充验证（verification）证据。",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "FAIL")
+            self.assertIn("不能继续补证补证包", "\n".join(check["errors"]))
+
+    def test_patch_asset_correction_supplement_requires_patch_capture_package(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patch = root / "mtk16-frameworks-base@nav-policy-toggle.patch"
+            patch.write_text(
+                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+                "--- a/frameworks/base/services/core/java/X.java\n"
+                "+++ b/frameworks/base/services/core/java/X.java\n"
+                "@@ -1 +1,2 @@\n"
+                "+//gyf 20260625@ nav policy toggle\n",
+                encoding="utf-8",
+            )
+            (root / "mtk16-frameworks-base@nav-policy-toggle.readme.md").write_text(
+                valid_patch_readme(),
+                encoding="utf-8",
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 25),
+                self.config(root),
+                run_id="20260625-230001-patch",
+                patch_paths=[str(patch)],
+                patch_package_paths=[],
+                project="TVE1067M",
+                summary="Allow nav policy toggle",
+                status="candidate",
+                schema_version="1",
+                supplement_for_package_key="20260625/wangwei/20260625-170000-patch",
+                supplement_reason="补充补丁资产修正（patch asset correction）证据。",
+                platform_override="mtk",
+                android_version_override="16",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "FAIL")
+            errors = "\n".join(check["errors"])
+            self.assertIn("补丁资产修正", errors)
+            self.assertIn("android-framework-patch-capture", errors)
+            self.assertIn("不能用直接 --patch", errors)
+
+    def test_patch_asset_correction_supplement_accepts_patch_capture_package(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 25),
+                self.config(root),
+                run_id="20260625-230002-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_capture_package(root, project="TVE1067M"))],
+                project="TVE1067M",
+                summary="Allow nav policy toggle",
+                status="validated",
+                schema_version="1",
+                supplement_for_package_key="20260625/wangwei/20260625-170000-patch",
+                supplement_reason="补充补丁资产修正（patch asset correction）证据。",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "PASS")
+
     def test_project_supplement_fails_when_project_is_still_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1695,6 +1779,55 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(variant["project"], "unknown")
             self.assertNotIn("成员端 Codex 根据补丁 diff", case["solution_summary"])
             self.assertTrue(case["solution_summary"])
+
+    def test_eink_package_rejects_camera_template_leak_in_case_and_problem_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = create_capture_package(root, project="TVE1067M")
+            (capture / "README.md").write_text(
+                valid_patch_readme("E-Ink display mode"),
+                encoding="utf-8",
+            )
+            patch_path = capture / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
+            patch_path.write_text(
+                "diff --git a/frameworks/base/core/res/res/values/config.xml b/frameworks/base/core/res/res/values/config.xml\n"
+                "--- a/frameworks/base/core/res/res/values/config.xml\n"
+                "+++ b/frameworks/base/core/res/res/values/config.xml\n"
+                "@@ -1 +1,2 @@\n"
+                "+<!-- lincong 20260627@ E-Ink display mode -->\n",
+                encoding="utf-8",
+            )
+            problem_path = capture / "evidence" / "patch-problem-summary.json"
+            write_json(
+                problem_path,
+                {
+                    "kind": "patch_problem_summary",
+                    "confidence": "medium",
+                    "problem_summary": "相机预览、扫码、拍照或相机权限行为可能不符合产品要求。",
+                    "solution_summary": "调整 CameraService、Camera2 或相机 HAL 相关路径，并验证目标相机场景。",
+                    "basis": ["patch modifies frameworks/base/core/res/res/values/config.xml"],
+                    "limits": ["verification is separate"],
+                },
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 6, 27),
+                self.config(root),
+                run_id="20260627-020909-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture)],
+                project="TVE1067M",
+                summary="E-Ink 显示模式补丁资产修正",
+                status="validated",
+                schema_version="1",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "FAIL")
+            errors = "\n".join(check["errors"])
+            self.assertIn("模板文本泄漏", errors)
+            self.assertIn("相机", errors)
 
     def test_draft_patch_readme_marker_fails_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

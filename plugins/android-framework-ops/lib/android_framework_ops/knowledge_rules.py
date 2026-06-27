@@ -168,6 +168,53 @@ def text_field_quality_errors(fields: dict[str, Any]) -> list[str]:
     return errors
 
 
+CAMERA_TEMPLATE_MARKERS = (
+    "camera",
+    "cameraservice",
+    "camera2",
+    "camera hal",
+    "相机预览",
+    "相机场景",
+    "相机权限",
+    "相机行为",
+    "扫码",
+    "拍照",
+)
+
+
+def text_has_camera_semantics(value: Any) -> bool:
+    normalized = str(value or "").lower()
+    return any(marker in normalized for marker in CAMERA_TEMPLATE_MARKERS)
+
+
+def template_leak_errors(
+    *,
+    summary: Any = "",
+    problem: Any = "",
+    solution: Any = "",
+    patch_paths: list[Any] | None = None,
+    modified_files: list[Any] | None = None,
+) -> list[str]:
+    evidence_text = " ".join([str(problem or ""), str(solution or "")])
+    if not text_has_camera_semantics(evidence_text):
+        return []
+    context_text = " ".join(
+        [
+            str(summary or ""),
+            *(str(item or "") for item in patch_paths or []),
+            *(str(item or "") for item in modified_files or []),
+        ]
+    )
+    if text_has_camera_semantics(context_text):
+        return []
+    return [
+        "结构化证据疑似模板文本泄漏（template leak）："
+        "case 或 patch_problem_summary 出现相机/CameraService/Camera2 模板内容，"
+        "但 manifest 摘要、补丁文件名和修改文件都没有相机语义。"
+        "请重新生成补丁说明和问题/方案证据，不能把无关模板文本随包上传。"
+    ]
+
+
 def run_id_local_datetime(run_id: Any) -> dt.datetime | None:
     match = RUN_ID_TIMESTAMP_RE.match(str(run_id or "").strip())
     if not match:
@@ -471,6 +518,32 @@ def source_version_errors(payload: dict[str, Any] | None, *, expected_version: s
     return errors
 
 
+def supplement_target_relation_errors(target_package_key: Any) -> list[str]:
+    target = str(target_package_key or "").strip()
+    if not target:
+        return []
+    run_id = target.split("/")[-1].strip().lower()
+    supplement_markers = (
+        "supplement",
+        "evidence-supplement",
+        "verification-supplement",
+        "project-supplement",
+        "platform-supplement",
+        "android-version-supplement",
+        "patch-asset-correction",
+        "补证",
+    )
+    if not any(marker in run_id for marker in supplement_markers):
+        return []
+    return [
+        "补证包（evidence supplement package）不能继续补证补证包。"
+        f"当前 target package key={target} 看起来是补证包；"
+        "请改为指向最初被打回的原始包（original package）package key。"
+        "如果原始包是无共同目标聚合包或功能边界过宽，不能继续补证；"
+        "请按功能重新上传新的原始补丁包。"
+    ]
+
+
 def patch_upload_gate_errors(manifest: dict[str, Any] | None, *, allow_incomplete: bool = False) -> list[str]:
     payload = manifest if isinstance(manifest, dict) else {}
     if payload.get("package_kind") != "framework_change":
@@ -478,22 +551,27 @@ def patch_upload_gate_errors(manifest: dict[str, Any] | None, *, allow_incomplet
     if allow_incomplete:
         return []
     package_status = str(payload.get("package_status") or "").strip().lower()
-    if package_status == "validated":
-        return []
     is_supplement = bool(str(payload.get("supplement_for_package_key") or "").strip())
+    errors: list[str] = []
     if is_supplement:
-        return [
+        errors.extend(supplement_target_relation_errors(payload.get("supplement_for_package_key")))
+    if package_status == "validated":
+        return errors
+    if is_supplement:
+        errors.append(
             "补证包（evidence supplement package）上传必须是已验证（validated）状态。"
             f"当前 package_status={package_status or 'missing'}。"
             "如果补证后仍未通过验证或证据仍不完整，请先在成员本机继续补齐；"
             "不要把半成品补证包送入服务器上传队列。"
-        ]
-    return [
+        )
+        return errors
+    errors.append(
         "普通补丁包（patch package）上传必须是已验证（validated）状态。"
         f"当前 package_status={package_status or 'missing'}。"
         "候选（candidate）、草稿（draft）、失败（failed）或阻塞（blocked）工作请记录到日报包（daily report package）"
         "或继续在成员本机补齐证据；完成构建和设备/等价验证后再重新生成并上传补丁包。"
-    ]
+    )
+    return errors
 
 
 SUPPLEMENT_FIELD_POLICIES = {
@@ -609,6 +687,33 @@ def classify_function_scope(text: str, patch_count: int = 0) -> dict[str, Any]:
 def curation_text_requires_patch_asset_correction(text: str) -> bool:
     normalized = str(text or "").lower()
     return any(marker in normalized for marker in PATCH_ASSET_CORRECTION_MARKERS)
+
+
+def patch_asset_correction_source_errors(
+    manifest: dict[str, Any] | None,
+    framework_change_summary: dict[str, Any] | None,
+) -> list[str]:
+    payload = manifest if isinstance(manifest, dict) else {}
+    if payload.get("package_kind") != "framework_change":
+        return []
+    if not str(payload.get("supplement_for_package_key") or "").strip():
+        return []
+    text = " ".join([str(payload.get("supplement_reason") or ""), str(payload.get("summary") or "")])
+    if not curation_text_requires_patch_asset_correction(text):
+        return []
+    summary = framework_change_summary if isinstance(framework_change_summary, dict) else {}
+    try:
+        capture_package_count = int(summary.get("capture_package_count") or 0)
+    except (TypeError, ValueError):
+        capture_package_count = 0
+    if capture_package_count > 0:
+        return []
+    return [
+        "补丁资产修正（patch asset correction）补证包必须使用 android-framework-patch-capture "
+        "从干净源码工作树重新采集同一功能补丁包；当前未检测到 patch-capture 工作包 "
+        f"（capture_package_count={capture_package_count}）。"
+        "不能用直接 --patch、手写说明或复制旧补丁伪造补丁资产修正证据。"
+    ]
 
 
 def curation_text_requires_function_split(text: str) -> bool:

@@ -106,6 +106,8 @@ Do not use one capture package for a date-bundled patch set such as “今日补
 
 If one feature summary is clear but the diff includes many unrelated resource keys, settings keys, system properties, or other anchors, treat it as patch asset contamination rather than a valid package. Stop and ask the member to recapture the same feature from a clean worktree. If this is fixing an already uploaded package, the corrected capture package must later be submitted as a 补证包（evidence supplement package） linked to the original package key; never hand-edit the original incoming package.
 
+For 补丁资产修正（patch asset correction）, the corrected package must be a fresh feature capture from the source worktree that contains only the intended feature diff. The later `android-knowledge-intake` submission must use `--patch-package <this capture package dir>` and the original package key. Do not prepare a correction from direct `--patch`, copied old patch files, or a supplement package key.
+
 Pure file mode diffs such as `old mode 100755` / `new mode 100644` are usually checkout or chmod noise, not a feature change. Patch capture filters diff sections that contain only mode changes. If every changed file is mode-only, stop with no package. If a repository has both real content changes and mode-only noise, keep the content diff and drop the mode-only sections. A chmod change may be preserved only when it is part of an intentional executable-script or tool behavior change and is accompanied by content, summary, risk, and verification evidence.
 
 Patch filename must follow:

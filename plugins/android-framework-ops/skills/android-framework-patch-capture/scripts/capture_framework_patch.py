@@ -27,6 +27,7 @@ from android_framework_ops.knowledge_rules import (
     find_company_project,
     find_company_projects,
     parse_platform_arg,
+    template_leak_errors,
 )
 
 
@@ -1519,6 +1520,15 @@ def main() -> int:
     problem_payload, risk_payload = feature_problem_and_risk_payloads(args, captures, feature_facts)
     coding_check = coding_standard_check(args, captures)
     errors.extend(validate_feature_scope(args))
+    errors.extend(
+        template_leak_errors(
+            summary=args.summary,
+            problem=problem_payload.get("problem_summary"),
+            solution=problem_payload.get("solution_summary"),
+            patch_paths=[capture.patch_rel for capture in captures],
+            modified_files=[file for capture in captures for file in prefixed_files(capture.repo_path, capture.facts.get("modified_files", []))],
+        )
+    )
     errors.extend(validate_patch_asset_names(captures))
     errors.extend(coding_check["errors"])
     warnings.extend(coding_check["warnings"])
