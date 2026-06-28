@@ -47,7 +47,7 @@ For readable approval output, pass UI titles as display-only labels when availab
 ```bash
 python3 scripts/clean_codex_history.py --codex-home "$HOME/.codex" \
   --delete-not-in-keep --keep-ids THREAD_ID... \
-  --keep-label "THREAD_ID=知识库系统" --dry-run --summary
+  --keep-label "THREAD_ID=AKBS 主控" --dry-run --summary
 ```
 
 5. After the user confirms the dry-run plan, tell them to fully exit Codex Desktop.
@@ -71,7 +71,7 @@ Dry-run output is an approval view for a human, not an internal log. In UI keep-
 - `下一步`: exactly how to execute after exiting Codex Desktop.
 - `完整执行命令`: a copyable command with all keep IDs, display labels, `--execute`, and `--require-codex-exited-for-global-state`.
 
-Subagents must be shown under their parent thread. Do not render subagents as a flat list unless their parent cannot be found in the same keep/delete set. For example, show `知识库系统` with child rows `子智能体 Zeno` and `子智能体 Fermat`.
+Subagents must be shown under their parent thread. Do not render subagents as a flat list unless their parent cannot be found in the same keep/delete set. For example, show `AKBS 主控` with child rows `子智能体 Zeno` and `子智能体 Fermat`.
 
 ## Separate Subagent History Diagnosis
 

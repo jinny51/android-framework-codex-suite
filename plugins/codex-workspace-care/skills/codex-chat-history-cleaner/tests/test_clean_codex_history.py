@@ -246,7 +246,7 @@ def test_ui_keep_set_summary_reads_like_approval_plan() -> None:
                 {
                     "id": keep_parent,
                     "id_prefix": keep_parent[:12],
-                    "title": "知识库系统",
+                    "title": "AKBS 主控",
                     "source": "UI",
                     "project": "knowledge",
                 },
@@ -306,7 +306,7 @@ def test_ui_keep_set_summary_reads_like_approval_plan() -> None:
         "external_execute_command": (
             "python3 /tmp/clean_codex_history.py --codex-home /tmp/.codex "
             "--delete-not-in-keep --keep-ids "
-            f"{keep_parent} {keep_cli} --keep-label '{keep_parent}=知识库系统' "
+            f"{keep_parent} {keep_cli} --keep-label '{keep_parent}=AKBS 主控' "
             "--execute --require-codex-exited-for-global-state --summary"
         ),
     }
@@ -315,8 +315,8 @@ def test_ui_keep_set_summary_reads_like_approval_plan() -> None:
 
     assert "Codex UI 保留集清理计划" in text
     assert "【保留，不会删除】" in text
-    assert "知识库系统" in text
-    assert f"  - {keep_parent[:12]} 知识库系统" in text
+    assert "AKBS 主控" in text
+    assert f"  - {keep_parent[:12]} AKBS 主控" in text
     assert f"    - {keep_child[:12]} 子智能体 Zeno" in text
     assert "【计划删除/清理】" in text
     assert "DB 会话记录：将删除 2 条（不在 UI 保留集）" in text
