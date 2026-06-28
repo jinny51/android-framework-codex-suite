@@ -70,7 +70,7 @@ rank by package status later
 
 Daily and weekly incoming automation should run even when no patch is complete. It must preserve session facts, git activity, discovered patch files, build or verification signals, WIP state, failed paths, blocked paths, and missing evidence.
 
-Patch package status is evidence-quality based. Ordinary server upload is stricter: ordinary patch packages and evidence supplements must be `validated`; other statuses stay local or in daily/weekly context unless a separate archive-only path is explicitly designed.
+Patch package status is evidence-quality based. Member-side upload preparation and admin-side local promotion are stricter than local preservation: ordinary patch packages and evidence supplements must be `validated`; other statuses stay local or in daily/weekly context unless a separate archive-only path is explicitly designed.
 
 ```text
 validated

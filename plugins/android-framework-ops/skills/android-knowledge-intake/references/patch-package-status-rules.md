@@ -1,6 +1,6 @@
 # Patch Package Status Rules
 
-Daily work is always recorded. Framework change package status describes member-side evidence quality; it is not a curation decision and does not decide whether anything enters the knowledge repository. Ordinary server upload is stricter than local preservation: ordinary patch packages and evidence supplements must be `validated`.
+Daily work is always recorded. Framework change package status describes member-side evidence quality; it is not a curation decision and does not decide whether anything enters the knowledge repository. Member-side upload preparation and admin-side local promotion are stricter than local preservation: ordinary patch packages and evidence supplements must be `validated`.
 
 ## Status
 
