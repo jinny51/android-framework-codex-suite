@@ -7,7 +7,7 @@ description: "Use after Android Framework code changes are implemented, staged, 
 
 Use this skill when a Framework feature is ready to be packaged as a reviewable or cautionary engineering material package. It does not implement requirements, diagnose root cause, build, deploy, decide final correctness, or make curation decisions. It packages existing source changes into one feature README, one or more repository-level patches, and evidence so `android-knowledge-intake` can submit them as incoming.
 
-Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-knowledge-intake` submits a valuable patch package through the server submission channel. The user's local `android-knowledge-curation-maintainer` skill decides whether it later enters the knowledge repository.
+Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-knowledge-intake` submits a valuable patch package through the server submission channel. The user's local `akbs-curation-maintainer` skill decides whether it later enters the knowledge repository.
 
 The generated package includes patch content `sha1` for server-side deduplication. If a known daily/weekly incoming run produced the work context, pass `--related-report-run-id <run_id>` so intake can preserve an explicit report link. Weekly links are provenance only; weekly packages are not knowledge repository materialization candidates.
 

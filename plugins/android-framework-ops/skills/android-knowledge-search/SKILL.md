@@ -5,7 +5,7 @@ description: Search the team knowledge repository for reusable cases, platform v
 
 # Android Knowledge Search
 
-Use this skill to search the team knowledge repository before starting new analysis or implementation. It is the member-side search entry for the knowledge system: `android-knowledge-intake` and `android-framework-patch-capture` submit materials through the server submission channel, and the user's local `android-knowledge-curation-maintainer` skill promotes AI-usable knowledge into the knowledge repository for this skill to retrieve.
+Use this skill to search the team knowledge repository before starting new analysis or implementation. It is the member-side search entry for the knowledge system: `android-knowledge-intake` and `android-framework-patch-capture` submit materials through the server submission channel, and the user's local `akbs-curation-maintainer` skill promotes AI-usable knowledge into the knowledge repository for this skill to retrieve.
 
 This skill does not submit reports, create patches, edit source, or decide correctness by itself. It returns prior facts so Codex can judge whether an existing case, variant, patch, symbol, or validation fact is relevant to the current requirement.
 

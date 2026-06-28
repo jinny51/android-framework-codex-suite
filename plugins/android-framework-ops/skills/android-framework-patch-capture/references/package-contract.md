@@ -2,7 +2,7 @@
 
 This package is a local handoff artifact. One package represents one Framework feature. A feature may touch multiple repo-managed Git repositories, so the package has one feature README and one patch per affected source repository.
 
-`android-knowledge-intake` submits the whole feature package through the server submission channel as incoming. The user's local `android-knowledge-curation-maintainer` skill later decides whether and how material enters the knowledge repository.
+`android-knowledge-intake` submits the whole feature package through the server submission channel as incoming. The user's local `akbs-curation-maintainer` skill later decides whether and how material enters the knowledge repository.
 
 Project metadata is an applicability boundary. If project clues conflict across `--project`, source roots, git metadata, WSL source-access registry, summary, or diff text, the capture package must keep `project=unknown`, preserve all candidate TVD/TVE/TVA/TVI models in `project_inference.candidates`, and record the conflict in `project_inference.limits`.
 

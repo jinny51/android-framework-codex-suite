@@ -29,7 +29,7 @@ Windows 原生 Codex 的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力�
 5. `android-wsl-remote-build-deploy` 负责服务器构建、产物定位、设备推送。
 6. `android-framework-change-workflow` 根据需求和设备证据给最终验收结论，并决定 `validated`、`candidate`、`draft`、`failed` 或 `blocked` 包状态（package status）。
 7. `android-framework-patch-capture` 把已完成、阶段性、失败或阻塞但有价值的 Framework 功能整理成一个功能 README、多个源码仓库 patch 和 evidence。
-8. `android-knowledge-intake` 把成员端 Codex 生成的材料打成 incoming 包，并通过服务器上传入口提交给数据库仓库。后续能否进入知识库仓库，由你本机的本地技能 `android-knowledge-curation-maintainer` 和 AI 知识闭环决定，不由成员端插件直接决定。周报包只做进度归档，固定不进入知识库仓库。
+8. `android-knowledge-intake` 把成员端 Codex 生成的材料打成 incoming 包，并通过服务器上传入口提交给数据库仓库。后续能否进入知识库仓库，由你本机的本地技能 `akbs-curation-maintainer` 和 AI 知识闭环决定，不由成员端插件直接决定。周报包只做进度归档，固定不进入知识库仓库。
 
 默认原则：成员端能自动保存材料就先保存材料，再按包状态（package status）排序和作为复用提示（reuse hint）。缺少显式确认不等于丢弃证据；只有敏感信息、混杂无关 diff、高风险误导或身份/配置不可用时才停止上传，并在最终报告中说明。是否沉淀进知识库仓库由管理端本地技能决定。
 

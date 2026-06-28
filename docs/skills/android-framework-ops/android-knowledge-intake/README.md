@@ -8,9 +8,9 @@
 
 该 skill 用于在成员本机自动汇总 Codex 会话、源码改动记录、功能 README、仓库级 patch 和验证结果，先生成本地 `pending`（待检查包），再通过服务器上传入口（server upload endpoint）提交为上传包（incoming package）。成员端 skill 不克隆、不拉取、不直接搜索、不 push 数据库仓库（database repository）。
 
-成员端 Codex 是材料生成主体。它负责从会话、git、patch 和验证记录里整理上传包；服务器收到上传包后只做确定性验收、归档和数据库仓库提交，不直接批准为 AI 知识。能否进入知识库仓库（knowledge repository）由你本机的本地技能（local skill）`android-knowledge-curation-maintainer` 驱动的 AI 知识闭环（AI knowledge loop）判断。
+成员端 Codex 是材料生成主体。它负责从会话、git、patch 和验证记录里整理上传包；服务器收到上传包后只做轻量接收并写入上传分支（intake branch），不直接入库、不做业务规则判断，也不批准为 AI 知识。后续由管理端本地推广入口决定推广、退回或要求补证。能否进入知识库仓库（knowledge repository）由你本机的本地技能（local skill）`akbs-curation-maintainer` 驱动的 AI 知识闭环（AI knowledge loop）判断。
 
-普通成员使用 `daily/weekly` 自动化生成成员级上传包；其中周报包（weekly report package）只做一周进度归档、成员查看和统计，不进入知识库仓库。完成或阶段性完成 Framework 修改时，通过 `patch` 模式生成 `framework_change` incoming。非成员 profile 只用于协议和服务器链路测试，不能和你本机的 `android-knowledge-curation-maintainer` 混为一谈。
+普通成员使用 `daily/weekly` 自动化生成成员级上传包；其中周报包（weekly report package）只做一周进度归档、成员查看和统计，不进入知识库仓库。完成或阶段性完成 Framework 修改时，通过 `patch` 模式生成 `framework_change` incoming。非成员 profile 只用于协议和服务器链路测试，不能和你本机的 `akbs-curation-maintainer` 混为一谈。
 
 默认策略是先在成员本机保存材料，再只把达到普通上传门禁的包送到服务器。普通补丁包和补证包上传默认必须是 `validated`：功能边界清楚、项目（project）、平台（platform）、Android 版本（Android version）可追溯、补丁资产干净，并且构建与设备或等价验证通过。`candidate`、`draft`、`failed` 或 `blocked` 可以作为本地材料或日报/周报上下文保留，但不直接进入服务器上传队列。包状态不是沉淀结论（curation decision）。
 
@@ -24,7 +24,7 @@
 
 日报、周报和补丁生成入口会先做插件新鲜度检查（plugin freshness check）。Git checkout 会和上游分支比较；Codex 插件缓存安装会读取 `.codex-plugin/plugin.json` 的版本，并在可访问 GitHub marketplace 源时比较远端版本。如果能确认当前插件落后远端，脚本会停止本次生成并提示先更新插件，避免成员继续用过期协议生成上传包。
 
-生成日报包、周报包、补丁包或补证包之前，技能会先确认当前插件已是最新版本；无法确认最新时停止生成，避免旧规则继续产出材料。生成出的上传包会在 `materials/evidence/source.json` 写入 `plugin_name`、当前 `plugin_version`、当前 `skill_version`、`plugin_installation` 和可用的 `plugin_commit`；补丁包还会同步写入实现来源（implementation origin），例如 `codex`、`manual`、`external` 或 `mixed`。服务器新上传严格校验会拒绝缺少这些版本证据或版本不是当前插件版本的包，避免项目（project）、平台（platform）、Android 版本（Android version）或实现来源错误时无法追溯生成入口。
+生成日报包、周报包、补丁包或补证包之前，技能会先确认当前插件已是最新版本；无法确认最新时停止生成，避免旧规则继续产出材料。生成出的上传包会在 `materials/evidence/source.json` 写入 `plugin_name`、当前 `plugin_version`、当前 `skill_version`、`plugin_installation` 和可用的 `plugin_commit`；补丁包还会同步写入实现来源（implementation origin），例如 `codex`、`manual`、`external` 或 `mixed`。服务器上传入口只做轻量接收并写入上传分支（intake branch）；缺少版本证据或版本不是当前插件版本的包，由管理端本地推广入口拒绝，避免项目（project）、平台（platform）、Android 版本（Android version）或实现来源错误时无法追溯生成入口。
 
 生成出的上传包还会做基础文本质量和时间检查。`summary`、补证原因、案例标题、问题和方案摘要不能包含连续问号乱码（garbled question marks）；如果出现这类文本，说明生成阶段已经损坏，必须重新生成，不能上传。包的 `run_id` 也不能晚于服务器当前时间；如果服务器提示未来上传时间（future upload timestamp），先同步本机时间并更新整个插件（plugin update），再重新生成和上传。
 

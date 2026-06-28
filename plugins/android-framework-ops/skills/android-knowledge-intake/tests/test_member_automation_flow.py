@@ -398,7 +398,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertNotIn("database_repo_worktree", member_text)
         self.assertNotIn("knowledge-database-", member_text)
         self.assertIn("server submission channel", member_text)
-        self.assertIn("android-knowledge-curation-maintainer", combined)
+        self.assertIn("akbs-curation-maintainer", combined)
         self.assertIn("周报包", member_text)
         self.assertIn("不进入知识库仓库", member_text)
 

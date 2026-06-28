@@ -46,7 +46,7 @@
 
 `remote-build-deploy` 只证明产物是否编出、是否推上设备；最终能不能算需求完成，由 `android-framework-change-workflow` 结合需求和验证证据判断。
 
-Framework 需求默认闭环是：开工前查知识库仓库，开发和验证后通过 `patch-capture` 与 `knowledge-intake` 生成 incoming，并通过服务器上传入口提交给数据库仓库。普通补丁上传和补证包上传默认必须是 `validated`：功能边界清楚、项目/平台/Android 版本可追溯、补丁资产干净，并且构建与设备或等价验证通过。需要复验的 `candidate`、未完成的 `draft`、失败或阻塞路径按事实保留在本地材料或日报/周报上下文里，不直接进入服务器上传队列。是否进入知识库仓库由你本机的本地技能 `android-knowledge-curation-maintainer` 和 AI 知识闭环决定，不由成员端插件直接决定；周报包只做进度归档，固定不进入知识库仓库。
+Framework 需求默认闭环是：开工前查知识库仓库，开发和验证后通过 `patch-capture` 与 `knowledge-intake` 生成 incoming，并通过服务器上传入口提交给数据库仓库。普通补丁上传和补证包上传默认必须是 `validated`：功能边界清楚、项目/平台/Android 版本可追溯、补丁资产干净，并且构建与设备或等价验证通过。需要复验的 `candidate`、未完成的 `draft`、失败或阻塞路径按事实保留在本地材料或日报/周报上下文里，不直接进入服务器上传队列。是否进入知识库仓库由你本机的本地技能 `akbs-curation-maintainer` 和 AI 知识闭环决定，不由成员端插件直接决定；周报包只做进度归档，固定不进入知识库仓库。
 
 Windows 原生 Codex 场景不属于团队默认主链路。确实需要 SMB/UNC、PowerShell 和本地 `adb.exe` 交付时，额外安装 `android-framework-windows-ops`。
 
