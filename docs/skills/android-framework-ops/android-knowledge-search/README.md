@@ -102,7 +102,7 @@ python3 "scripts/android_knowledge_search.py" \
 
 ```text
 android-knowledge-intake
-  负责把日报、周报、补丁包提交到数据库仓库
+  负责把日报、周报、补丁包打包成 incoming 并发送到服务器上传入口
 
 android-framework-patch-capture
   负责把 Framework 修改整理成标准补丁资料

@@ -30,6 +30,8 @@ MEMBER_BOUNDARY_DOCS = (
     SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-framework-patch-capture" / "references" / "package-contract.md",
     SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-search" / "SKILL.md",
     SUITE_ROOT / "docs" / "skills" / "android-framework-ops" / "android-knowledge-intake" / "README.md",
+    SUITE_ROOT / "docs" / "skills" / "android-framework-ops" / "android-framework-patch-capture" / "README.md",
+    SUITE_ROOT / "docs" / "skills" / "android-framework-ops" / "android-knowledge-search" / "README.md",
 )
 
 
@@ -384,6 +386,12 @@ class MemberAutomationFlowTests(unittest.TestCase):
             "人工审核",
             "android-knowledge-curation ",
             "android-knowledge-curation\n",
+            "提交到数据库仓库",
+            "提交给数据库仓库",
+            "提交数据库仓库",
+            "/home/test35/work/akbs/database-worktree/scripts/akbs-submit",
+            "git clone test35:/home/test35/work/akbs/database.git",
+            "git clone /home/test35/work/akbs/database.git",
         ]
         for term in forbidden:
             self.assertNotIn(term, combined)

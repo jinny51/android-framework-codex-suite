@@ -6,13 +6,13 @@ Android Framework 功能级补丁资料生成 skill。
 
 ## 用途
 
-该 skill 用于把一次已完成、阶段性、失败或阻塞但有价值的 Android Framework 功能修改整理成可审核材料：一个功能级 `README.md`、一个或多个源码仓库级 patch、修改内容记录和验证结果，供 `android-knowledge-intake` 打包成 incoming 并提交到数据库仓库。是否沉淀进知识库仓库（knowledge repository）由管理端本地技能（local skill）后续判断。
+该 skill 用于把一次已完成、阶段性、失败或阻塞但有价值的 Android Framework 功能修改整理成可审核材料：一个功能级 `README.md`、一个或多个源码仓库级 patch、修改内容记录和验证结果，供 `android-knowledge-intake` 打包成 incoming 并发送到服务器上传入口。是否进入数据库仓库（database repository）和知识库仓库（knowledge repository）由管理端本地技能（local skill）后续判断。
 
 它不负责分析需求、不负责改代码、不负责构建部署；这些仍由 `android-framework-change-workflow` 和构建交付类 skill 负责。
 
 ## 典型场景
 
-- Framework 需求已经完成，需要按功能生成可以提交到数据库仓库、供管理端本地技能后续判断的功能材料包。
+- Framework 需求已经完成，需要按功能生成可以通过成员上传入口发送、供管理端本地技能后续判断的功能材料包。
 - 阶段性修改需要整理成本地材料或日报上下文，但还没有达到普通上传条件；`draft/candidate`（草稿/候选）不直接进入服务器上传队列。
 - 失败路径或阻塞路径有复用价值，需要作为日报上下文或本地材料保留，避免别人重复踩坑；除非后续另行设计仅归档入口，否则不作为普通补丁包上传。
 - 管理员或成员端 Codex 想把一个高价值补丁提交给 `android-knowledge-intake` 的 `patch` 模式。
