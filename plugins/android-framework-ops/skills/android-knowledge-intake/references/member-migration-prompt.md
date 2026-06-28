@@ -31,7 +31,7 @@
    [submission]
    method = "ssh"
    ssh_host = "test35"
-   command = "/home/test35/work/akbs/database-worktree/scripts/knowledge-submit"
+   command = "/home/test35/work/akbs/database-worktree/scripts/akbs-submit"
 
    [knowledge]
    repo_url = "test35:/home/test35/work/akbs/knowledge.git"
