@@ -3,7 +3,7 @@ default_profile = "member_alias"
 [submission]
 method = "ssh"
 ssh_host = "test35"
-command = "/home/test35/work/akbs/database-worktree/scripts/akbs-submit"
+command = "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit"
 
 [knowledge]
 repo_url = "test35:/home/test35/work/akbs/knowledge.git"
