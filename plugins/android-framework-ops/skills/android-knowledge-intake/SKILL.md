@@ -170,10 +170,10 @@ default_profile = "member_alias"
 [submission]
 method = "ssh"
 ssh_host = "test35"
-command = "/home/test35/work/knowledge/database-worktree/scripts/knowledge-submit"
+command = "/home/test35/work/akbs/database-worktree/scripts/knowledge-submit"
 
 [knowledge]
-repo_url = "test35:/home/test35/work/knowledge/knowledge.git"
+repo_url = "test35:/home/test35/work/akbs/knowledge.git"
 
 incoming_schema_version = "1"
 

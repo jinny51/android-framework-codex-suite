@@ -59,7 +59,7 @@ $CODEX_HOME/<skill-name>.toml
 服务器上传入口、知识库仓库和产物目录建议使用：
 
 ```text
-test35:/home/test35/work/knowledge/knowledge.git
+test35:/home/test35/work/akbs/knowledge.git
 <Codex documents>/worktrees/knowledge
 <Codex documents>/artifacts/android-knowledge-intake
 ```

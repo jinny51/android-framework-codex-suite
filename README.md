@@ -122,7 +122,7 @@ $CODEX_HOME/<skill-name>.toml
 服务器上传入口、知识库仓库工作树和产物目录建议按成员私有配置指定：
 
 ```text
-test35:/home/test35/work/knowledge/knowledge.git
+test35:/home/test35/work/akbs/knowledge.git
 <Codex documents>/worktrees/knowledge
 <Codex documents>/artifacts/android-knowledge-intake
 ```

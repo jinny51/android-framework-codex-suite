@@ -386,7 +386,7 @@ def candidate_roots(explicit_root: str | None) -> list[Path]:
             home / "worktrees" / "knowledge",
             Path("/mnt/z/knowledge/knowledge-worktree"),
             Path("/mnt/z/knowledge/knowledge"),
-            Path("/home/test35/work/knowledge/knowledge-worktree"),
+            Path("/home/test35/work/akbs/knowledge-worktree"),
         ]
     )
 

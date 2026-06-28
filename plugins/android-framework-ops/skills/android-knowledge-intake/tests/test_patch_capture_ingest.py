@@ -434,7 +434,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             "member_alias": "admin_alias",
             "member_name": "管理员姓名",
             "out_dir": str(root / "out"),
-            "repo_url": "test35:/home/test35/work/knowledge/remote.git",
+            "repo_url": "test35:/home/test35/work/akbs/remote.git",
             "max_attachment_mb": "5",
             "timezone": "Asia/Shanghai",
             "synthetic_data": "false",

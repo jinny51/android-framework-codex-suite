@@ -10,7 +10,7 @@
 - 不要让我手动理解或维护版本、配置字段、仓库路径。只有 member_alias、member_name、Git 用户名/邮箱需要向我确认。
 - 成员端使用 Android Framework Ops 插件套件（plugin suite）生成和上传材料。
 - 成员端通过服务器上传入口（server upload endpoint）发送上传包（incoming package），不要克隆、拉取、搜索或 push 数据库仓库（database repository）。
-- 成员端用技能搜索（skill search）时只读取知识库仓库（knowledge repository）：test35:/home/test35/work/knowledge/knowledge.git
+- 成员端用技能搜索（skill search）时只读取知识库仓库（knowledge repository）：test35:/home/test35/work/akbs/knowledge.git
 - 成员查看 UI（member view UI）如果需要看本人提交记录，由服务器读取数据库仓库并按成员身份过滤，这不是成员本机 skill 的搜索入口。
 
 请按顺序执行：
@@ -31,10 +31,10 @@
    [submission]
    method = "ssh"
    ssh_host = "test35"
-   command = "/home/test35/work/knowledge/database-worktree/scripts/knowledge-submit"
+   command = "/home/test35/work/akbs/database-worktree/scripts/knowledge-submit"
 
    [knowledge]
-   repo_url = "test35:/home/test35/work/knowledge/knowledge.git"
+   repo_url = "test35:/home/test35/work/akbs/knowledge.git"
 
    [paths]
    codex_home = "$CODEX_HOME"
@@ -55,7 +55,7 @@
 
 4. 确保成员端只克隆并更新知识库仓库（knowledge repository），不要克隆数据库仓库（database repository）。
    - 如果 $CODEX_HOME/worktrees/knowledge 不存在，执行：
-     git clone test35:/home/test35/work/knowledge/knowledge.git "$CODEX_HOME/worktrees/knowledge"
+     git clone test35:/home/test35/work/akbs/knowledge.git "$CODEX_HOME/worktrees/knowledge"
    - 如果 $CODEX_HOME/worktrees/knowledge 已经是 Git 仓库（git repository），执行：
      git -C "$CODEX_HOME/worktrees/knowledge" pull --ff-only
    - 如果该路径存在但不是 Git 仓库，先停止并告诉我具体路径，不要继续生成上传包。

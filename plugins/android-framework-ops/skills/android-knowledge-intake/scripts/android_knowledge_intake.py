@@ -66,8 +66,8 @@ PLUGIN_UPDATE_REQUIRE_ENV = "CODEX_REPORT_REQUIRE_PLUGIN_UPDATE_CHECK"
 PLUGIN_REMOTE_MANIFEST_TIMEOUT = 6
 DEFAULT_SUBMISSION_METHOD = "ssh"
 DEFAULT_SUBMISSION_SSH_HOST = "test35"
-DEFAULT_SUBMISSION_COMMAND = "/home/test35/work/knowledge/database-worktree/scripts/knowledge-submit"
-DEFAULT_KNOWLEDGE_REPO_URL = "test35:/home/test35/work/knowledge/knowledge.git"
+DEFAULT_SUBMISSION_COMMAND = "/home/test35/work/akbs/database-worktree/scripts/knowledge-submit"
+DEFAULT_KNOWLEDGE_REPO_URL = "test35:/home/test35/work/akbs/knowledge.git"
 PATCH_FILENAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 USB_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])usb(?![A-Za-z0-9])", re.I)
 USB_CAMEL_PATH_RE = re.compile(r"(?:^|[/_.-])Usb(?=[A-Z0-9])")
