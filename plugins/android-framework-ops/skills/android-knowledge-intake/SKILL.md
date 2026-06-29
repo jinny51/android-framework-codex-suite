@@ -13,6 +13,8 @@ Ordinary members use `daily` and `weekly` modes to generate member-level incomin
 
 Default policy: preserve work facts locally first, then upload only packages that pass the member-side upload gate. Daily traces must preserve `work_findings`; weekly traces preserve progress summaries for database archive and member view only. Ordinary framework-change upload and evidence supplements must be `validated`: clear function boundary, traceable project/platform/Android version, clean patch assets, and PASS build plus device or accepted equivalent verification. `candidate`, `draft`, `failed`, and `blocked` are local or report-context states; they do not enter the server upload queue by default. These values are not curation decisions.
 
+Weekly generation is idempotent by member and `week_range`. If a local pending or submitted weekly package already exists for the same member and week, `weekly --prepare`, `weekly --upload`, and `weekly --submit-latest` must stop instead of silently creating or uploading a second ordinary weekly package. When a member truly needs to resend that week, use `weekly --replace-weekly-run-id <old_run_id>`; the replacement package writes `replacement_for_run_id` and `supersedes` metadata so it is not another silent ordinary weekly package.
+
 Use configuration profiles for identity. Global config stores the submission channel and knowledge repository defaults; each `[profiles.<name>]` stores one member identity, knowledge worktree, git author, role, allowed modes, and optional test behavior. Prefer explicit `--profile <name>` in automations so a daily incoming run cannot accidentally use an administrator identity.
 
 Framework change incoming must carry deterministic merge anchors. Patch content `sha1` is emitted in `patch_diff_facts`; `related_report_run_ids` is used only when the daily or weekly run id is explicitly known. A weekly run id is provenance only and does not make the weekly package a knowledge materialization candidate. Do not create fuzzy report links on the member side.
@@ -58,6 +60,12 @@ Prepare and submit in one run:
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --upload
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --upload
+```
+
+Explicitly replace an existing weekly package for the same member and week:
+
+```bash
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --prepare --replace-weekly-run-id 20260618-090102
 ```
 
 Prepare a Framework change incoming package without generating a report:

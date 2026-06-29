@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -304,6 +305,26 @@ def prepare_daily_package(env: dict[str, str], date: str, run_id: str) -> Path:
             "--profile",
             "member01",
             "daily",
+            "--date",
+            date,
+            "--run-id",
+            run_id,
+            "--prepare",
+        ],
+        SUITE_ROOT,
+        env,
+    )
+    return Path(result["package"])
+
+
+def prepare_weekly_package(env: dict[str, str], date: str, run_id: str) -> Path:
+    result = run_json(
+        [
+            sys.executable,
+            str(INTAKE_SCRIPT),
+            "--profile",
+            "member01",
+            "weekly",
             "--date",
             date,
             "--run-id",
@@ -1017,6 +1038,153 @@ class MemberAutomationFlowTests(unittest.TestCase):
             for path in expected:
                 self.assertTrue(path.is_file(), path)
             self.assertFalse((Path(env["CODEX_HOME"]) / "worktrees" / "knowledge-database-member01").exists())
+
+    def test_weekly_prepare_blocks_duplicate_week_range_without_affecting_daily_or_patch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            knowledge_remote = seed_knowledge_remote(root)
+            env = write_member_config(root, knowledge_remote)
+
+            first = prepare_weekly_package(env, "2026-06-18", "20260618-090102")
+            first_manifest = json.loads((first / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(first_manifest["week_range"], "20260615-20260621")
+
+            duplicate = run(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "weekly",
+                    "--date",
+                    "2026-06-18",
+                    "--run-id",
+                    "20260618-090103",
+                    "--prepare",
+                ],
+                SUITE_ROOT,
+                env,
+                check=False,
+            )
+
+            self.assertNotEqual(duplicate.returncode, 0)
+            self.assertIn("同一成员同一周报周期已存在周报包", duplicate.stderr)
+            self.assertIn("--replace-weekly-run-id 20260618-090102", duplicate.stderr)
+
+            daily = prepare_daily_package(env, "2026-06-18", "20260618-210000-daily")
+            self.assertEqual(
+                json.loads((daily / "manifest.json").read_text(encoding="utf-8"))["package_kind"],
+                "daily_trace",
+            )
+
+            patch = run_json(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "patch",
+                    "--date",
+                    "2026-06-18",
+                    "--run-id",
+                    "20260618-230000-patch",
+                    "--project",
+                    "TVE8402M",
+                    "--summary",
+                    "周报重复防护不影响补丁包",
+                    "--status",
+                    "candidate",
+                    "--prepare",
+                ],
+                SUITE_ROOT,
+                env,
+            )
+            self.assertEqual(
+                json.loads((Path(patch["package"]) / "manifest.json").read_text(encoding="utf-8"))["package_kind"],
+                "framework_change",
+            )
+
+    def test_weekly_upload_records_submitted_guard_and_explicit_replacement_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            knowledge_remote = seed_knowledge_remote(root)
+            database_root = root / "server-database"
+            submit_command = write_local_submitter(root, database_root)
+            env = write_member_config(root, knowledge_remote, submit_command)
+
+            first = run_json(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "weekly",
+                    "--date",
+                    "2026-06-18",
+                    "--run-id",
+                    "20260618-090102",
+                    "--upload",
+                ],
+                SUITE_ROOT,
+                env,
+            )
+            first_package = Path(first["package"])
+            submitted_manifest = (
+                Path(env["CODEX_HOME"]).parent
+                / "artifacts"
+                / "android-knowledge-intake"
+                / "submitted"
+                / "20260618"
+                / "member01"
+                / "20260618-090102"
+                / "manifest.json"
+            )
+            self.assertTrue(submitted_manifest.is_file())
+            shutil.rmtree(first_package)
+
+            duplicate = run(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "weekly",
+                    "--date",
+                    "2026-06-18",
+                    "--run-id",
+                    "20260618-090103",
+                    "--prepare",
+                ],
+                SUITE_ROOT,
+                env,
+                check=False,
+            )
+
+            self.assertNotEqual(duplicate.returncode, 0)
+            self.assertIn("submitted:20260618/member01/20260618-090102", duplicate.stderr)
+
+            replacement = run_json(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "weekly",
+                    "--date",
+                    "2026-06-18",
+                    "--run-id",
+                    "20260618-090103",
+                    "--replace-weekly-run-id",
+                    "20260618-090102",
+                    "--prepare",
+                ],
+                SUITE_ROOT,
+                env,
+            )
+            manifest = json.loads((Path(replacement["package"]) / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["replacement_for_run_id"], "20260618-090102")
+            self.assertEqual(manifest["supersedes"]["week_range"], "20260615-20260621")
+            self.assertEqual(manifest["supersedes"]["package_key"], "20260618/member01/20260618-090102")
 
     def test_non_company_project_is_not_preserved_as_project_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
