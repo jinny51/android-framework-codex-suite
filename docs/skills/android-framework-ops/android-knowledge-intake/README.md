@@ -26,9 +26,9 @@
 
 严格健康检查（doctor strict check）会要求 `knowledge_repo_worktree` 存在且是 Git 仓库（git repository）。成员端只克隆知识库仓库（knowledge repository），不能克隆或直接读取数据库仓库（database repository）。
 
-日报、周报和补丁生成入口会先做插件新鲜度检查（plugin freshness check）。Git checkout 会和上游分支比较；Codex 插件缓存安装会读取 `.codex-plugin/plugin.json` 的版本，并在可访问 GitHub marketplace 源时比较远端版本。如果能确认当前插件落后远端，脚本会停止本次生成并提示先更新插件，避免成员继续用过期协议生成上传包。
+日报、周报和补丁生成入口会先做插件版本门禁（plugin version gate）。脚本会比较三类版本：当前正在运行脚本的插件版本、Codex 已安装的最新插件缓存版本、可访问时的 GitHub marketplace 远端版本。Git checkout 如果可以安全快进，会自动执行 `git pull --ff-only`，然后停止当前生成，因为已经加载的 Python 进程和 Codex 会话不能热刷新技能说明；成员需要重新运行原命令。如果 Codex 已安装新插件，但当前会话仍在旧技能缓存里运行，也会停止并提示新开或重启 Codex 会话。
 
-生成日报包、周报包、补丁包或补证包之前，技能会先确认当前插件已是最新版本；无法确认最新时停止生成，避免旧规则继续产出材料。生成出的上传包会在 `materials/evidence/source.json` 写入 `plugin_name`、当前 `plugin_version`、当前 `skill_version`、`plugin_installation` 和可用的 `plugin_commit`；补丁包还会同步写入实现来源（implementation origin），例如 `codex`、`manual`、`external` 或 `mixed`。服务器上传入口只做轻量接收并写入上传分支（intake branch）；缺少版本证据或版本不是当前插件版本的包，由管理端本地推广入口拒绝，避免项目（project）、平台（platform）、Android 版本（Android version）或实现来源错误时无法追溯生成入口。
+生成日报包、周报包、补丁包或补证包之前，技能会先确认运行插件、已安装插件缓存、会话技能缓存和远端插件版本兼容；无法确认最新时停止生成，避免旧规则继续产出材料。生成出的上传包会在 `materials/evidence/source.json` 写入 `plugin_name`、当前 `plugin_version`、当前 `skill_version`、`plugin_installation`、可用的 `plugin_commit`、`installed_plugin_version`、`remote_plugin_version`、`skill_cache_version` 和 `plugin_version_check` 检查结果；补丁包还会同步写入实现来源（implementation origin），例如 `codex`、`manual`、`external` 或 `mixed`。服务器上传入口只做轻量接收并写入上传分支（intake branch）；管理端本地推广入口用这些字段区分插件未更新、会话缓存未刷新、旧包不再兼容或版本证据缺失。
 
 生成出的上传包还会做基础文本质量和时间检查。`summary`、补证原因、案例标题、问题和方案摘要不能包含连续问号乱码（garbled question marks）；如果出现这类文本，说明生成阶段已经损坏，必须重新生成，不能上传。包的 `run_id` 也不能晚于服务器当前时间；如果服务器提示未来上传时间（future upload timestamp），先同步本机时间并更新整个插件（plugin update），再重新生成和上传。
 

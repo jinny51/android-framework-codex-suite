@@ -250,6 +250,8 @@ CONFIG_DEFAULTS = {
     "synthetic_item_count": "3",
 }
 
+LAST_PLUGIN_VERSION_GATE: dict[str, Any] | None = None
+
 
 @dataclass
 class SessionWork:
@@ -343,6 +345,51 @@ def plugin_install_metadata() -> dict[str, str]:
     }
 
 
+def read_json_object(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def current_skill_cache_metadata() -> dict[str, str]:
+    metadata = plugin_install_metadata()
+    return {
+        "skill_cache_version": metadata.get("plugin_version", ""),
+        "skill_cache_path": str(PLUGIN_ROOT),
+        "skill_cache_installation": metadata.get("plugin_installation", "unknown"),
+    }
+
+
+def latest_installed_plugin_cache_metadata(plugin_name: str = "android-framework-ops") -> dict[str, str]:
+    codex_home = Path(default_codex_home())
+    cache_root = codex_home / "plugins" / "cache"
+    best: dict[str, str] = {}
+    if not cache_root.is_dir():
+        return best
+    patterns = [
+        f"*/{plugin_name}/*/.codex-plugin/plugin.json",
+        f"*/{plugin_name}/.codex-plugin/plugin.json",
+        f"{plugin_name}/*/.codex-plugin/plugin.json",
+        f"{plugin_name}/.codex-plugin/plugin.json",
+    ]
+    for pattern in patterns:
+        for manifest_path in cache_root.glob(pattern):
+            payload = read_json_object(manifest_path)
+            if str(payload.get("name") or plugin_name) != plugin_name:
+                continue
+            version = str(payload.get("version") or "")
+            if not version:
+                continue
+            if not best or compare_versions(version, best.get("installed_plugin_version", "")) > 0:
+                best = {
+                    "installed_plugin_version": version,
+                    "installed_plugin_path": str(manifest_path.parents[1] if manifest_path.parent.name == ".codex-plugin" else manifest_path.parent),
+                }
+    return best
+
+
 def version_parts(value: str) -> tuple[int, ...]:
     parts: list[int] = []
     for item in str(value or "").split("."):
@@ -385,18 +432,56 @@ def fetch_remote_plugin_manifest(metadata: dict[str, str]) -> dict[str, Any]:
     return payload
 
 
+def git_remote_plugin_version(git_root: Path, ref: str) -> str:
+    manifest_path = plugin_manifest_path()
+    if not manifest_path:
+        return ""
+    try:
+        rel = manifest_path.resolve().relative_to(git_root.resolve()).as_posix()
+    except ValueError:
+        return ""
+    cp = run(["git", "-C", str(git_root), "show", f"{ref}:{rel}"])
+    if cp.returncode != 0:
+        return ""
+    try:
+        payload = json.loads(cp.stdout)
+    except Exception:
+        return ""
+    return str(payload.get("version") or "") if isinstance(payload, dict) else ""
+
+
 def packaged_plugin_freshness(metadata: dict[str, str], fetch: bool, require: bool) -> dict[str, Any]:
     local_version = str(metadata.get("plugin_version") or "")
+    cache_metadata = latest_installed_plugin_cache_metadata(metadata.get("plugin_name") or "android-framework-ops")
+    skill_cache = current_skill_cache_metadata()
     payload: dict[str, Any] = {
         "status": "PASS" if local_version else "UNKNOWN",
         "blocking": False,
         "plugin_name": metadata.get("plugin_name") or "android-framework-ops",
         "local_version": local_version,
+        "plugin_version": local_version,
+        "skill_cache_version": skill_cache.get("skill_cache_version", ""),
+        "skill_cache_path": skill_cache.get("skill_cache_path", ""),
+        "installed_plugin_version": cache_metadata.get("installed_plugin_version", local_version),
+        "installed_plugin_path": cache_metadata.get("installed_plugin_path", ""),
         "installation": metadata.get("plugin_installation") or "packaged",
         "message": "插件缓存版本已记录。",
     }
     if not local_version:
         return plugin_update_unknown("无法读取插件缓存版本，不能确认是否有更新。", require)
+    installed_version = str(payload.get("installed_plugin_version") or "")
+    if installed_version and compare_versions(local_version, installed_version) < 0:
+        payload.update(
+            {
+                "status": "SESSION_CACHE_STALE",
+                "blocking": True,
+                "message": (
+                    f"Codex 已安装 Android Framework Ops {installed_version}，但当前会话仍在使用旧技能缓存 {local_version}。"
+                    "当前会话不能热刷新技能，请新开或重启 Codex 会话后再生成或上传。"
+                ),
+            }
+        )
+        return payload
     if not fetch:
         return payload
     try:
@@ -405,12 +490,16 @@ def packaged_plugin_freshness(metadata: dict[str, str], fetch: bool, require: bo
         return plugin_update_unknown(f"无法读取插件远端版本，不能确认是否有更新: {exc}", require)
     remote_version = str(remote_manifest.get("version") or "")
     payload["remote_version"] = remote_version
+    payload["remote_plugin_version"] = remote_version
     if remote_version and compare_versions(local_version, remote_version) < 0:
         payload.update(
             {
                 "status": "STALE",
                 "blocking": True,
-                "message": "插件有更新，已停止本次生成。请先在 Codex 插件市场更新 Android Framework Ops 插件后重新运行原命令。",
+                "message": (
+                    f"GitHub 已发布 Android Framework Ops {remote_version}，当前插件缓存是 {local_version}。"
+                    "请先在 Codex 插件市场更新插件；如果已更新但当前会话仍显示旧版本，请新开或重启会话后再生成或上传。"
+                ),
             }
         )
     elif remote_version:
@@ -506,10 +595,33 @@ def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[st
     metadata = plugin_install_metadata()
     if metadata.get("plugin_version"):
         payload["local_version"] = metadata["plugin_version"]
+        payload["plugin_version"] = metadata["plugin_version"]
+        payload["skill_cache_version"] = metadata["plugin_version"]
+    remote_version = git_remote_plugin_version(git_root, upstream_ref)
+    if remote_version:
+        payload["remote_version"] = remote_version
+        payload["remote_plugin_version"] = remote_version
+    cache_metadata = latest_installed_plugin_cache_metadata(metadata.get("plugin_name") or "android-framework-ops")
+    if cache_metadata:
+        payload.update(cache_metadata)
     if warnings:
         payload["warnings"] = warnings
 
     if local_commit == remote_commit:
+        local_version = str(payload.get("local_version") or "")
+        installed_version = str(payload.get("installed_plugin_version") or "")
+        if installed_version and local_version and compare_versions(local_version, installed_version) < 0:
+            payload.update(
+                {
+                    "status": "SESSION_CACHE_STALE",
+                    "blocking": True,
+                    "message": (
+                        f"Codex 已安装 Android Framework Ops {installed_version}，但当前会话仍在使用旧技能缓存 {local_version}。"
+                        "当前会话不能热刷新技能，请新开或重启 Codex 会话后再生成或上传。"
+                    ),
+                }
+            )
+            return payload
         payload.update(
             {
                 "status": "PASS",
@@ -521,11 +633,46 @@ def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[st
 
     local_ancestor = run(["git", "-C", str(git_root), "merge-base", "--is-ancestor", local_commit, remote_commit])
     if local_ancestor.returncode == 0:
+        if warnings:
+            payload.update(
+                {
+                    "status": "STALE",
+                    "blocking": True,
+                    "message": "插件有更新，但当前插件仓库存在未提交改动，不能自动更新。请先处理本地改动后重新运行。",
+                }
+            )
+            return payload
+        pull_cp = run(["git", "-C", str(git_root), "pull", "--ff-only"])
+        if pull_cp.returncode == 0:
+            payload["auto_update"] = {
+                "attempted": True,
+                "status": "PASS",
+                "command": update_command,
+                "stdout": pull_cp.stdout.strip(),
+            }
+            payload.update(
+                {
+                    "status": "UPDATED_RESTART_REQUIRED",
+                    "blocking": True,
+                    "message": (
+                        "插件已自动快进更新。当前 Python 进程和 Codex 会话已经加载了旧技能缓存，不能热刷新；"
+                        "请重新运行原命令，并在 Codex 会话仍显示旧技能时新开或重启会话。"
+                    ),
+                }
+            )
+            return payload
+        payload["auto_update"] = {
+            "attempted": True,
+            "status": "FAIL",
+            "command": update_command,
+            "stderr": pull_cp.stderr.strip(),
+            "stdout": pull_cp.stdout.strip(),
+        }
         payload.update(
             {
                 "status": "STALE",
                 "blocking": True,
-                "message": "插件有更新，已停止本次生成。请先执行插件更新（plugin update）后重新运行原命令。",
+                "message": "插件有更新，但自动快进更新失败，已停止本次生成。请先执行插件更新（plugin update）后重新运行原命令。",
             }
         )
         return payload
@@ -549,6 +696,26 @@ def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[st
         }
     )
     return payload
+
+
+def plugin_version_gate_check(config: dict[str, str] | None = None, fetch: bool = True, require: bool = True) -> dict[str, Any]:
+    global LAST_PLUGIN_VERSION_GATE
+    gate = plugin_freshness_check(fetch=fetch, require=require)
+    metadata = plugin_install_metadata()
+    skill_cache = current_skill_cache_metadata()
+    cache_metadata = latest_installed_plugin_cache_metadata(metadata.get("plugin_name") or "android-framework-ops")
+    gate.setdefault("plugin_name", metadata.get("plugin_name") or "android-framework-ops")
+    gate.setdefault("plugin_version", metadata.get("plugin_version") or "")
+    gate.setdefault("local_version", metadata.get("plugin_version") or "")
+    gate.setdefault("skill_cache_version", skill_cache.get("skill_cache_version", ""))
+    gate.setdefault("skill_cache_path", skill_cache.get("skill_cache_path", ""))
+    if cache_metadata:
+        gate.setdefault("installed_plugin_version", cache_metadata.get("installed_plugin_version", ""))
+        gate.setdefault("installed_plugin_path", cache_metadata.get("installed_plugin_path", ""))
+    gate["checked_at"] = local_now(config or CONFIG_DEFAULTS).isoformat()
+    gate["result"] = gate.get("status", "UNKNOWN")
+    LAST_PLUGIN_VERSION_GATE = gate
+    return gate
 
 
 def synthetic_mode(config: dict[str, str]) -> bool:
@@ -2246,18 +2413,39 @@ def source_metadata(config: dict[str, str], skill: str) -> dict[str, Any]:
     plugin_version = metadata.get("plugin_version") or ""
     root_cp = run(["git", "-C", str(PLUGIN_ROOT), "rev-parse", "--show-toplevel"])
     plugin_installation = "git" if root_cp.returncode == 0 else metadata.get("plugin_installation", "unknown")
-    return {
+    gate = LAST_PLUGIN_VERSION_GATE or plugin_version_gate_check(config, fetch=False, require=False)
+    skill_cache_version = str(gate.get("skill_cache_version") or plugin_version)
+    remote_plugin_version = str(gate.get("remote_plugin_version") or gate.get("remote_version") or "")
+    installed_plugin_version = str(gate.get("installed_plugin_version") or plugin_version)
+    payload = {
         "source": "android-framework-ops",
         "tool": skill,
         "skill": skill,
-        "skill_version": plugin_version,
+        "skill_version": skill_cache_version or plugin_version,
         "plugin_name": metadata.get("plugin_name") or "android-framework-ops",
         "plugin_version": plugin_version,
         "plugin_installation": plugin_installation,
         "plugin_commit": plugin_commit(),
+        "installed_plugin_version": installed_plugin_version,
+        "remote_plugin_version": remote_plugin_version,
+        "skill_cache_version": skill_cache_version,
+        "plugin_version_check": {
+            "checked_at": gate.get("checked_at", local_now(config).isoformat()),
+            "result": gate.get("result") or gate.get("status"),
+            "status": gate.get("status"),
+            "blocking": bool(gate.get("blocking")),
+            "message": gate.get("message", ""),
+            "plugin_version": gate.get("plugin_version") or plugin_version,
+            "installed_plugin_version": installed_plugin_version,
+            "remote_plugin_version": remote_plugin_version,
+            "skill_cache_version": skill_cache_version,
+            "skill_cache_path": gate.get("skill_cache_path", ""),
+            "auto_update": gate.get("auto_update", {}),
+        },
         "member_alias": config["member_alias"],
         "generated_at": local_now(config).isoformat(),
     }
+    return payload
 
 
 def write_package_source(package_dir: Path, config: dict[str, str], skill: str) -> dict[str, Any]:
@@ -4844,7 +5032,7 @@ def doctor_strict_checks(
     if git_version.returncode != 0:
         error("找不到 git，无法检查知识库仓库。")
 
-    freshness = plugin_freshness_check(fetch=check_remote, require=check_remote)
+    freshness = plugin_version_gate_check(config, fetch=check_remote, require=check_remote)
     if freshness.get("blocking"):
         error(str(freshness.get("message") or "插件更新检查失败。"))
     elif freshness.get("status") == "UNKNOWN":
@@ -4910,7 +5098,7 @@ def doctor(
         "knowledge_repo_cloned": (knowledge_repo / ".git").exists(),
         "out_dir": str(expanded_path(config["out_dir"])),
         "git": run(["git", "--version"]).stdout.strip(),
-        "plugin_freshness": plugin_freshness_check(fetch=check_remote),
+        "plugin_freshness": plugin_version_gate_check(config, fetch=check_remote, require=False),
     }
     if strict:
         payload["strict"] = doctor_strict_checks(config, loaded, check_remote, allow_synthetic)
@@ -4982,7 +5170,7 @@ def main() -> int:
         return 0 if not args.strict or result.get("status") == "PASS" else 1
 
     if args.command in PACKAGE_TYPES and not args.validate and (args.prepare or args.submit_latest or args.upload):
-        freshness = plugin_freshness_check(fetch=True, require=True)
+        freshness = plugin_version_gate_check(config, fetch=True, require=True)
         if freshness.get("blocking"):
             print(
                 json.dumps(

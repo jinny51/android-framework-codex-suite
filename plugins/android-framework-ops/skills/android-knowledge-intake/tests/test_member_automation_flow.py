@@ -138,6 +138,28 @@ def seed_packaged_plugin_install(root: Path, version: str = "1.0.24") -> Path:
     return skill_root
 
 
+def seed_codex_plugin_cache(codex_home: Path, version: str) -> Path:
+    plugin_root = codex_home / "plugins" / "cache" / "android-framework-codex-suite" / "android-framework-ops" / version
+    skill_root = plugin_root / "skills" / "android-knowledge-intake"
+    skill_root.mkdir(parents=True)
+    manifest_path = plugin_root / ".codex-plugin" / "plugin.json"
+    manifest_path.parent.mkdir(parents=True)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "name": "android-framework-ops",
+                "version": version,
+                "repository": "https://github.com/jinny51/android-framework-codex-suite",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return skill_root
+
+
 def write_member_config(root: Path, knowledge_remote: Path, submit_command: str | None = None, synthetic_data: bool = True) -> dict[str, str]:
     codex_home = root / "codex-home"
     config_dir = codex_home / "report"
@@ -488,9 +510,10 @@ class MemberAutomationFlowTests(unittest.TestCase):
 
             result = module.plugin_freshness_check(fetch=True)
 
-            self.assertEqual(result["status"], "STALE")
+            self.assertEqual(result["status"], "UPDATED_RESTART_REQUIRED")
             self.assertTrue(result["blocking"])
-            self.assertIn("插件有更新", result["message"])
+            self.assertEqual(result["auto_update"]["status"], "PASS")
+            self.assertIn("不能热刷新", result["message"])
             self.assertIn("git -C", result["update_command"])
             self.assertIn("pull --ff-only", result["update_command"])
 
@@ -517,14 +540,45 @@ class MemberAutomationFlowTests(unittest.TestCase):
             module = load_intake_module()
             module.PLUGIN_ROOT = plugin_root
             module.fetch_remote_plugin_manifest = lambda metadata: {"version": "1.0.26"}
+            old_env = os.environ.copy()
+            try:
+                os.environ["CODEX_HOME"] = str(root / "empty-codex-home")
 
-            result = module.plugin_freshness_check(fetch=True)
+                result = module.plugin_freshness_check(fetch=True)
 
-            self.assertEqual(result["status"], "STALE")
-            self.assertTrue(result["blocking"])
-            self.assertEqual(result["local_version"], "1.0.24")
-            self.assertEqual(result["remote_version"], "1.0.26")
-            self.assertIn("插件有更新", result["message"])
+                self.assertEqual(result["status"], "STALE")
+                self.assertTrue(result["blocking"])
+                self.assertEqual(result["local_version"], "1.0.24")
+                self.assertEqual(result["remote_version"], "1.0.26")
+                self.assertIn("GitHub 已发布", result["message"])
+            finally:
+                os.environ.clear()
+                os.environ.update(old_env)
+
+    def test_packaged_plugin_freshness_blocks_old_session_cache_after_install_update(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            codex_home = root / "codex-home"
+            plugin_root = seed_packaged_plugin_install(root, version="1.0.24")
+            seed_codex_plugin_cache(codex_home, "1.0.26")
+            module = load_intake_module()
+            module.PLUGIN_ROOT = plugin_root
+            module.fetch_remote_plugin_manifest = lambda metadata: {"version": "1.0.26"}
+            old_env = os.environ.copy()
+            try:
+                os.environ["CODEX_HOME"] = str(codex_home)
+
+                result = module.plugin_freshness_check(fetch=True, require=True)
+
+                self.assertEqual(result["status"], "SESSION_CACHE_STALE")
+                self.assertTrue(result["blocking"])
+                self.assertEqual(result["local_version"], "1.0.24")
+                self.assertEqual(result["installed_plugin_version"], "1.0.26")
+                self.assertEqual(result["skill_cache_version"], "1.0.24")
+                self.assertIn("当前会话不能热刷新技能", result["message"])
+            finally:
+                os.environ.clear()
+                os.environ.update(old_env)
 
     def test_source_metadata_records_packaged_plugin_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -532,6 +586,18 @@ class MemberAutomationFlowTests(unittest.TestCase):
             plugin_root = seed_packaged_plugin_install(root, version="1.0.24")
             module = load_intake_module()
             module.PLUGIN_ROOT = plugin_root
+            module.LAST_PLUGIN_VERSION_GATE = {
+                "status": "PASS",
+                "result": "PASS",
+                "blocking": False,
+                "plugin_version": "1.0.24",
+                "installed_plugin_version": "1.0.24",
+                "remote_plugin_version": "1.0.24",
+                "skill_cache_version": "1.0.24",
+                "skill_cache_path": str(plugin_root),
+                "checked_at": "2026-06-30T10:00:00+08:00",
+                "message": "test gate",
+            }
 
             source = module.source_metadata({"member_alias": "member01"}, "android-knowledge-intake")
 
@@ -539,22 +605,27 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(source["plugin_version"], "1.0.24")
             self.assertEqual(source["skill_version"], "1.0.24")
             self.assertEqual(source["plugin_installation"], "packaged")
+            self.assertEqual(source["installed_plugin_version"], "1.0.24")
+            self.assertEqual(source["remote_plugin_version"], "1.0.24")
+            self.assertEqual(source["skill_cache_version"], "1.0.24")
+            self.assertEqual(source["plugin_version_check"]["result"], "PASS")
+            self.assertEqual(source["plugin_version_check"]["checked_at"], "2026-06-30T10:00:00+08:00")
 
     def test_member_generation_modes_stop_when_plugin_checkout_is_stale(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            remote = seed_knowledge_remote(root)
-            plugin_root = seed_stale_plugin_checkout(root)
-            env = write_member_config(root, remote)
-            env.pop("CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK", None)
-            module = load_intake_module()
-            old_argv = sys.argv[:]
-            old_env = os.environ.copy()
-            try:
-                module.PLUGIN_ROOT = plugin_root
-                os.environ.clear()
-                os.environ.update(env)
-                for mode in ("daily", "weekly", "patch"):
+        for mode in ("daily", "weekly", "patch"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                remote = seed_knowledge_remote(root)
+                plugin_root = seed_stale_plugin_checkout(root)
+                env = write_member_config(root, remote)
+                env.pop("CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK", None)
+                module = load_intake_module()
+                old_argv = sys.argv[:]
+                old_env = os.environ.copy()
+                try:
+                    module.PLUGIN_ROOT = plugin_root
+                    os.environ.clear()
+                    os.environ.update(env)
                     with self.subTest(mode=mode):
                         sys.argv = [
                             str(INTAKE_SCRIPT),
@@ -575,12 +646,13 @@ class MemberAutomationFlowTests(unittest.TestCase):
                         self.assertEqual(code, 1)
                         payload = json.loads(stdout.getvalue())
                         self.assertEqual(payload["status"], "FAIL")
-                        self.assertEqual(payload["plugin_freshness"]["status"], "STALE")
-                        self.assertIn("插件有更新", payload["message"])
-            finally:
-                sys.argv = old_argv
-                os.environ.clear()
-                os.environ.update(old_env)
+                        self.assertEqual(payload["plugin_freshness"]["status"], "UPDATED_RESTART_REQUIRED")
+                        self.assertEqual(payload["plugin_freshness"]["auto_update"]["status"], "PASS")
+                        self.assertIn("不能热刷新", payload["message"])
+                finally:
+                    sys.argv = old_argv
+                    os.environ.clear()
+                    os.environ.update(old_env)
 
     def test_member_generation_requires_confirmed_latest_plugin(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
