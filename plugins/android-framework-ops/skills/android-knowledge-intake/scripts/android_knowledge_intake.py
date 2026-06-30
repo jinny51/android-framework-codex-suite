@@ -2349,35 +2349,29 @@ def iter_local_manifests(config: dict[str, str]) -> list[tuple[str, Path, dict[s
     return rows
 
 
-def local_weekly_reports(config: dict[str, str], week_range: str, exclude_run_id: str = "") -> list[dict[str, str]]:
-    member_alias = config.get("member_alias", "")
-    reports: dict[str, dict[str, str]] = {}
-    for bucket, package_dir, manifest in iter_local_manifests(config):
-        if manifest.get("package_kind") != "weekly_trace":
-            continue
-        if manifest.get("member_alias") != member_alias:
-            continue
-        if str(manifest.get("week_range") or "") != week_range:
-            continue
-        run_id = str(manifest.get("run_id") or package_dir.name)
-        if exclude_run_id and run_id == exclude_run_id:
-            continue
-        package_key = package_key_from_manifest(manifest, package_dir)
-        reports.setdefault(
-            package_key,
-            {
-                "bucket": bucket,
-                "run_id": run_id,
-                "date": str(manifest.get("date") or ""),
-                "week_range": week_range,
-                "package_key": package_key,
-                "path": str(package_dir),
-            },
-        )
-    return sorted(reports.values(), key=lambda item: (item["bucket"], item["package_key"]))
+def report_identity(report_type: str, date: dt.date, week_range: str) -> str:
+    return date.isoformat() if report_type == "daily" else week_range
 
 
-def weekly_replacement_run_id(manifest: dict[str, Any]) -> str:
+def report_identity_from_manifest(manifest: dict[str, Any]) -> str:
+    kind = str(manifest.get("package_kind") or "")
+    if kind == "daily_trace":
+        return str(manifest.get("date") or "")
+    if kind == "weekly_trace":
+        return str(manifest.get("week_range") or "")
+    return ""
+
+
+def report_type_from_manifest(manifest: dict[str, Any]) -> str:
+    kind = str(manifest.get("package_kind") or "")
+    if kind == "daily_trace":
+        return "daily"
+    if kind == "weekly_trace":
+        return "weekly"
+    return ""
+
+
+def replacement_run_id(manifest: dict[str, Any]) -> str:
     replacement = str(manifest.get("replacement_for_run_id") or "").strip()
     if replacement:
         return replacement
@@ -2387,45 +2381,108 @@ def weekly_replacement_run_id(manifest: dict[str, Any]) -> str:
     return ""
 
 
-def format_weekly_duplicate_message(week_range: str, duplicates: list[dict[str, str]]) -> str:
+def report_duplicate_label(report_type: str) -> str:
+    return "日报日期" if report_type == "daily" else "周报周期"
+
+
+def report_replace_option(report_type: str) -> str:
+    return "--replace-daily-run-id" if report_type == "daily" else "--replace-weekly-run-id"
+
+
+def local_report_packages(config: dict[str, str], report_type: str, identity: str, exclude_run_id: str = "") -> list[dict[str, str]]:
+    member_alias = config.get("member_alias", "")
+    packages: dict[str, dict[str, str]] = {}
+    for bucket, package_dir, manifest in iter_local_manifests(config):
+        if report_type_from_manifest(manifest) != report_type:
+            continue
+        if manifest.get("member_alias") != member_alias:
+            continue
+        manifest_identity = report_identity_from_manifest(manifest)
+        if manifest_identity != identity:
+            continue
+        run_id = str(manifest.get("run_id") or package_dir.name)
+        if exclude_run_id and run_id == exclude_run_id:
+            continue
+        package_key = package_key_from_manifest(manifest, package_dir)
+        packages.setdefault(
+            package_key,
+            {
+                "bucket": bucket,
+                "run_id": run_id,
+                "date": str(manifest.get("date") or ""),
+                "report_type": report_type,
+                "identity": identity,
+                "week_range": str(manifest.get("week_range") or ""),
+                "package_key": package_key,
+                "path": str(package_dir),
+            },
+        )
+    return sorted(packages.values(), key=lambda item: (item["bucket"], item["package_key"]))
+
+
+def format_report_duplicate_message(report_type: str, identity: str, duplicates: list[dict[str, str]]) -> str:
     refs = ", ".join(f"{item['bucket']}:{item['package_key']}" for item in duplicates)
     first = duplicates[0]["run_id"] if duplicates else "<run_id>"
+    option = report_replace_option(report_type)
+    label = report_duplicate_label(report_type)
+    noun = "日报包" if report_type == "daily" else "周报包"
     return (
-        f"同一成员同一周报周期已存在周报包: week_range={week_range}; existing={refs}. "
-        "已停止生成或上传第二个普通周报包。"
-        f"如确需重传，请显式使用 weekly --replace-weekly-run-id {first}，"
-        "新包会写入 supersedes/replacement 元数据。"
+        f"同一成员同一{label}已存在{noun}: {label}={identity}; existing={refs}. "
+        f"已停止生成或上传第二个普通{noun}。请选择："
+        f"如确需替换已有提交，请显式使用 {report_type} {option} {first}；"
+        "如不替换，请取消本次提交。新包会写入 supersedes/replacement 元数据。"
     )
 
 
-def ensure_weekly_not_duplicate(
+def ensure_report_not_duplicate(
     config: dict[str, str],
-    week_range: str,
+    report_type: str,
+    identity: str,
     current_run_id: str,
     replacement_run_id: str = "",
 ) -> list[dict[str, str]]:
-    duplicates = local_weekly_reports(config, week_range, exclude_run_id=current_run_id)
+    duplicates = local_report_packages(config, report_type, identity, exclude_run_id=current_run_id)
     if not duplicates:
         if replacement_run_id:
-            raise SystemExit(f"--replace-weekly-run-id 未找到同周期周报包: {replacement_run_id}")
+            raise SystemExit(f"{report_replace_option(report_type)} 未找到同{report_duplicate_label(report_type)}已有包: {replacement_run_id}")
         return []
     if not replacement_run_id:
-        raise SystemExit(format_weekly_duplicate_message(week_range, duplicates))
+        raise SystemExit(format_report_duplicate_message(report_type, identity, duplicates))
     if replacement_run_id == current_run_id:
-        raise SystemExit("--replace-weekly-run-id 不能指向当前新周报 run_id")
+        raise SystemExit(f"{report_replace_option(report_type)} 不能指向当前新{report_duplicate_label(report_type)} run_id")
     if not any(item["run_id"] == replacement_run_id for item in duplicates):
-        raise SystemExit(f"--replace-weekly-run-id 未匹配同周期已有周报包: {replacement_run_id}")
+        raise SystemExit(f"{report_replace_option(report_type)} 未匹配同{report_duplicate_label(report_type)}已有包: {replacement_run_id}")
     return duplicates
 
 
-def ensure_weekly_submit_allowed(package_dir: Path, config: dict[str, str], manifest: dict[str, Any]) -> None:
-    if manifest.get("package_kind") != "weekly_trace":
+def ensure_report_date_allowed(report_type: str, date: dt.date, config: dict[str, str]) -> None:
+    today = local_now(config).date()
+    if date > today:
+        if report_type == "daily":
+            raise SystemExit("不能提交未来日期的日报，请重新生成正确日期的日报。")
+        raise SystemExit("不能提交未来周期的周报，请重新生成正确周期的周报。")
+    if report_type == "weekly":
+        _, week_start, _, _ = report_dates("weekly", date)
+        _, current_week_start, _, _ = report_dates("weekly", today)
+        if week_start > current_week_start:
+            raise SystemExit("不能提交未来周期的周报，请重新生成正确周期的周报。")
+
+
+def ensure_report_submit_allowed(package_dir: Path, config: dict[str, str], manifest: dict[str, Any]) -> None:
+    report_type = report_type_from_manifest(manifest)
+    if report_type not in {"daily", "weekly"}:
         return
-    week_range = str(manifest.get("week_range") or "").strip()
-    if not week_range:
+    manifest_date = str(manifest.get("date") or "").strip()
+    try:
+        date = dt.date.fromisoformat(manifest_date)
+    except ValueError:
         return
+    ensure_report_date_allowed(report_type, date, config)
     run_id = str(manifest.get("run_id") or package_dir.name)
-    ensure_weekly_not_duplicate(config, week_range, run_id, weekly_replacement_run_id(manifest))
+    identity = report_identity_from_manifest(manifest)
+    if not identity:
+        return
+    ensure_report_not_duplicate(config, report_type, identity, run_id, replacement_run_id(manifest))
 
 
 def record_submitted_package(package_dir: Path, config: dict[str, str], manifest: dict[str, Any]) -> None:
@@ -3649,21 +3706,28 @@ def prepare_package(
     config: dict[str, str],
     run_id: str | None = None,
     schema_version: str = INCOMING_SCHEMA_VERSION,
-    replace_weekly_run_id: str = "",
+    replace_report_run_id: str = "",
 ) -> Path:
     require_config(config)
     if schema_version != INCOMING_SCHEMA_VERSION:
         raise SystemExit(f"incoming 只支持 schema_version={INCOMING_SCHEMA_VERSION}")
     dates, start, end, week_key = report_dates(report_type, date)
+    ensure_report_date_allowed(report_type, date, config)
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}"
     out_dir = expanded_path(config["out_dir"])
     package_dir = out_dir / "pending" / ymd(date) / config["member_alias"] / run_id
     if package_dir.exists():
         raise SystemExit(f"工作包已存在: {package_dir}")
-    weekly_duplicates: list[dict[str, str]] = []
-    replace_weekly_run_id = str(replace_weekly_run_id or "").strip()
-    if report_type == "weekly":
-        weekly_duplicates = ensure_weekly_not_duplicate(config, week_key, run_id, replace_weekly_run_id)
+    report_duplicates: list[dict[str, str]] = []
+    replace_report_run_id = str(replace_report_run_id or "").strip()
+    if report_type in {"daily", "weekly"}:
+        report_duplicates = ensure_report_not_duplicate(
+            config,
+            report_type,
+            report_identity(report_type, date, week_key),
+            run_id,
+            replace_report_run_id,
+        )
     package_dir.mkdir(parents=True)
 
     if synthetic_mode(config):
@@ -3718,13 +3782,15 @@ def prepare_package(
     shutil.move(str(package_dir / f"{report_type}.md"), reports_dir / f"{report_type}.md")
     source = write_package_source(package_dir, config, "android-knowledge-intake")
     manifest = incoming_report_manifest(report_type, date, week_key, config, summary, source, run_id, report_project, project_path)
-    if report_type == "weekly" and replace_weekly_run_id:
-        replacement = next((item for item in weekly_duplicates if item["run_id"] == replace_weekly_run_id), {})
-        manifest["replacement_for_run_id"] = replace_weekly_run_id
+    if report_type in {"daily", "weekly"} and replace_report_run_id:
+        replacement = next((item for item in report_duplicates if item["run_id"] == replace_report_run_id), {})
+        manifest["replacement_for_run_id"] = replace_report_run_id
         manifest["supersedes"] = {
-            "report_type": "weekly",
-            "run_id": replace_weekly_run_id,
-            "week_range": week_key,
+            "report_type": report_type,
+            "run_id": replace_report_run_id,
+            "date": date.isoformat(),
+            "week_range": week_key if report_type == "weekly" else "",
+            "identity": report_identity(report_type, date, week_key),
             "package_key": replacement.get("package_key", ""),
         }
     if search_path:
@@ -4620,14 +4686,14 @@ def submit_package(package_dir: Path, config: dict[str, str]) -> dict[str, Any]:
     if check["status"] != "PASS":
         raise SystemExit("本地工作包校验失败，已停止提交。请查看 local-check.json。")
     manifest = read_json_file(package_dir / "manifest.json")
-    ensure_weekly_submit_allowed(package_dir, config, manifest)
+    ensure_report_submit_allowed(package_dir, config, manifest)
     gate_errors = patch_upload_gate_errors(manifest)
     if gate_errors:
         raise SystemExit("\n".join(gate_errors))
 
     method = submission_method(config)
     result = server_submit_package(package_dir, config, method)
-    if manifest.get("package_kind") == "weekly_trace":
+    if manifest.get("package_kind") in {"daily_trace", "weekly_trace"}:
         record_submitted_package(package_dir, config, manifest)
     return result
 
@@ -4891,6 +4957,12 @@ def parse_args() -> argparse.Namespace:
                 default="",
                 help="explicitly regenerate a weekly package for an existing week_range and write supersedes metadata",
             )
+        if report_type == "daily":
+            sub.add_argument(
+                "--replace-daily-run-id",
+                default="",
+                help="explicitly regenerate a daily package for an existing report date and write supersedes metadata",
+            )
         action = sub.add_mutually_exclusive_group(required=True)
         action.add_argument("--prepare", action="store_true", help="generate pending package only")
         action.add_argument("--submit-latest", action="store_true", help="submit latest pending package")
@@ -4958,7 +5030,7 @@ def main() -> int:
                 config,
                 args.run_id,
                 schema_version,
-                getattr(args, "replace_weekly_run_id", ""),
+                getattr(args, "replace_daily_run_id", "") or getattr(args, "replace_weekly_run_id", ""),
             )
         result = json.loads((package_dir / "local-check.json").read_text(encoding="utf-8"))
         print(json.dumps({"package": str(package_dir), "local_check": result}, ensure_ascii=False, indent=2))
@@ -4994,7 +5066,7 @@ def main() -> int:
                 config,
                 args.run_id,
                 schema_version,
-                getattr(args, "replace_weekly_run_id", ""),
+                getattr(args, "replace_daily_run_id", "") or getattr(args, "replace_weekly_run_id", ""),
             )
         result = submit_package(package_dir, config)
         print(json.dumps({"package": str(package_dir), "submit": result}, ensure_ascii=False, indent=2))

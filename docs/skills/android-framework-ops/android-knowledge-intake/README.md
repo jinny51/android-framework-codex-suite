@@ -14,7 +14,9 @@
 
 默认策略是先在成员本机保存材料，再只把达到普通上传门禁的包送到服务器。普通补丁包和补证包上传默认必须是 `validated`：功能边界清楚、项目（project）、平台（platform）、Android 版本（Android version）可追溯、补丁资产干净，并且构建与设备或等价验证通过。`candidate`、`draft`、`failed` 或 `blocked` 可以作为本地材料或日报/周报上下文保留，但不直接进入服务器上传队列。包状态不是沉淀结论（curation decision）。
 
-周报包按成员和 `week_range` 做防重复。成员本机已有同周期 pending 或 submitted 周报时，`weekly --prepare`、`weekly --upload` 和 `weekly --submit-latest` 会停止，避免静默产生第二个普通周报包。确需重传时显式使用 `weekly --replace-weekly-run-id <old_run_id>`；新包会写入 `replacement_for_run_id` 和 `supersedes` 元数据。
+日报和周报没有“未来提交”模式。日报日期晚于当前本机日期时会停止；周报锚定日期晚于当前本机日期，或 `week_range` 晚于当前本机所属周时也会停止。过去日期日报和过去周期周报属于补交，允许生成。
+
+日报包和周报包按成员与报告身份防重复：日报使用 `date`，周报使用 `week_range`。成员本机已有同身份 pending 或 submitted 报告包时，`--prepare`、`--upload` 和 `--submit-latest` 会停止，避免静默产生第二个普通报告包。成员要么取消本次提交，要么显式替换已有包：日报使用 `daily --replace-daily-run-id <old_run_id>`，周报使用 `weekly --replace-weekly-run-id <old_run_id>`；新包会写入 `replacement_for_run_id` 和 `supersedes` 元数据。
 
 需要联调协议或服务器链路时，单独创建合成数据 profile；合成 profile 不读取真实 Codex 会话、不扫描真实源码、不上传真实 patch。
 
@@ -66,6 +68,12 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --s
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --prepare
+```
+
+显式重传同一天日报：
+
+```bash
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --prepare --replace-daily-run-id 20260629-210000-daily
 ```
 
 显式重传同一周期周报：

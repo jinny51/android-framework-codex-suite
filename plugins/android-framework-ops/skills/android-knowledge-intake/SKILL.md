@@ -13,7 +13,9 @@ Ordinary members use `daily` and `weekly` modes to generate member-level incomin
 
 Default policy: preserve work facts locally first, then upload only packages that pass the member-side upload gate. Daily traces must preserve `work_findings`; weekly traces preserve progress summaries for database archive and member view only. Ordinary framework-change upload and evidence supplements must be `validated`: clear function boundary, traceable project/platform/Android version, clean patch assets, and PASS build plus device or accepted equivalent verification. `candidate`, `draft`, `failed`, and `blocked` are local or report-context states; they do not enter the server upload queue by default. These values are not curation decisions.
 
-Weekly generation is idempotent by member and `week_range`. If a local pending or submitted weekly package already exists for the same member and week, `weekly --prepare`, `weekly --upload`, and `weekly --submit-latest` must stop instead of silently creating or uploading a second ordinary weekly package. When a member truly needs to resend that week, use `weekly --replace-weekly-run-id <old_run_id>`; the replacement package writes `replacement_for_run_id` and `supersedes` metadata so it is not another silent ordinary weekly package.
+Daily and weekly generation have no "future submission" mode. A daily package date later than the current local date must stop with "不能提交未来日期的日报，请重新生成正确日期的日报。". A weekly package whose anchor date is later than the current local date, or whose `week_range` is later than the current local week, must stop with "不能提交未来周期的周报，请重新生成正确周期的周报。". Older daily dates and older weekly periods are late submissions and are allowed.
+
+Daily and weekly generation is idempotent by member and report identity: daily uses `date`, weekly uses `week_range`. If a local pending or submitted report package already exists for the same member and identity, `--prepare`, `--upload`, and `--submit-latest` must stop instead of silently creating or uploading a second ordinary report package. The member must either cancel the new run or explicitly replace the old package. Use `daily --replace-daily-run-id <old_run_id>` or `weekly --replace-weekly-run-id <old_run_id>`; the replacement package writes `replacement_for_run_id` and `supersedes` metadata so it is not another silent ordinary report package.
 
 Use configuration profiles for identity. Global config stores the submission channel and knowledge repository defaults; each `[profiles.<name>]` stores one member identity, knowledge worktree, git author, role, allowed modes, and optional test behavior. Prefer explicit `--profile <name>` in automations so a daily incoming run cannot accidentally use an administrator identity.
 
@@ -60,6 +62,12 @@ Prepare and submit in one run:
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --upload
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --upload
+```
+
+Explicitly replace an existing daily package for the same member and date:
+
+```bash
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --prepare --replace-daily-run-id 20260629-210000-daily
 ```
 
 Explicitly replace an existing weekly package for the same member and week:
