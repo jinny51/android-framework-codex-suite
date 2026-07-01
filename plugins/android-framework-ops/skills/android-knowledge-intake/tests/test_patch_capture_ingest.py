@@ -498,6 +498,8 @@ class PatchCaptureIngestTests(unittest.TestCase):
             source = json.loads((package / "materials" / "evidence" / "source.json").read_text(encoding="utf-8"))
             problem = json.loads((package / "materials" / "evidence" / "capture" / "capture-patch-problem-summary.json").read_text(encoding="utf-8"))
             risk = json.loads((package / "materials" / "evidence" / "capture" / "capture-risk-surface.json").read_text(encoding="utf-8"))
+            patch_view = json.loads((package / "materials" / "display" / "patch_view.json").read_text(encoding="utf-8"))
+            ai_facts = json.loads((package / "materials" / "evidence" / "patch_ai_facts.json").read_text(encoding="utf-8"))
 
             self.assertEqual(check["status"], "PASS")
             self.assertEqual(manifest["schema"], "knowledge-incoming-package")
@@ -528,7 +530,112 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("materials/evidence/source.json", evidence_files)
             self.assertIn("materials/evidence/project_inference.json", evidence_files)
             self.assertIn("materials/evidence/verification_result.json", evidence_files)
+            self.assertIn("materials/evidence/patch_ai_facts.json", evidence_files)
+            self.assertEqual(manifest["files"]["display"], ["materials/display/patch_view.json"])
+            self.assertEqual(patch_view["kind"], "patch_view")
+            self.assertEqual(patch_view["payload"]["material_kind_label"], "原始包")
+            self.assertEqual(patch_view["payload"]["display_title"], "Allow nav policy toggle")
+            self.assertIn("ui_card", patch_view["payload"])
+            self.assertGreaterEqual(len(patch_view["payload"]["detail_sections"]), 5)
+            self.assertNotIn("case-", patch_view["payload"]["display_title"])
+            self.assertEqual(ai_facts["kind"], "patch_ai_facts")
+            self.assertEqual(ai_facts["case_id"], manifest["case_id"])
+            self.assertEqual(ai_facts["variant_id"], manifest["variant_id"])
+            self.assertTrue(ai_facts["payload"]["module"])
+            self.assertTrue(ai_facts["payload"]["feature_domain"])
+            self.assertTrue(ai_facts["payload"]["patch_behavior_goal"])
+            self.assertTrue(ai_facts["payload"]["code_anchors"]["files"])
+            self.assertEqual(ai_facts["payload"]["merge_gate_inputs"]["project"], "TVE1067M")
             self.assertFalse(any(str(path).startswith("knowledge/") for path in manifest["files"]["evidence"]))
+
+    def test_patch_supplement_view_names_original_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-120000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_capture_package(root))],
+                project="TVE1067M",
+                summary="补充导航策略验证证据",
+                status="validated",
+                schema_version="1",
+                supplement_for_package_key="20260625/wangwei/20260625-221500-nav-policy",
+                supplement_reason="补充验证（verification）证据。",
+            )
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            patch_view = json.loads((package / "materials" / "display" / "patch_view.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(manifest["files"]["display"], ["materials/display/patch_view.json"])
+            self.assertEqual(patch_view["payload"]["material_kind_label"], "补证包")
+            self.assertEqual(patch_view["payload"]["supplement_for_package_key"], "20260625/wangwei/20260625-221500-nav-policy")
+            self.assertIn("20260625/wangwei/20260625-221500-nav-policy", patch_view["payload"]["ui_card"]["risk_or_gap"])
+
+    def test_patch_ai_facts_treat_adapt_as_reference_not_merge_hint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = create_capture_package(
+                root,
+                search_payload={
+                    "result": "INFO",
+                    "method": "knowledge_search",
+                    "searched": True,
+                    "queries": ["nav policy"],
+                    "results": ["case-nav-policy can provide implementation reference"],
+                    "decision": "adapt",
+                    "reuse_decision": "adapt",
+                    "targets": ["case-nav-policy"],
+                    "summary": "参考已有导航策略案例，但当前项目需要适配。",
+                },
+            )
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-121000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture)],
+                project="TVE1067M",
+                summary="导航策略适配",
+                status="candidate",
+                schema_version="1",
+            )
+
+            ai_facts = json.loads((package / "materials" / "evidence" / "patch_ai_facts.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(ai_facts["payload"]["search_match_class"]["decision"], "adapt")
+            self.assertEqual(ai_facts["payload"]["search_match_class"]["merge_hint"], "reference_only")
+            self.assertIn("不能直接触发合并", ai_facts["payload"]["search_match_class"]["explanation"])
+
+    def test_framework_change_validation_requires_patch_view_and_ai_facts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-120000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(create_capture_package(root))],
+                project="TVE1067M",
+                summary="Allow nav policy toggle",
+                status="validated",
+                schema_version="1",
+            )
+            manifest_path = package / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["files"].pop("display", None)
+            manifest["files"]["evidence"] = [
+                rel for rel in manifest["files"]["evidence"] if rel != "materials/evidence/patch_ai_facts.json"
+            ]
+            write_json(manifest_path, manifest)
+
+            check = intake.validate_package(package)
+
+            self.assertEqual(check["status"], "FAIL")
+            self.assertTrue(any("files.display" in item for item in check["errors"]))
+            self.assertTrue(any("patch_ai_facts" in item for item in check["errors"]))
 
     def test_multi_feature_daily_bundle_fails_local_check_with_function_split_reason(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -173,6 +173,7 @@ TRACE_REQUIRED_EVIDENCE_KINDS = {"source", "work_findings"}
 FRAMEWORK_REQUIRED_EVIDENCE_KINDS = {
     "source",
     "patch_diff_facts",
+    "patch_ai_facts",
     "project_inference",
     "patch_problem_summary",
     "risk_surface",
@@ -190,6 +191,7 @@ EVIDENCE_KINDS = {
     "codex_sessions",
     "changed_files",
     "patch_diff_facts",
+    "patch_ai_facts",
     "patch_problem_summary",
     "risk_surface",
     "build_result",
@@ -3450,6 +3452,7 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         package_status = str(manifest.get("package_status", ""))
         if package_status not in PACKAGE_STATUS_VALUES:
             errors.append(f"package_status 非法: {package_status}")
+        supplement_target = str(manifest.get("supplement_for_package_key") or "").strip()
         if "related_report_run_ids" in manifest:
             related = manifest.get("related_report_run_ids")
             if not isinstance(related, list):
@@ -3466,10 +3469,14 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         variant_path = require_file(files.get("variant"), "files.variant")
         readme_path = require_file(files.get("readme"), "files.readme")
         patch_paths = files.get("patches", [])
+        display_paths = files.get("display", [])
         evidence_paths = files.get("evidence", [])
         if not isinstance(patch_paths, list) or not patch_paths:
             errors.append("files.patches 必须是非空数组")
             patch_paths = []
+        if not isinstance(display_paths, list) or not display_paths:
+            errors.append("framework_change files.display 必须包含 materials/display/patch_view.json")
+            display_paths = []
         if not isinstance(evidence_paths, list) or not evidence_paths:
             errors.append("files.evidence 必须是非空数组")
             evidence_paths = []
@@ -3486,6 +3493,53 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             errors.extend(validate_patch_readme(readme_path))
         for patch_readme_path in sorted((package_dir / "patches").glob("*.readme.md")):
             errors.extend(validate_patch_readme(patch_readme_path))
+        for rel in display_paths:
+            path = require_file(rel, "display")
+            if not path:
+                continue
+            patch_view = read_referenced_json(package_dir, rel)
+            if not isinstance(patch_view, dict):
+                continue
+            if patch_view.get("kind") != "patch_view":
+                errors.append(f"{rel} kind 必须是 patch_view")
+                continue
+            view = patch_view.get("payload", {})
+            if not isinstance(view, dict):
+                errors.append(f"{rel} payload 必须是对象")
+                continue
+            for field in (
+                "material_kind_label",
+                "display_title",
+                "problem_summary",
+                "solution_summary",
+                "result_summary",
+                "project",
+                "platform",
+                "android_version",
+                "member_alias",
+                "member_name",
+                "ui_card",
+                "detail_sections",
+            ):
+                if not view.get(field):
+                    errors.append(f"{rel} payload.{field} 必须提供")
+            if view.get("project") != manifest.get("project"):
+                errors.append(f"{rel} payload.project 必须等于 manifest.project")
+            if view.get("platform") != manifest.get("platform"):
+                errors.append(f"{rel} payload.platform 必须等于 manifest.platform")
+            if view.get("android_version") != manifest.get("android_version"):
+                errors.append(f"{rel} payload.android_version 必须等于 manifest.android_version")
+            if supplement_target and view.get("supplement_for_package_key") != supplement_target:
+                errors.append(f"{rel} payload.supplement_for_package_key 必须等于 manifest.supplement_for_package_key")
+            title_text = " ".join(
+                [
+                    str(view.get("display_title") or ""),
+                    str(view.get("ui_card", {}).get("title") if isinstance(view.get("ui_card"), dict) else ""),
+                ]
+            )
+            for forbidden in ("case-", "variant-", "merge_case_add_variant", "target_case_id", "source_package_keys"):
+                if forbidden in title_text:
+                    errors.append(f"{rel} 主展示标题不能包含内部字段或机器锚点: {forbidden}")
         case_problem = ""
         case_solution = ""
         if case_path:
@@ -3555,6 +3609,25 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         for kind in FRAMEWORK_REQUIRED_EVIDENCE_KINDS:
             if kind not in evidence_by_kind:
                 errors.append(f"framework_change 缺少 {kind} evidence")
+        ai_facts = evidence_by_kind.get("patch_ai_facts", {})
+        ai_payload = ai_facts.get("payload", {}) if isinstance(ai_facts, dict) else {}
+        if isinstance(ai_payload, dict):
+            for field in ("module", "feature_domain", "patch_behavior_goal", "code_anchors", "patch_assets", "verification_targets", "search_usage", "search_match_class", "merge_gate_inputs", "protocol_version", "plugin_version"):
+                if not ai_payload.get(field):
+                    errors.append(f"patch_ai_facts.{field} 必须提供")
+            anchors = ai_payload.get("code_anchors", {})
+            if isinstance(anchors, dict):
+                if not any(list_string_values(anchors.get(key)) for key in ("files", "symbols", "resource_keys", "settings_keys", "system_properties", "framework_log_keys")):
+                    errors.append("patch_ai_facts.code_anchors 必须包含至少一种代码锚点")
+            else:
+                errors.append("patch_ai_facts.code_anchors 必须是对象")
+            merge_inputs = ai_payload.get("merge_gate_inputs", {})
+            if isinstance(merge_inputs, dict):
+                for field in ("module", "feature_domain", "code_anchors", "patch_behavior_goal", "verification_targets", "project", "platform", "android_version"):
+                    if not merge_inputs.get(field):
+                        errors.append(f"patch_ai_facts.merge_gate_inputs.{field} 必须提供")
+            else:
+                errors.append("patch_ai_facts.merge_gate_inputs 必须是对象")
         patch_diff_payload = evidence_payload(evidence_by_kind.get("patch_diff_facts", {}))
         modified_files = list_string_values(patch_diff_payload.get("modified_files"))
         patch_items = patch_diff_payload.get("patches")
@@ -3589,7 +3662,6 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             )
         errors.extend(validate_framework_function_scope(package_dir, manifest, readme_path, patch_paths, evidence_by_kind))
         framework_change_summary = read_optional_json_object(package_dir / materials_rel("evidence", "framework_change_summary.json"))
-        supplement_target = str(manifest.get("supplement_for_package_key") or "").strip()
         if supplement_target:
             errors.extend(supplement_target_relation_errors(supplement_target))
             errors.extend(patch_asset_correction_source_errors(manifest, framework_change_summary))
@@ -4205,6 +4277,206 @@ def aggregate_patch_diff_facts(patch_items: list[dict[str, Any]]) -> dict[str, A
     }
     payload.update({key: unique_strings(values) for key, values in aggregate.items()})
     return payload
+
+
+def concrete_module_from_files(modified_files: list[str], repo_paths: list[str]) -> str:
+    for path in modified_files:
+        parts = [part for part in Path(path).parts if part not in {"", "."}]
+        if len(parts) >= 4:
+            return "/".join(parts[:4])
+        if len(parts) >= 2:
+            return "/".join(parts[:2])
+    for repo_path in repo_paths:
+        if repo_path:
+            return repo_path
+    return "unknown"
+
+
+def feature_domain_from_text(summary: str, problem: str, modified_files: list[str]) -> str:
+    text = " ".join([summary, problem, *modified_files]).lower()
+    domains = [
+        ("lockscreen", "锁屏"),
+        ("launcher", "Launcher"),
+        ("settings", "Settings"),
+        ("systemui", "SystemUI"),
+        ("display", "显示策略"),
+        ("navigation", "导航策略"),
+        ("audio", "音频策略"),
+        ("camera", "相机"),
+        ("usb", "USB 权限"),
+        ("hdmi", "HDMI"),
+        ("permission", "权限"),
+    ]
+    for token, label in domains:
+        if token in text or label.lower() in text:
+            return label
+    if modified_files:
+        stem = Path(modified_files[0]).stem
+        return stem or "Framework 功能"
+    return "Framework 功能"
+
+
+def search_decision_value(search_payload: dict[str, Any]) -> str:
+    payload = search_payload.get("payload", search_payload) if isinstance(search_payload, dict) else {}
+    if not isinstance(payload, dict):
+        return "unknown"
+    decision = str(payload.get("reuse_decision") or payload.get("decision") or "").strip()
+    if decision in {"reuse", "adapt", "reference_only", "not_found", "not_applicable", "unknown"}:
+        return decision
+    if payload.get("searched") is False:
+        return "unknown"
+    return "unknown"
+
+
+def search_match_class_payload(search_payload: dict[str, Any]) -> dict[str, Any]:
+    decision = search_decision_value(search_payload)
+    if decision == "reuse":
+        merge_hint = "candidate_only"
+        explanation = "成员声明直接复用已有知识，但仍必须通过模块、细分领域、代码锚点、补丁行为和验证目标硬门禁。"
+    elif decision in {"adapt", "reference_only"}:
+        merge_hint = "reference_only"
+        explanation = f"{decision} 只能作为参考证据，不能直接触发合并。"
+    elif decision == "not_found":
+        merge_hint = "not_found"
+        explanation = "成员搜索未命中可复用知识，管理端仍需执行沉淀前重叠检索。"
+    elif decision == "not_applicable":
+        merge_hint = "not_applicable"
+        explanation = "成员判断搜索结果不适用，不能触发合并。"
+    else:
+        merge_hint = "insufficient_evidence"
+        explanation = "搜索使用决策缺失或未知，不能让管理端用标题猜合并。"
+    payload = search_payload.get("payload", search_payload) if isinstance(search_payload, dict) else {}
+    if not isinstance(payload, dict):
+        payload = {}
+    return {
+        "decision": decision,
+        "merge_hint": merge_hint,
+        "targets": list_string_values(payload.get("targets")),
+        "queries": list_string_values(payload.get("queries")),
+        "explanation": explanation,
+    }
+
+
+def patch_view_payload(
+    manifest_like: dict[str, Any],
+    *,
+    case_problem: str,
+    case_solution: str,
+    verification_payload: dict[str, Any],
+    risk_payload: dict[str, Any],
+    patch_rel_paths: list[str],
+    supplement_for_package_key: str,
+    supplement_reason: str,
+) -> dict[str, Any]:
+    summary = str(manifest_like.get("summary") or "").strip() or "Framework 补丁包"
+    material_kind_label = "补证包" if supplement_for_package_key else "原始包"
+    result_summary = str(verification_payload.get("summary") or verification_payload.get("result") or "验证结果未提供")
+    risks = list_string_values(risk_payload.get("risk_areas")) or list_string_values(risk_payload.get("limits"))
+    risk_or_gap = "；".join(risks[:2]) if risks else "暂无明确遗留风险"
+    if supplement_for_package_key:
+        risk_or_gap = f"补证目标：{supplement_for_package_key}；{supplement_reason or risk_or_gap}"
+    detail_sections = [
+        {"title": "问题", "items": [case_problem or summary]},
+        {"title": "修改内容", "items": [case_solution or summary, *patch_rel_paths]},
+        {"title": "验证结果", "items": [result_summary]},
+        {"title": "遗留风险", "items": risks or ["暂无明确遗留风险"]},
+        {"title": "下一步", "items": ["按管理端入库校验和沉淀判断继续处理。"]},
+    ]
+    if supplement_for_package_key:
+        detail_sections.insert(
+            1,
+            {
+                "title": "补证关系",
+                "items": [f"补证包补充原始包：{supplement_for_package_key}", supplement_reason or "补充原始包证据。"],
+            },
+        )
+    return {
+        "kind": "patch_view",
+        "payload": {
+            "material_kind_label": material_kind_label,
+            "display_title": compact_text(summary, 80),
+            "problem_summary": case_problem or summary,
+            "solution_summary": case_solution or summary,
+            "result_summary": result_summary,
+            "project": manifest_like.get("project", "unknown"),
+            "platform": manifest_like.get("platform", "unknown"),
+            "android_version": manifest_like.get("android_version", "unknown"),
+            "member_alias": manifest_like.get("member_alias", ""),
+            "member_name": manifest_like.get("member_name", ""),
+            "supplement_for_package_key": supplement_for_package_key,
+            "ui_card": {
+                "title": compact_text(summary, 48),
+                "subtitle": f"{manifest_like.get('project', 'unknown')} / {manifest_like.get('platform', 'unknown')} / Android {manifest_like.get('android_version', 'unknown')}",
+                "summary": compact_text(case_problem or summary, 120),
+                "risk_or_gap": compact_text(risk_or_gap, 160),
+            },
+            "detail_sections": detail_sections,
+        },
+    }
+
+
+def patch_ai_facts_payload(
+    *,
+    manifest_like: dict[str, Any],
+    patch_diff_payload: dict[str, Any],
+    search_payload: dict[str, Any],
+    verification_payload: dict[str, Any],
+    case_problem: str,
+    case_solution: str,
+    plugin_version: str,
+) -> dict[str, Any]:
+    modified_files = list_string_values(patch_diff_payload.get("modified_files"))
+    repo_paths = unique_strings(str(item.get("repo_path") or "").strip("/") for item in patch_diff_payload.get("patches", []) if isinstance(item, dict))
+    module = concrete_module_from_files(modified_files, repo_paths)
+    feature_domain = feature_domain_from_text(str(manifest_like.get("summary") or ""), case_problem, modified_files)
+    code_anchors = {
+        "files": modified_files,
+        "symbols": list_string_values(patch_diff_payload.get("symbols")),
+        "resource_keys": list_string_values(patch_diff_payload.get("resource_keys")),
+        "settings_keys": list_string_values(patch_diff_payload.get("settings_keys")),
+        "system_properties": list_string_values(patch_diff_payload.get("system_properties")),
+        "framework_log_keys": list_string_values(patch_diff_payload.get("framework_log_keys")),
+    }
+    patch_assets = [
+        {
+            "path": item.get("path", ""),
+            "content_sha1": item.get("content_sha1", ""),
+            "repo_path": item.get("repo_path", ""),
+            "modified_files": list_string_values(item.get("modified_files")),
+        }
+        for item in patch_diff_payload.get("patches", [])
+        if isinstance(item, dict)
+    ]
+    search_class = search_match_class_payload(search_payload)
+    verification_targets = {
+        "result": verification_payload.get("result", "MISSING"),
+        "method": verification_payload.get("method", "not_provided"),
+        "summary": verification_payload.get("summary", ""),
+    }
+    return {
+        "module": module,
+        "feature_domain": feature_domain,
+        "patch_behavior_goal": case_problem or str(manifest_like.get("summary") or ""),
+        "solution_summary": case_solution,
+        "code_anchors": code_anchors,
+        "patch_assets": patch_assets,
+        "verification_targets": verification_targets,
+        "search_usage": search_payload.get("payload", search_payload),
+        "search_match_class": search_class,
+        "merge_gate_inputs": {
+            "module": module,
+            "feature_domain": feature_domain,
+            "code_anchors": code_anchors,
+            "patch_behavior_goal": case_problem or str(manifest_like.get("summary") or ""),
+            "verification_targets": verification_targets,
+            "project": manifest_like.get("project", "unknown"),
+            "platform": manifest_like.get("platform", "unknown"),
+            "android_version": manifest_like.get("android_version", "unknown"),
+            "search_match_class": search_class,
+        },
+        "protocol_version": "patch-human-ai-evidence-v1",
+        "plugin_version": plugin_version,
+    }
 
 
 def work_findings_payload(sessions: list[SessionWork], patches: list[PatchInfo]) -> dict[str, Any]:
@@ -5098,6 +5370,7 @@ def prepare_patch_package(
         if rel
     ]
 
+    patch_diff_payload = aggregate_patch_diff_facts(all_patch_items)
     patch_diff_path = write_default_evidence(
         package_dir,
         materials_rel("evidence", "patch_diff_facts.json"),
@@ -5105,7 +5378,7 @@ def prepare_patch_package(
             "kind": "patch_diff_facts",
             "case_id": case_id,
             "variant_id": variant_id,
-            "payload": aggregate_patch_diff_facts(all_patch_items),
+            "payload": patch_diff_payload,
         },
     )
     patch_problem_path = first_evidence_path(capture_evidence_entries, "patch_problem_summary")
@@ -5167,6 +5440,50 @@ def prepare_patch_package(
             },
         )
 
+    manifest_context = {
+        "summary": summary,
+        "project": project,
+        "platform": platform,
+        "android_version": android_version,
+        "member_alias": config["member_alias"],
+        "member_name": config["member_name"],
+    }
+    risk_payload = first_evidence_payload(package_dir, capture_evidence_entries, "risk_surface")
+    if not risk_payload:
+        risk_payload = {"risk_areas": ["修改路径需按需求验证"], "limits": ["缺少可解析风险证据"]}
+    patch_view_path = materials_rel("display", "patch_view.json")
+    write_json(
+        package_dir / patch_view_path,
+        patch_view_payload(
+            manifest_context,
+            case_problem=case_problem,
+            case_solution=case_solution,
+            verification_payload=verification_payload,
+            risk_payload=risk_payload,
+            patch_rel_paths=patch_rel_paths,
+            supplement_for_package_key=supplement_for_package_key,
+            supplement_reason=supplement_reason,
+        ),
+    )
+    patch_ai_facts_path = write_default_evidence(
+        package_dir,
+        materials_rel("evidence", "patch_ai_facts.json"),
+        {
+            "kind": "patch_ai_facts",
+            "case_id": case_id,
+            "variant_id": variant_id,
+            "payload": patch_ai_facts_payload(
+                manifest_like=manifest_context,
+                patch_diff_payload=patch_diff_payload,
+                search_payload=search_payload,
+                verification_payload=verification_payload,
+                case_problem=case_problem,
+                case_solution=case_solution,
+                plugin_version=plugin_install_metadata().get("plugin_version", ""),
+            ),
+        },
+    )
+
     write_json(
         package_dir / variant_path,
         {
@@ -5205,9 +5522,11 @@ def prepare_patch_package(
             "variant": variant_path,
             "readme": feature_readme_rel,
             "patches": patch_rel_paths,
+            "display": [patch_view_path],
             "evidence": [
                 source_path,
                 required_generated["patch_diff_facts"],
+                patch_ai_facts_path,
                 project_path,
                 required_generated["patch_problem_summary"],
                 required_generated["risk_surface"],

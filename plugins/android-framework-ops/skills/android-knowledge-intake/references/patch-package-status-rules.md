@@ -18,6 +18,7 @@ Daily work is always recorded. Framework change package status describes member-
 - Known failure: record it in daily/weekly context when it helps future AI avoid repeating the path.
 - Blocked work: record it in daily/weekly context when the missing condition is explicit.
 - Stop ordinary patch upload when status is not `validated`, or when sensitive material, mixed unrelated diffs, unclear task boundaries, high-risk misleading reuse hints, bad metadata, missing verification, or dirty patch assets are present.
+- New protocol framework change packages must include `materials/display/patch_view.json` for human-facing cards/details and `materials/evidence/patch_ai_facts.json` for admin/AI validation inputs. Missing either file means the package is not ready for ordinary upload.
 
 The user's local curation maintainer skill later reads the database repository and knowledge repository to produce the curation decision.
 

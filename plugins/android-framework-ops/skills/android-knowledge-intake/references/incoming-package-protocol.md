@@ -187,8 +187,10 @@ Required shape:
 manifest.json
 materials/case.json
 materials/variant.json
+materials/display/patch_view.json
 materials/evidence/source.json
 materials/evidence/patch_diff_facts.json
+materials/evidence/patch_ai_facts.json
 materials/evidence/project_inference.json
 materials/evidence/patch_problem_summary.json
 materials/evidence/risk_surface.json
@@ -214,10 +216,14 @@ Manifest excerpt:
   "files": {
     "case": "materials/case.json",
     "variant": "materials/variant.json",
+    "display": [
+      "materials/display/patch_view.json"
+    ],
     "patches": ["patches/example.patch"],
     "evidence": [
       "materials/evidence/source.json",
       "materials/evidence/patch_diff_facts.json",
+      "materials/evidence/patch_ai_facts.json",
       "materials/evidence/project_inference.json",
       "materials/evidence/patch_problem_summary.json",
       "materials/evidence/risk_surface.json",
@@ -225,6 +231,68 @@ Manifest excerpt:
       "materials/evidence/search_before_change.json",
       "materials/evidence/evidence_supplement.json"
     ]
+  }
+}
+```
+
+`patch_view` is required for human-facing member/admin display. It is not an AI evidence layer:
+
+```json
+{
+  "kind": "patch_view",
+  "payload": {
+    "material_kind_label": "原始包",
+    "display_title": "导航策略适配",
+    "problem_summary": "要解决什么问题",
+    "solution_summary": "补丁如何解决",
+    "result_summary": "验证或处理结果",
+    "project": "TVE8402M",
+    "platform": "mtk",
+    "android_version": "15",
+    "member_alias": "member01",
+    "member_name": "成员",
+    "supplement_for_package_key": "",
+    "ui_card": {
+      "title": "导航策略适配",
+      "subtitle": "TVE8402M / mtk / Android 15",
+      "summary": "要解决什么问题",
+      "risk_or_gap": "暂无明确遗留风险"
+    },
+    "detail_sections": []
+  }
+}
+```
+
+`patch_ai_facts` is required for admin-side validation, curation review, search indexing, and merge judgement. It must not be the UI primary display source:
+
+```json
+{
+  "kind": "patch_ai_facts",
+  "case_id": "case-...",
+  "variant_id": "variant-...",
+  "payload": {
+    "module": "frameworks/base/services/core",
+    "feature_domain": "导航策略",
+    "patch_behavior_goal": "用户可见或系统行为目标",
+    "code_anchors": {
+      "files": [],
+      "symbols": [],
+      "resource_keys": [],
+      "settings_keys": [],
+      "system_properties": [],
+      "framework_log_keys": []
+    },
+    "patch_assets": [],
+    "verification_targets": {},
+    "search_usage": {},
+    "search_match_class": {
+      "decision": "adapt",
+      "merge_hint": "reference_only",
+      "explanation": "adapt 只能作为参考证据，不能直接触发合并。"
+    },
+    "merge_gate_inputs": {},
+    "protocol_version": "patch-human-ai-evidence-v1",
+    "plugin_version": "1.0.62"
   }
 }
 ```
