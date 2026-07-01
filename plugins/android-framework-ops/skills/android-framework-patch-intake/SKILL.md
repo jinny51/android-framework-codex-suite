@@ -48,4 +48,3 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
   --supplement-for-package-key 20260612/lincong/20260612-172836-patch \
   --supplement-reason "补充验证证据"
 ```
-

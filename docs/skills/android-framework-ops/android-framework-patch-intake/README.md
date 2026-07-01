@@ -20,4 +20,3 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
 ```
 
 实际源码变更应先用 `android-framework-patch-capture` 生成一个功能级 capture package。补丁资产修正也必须重新 capture，不能复制旧 patch 或手写说明伪装为修正。
-

@@ -41,4 +41,3 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
 ```
 
 Future periods are blocked. Past periods are late submissions and are allowed. If an ordinary weekly package for the same member and week exists, stop unless the member explicitly replaces it.
-

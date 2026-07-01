@@ -38,4 +38,3 @@ class ReportSkillSplitMetadataTests(unittest.TestCase):
         self.assertIn("android-daily-report-intake", intake_text)
         self.assertIn("android-weekly-report-intake", intake_text)
         self.assertIn("android-framework-patch-intake", intake_text)
-

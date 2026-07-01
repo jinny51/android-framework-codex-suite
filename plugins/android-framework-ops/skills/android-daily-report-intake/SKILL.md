@@ -38,4 +38,3 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
 ```
 
 Future dates are blocked. Past dates are late submissions and are allowed. If an ordinary daily package for the same member and date already exists, stop unless the member explicitly replaces it.
-

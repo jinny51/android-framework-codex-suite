@@ -19,4 +19,3 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --submit-latest
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --prepare --replace-daily-run-id <old_run_id>
 ```
-
