@@ -1,7 +1,7 @@
 interface:
   display_name: "Android Knowledge Intake"
-  short_description: "Submit member incoming material packages"
-  default_prompt: "Use $android-knowledge-intake to handle member first-time migration, plugin update checks, config migration, and member-side daily, weekly, or framework_change incoming packages through the server submission channel. Do not use it for local knowledge curation; that belongs to akbs-curation-maintainer."
+  short_description: "Shared member incoming kernel and legacy route"
+  default_prompt: "Use $android-knowledge-intake for member first-time migration, plugin update checks, config migration, doctor checks, and legacy daily/weekly/patch intake commands through the shared incoming kernel. Prefer $android-daily-report-intake, $android-weekly-report-intake, or $android-framework-patch-intake for new business package generation. Do not use it for local knowledge curation."
 
 policy:
   allow_implicit_invocation: true

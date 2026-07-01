@@ -22,8 +22,8 @@ It coordinates with adjacent Android skills:
 - `android-knowledge-search` searches prior cases, platform variants, archived patches, search anchors, and validation evidence before re-analysis or re-implementation. Use it as the pre-analysis knowledge gate when the team knowledge repository is available.
 - `android-wsl-source-access` proves the source tree is mounted and usable; `android-wsl-remote-build-deploy` proves artifacts were built and delivered.
 - Build/deploy executors may use `android-remote-channel` internally for reusable SSH/tmux remote sessions; this workflow should still call the platform build/deploy executor rather than the channel directly.
-- `android-framework-patch-capture` turns an implemented or stage-worthy Framework feature into a feature README, repository-level patches, and evidence after this workflow has produced a concrete change. Use it before `android-knowledge-intake` whenever a Framework change, failed attempt, or stage-worthy draft should be preserved.
-- `android-knowledge-intake` turns the capture package into the single automatic intake channel: an `incoming` package. Do not invent a second upload path.
+- `android-framework-patch-capture` turns an implemented or stage-worthy Framework feature into a feature README, repository-level patches, and evidence after this workflow has produced a concrete change. Use it before `android-framework-patch-intake` whenever a Framework change, failed attempt, or stage-worthy draft should be preserved.
+- `android-framework-patch-intake` turns the capture package into the single automatic intake channel: an `incoming` package. `android-knowledge-intake` remains the shared kernel and legacy command route; do not invent a second upload path.
 - This skill proves the framework change satisfies the requirement or diagnosis outcome on device.
 
 ## Core Contract
@@ -49,7 +49,7 @@ android-framework-change-workflow
 android-framework-patch-capture
   -> package accepted or stage-worthy changes into one feature README, repository-level patches, and evidence
 
-android-knowledge-intake
+android-framework-patch-intake
   -> generate member-side incoming package with package status and evidence
 ```
 
@@ -202,7 +202,7 @@ After Gate 5 or a terminal failure/blocked state:
    - `blocked`: work could not continue because required environment, source, device, credentials, or acceptance evidence was unavailable.
 2. If local source changes exist and are not unrelated dirty files, invoke `android-framework-patch-capture` to package the intended change set with:
    - platform/version token, project, feature slug, summary, package status, implementation origin, modified files, artifacts, risk notes, verification evidence, search-before-change evidence, and explicit `related_report_run_ids` when a daily/weekly run id is known.
-3. Invoke `android-knowledge-intake` with the capture package so it generates a `framework_change` incoming package. Use the member profile, not an administrator profile, unless the administrator is manually contributing a patch.
+3. Invoke `android-framework-patch-intake` with the capture package so it generates a `framework_change` incoming package through the shared intake kernel. Use the member profile, not an administrator profile, unless the administrator is manually contributing a patch.
 4. If no patch package can be made, do not pretend the material was captured. Record exactly why, and rely on the daily/weekly incoming automation to preserve the work as `work_findings`.
 5. Do not upload unrelated diffs, credentials, logs with sensitive data, mixed task changes, or a `validated` package without qualifying verification.
 
@@ -214,7 +214,7 @@ android-knowledge-search
   -> android-wsl-remote-build-deploy
   -> android-framework-change-workflow final verification
   -> android-framework-patch-capture
-  -> android-knowledge-intake incoming
+  -> android-framework-patch-intake incoming
 ```
 
 ## Failure Recovery
@@ -247,4 +247,4 @@ If verification was not run, state exactly why and what remains unverified under
 
 Add a `Skill 改进建议` section only when `references/capability-capture.md` says the task meets the trigger threshold. Do not modify this skill automatically; propose persistence and wait for explicit user confirmation.
 
-When a concrete Framework change exists, do not stop at saying it is ready for capture. Run or hand off `android-framework-patch-capture` and then `android-knowledge-intake` unless the user explicitly requested analysis-only, the change set is unsafe to package, or required identity/config is unavailable. In those cases, report the concrete blocker under `材料上传`.
+When a concrete Framework change exists, do not stop at saying it is ready for capture. Run or hand off `android-framework-patch-capture` and then `android-framework-patch-intake` unless the user explicitly requested analysis-only, the change set is unsafe to package, or required identity/config is unavailable. In those cases, report the concrete blocker under `材料上传`.

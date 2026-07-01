@@ -10,7 +10,7 @@ Android Framework 开发、问题分析和验证主流程 skill。
 
 它负责框架改动本身的工程流程；源码访问、远程构建部署和成员端材料上传由同插件内其他 skill 配合完成。
 进入源码分析前，可复用案例、平台实现、补丁、检索锚点和验证证据由 `android-knowledge-search` 配合检索。
-当工作产生可复用、可参考、失败或阻塞经验时，应通过 `android-framework-patch-capture` 整理补丁资料，再由 `android-knowledge-intake` 生成 incoming 包。
+当工作产生可复用、可参考、失败或阻塞经验时，应通过 `android-framework-patch-capture` 整理补丁资料，再由 `android-framework-patch-intake` 生成 incoming 包。`android-knowledge-intake` 只保留共享内核和旧命令兼容。
 
 如果同时安装或明确要求 `jinny-framework-coding-standards`，应在代码修改前应用团队补丁开发规范和 FrameworkLog 日志规范，不能等补丁采集阶段再补规范。
 
@@ -23,7 +23,7 @@ Android Framework 开发、问题分析和验证主流程 skill。
 ## 典型配合
 
 - WSL 场景：`android-knowledge-search` -> `android-wsl-source-access` -> `android-framework-change-workflow` -> `android-wsl-remote-build-deploy`
-- 材料上传：`android-framework-change-workflow` -> `android-framework-patch-capture` -> `android-knowledge-intake` -> incoming
+- 材料上传：`android-framework-change-workflow` -> `android-framework-patch-capture` -> `android-framework-patch-intake` -> incoming
 
 ## 材料上传规则
 

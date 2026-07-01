@@ -1549,57 +1549,253 @@ def render_patch_list(patches: list[PatchInfo], empty_text: str) -> list[str]:
     return [f"- {patch.name}（项目线索：{patch.project or '未识别项目'}）" for patch in patches]
 
 
+def report_item_source(desc: str) -> str:
+    text = str(desc or "")
+    if any(token in text for token in ("禅道", "zentao", "buglist", "Buglist")):
+        return "禅道"
+    if any(token in text for token in ("测试", "回归", "复现")):
+        return "测试"
+    if any(token in text for token in ("客户", "客诉", "现场")):
+        return "客户"
+    if any(token in text for token in ("项目经理", "PM", "需求文档")):
+        return "项目经理"
+    if any(token in text for token in ("上级", "TL", "负责人")):
+        return "上级"
+    return "临时工作/内部优化"
+
+
+def report_list_type(desc: str) -> str:
+    text = str(desc or "").lower()
+    if any(token in text for token in ("bug", "问题", "缺陷", "报错", "失败", "异常", "buglist")):
+        return "Buglist"
+    if any(token in text for token in ("需求", "功能", "适配", "开发", "移植")):
+        return "需求清单"
+    return "临时工作"
+
+
+def report_category(desc: str, progress: str) -> str:
+    text = f"{desc} {progress}".lower()
+    if any(token in text for token in ("ui", "界面", "显示", "布局")):
+        return "UI修改"
+    if any(token in text for token in ("移植", "适配", "port")):
+        return "功能移植"
+    if any(token in text for token in ("bug", "问题", "修复", "异常", "失败", "报错")):
+        return "Bug处理"
+    return "功能添加"
+
+
+def report_item_name(desc: str) -> str:
+    return compact_text(str(desc or "未命名事项"), 80)
+
+
+def weekly_display_date(date: dt.date) -> str:
+    start, end = week_bounds(date)
+    friday = start + dt.timedelta(days=4)
+    return min(friday, end).isoformat()
+
+
+def weekly_source_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    grouped: dict[tuple[str, str, str], list[tuple[str, str]]] = {}
+    for project, entries in sorted(items.items()):
+        for desc, progress in entries:
+            origin = report_item_source(desc)
+            list_type = report_list_type(desc)
+            list_name = "无正式清单来源" if list_type == "临时工作" else f"{project} {origin} {list_type}"
+            grouped.setdefault((project, origin, list_type), []).append((desc, progress))
+    for (project, origin, list_type), entries in sorted(grouped.items()):
+        stats = project_stats(entries)
+        rows.append(
+            {
+                "project": project,
+                "origin": origin,
+                "list_type": list_type,
+                "list_name": "无正式清单来源" if list_type == "临时工作" else f"{project} {origin} {list_type}",
+                "total": stats["total"],
+                "new_this_week": stats["total"],
+                "completed_this_week": stats["completed"],
+                "remaining": stats["in_progress"] + stats["not_started"] + stats["blocked"],
+                "risks": stats["blocked"],
+                "note": "按临时工作说明记录" if list_type == "临时工作" else status_label_from_stats(stats),
+            }
+        )
+    return rows or [
+        {
+            "project": "未识别项目",
+            "origin": "临时工作/内部优化",
+            "list_type": "临时工作",
+            "list_name": "无正式清单来源",
+            "total": 0,
+            "new_this_week": 0,
+            "completed_this_week": 0,
+            "remaining": 0,
+            "risks": 0,
+            "note": "未发现可归档事项",
+        }
+    ]
+
+
+def weekly_category_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for source in weekly_source_rows(items):
+        project = str(source["project"])
+        origin = str(source["origin"])
+        list_type = str(source["list_type"])
+        related = [
+            (desc, progress)
+            for desc, progress in items.get(project, [])
+            if report_item_source(desc) == origin and report_list_type(desc) == list_type
+        ]
+        counts = {"功能添加": 0, "Bug处理": 0, "UI修改": 0, "功能移植": 0}
+        done = {"功能添加": 0, "Bug处理": 0, "UI修改": 0, "功能移植": 0}
+        for desc, progress in related:
+            category = report_category(desc, progress)
+            counts[category] += 1
+            if progress_bucket(progress) == "completed":
+                done[category] += 1
+        rows.append(
+            {
+                "origin": origin,
+                "list_type": list_type,
+                "list_name": source["list_name"],
+                "feature_total": counts["功能添加"],
+                "bug_total": counts["Bug处理"],
+                "ui_total": counts["UI修改"],
+                "porting_total": counts["功能移植"],
+                "feature_done": done["功能添加"],
+                "bug_done": done["Bug处理"],
+                "ui_done": done["UI修改"],
+                "porting_done": done["功能移植"],
+                "remaining": source["remaining"],
+            }
+        )
+    return rows
+
+
+def weekly_item_statistics(items: dict[str, list[tuple[str, str]]]) -> list[dict[str, Any]]:
+    totals = {"received": 0, "legacy": 0, "completed": 0, "in_progress": 0, "not_started": 0, "blocked": 0, "remaining": 0}
+    for entries in items.values():
+        stats = project_stats(entries)
+        totals["received"] += stats["total"]
+        totals["completed"] += stats["completed"]
+        totals["in_progress"] += stats["in_progress"]
+        totals["not_started"] += stats["not_started"]
+        totals["blocked"] += stats["blocked"]
+    totals["remaining"] = totals["in_progress"] + totals["not_started"] + totals["blocked"]
+    return [
+        {"type": "本周接收事项", "count": totals["received"], "note": "本周新接收或本周被记录的需求 / Bug / 客户问题"},
+        {"type": "历史遗留事项", "count": totals["legacy"], "note": "从上周或更早遗留到本周的事项；无明确证据时为 0"},
+        {"type": "本周完成事项", "count": totals["completed"], "note": "已开发完成 / 已修复 / 已验证 / 已提交测试"},
+        {"type": "进行中事项", "count": totals["in_progress"], "note": "已开始处理但未闭环"},
+        {"type": "未开始事项", "count": totals["not_started"], "note": "已接收但暂未处理"},
+        {"type": "阻塞事项", "count": totals["blocked"], "note": "当前无法继续推进"},
+        {"type": "剩余事项", "count": totals["remaining"], "note": "本周后仍未闭环的事项"},
+    ]
+
+
 def write_daily_report(
     lines: list[str],
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
 ) -> None:
-    lines += ["## 今日工作概览", ""]
+    lines += [
+        "## 一、今日工作概览",
+        "",
+        "| 项目 | 模块/功能 | 事项类型 | 当前状态 | 是否阻塞 | 今日一句话进展 |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
     if not items:
-        lines += ["- 项目：未识别项目", "- 模块/功能：未发现可归档事项", "- 事项类型：工程事项", "- 当前状态：进行中", "- 是否阻塞：否", ""]
+        lines.append("| 未识别项目 | 未发现可归档事项 | 工程事项 | 进行中 | 否 | 未形成有效工作记录 |")
     for project, entries in sorted(items.items()):
         stats = project_stats(entries)
         risk = "是" if stats.get("blocked", 0) else "否"
         modules = "；".join(compact_text(desc, 36) for desc, _ in entries[:3])
         types = "、".join(sorted({item_type(desc, progress) for desc, progress in entries}))
-        lines += [
-            f"- 项目：{project}",
-            f"  - 模块/功能：{modules or '未识别'}",
-            f"  - 事项类型：{types or '工程事项'}",
-            f"  - 当前状态：{status_label_from_stats(stats)}",
-            f"  - 是否阻塞：{risk}",
-        ]
-    lines += ["", "## 今日具体事项", ""]
+        progress = next_step_for_entries(entries, "daily")
+        lines.append(f"| {project} | {modules or '未识别'} | {types or '工程事项'} | {status_label_from_stats(stats)} | {risk} | {compact_text(progress, 80)} |")
+    lines += ["", "## 二、今日具体事项", ""]
     if not items:
-        lines += ["### 未识别项目", "", "- 事项来源：Codex 会话记录", "- 事项描述：未发现可归档事项", "- 今日处理内容：未形成有效工作记录", "- 处理方式/简要流程：无", "- 今日结果：进行中", "- 遗留问题：暂无明确遗留问题", "- 下一步/明日计划：补充真实工作记录后重新生成日报", ""]
+        lines += [
+            "### 1. 项目名称：未识别项目",
+            "",
+            "**事项名称：** 未发现可归档事项",
+            "",
+            "**事项来源：** 需补充",
+            "",
+            "**事项描述：** 未形成有效工作记录。",
+            "",
+            "**今日处理内容：** 未形成有效工作记录。",
+            "",
+            "**处理方式/简要流程：** 无。",
+            "",
+            "**今日结果：** 进行中",
+            "",
+            "**验证情况：** 需补充真实验证情况。",
+            "",
+            "**遗留问题：** 暂无明确遗留问题。",
+            "",
+            "**下一步/明日计划：** 补充真实工作记录后重新生成日报。",
+            "",
+            "**相关产出：** 无。",
+            "",
+        ]
     for project, entries in sorted(items.items()):
-        lines += [f"### {project}", ""]
+        lines += [f"### {project}", "", f"**项目名称：** {project}", ""]
         for index, (desc, progress) in enumerate(entries, start=1):
             bucket = progress_bucket(progress)
             leftover = "暂无明确遗留问题" if bucket == "completed" else "仍需继续推进或补齐验证证据"
             next_step = "沉淀 patch/验证材料或等待后续验收" if bucket == "completed" else "继续处理并补齐结果、验证或阻塞解除证据"
             lines += [
-                f"#### 事项 {index}: {compact_text(desc, 80)}",
-                "- 事项来源：Codex 会话记录 / 本地工程证据",
-                f"- 事项描述：{desc}",
-                f"- 今日处理内容：{desc}",
-                "- 处理方式/简要流程：基于会话记录、命令执行和本地工程材料整理。",
-                f"- 今日结果：{progress}",
-                f"- 遗留问题：{leftover}",
-                f"- 下一步/明日计划：{next_step}",
+                f"#### {index}. {compact_text(desc, 80)}",
+                "",
+                f"**事项名称：** {report_item_name(desc)}",
+                "",
+                f"**事项来源：** {report_item_source(desc)}",
+                "",
+                f"**事项描述：** {desc}",
+                "",
+                f"**今日处理内容：** {desc}",
+                "",
+                "**处理方式/简要流程：** 基于会话记录、命令执行和本地工程材料整理，按项目和事项归纳今天的实际推进。",
+                "",
+                f"**今日结果：** {progress}",
+                "",
+                "**验证情况：** 已按现有会话和补丁证据归纳；如缺设备或客户验证，需要继续补充。",
+                "",
+                f"**遗留问题：** {leftover}",
+                "",
+                f"**下一步/明日计划：** {next_step}",
+                "",
+                f"**相关产出：** {'；'.join(render_patch_list(patches, '暂无明确 Patch 产出'))}",
                 "",
             ]
-    lines += ["## 今日阻塞/风险", ""]
+    lines += [
+        "## 三、今日阻塞 / 风险",
+        "",
+        "| 项目 | 阻塞事项 | 阻塞原因 | 已卡多久 | 需要谁支持 | 预计恢复时间 |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
     risks: list[str] = []
     for project, entries in sorted(items.items()):
         for desc, progress in entries:
             if progress_bucket(progress) == "blocked":
-                risks.append(f"- 项目：{project}；阻塞事项：{compact_text(desc, 80)}；阻塞原因：见会话证据；需要支持：项目/测试/设备责任人；预计恢复时间：待确认")
-    lines += risks or ["今日未识别到明确阻塞风险。"]
-    lines += ["", "## 今日产出", "", *render_patch_list(patches, "今日无产出 Patch；如有文档、验证结果或对外同步，请在会话中明确记录后重新生成。")]
-    lines += ["", "## 明日重点", ""]
-    plans = [f"- {project}: {next_step_for_entries(entries, 'daily')}" for project, entries in sorted(items.items())]
-    lines += plans or ["- 补充真实工作记录并继续推进未闭环事项。"]
+                risks.append(f"| {project} | {compact_text(desc, 80)} | 见会话证据 | 需补充 | 项目/测试/设备责任人 | 待确认 |")
+    lines += risks or ["| - | - | 今日未识别到明确阻塞风险 | - | - | - |"]
+    lines += [
+        "",
+        "## 四、今日产出",
+        "",
+        "| 类型 | 内容 | 关联事项 | 状态 |",
+        "| --- | --- | --- | --- |",
+    ]
+    if patches:
+        for patch in patches:
+            lines.append(f"| Patch | {patch.name} | {patch.project or '未识别项目'} | 已产出 |")
+    else:
+        lines.append("| 无 | 今日无产出 Patch；如有文档、验证结果或对外同步，请在会话中明确记录后重新生成。 | - | - |")
+    lines += ["", "## 五、明日重点", ""]
+    plans = [f"{project}：{next_step_for_entries(entries, 'daily')}" for project, entries in sorted(items.items())]
+    lines += [f"{index}. {plan}" for index, plan in enumerate(plans, start=1)] or ["1. 补充真实工作记录并继续推进未闭环事项。"]
 
 
 def write_weekly_report(
@@ -1607,46 +1803,134 @@ def write_weekly_report(
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
 ) -> None:
-    lines += ["## 本周整体概览", "", "| 项目 | 总数 | 完成 | 进行中 | 未开始 | 阻塞/风险 | 整体状态 |", "| --- | ---: | ---: | ---: | ---: | ---: | --- |"]
+    lines += [
+        "## 一、本周整体概览",
+        "",
+        "| 项目 | 来源清单数 | 本周事项总数 | 本周新增 | 本周完成 | 进行中 | 未开始 | 阻塞/风险 | 超3天未进展 | 整体状态 |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    source_rows = weekly_source_rows(items)
     if not items:
-        lines.append("| 未识别项目 | 0 | 0 | 0 | 0 | 0 | 无事项 |")
+        lines.append("| 未识别项目 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 无事项 |")
     for project, entries in sorted(items.items()):
         stats = project_stats(entries)
+        source_count = len([row for row in source_rows if row["project"] == project])
         lines.append(
-            f"| {project} | {stats['total']} | {stats['completed']} | {stats['in_progress']} | {stats['not_started']} | {stats['blocked']} | {status_label_from_stats(stats)} |"
+            f"| {project} | {source_count} | {stats['total']} | {stats['total']} | {stats['completed']} | {stats['in_progress']} | {stats['not_started']} | {stats['blocked']} | 0 | {status_label_from_stats(stats)} |"
         )
-    lines += ["", "## 本周按项目总结", ""]
+    lines += ["", "## 二、本周按项目总结", ""]
     if not items:
-        lines += ["### 未识别项目", "", "- 事项来源：Codex 会话记录", "- 来源信息：未发现可归档事项", "- 本周事项统计：总数 0，完成 0，进行中 0，未开始 0，阻塞/风险 0", "- 本周完成内容：无", "- 本周推进中内容：无", "- 未完成/剩余事项：无", "- 预计整体闭环时间：无", ""]
+        lines += ["### 1. 项目名称：未识别项目", "", "**当前状态：** 无事项", "", "**需求来源地：** 临时工作/内部优化", "", "**需求种类：** 临时工作", ""]
     for project, entries in sorted(items.items()):
         stats = project_stats(entries)
         completed = [desc for desc, progress in entries if progress_bucket(progress) == "completed"]
         active = [desc for desc, progress in entries if progress_bucket(progress) == "in_progress"]
         remaining = [desc for desc, progress in entries if progress_bucket(progress) in {"blocked", "not_started"}]
+        project_sources = [row for row in source_rows if row["project"] == project]
+        category_rows = [row for row in weekly_category_rows({project: entries})]
         lines += [
-            f"### {project}",
+            f"### 项目名称：{project}",
             "",
-            "- 事项来源：Codex 会话记录 / 本地工程证据",
-            f"- 来源信息：{compact_text('；'.join(desc for desc, _ in entries[:4]), 160)}",
-            f"- 本周事项统计：总数 {stats['total']}，完成 {stats['completed']}，进行中 {stats['in_progress']}，未开始 {stats['not_started']}，阻塞/风险 {stats['blocked']}",
-            f"- 本周完成内容：{compact_text('；'.join(completed), 160) if completed else '暂无明确完成项'}",
-            f"- 本周推进中内容：{compact_text('；'.join(active), 160) if active else '暂无明确推进中事项'}",
-            f"- 未完成/剩余事项：{compact_text('；'.join(remaining), 160) if remaining else issue_or_none(entries)}",
-            f"- 预计整体闭环时间：{'待阻塞解除后确认' if stats.get('blocked', 0) else ('下周继续推进' if stats.get('in_progress', 0) or stats.get('not_started', 0) else '本周已闭环或等待验收')}",
+            f"**当前状态：** {status_label_from_stats(stats)}",
+            "",
+            f"**需求来源地：** {'、'.join(sorted({str(row['origin']) for row in project_sources}))}",
+            "",
+            f"**需求种类：** {'、'.join(sorted({str(row['list_type']) for row in project_sources}))}",
+            "",
+            "**来源清单：**",
+            "",
+            "| 项目 | 来源地 | 需求种类 | 清单名称 | 总数 | 本周新增 | 本周完成 | 剩余 | 风险 | 说明 |",
+            "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
+        ]
+        for row in project_sources:
+            lines.append(
+                f"| {row['project']} | {row['origin']} | {row['list_type']} | {row['list_name']} | {row['total']} | {row['new_this_week']} | {row['completed_this_week']} | {row['remaining']} | {row['risks']} | {row['note']} |"
+            )
+        lines += [
+            "",
+            "**来源分类统计：**",
+            "",
+            "| 来源地 | 需求种类 | 清单名称 | 功能添加总数 | Bug处理总数 | UI修改总数 | 功能移植总数 | 本周完成：功能添加 | 本周完成：Bug处理 | 本周完成：UI修改 | 本周完成：功能移植 | 剩余 |",
+            "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+        for row in category_rows:
+            lines.append(
+                f"| {row['origin']} | {row['list_type']} | {row['list_name']} | {row['feature_total']} | {row['bug_total']} | {row['ui_total']} | {row['porting_total']} | {row['feature_done']} | {row['bug_done']} | {row['ui_done']} | {row['porting_done']} | {row['remaining']} |"
+            )
+        lines += [
+            "",
+            "**本周事项统计：**",
+            "",
+            "| 类型 | 数量 | 说明 |",
+            "| --- | ---: | --- |",
+            f"| 本周接收事项 | {stats['total']} | 本周新接收或本周被记录的需求 / Bug / 客户问题 |",
+            "| 历史遗留事项 | 0 | 无明确历史遗留证据时为 0 |",
+            f"| 本周完成事项 | {stats['completed']} | 已开发完成 / 已修复 / 已验证 / 已提交测试 |",
+            f"| 进行中事项 | {stats['in_progress']} | 已开始处理但未闭环 |",
+            f"| 未开始事项 | {stats['not_started']} | 已接收但暂未处理 |",
+            f"| 阻塞事项 | {stats['blocked']} | 当前无法继续推进 |",
+            f"| 剩余事项 | {stats['in_progress'] + stats['not_started'] + stats['blocked']} | 本周后仍未闭环的事项 |",
+            "",
+            "**本周完成内容：**",
+            "",
+            *(f"{index}. {item}" for index, item in enumerate(completed or ["暂无明确完成项"], start=1)),
+            "",
+            "**本周推进中内容：**",
+            "",
+            *(f"{index}. {item}" for index, item in enumerate(active or ["暂无明确推进中事项"], start=1)),
+            "",
+            "**未完成 / 剩余事项：**",
+            "",
+            "| 事项 | 当前进度 | 未完成原因 | 是否有风险 | 已卡多久 | 预计完成时间 |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+        for item in remaining:
+            lines.append(f"| {compact_text(item, 80)} | 进行中 | 仍需继续推进或补齐验证证据 | 否 | 需补充 | 待确认 |")
+        if not remaining:
+            lines.append("| 无 | 已闭环或等待验收 | 无 | 否 | - | - |")
+        lines += [
+            "",
+            f"**预计整体闭环时间：** {'待阻塞解除后确认' if stats.get('blocked', 0) else ('下周继续推进' if stats.get('in_progress', 0) or stats.get('not_started', 0) else '本周已闭环或等待验收')}",
+            "",
+            "**风险/说明：**",
+            "",
+            "1. 超过 3 天没有实质进展的事项需要单独标记。",
+            "2. 依赖客户、测试、平台、项目经理或 TL 的事项需要写清需要谁支持。",
             "",
         ]
-    lines += ["## 本周重点问题与风险", ""]
-    risks = [f"- {project}: {compact_text(desc, 100)}" for project, entries in sorted(items.items()) for desc, progress in entries if progress_bucket(progress) == "blocked"]
-    lines += risks or ["本周未识别到明确阻塞风险。"]
-    lines += ["", "## 本周 Patch 产出", "", *render_patch_list(patches, "本周无产出 Patch。")]
-    lines += ["", "## 本周验证与交付情况", ""]
+    lines += [
+        "## 三、本周重点问题与风险",
+        "",
+        "| 项目 | 风险事项 | 风险类型 | 当前卡点 | 已持续时间 | 影响范围 | 需要支持 | 预计处理时间 |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    risk_rows = [
+        f"| {project} | {compact_text(desc, 100)} | 阻塞 | 见会话证据 | 需补充 | 影响提测 / 交付需复核 | 项目/测试/平台/TL | 待确认 |"
+        for project, entries in sorted(items.items())
+        for desc, progress in entries
+        if progress_bucket(progress) == "blocked"
+    ]
+    lines += risk_rows or ["| - | - | 本周未识别到明确阻塞风险 | - | - | - | - | - |"]
+    lines += ["", "## 四、本周 Patch 产出", "", "| 项目 | Patch / Commit | 关联事项 | 模块 | 当前状态 | 备注 |", "| --- | --- | --- | --- | --- | --- |"]
     if patches:
-        lines.append("本周存在 Patch 产出，请以 patch-capture 包中的构建、设备或等价验证证据为准。")
+        for patch in patches:
+            lines.append(f"| {patch.project or '未识别项目'} | {patch.name} | 本周补丁产出 | Framework | 已产出 | 以 patch-capture 证据为准 |")
     else:
-        lines.append("本周未从日报/会话材料中识别到明确 Patch 验证交付。")
-    lines += ["", "## 下周重点计划", ""]
-    plans = [f"- {project}: {next_step_for_entries(entries, 'weekly')}" for project, entries in sorted(items.items())]
-    lines += plans or ["- 继续补充真实工作记录并推进未闭环事项。"]
+        lines.append("| - | 本周无产出 Patch | - | - | - | - |")
+    lines += ["", "## 五、本周验证与交付情况", "", "| 项目 | 版本 / 分支 | 验证内容 | 验证结果 | 是否提测 | 遗留问题 |", "| --- | --- | --- | --- | --- | --- |"]
+    if patches:
+        for patch in patches:
+            lines.append(f"| {patch.project or '未识别项目'} | 需补充 | {patch.name} | 以 patch-capture 证据为准 | 需补充 | 需补充 |")
+    else:
+        lines.append("| - | - | 本周未从日报/会话材料中识别到明确 Patch 验证交付 | - | 否 | - |")
+    lines += ["", "## 六、下周重点计划", "", "### 1. 项目推进重点", ""]
+    plans = [f"{project}：{next_step_for_entries(entries, 'weekly')}" for project, entries in sorted(items.items())]
+    lines += [f"{index}. {plan}" for index, plan in enumerate(plans, start=1)] or ["1. 继续补充真实工作记录并推进未闭环事项。"]
+    lines += ["", "### 2. 风险处理重点", "", "1. 超过 3 天无实质进展、依赖客户/测试/平台确认的事项优先推动。", "", "### 3. 预计交付目标", "", "| 项目 | 下周目标 | 预计完成时间 |", "| --- | --- | --- |"]
+    for project, entries in sorted(items.items()):
+        lines.append(f"| {project} | {next_step_for_entries(entries, 'weekly')} | 待确认 |")
+    if not items:
+        lines.append("| 未识别项目 | 继续补充真实工作记录 | 待确认 |")
 
 
 def report_view_payload(
@@ -1664,9 +1948,11 @@ def report_view_payload(
         "display_title": display_title,
         "report_date": date.isoformat(),
         "week_range": week_key if report_type == "weekly" else "",
+        "display_date": weekly_display_date(date) if report_type == "weekly" else date.isoformat(),
         "member_alias": config["member_alias"],
         "member_name": config["member_name"],
         "overview": summary,
+        "one_line_summary": summary,
         "ui_card": {
             "title": display_title,
             "subtitle": summary,
@@ -1679,33 +1965,40 @@ def report_view_payload(
         daily_overview: list[dict[str, Any]] = []
         report_items: list[dict[str, Any]] = []
         risks: list[dict[str, str]] = []
+        projects: list[dict[str, Any]] = []
         for project, entries in sorted(items.items()):
             stats = project_stats(entries)
-            daily_overview.append(
-                {
-                    "project": project,
-                    "module_or_feature": "；".join(compact_text(desc, 36) for desc, _ in entries[:3]) or "未识别",
-                    "item_types": sorted({item_type(desc, progress) for desc, progress in entries}) or ["工程事项"],
-                    "status": status_label_from_stats(stats),
-                    "blocked": bool(stats.get("blocked", 0)),
-                }
-            )
+            project_row = {
+                "project": project,
+                "module_or_feature": "；".join(compact_text(desc, 36) for desc, _ in entries[:3]) or "未识别",
+                "item_types": sorted({item_type(desc, progress) for desc, progress in entries}) or ["工程事项"],
+                "status": status_label_from_stats(stats),
+                "blocked": bool(stats.get("blocked", 0)),
+                "today_progress": next_step_for_entries(entries, "daily"),
+            }
+            projects.append(project_row)
+            daily_overview.append(project_row)
             for index, (desc, progress) in enumerate(entries, start=1):
                 bucket = progress_bucket(progress)
-                report_items.append(
-                    {
-                        "project": project,
-                        "title": compact_text(desc, 80),
-                        "source": "Codex 会话记录 / 本地工程证据",
-                        "description": desc,
-                        "today_work": desc,
-                        "method": "基于会话记录、命令执行和本地工程材料整理。",
-                        "result": progress,
-                        "remaining_issue": "暂无明确遗留问题" if bucket == "completed" else "仍需继续推进或补齐验证证据",
-                        "next_step": "沉淀 patch/验证材料或等待后续验收" if bucket == "completed" else "继续处理并补齐结果、验证或阻塞解除证据",
-                        "display_order": index,
-                    }
-                )
+                item_payload = {
+                    "project": project,
+                    "title": compact_text(desc, 80),
+                    "item_name": report_item_name(desc),
+                    "source": report_item_source(desc),
+                    "item_source": report_item_source(desc),
+                    "description": desc,
+                    "item_description": desc,
+                    "today_work": desc,
+                    "method": "基于会话记录、命令执行和本地工程材料整理。",
+                    "result": progress,
+                    "today_result": progress,
+                    "verification": "已按现有会话和补丁证据归纳；如缺设备或客户验证，需要继续补充。",
+                    "remaining_issue": "暂无明确遗留问题" if bucket == "completed" else "仍需继续推进或补齐验证证据",
+                    "next_step": "沉淀 patch/验证材料或等待后续验收" if bucket == "completed" else "继续处理并补齐结果、验证或阻塞解除证据",
+                    "outputs": render_patch_list(patches, "暂无明确 Patch 产出"),
+                    "display_order": index,
+                }
+                report_items.append(item_payload)
                 if bucket == "blocked":
                     risks.append(
                         {
@@ -1718,6 +2011,17 @@ def report_view_payload(
                     )
         payload.update(
             {
+                "projects": projects
+                or [
+                    {
+                        "project": "未识别项目",
+                        "module_or_feature": "未发现可归档事项",
+                        "item_types": ["工程事项"],
+                        "status": "进行中",
+                        "blocked": False,
+                        "today_progress": "未形成有效工作记录",
+                    }
+                ],
                 "daily_overview": daily_overview
                 or [
                     {
@@ -1728,9 +2032,12 @@ def report_view_payload(
                         "blocked": False,
                     }
                 ],
+                "work_items": report_items,
                 "items": report_items,
                 "risks": risks,
                 "outputs": render_patch_list(patches, "今日无产出 Patch；如有文档、验证结果或对外同步，请在会话中明确记录后重新生成。"),
+                "tomorrow_focus": [f"{project}: {next_step_for_entries(entries, 'daily')}" for project, entries in sorted(items.items())]
+                or ["补充真实工作记录并继续推进未闭环事项。"],
                 "next_steps": [f"{project}: {next_step_for_entries(entries, 'daily')}" for project, entries in sorted(items.items())]
                 or ["补充真实工作记录并继续推进未闭环事项。"],
             }
@@ -1739,23 +2046,29 @@ def report_view_payload(
 
     weekly_overview: list[dict[str, Any]] = []
     project_summaries: list[dict[str, Any]] = []
+    project_overview: list[dict[str, Any]] = []
     completed_items: list[dict[str, str]] = []
     in_progress_items: list[dict[str, str]] = []
     remaining_items: list[dict[str, str]] = []
     risks = []
+    source_lists = weekly_source_rows(items)
+    source_category_stats = weekly_category_rows(items)
     for project, entries in sorted(items.items()):
         stats = project_stats(entries)
-        weekly_overview.append(
-            {
-                "project": project,
-                "total": stats["total"],
-                "completed": stats["completed"],
-                "in_progress": stats["in_progress"],
-                "not_started": stats["not_started"],
-                "blocked_or_risk": stats["blocked"],
-                "status": status_label_from_stats(stats),
-            }
-        )
+        overview_row = {
+            "project": project,
+            "source_list_count": len([row for row in source_lists if row["project"] == project]),
+            "total": stats["total"],
+            "new_this_week": stats["total"],
+            "completed": stats["completed"],
+            "in_progress": stats["in_progress"],
+            "not_started": stats["not_started"],
+            "blocked_or_risk": stats["blocked"],
+            "stale_over_three_days": 0,
+            "status": status_label_from_stats(stats),
+        }
+        project_overview.append(overview_row)
+        weekly_overview.append(overview_row)
         completed = [desc for desc, progress in entries if progress_bucket(progress) == "completed"]
         active = [desc for desc, progress in entries if progress_bucket(progress) == "in_progress"]
         remaining = [desc for desc, progress in entries if progress_bucket(progress) in {"blocked", "not_started"}]
@@ -1764,6 +2077,8 @@ def report_view_payload(
                 "project": project,
                 "source": "Codex 会话记录 / 本地工程证据",
                 "source_info": compact_text("；".join(desc for desc, _ in entries[:4]), 160),
+                "requirement_origin": sorted({report_item_source(desc) for desc, _ in entries}),
+                "requirement_list_type": sorted({report_list_type(desc) for desc, _ in entries}),
                 "stats": stats,
                 "completed": completed or ["暂无明确完成项"],
                 "in_progress": active or ["暂无明确推进中事项"],
@@ -1779,14 +2094,26 @@ def report_view_payload(
         risks.extend({"project": project, "risk": desc} for desc, progress in entries if progress_bucket(progress) == "blocked")
     payload.update(
         {
+            "project_overview": project_overview
+            or [{"project": "未识别项目", "source_list_count": 0, "total": 0, "new_this_week": 0, "completed": 0, "in_progress": 0, "not_started": 0, "blocked_or_risk": 0, "stale_over_three_days": 0, "status": "无事项"}],
             "weekly_overview": weekly_overview
             or [{"project": "未识别项目", "total": 0, "completed": 0, "in_progress": 0, "not_started": 0, "blocked_or_risk": 0, "status": "无事项"}],
+            "source_lists": source_lists,
+            "source_category_stats": source_category_stats,
+            "requirement_origin": sorted({str(row["origin"]) for row in source_lists}),
+            "requirement_list_type": sorted({str(row["list_type"]) for row in source_lists}),
+            "item_statistics": weekly_item_statistics(items),
             "project_summaries": project_summaries,
             "completed_items": completed_items,
             "in_progress_items": in_progress_items,
             "remaining_items": remaining_items,
             "risks": risks,
             "patch_outputs": render_patch_list(patches, "本周无产出 Patch。"),
+            "delivery_verifications": [
+                "本周存在 Patch 产出，请以 patch-capture 包中的构建、设备或等价验证证据为准。"
+                if patches
+                else "本周未从日报/会话材料中识别到明确 Patch 验证交付。"
+            ],
             "verification_delivery": [
                 "本周存在 Patch 产出，请以 patch-capture 包中的构建、设备或等价验证证据为准。"
                 if patches
@@ -3413,29 +3740,39 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             if not isinstance(view, dict):
                 errors.append(f"{rel} payload 必须是对象")
                 continue
-            for field in ("report_type", "display_title", "member_alias", "member_name", "overview", "ui_card"):
+            for field in ("report_type", "display_title", "member_alias", "member_name", "overview", "one_line_summary", "ui_card"):
                 if not view.get(field):
                     errors.append(f"{rel} payload.{field} 必须提供")
             if view.get("report_type") != report_type:
                 errors.append(f"{rel} payload.report_type 必须是 {report_type}")
             if report_type == "daily":
-                for field in ("daily_overview", "items", "risks", "outputs", "next_steps"):
+                for field in ("projects", "work_items", "risks", "outputs", "tomorrow_focus"):
                     if not isinstance(view.get(field), list):
                         errors.append(f"{rel} payload.{field} 必须是数组")
+                if view.get("report_date") != manifest.get("date"):
+                    errors.append(f"{rel} payload.report_date 必须等于 manifest.date")
             else:
                 for field in (
-                    "weekly_overview",
-                    "project_summaries",
+                    "project_overview",
+                    "source_lists",
+                    "source_category_stats",
+                    "requirement_origin",
+                    "requirement_list_type",
+                    "item_statistics",
                     "completed_items",
                     "in_progress_items",
                     "remaining_items",
                     "risks",
                     "patch_outputs",
-                    "verification_delivery",
+                    "delivery_verifications",
                     "next_week_plan",
                 ):
                     if not isinstance(view.get(field), list):
                         errors.append(f"{rel} payload.{field} 必须是数组")
+                if view.get("week_range") != manifest.get("week_range"):
+                    errors.append(f"{rel} payload.week_range 必须等于 manifest.week_range")
+                if not view.get("display_date"):
+                    errors.append(f"{rel} payload.display_date 必须提供")
 
     if package_kind == "framework_change":
         for field in ("case_id", "variant_id", "package_status", "platform", "android_version", "project"):

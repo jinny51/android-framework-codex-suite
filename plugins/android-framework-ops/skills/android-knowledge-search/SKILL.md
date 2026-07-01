@@ -5,7 +5,7 @@ description: Search the team knowledge repository for reusable cases, platform v
 
 # Android Knowledge Search
 
-Use this skill to search the team knowledge repository before starting new analysis or implementation. It is the member-side search entry for the knowledge system: `android-knowledge-intake` and `android-framework-patch-capture` submit materials through the server submission channel, and the user's local `akbs-curation-maintainer` skill promotes AI-usable knowledge into the knowledge repository for this skill to retrieve.
+Use this skill to search the team knowledge repository before starting new analysis or implementation. It is the member-side search entry for the knowledge system: `android-daily-report-intake`, `android-weekly-report-intake`, `android-framework-patch-intake`, and `android-framework-patch-capture` submit materials through the server submission channel using the shared intake kernel, and the user's local `akbs-curation-maintainer` skill promotes AI-usable knowledge into the knowledge repository for this skill to retrieve.
 
 This skill does not submit reports, create patches, edit source, or decide correctness by itself. It returns prior facts so Codex can judge whether an existing case, variant, patch, symbol, or validation fact is relevant to the current requirement.
 
@@ -91,7 +91,7 @@ For `android-framework-change-workflow`, this is the pre-analysis search gate. S
 $CODEX_HOME/artifacts/android-knowledge-intake/search-usage/<YYYYMMDD>/*.json
 ```
 
-如果报告配置里设置了 `out_dir`，记录写入该输出目录下的 `search-usage/`。后续 `android-knowledge-intake daily` 和 `android-knowledge-intake patch` 会读取同一天同成员的记录，并生成 `materials/evidence/search_before_change.json`。
+如果报告配置里设置了 `out_dir`，记录写入该输出目录下的 `search-usage/`。后续 `android-daily-report-intake` 和 `android-framework-patch-intake` 会通过共享 intake 脚本读取同一天同成员的记录，并生成 `materials/evidence/search_before_change.json`。
 
 可记录的成员侧使用决策：
 

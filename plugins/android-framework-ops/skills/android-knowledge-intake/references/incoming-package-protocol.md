@@ -143,11 +143,15 @@ Report traces must not carry `case_id` or `variant_id`. `reports/daily.md` and `
     "member_alias": "member01",
     "member_name": "成员",
     "overview": "今天处理了...",
+    "one_line_summary": "今天处理了...",
     "ui_card": {
       "title": "20260701_成员_日报",
       "subtitle": "今天处理了...",
       "status": "正常推进"
     },
+    "projects": [],
+    "work_items": [],
+    "tomorrow_focus": [],
     "daily_overview": [],
     "items": [],
     "risks": [],
@@ -156,6 +160,8 @@ Report traces must not carry `case_id` or `variant_id`. `reports/daily.md` and `
   }
 }
 ```
+
+For `report_type=weekly`, `payload` must include `week_range`, `display_date`, `one_line_summary`, `project_overview[]`, `source_lists[]`, `source_category_stats[]`, `requirement_origin[]`, `requirement_list_type[]`, `item_statistics[]`, `completed_items[]`, `in_progress_items[]`, `remaining_items[]`, `risks[]`, `patch_outputs[]`, `delivery_verifications[]`, and `next_week_plan[]`. `display_date` is the last workday of the week range, not the upload day.
 
 `work_findings` is required:
 
@@ -292,7 +298,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.62"
+    "plugin_version": "1.0.63"
   }
 }
 ```

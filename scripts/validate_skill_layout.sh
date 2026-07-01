@@ -12,8 +12,8 @@ android_count="$(count_skills android-framework-ops | tr -d ' ')"
 windows_count="$(count_skills android-framework-windows-ops | tr -d ' ')"
 workspace_count="$(count_skills codex-workspace-care | tr -d ' ')"
 
-if [[ "$android_count" != "7" ]]; then
-  echo "android-framework-ops should contain 7 skills, found $android_count" >&2
+if [[ "$android_count" != "10" ]]; then
+  echo "android-framework-ops should contain 10 skills, found $android_count" >&2
   exit 1
 fi
 

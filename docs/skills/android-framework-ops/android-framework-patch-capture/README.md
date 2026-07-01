@@ -6,7 +6,7 @@ Android Framework 功能级补丁资料生成 skill。
 
 ## 用途
 
-该 skill 用于把一次已完成、阶段性、失败或阻塞但有价值的 Android Framework 功能修改整理成可审核材料：一个功能级 `README.md`、一个或多个源码仓库级 patch、修改内容记录和验证结果，供 `android-knowledge-intake` 打包成 incoming 并发送到服务器上传入口。是否进入数据库仓库（database repository）和知识库仓库（knowledge repository）由管理端本地技能（local skill）后续判断。
+该 skill 用于把一次已完成、阶段性、失败或阻塞但有价值的 Android Framework 功能修改整理成可审核材料：一个功能级 `README.md`、一个或多个源码仓库级 patch、修改内容记录和验证结果，供 `android-framework-patch-intake` 打包成 incoming 并发送到服务器上传入口。是否进入数据库仓库（database repository）和知识库仓库（knowledge repository）由管理端本地技能（local skill）后续判断。
 
 它不负责分析需求、不负责改代码、不负责构建部署；这些仍由 `android-framework-change-workflow` 和构建交付类 skill 负责。
 
@@ -15,7 +15,7 @@ Android Framework 功能级补丁资料生成 skill。
 - Framework 需求已经完成，需要按功能生成可以通过成员上传入口发送、供管理端本地技能后续判断的功能材料包。
 - 阶段性修改需要整理成本地材料或日报上下文，但还没有达到普通上传条件；`draft/candidate`（草稿/候选）不直接进入服务器上传队列。
 - 失败路径或阻塞路径有复用价值，需要作为日报上下文或本地材料保留，避免别人重复踩坑；除非后续另行设计仅归档入口，否则不作为普通补丁包上传。
-- 管理员或成员端 Codex 想把一个高价值补丁提交给 `android-knowledge-intake` 的 `patch` 模式。
+- 管理员或成员端 Codex 想把一个高价值补丁提交给 `android-framework-patch-intake`。
 - 需要给服务器提供 patch 内容 `sha1`，让后续 incoming 合并时按内容去重，而不是按文件名或 run id 去重。
 
 ## 常用命令
@@ -50,7 +50,7 @@ python3 "scripts/capture_framework_patch.py" \
 
 补丁采集会过滤只有文件模式元数据的 diff 段，例如 `old mode 100755` / `new mode 100644`。这类变化通常是 checkout 或 chmod 噪声，不会单独生成补丁包；如果同一仓库还有真实代码改动，会保留代码改动并剔除纯权限段。只有当可执行权限本身是功能的一部分，并且有内容修改、风险说明和验证证据时，才应作为功能补丁保留。
 
-补丁资料包必须按功能生成，不能按日期生成“今日补丁合集”。这个规则不设补丁数量例外。一个功能跨多个 repo 管理的 Git 仓库时，可以在一个补丁包（patch package）里保留多个仓库级 patch；多个独立功能必须拆成多个补丁包（patch package）。成员即使是手写代码，也应先用补丁采集技能把改动包装成功能级材料，再交给成员上传技能（android-knowledge-intake）。
+补丁资料包必须按功能生成，不能按日期生成“今日补丁合集”。这个规则不设补丁数量例外。一个功能跨多个 repo 管理的 Git 仓库时，可以在一个补丁包（patch package）里保留多个仓库级 patch；多个独立功能必须拆成多个补丁包（patch package）。成员即使是手写代码，也应先用补丁采集技能把改动包装成功能级材料，再交给成员补丁入口（android-framework-patch-intake）。
 
 功能边界说明由补丁采集技能自动生成，不由成员手写结论。生成的 README 会记录功能目标、模块范围、关键锚点，以及每个仓库级 patch 如何共同服务同一个功能目标；如果这些事实不足，成员端 Codex 应提示成员补充真实需求、目标功能或验证范围后再重新生成。
 

@@ -1,13 +1,13 @@
 ---
 name: android-framework-patch-capture
-description: "Use after Android Framework code changes are implemented, staged, failed, or blocked but need to be turned into a reviewable or cautionary engineering material package for later android-knowledge-intake incoming submission."
+description: "Use after Android Framework code changes are implemented, staged, failed, or blocked but need to be turned into a reviewable or cautionary engineering material package for later android-framework-patch-intake incoming submission."
 ---
 
 # Android Framework Patch Capture
 
-Use this skill when a Framework feature is ready to be packaged as a reviewable or cautionary engineering material package. It does not implement requirements, diagnose root cause, build, deploy, decide final correctness, or make curation decisions. It packages existing source changes into one feature README, one or more repository-level patches, and evidence so `android-knowledge-intake` can submit them as incoming.
+Use this skill when a Framework feature is ready to be packaged as a reviewable or cautionary engineering material package. It does not implement requirements, diagnose root cause, build, deploy, decide final correctness, or make curation decisions. It packages existing source changes into one feature README, one or more repository-level patches, and evidence so `android-framework-patch-intake` can submit them as incoming.
 
-Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-knowledge-intake` submits a valuable patch package through the server submission channel. The user's local `akbs-curation-maintainer` skill decides whether it later enters the knowledge repository.
+Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-framework-patch-intake` submits a valuable patch package through the server submission channel. The user's local `akbs-curation-maintainer` skill decides whether it later enters the knowledge repository.
 
 The generated package includes patch content `sha1` for server-side deduplication. If a known daily/weekly incoming run produced the work context, pass `--related-report-run-id <run_id>` so intake can preserve an explicit report link. Weekly links are provenance only; weekly packages are not knowledge repository materialization candidates.
 
@@ -17,15 +17,17 @@ Search evidence is development evidence, not a curation decision. Codex normal d
 
 The structured project field must contain only the normalized company model. Any text outside that model is evidence text, not part of `project`: branch suffixes, customer suffixes, build branches, business labels, module labels, Chinese descriptions, and other non-standard trailing text stay in `project_inference.raw_inputs` or `basis`. Examples: `TVE1067M1_H031` -> `TVE1067M1`, `TVE1086U_MAIN_HANGYAN` -> `TVE1086U`, `TVE1091U福建移动高清` -> `TVE1091U`. Do not truncate `TVE1067M1` to `TVE1067M`; those are different projects.
 
-Project inference must be conservative. If `--project`, source roots, repository paths, git branches/remotes, WSL source-access registry, feature summary, or diff text expose multiple different TVD/TVE/TVA/TVI project models, the package must write `project=unknown`, preserve all candidates in `project_inference.candidates`, and record the conflict in `project_inference.limits`; later `android-knowledge-intake` will keep it out of `validated` status until a 补证包（evidence supplement package）closes the ambiguity.
+Project inference must be conservative. If `--project`, source roots, repository paths, git branches/remotes, WSL source-access registry, feature summary, or diff text expose multiple different TVD/TVE/TVA/TVI project models, the package must write `project=unknown`, preserve all candidates in `project_inference.candidates`, and record the conflict in `project_inference.limits`; later `android-framework-patch-intake` will keep it out of `validated` status until a 补证包（evidence supplement package）closes the ambiguity.
 
-Patch capture uses the plugin rules module (`android_framework_ops.knowledge_rules`) before writing a package. The same project normalization, platform/Android version parsing, aggregate package detection, pre-change knowledge search classification, search usage decision closure checks, and patch asset pollution basics are reused by `android-knowledge-intake` during upload preparation. These checks are deterministic gates only; admin-side local curation still owns new knowledge, merge, archive, reject, and knowledge validity decisions. Server upload entrypoints must not load this module.
+Patch capture uses the plugin rules module (`android_framework_ops.knowledge_rules`) before writing a package. The same project normalization, platform/Android version parsing, aggregate package detection, pre-change knowledge search classification, search usage decision closure checks, and patch asset pollution basics are reused by `android-framework-patch-intake` through the shared intake kernel during upload preparation. These checks are deterministic gates only; admin-side local curation still owns new knowledge, merge, archive, reject, and knowledge validity decisions. Server upload entrypoints must not load this module.
 
 ## Boundary
 
 - `android-framework-change-workflow`: owns requirement analysis, source changes, risk, build/deploy coordination, and final verification.
 - `android-framework-patch-capture`: owns feature README, repository-level patch, and evidence packaging for existing changes.
-- `android-knowledge-intake`: owns daily/weekly/framework_change incoming package submission through the server submission channel.
+- `android-framework-patch-intake`: owns framework_change incoming package submission through the server submission channel.
+- `android-daily-report-intake` and `android-weekly-report-intake`: own daily and weekly report incoming packages.
+- `android-knowledge-intake`: owns shared kernel, setup, doctor, plugin update checks, and legacy command routing.
 
 ## Quick Command
 
@@ -76,11 +78,11 @@ The script writes:
     └── package-check.json
 ```
 
-To submit later with `android-knowledge-intake`, pass the whole capture package directory so
+To submit later with `android-framework-patch-intake`, pass the whole capture package directory so
 search-before-change, build, verification, and package-check evidence are preserved:
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" \
+python3 "<android-knowledge-intake shared kernel>/scripts/android_knowledge_intake.py" \
   --profile <member_alias> patch --prepare \
   --patch-package .codex/patch-packages/<run-id>/ \
   --project "TVE8402M" \
@@ -106,7 +108,7 @@ Do not use one capture package for a date-bundled patch set such as “今日补
 
 If one feature summary is clear but the diff includes many unrelated resource keys, settings keys, system properties, or other anchors, treat it as patch asset contamination rather than a valid package. Stop and ask the member to recapture the same feature from a clean worktree. If this is fixing an already uploaded package, the corrected capture package must later be submitted as a 补证包（evidence supplement package） linked to the original package key; never hand-edit the original incoming package.
 
-For 补丁资产修正（patch asset correction）, the corrected package must be a fresh feature capture from the source worktree that contains only the intended feature diff. The later `android-knowledge-intake` submission must use `--patch-package <this capture package dir>` and the original package key. Do not prepare a correction from direct `--patch`, copied old patch files, or a supplement package key.
+For 补丁资产修正（patch asset correction）, the corrected package must be a fresh feature capture from the source worktree that contains only the intended feature diff. The later `android-framework-patch-intake` submission must use `--patch-package <this capture package dir>` and the original package key. Do not prepare a correction from direct `--patch`, copied old patch files, or a supplement package key.
 
 Pure file mode diffs such as `old mode 100755` / `new mode 100644` are usually checkout or chmod noise, not a feature change. Patch capture filters diff sections that contain only mode changes. If every changed file is mode-only, stop with no package. If a repository has both real content changes and mode-only noise, keep the content diff and drop the mode-only sections. A chmod change may be preserved only when it is part of an intentional executable-script or tool behavior change and is accompanied by content, summary, risk, and verification evidence.
 

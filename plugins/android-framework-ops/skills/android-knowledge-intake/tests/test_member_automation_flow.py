@@ -1153,26 +1153,37 @@ class MemberAutomationFlowTests(unittest.TestCase):
             daily_report = read_package_report(daily, "daily")
             weekly_report = read_package_report(weekly, "weekly")
             for text in (
-                "## 今日工作概览",
-                "## 今日具体事项",
-                "## 今日阻塞/风险",
-                "## 今日产出",
-                "## 明日重点",
+                "## 一、今日工作概览",
+                "## 二、今日具体事项",
+                "## 三、今日阻塞 / 风险",
+                "## 四、今日产出",
+                "## 五、明日重点",
                 "事项来源",
+                "事项描述",
+                "今日处理内容",
                 "处理方式/简要流程",
                 "今日结果",
+                "验证情况",
                 "遗留问题",
+                "下一步/明日计划",
+                "| 项目 | 模块/功能 | 事项类型 | 当前状态 | 是否阻塞 | 今日一句话进展 |",
             ):
                 self.assertIn(text, daily_report)
             for text in (
-                "## 本周整体概览",
-                "## 本周按项目总结",
-                "## 本周重点问题与风险",
-                "## 本周 Patch 产出",
-                "## 本周验证与交付情况",
-                "## 下周重点计划",
+                "## 一、本周整体概览",
+                "## 二、本周按项目总结",
+                "## 三、本周重点问题与风险",
+                "## 四、本周 Patch 产出",
+                "## 五、本周验证与交付情况",
+                "## 六、下周重点计划",
+                "需求来源地",
+                "需求种类",
+                "来源清单",
+                "来源分类统计",
                 "本周事项统计",
-                "未完成/剩余事项",
+                "未完成 / 剩余事项",
+                "预计整体闭环时间",
+                "| 项目 | 来源清单数 | 本周事项总数 | 本周新增 | 本周完成 | 进行中 | 未开始 | 阻塞/风险 | 超3天未进展 | 整体状态 |",
             ):
                 self.assertIn(text, weekly_report)
 
@@ -1180,14 +1191,40 @@ class MemberAutomationFlowTests(unittest.TestCase):
             weekly_view = read_report_view(weekly)
             self.assertEqual(daily_view["kind"], "report_view")
             self.assertEqual(daily_view["payload"]["report_type"], "daily")
+            self.assertEqual(daily_view["payload"]["report_date"], "2026-06-30")
             self.assertIn("ui_card", daily_view["payload"])
-            self.assertGreaterEqual(len(daily_view["payload"]["daily_overview"]), 1)
-            self.assertGreaterEqual(len(daily_view["payload"]["items"]), 1)
+            self.assertTrue(daily_view["payload"]["one_line_summary"])
+            self.assertGreaterEqual(len(daily_view["payload"]["projects"]), 1)
+            self.assertGreaterEqual(len(daily_view["payload"]["work_items"]), 1)
             self.assertIn("outputs", daily_view["payload"])
+            self.assertIn("tomorrow_focus", daily_view["payload"])
+            daily_item = daily_view["payload"]["work_items"][0]
+            for field in (
+                "project",
+                "item_name",
+                "item_source",
+                "item_description",
+                "today_work",
+                "method",
+                "today_result",
+                "verification",
+                "remaining_issue",
+                "next_step",
+                "outputs",
+            ):
+                self.assertIn(field, daily_item)
             self.assertEqual(weekly_view["kind"], "report_view")
             self.assertEqual(weekly_view["payload"]["report_type"], "weekly")
-            self.assertGreaterEqual(len(weekly_view["payload"]["weekly_overview"]), 1)
-            self.assertGreaterEqual(len(weekly_view["payload"]["project_summaries"]), 1)
+            self.assertEqual(weekly_view["payload"]["display_date"], "2026-07-03")
+            self.assertTrue(weekly_view["payload"]["one_line_summary"])
+            self.assertGreaterEqual(len(weekly_view["payload"]["project_overview"]), 1)
+            self.assertGreaterEqual(len(weekly_view["payload"]["source_lists"]), 1)
+            self.assertGreaterEqual(len(weekly_view["payload"]["source_category_stats"]), 1)
+            self.assertIn("requirement_origin", weekly_view["payload"])
+            self.assertIn("requirement_list_type", weekly_view["payload"])
+            self.assertGreaterEqual(len(weekly_view["payload"]["item_statistics"]), 7)
+            self.assertIn("delivery_verifications", weekly_view["payload"])
+            self.assertIn("next_week_plan", weekly_view["payload"])
             self.assertIn("patch_outputs", weekly_view["payload"])
 
             daily_manifest = json.loads((daily / "manifest.json").read_text(encoding="utf-8"))

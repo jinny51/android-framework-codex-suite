@@ -1,0 +1,7 @@
+interface:
+  display_name: "Android Framework Patch Intake"
+  short_description: "Generate Framework patch incoming packages"
+  default_prompt: "Use $android-framework-patch-intake to generate, replace, check, or submit Android Framework original patch packages, evidence supplement packages, or patch asset correction packages through AKBS incoming. Use android-framework-patch-capture for real feature capture when source changes need packaging."
+
+policy:
+  allow_implicit_invocation: true

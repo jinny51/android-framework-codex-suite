@@ -2,21 +2,23 @@
 
 > GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-framework-ops/skills/android-knowledge-intake](../../../../plugins/android-framework-ops/skills/android-knowledge-intake)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...`、`references/...` 指向该 runtime skill 目录。
 
-成员端 incoming 材料包自动汇总提交 skill。
+成员端 incoming 共享内核、配置诊断和旧命令兼容 skill。
 
 ## 用途
 
-该 skill 用于在成员本机自动汇总 Codex 会话、源码改动记录、功能 README、仓库级 patch 和验证结果，先生成本地 `pending`（待检查包），再通过服务器上传入口（server upload endpoint）提交为上传包（incoming package）。成员端 skill 不克隆、不拉取、不直接搜索、不 push 数据库仓库（database repository）。
+该 skill 用于成员首次启用、插件更新、配置迁移、doctor 检查、共享上传协议和旧命令兼容路由。新的成员业务入口已经拆成三个 skill：`android-daily-report-intake` 负责个人日报，`android-weekly-report-intake` 负责个人周报，`android-framework-patch-intake` 负责原始补丁包、补证包、替换包和补丁资产修正。三者都复用本 skill 的 `scripts/android_knowledge_intake.py`，不复制三套上传实现。
+
+共享内核会在成员本机先生成本地 `pending`（待检查包），再通过服务器上传入口（server upload endpoint）提交为上传包（incoming package）。成员端 skill 不克隆、不拉取、不直接搜索、不 push 数据库仓库（database repository）。
 
 成员端 Codex 是材料生成主体。它负责从会话、git、patch 和验证记录里整理上传包；服务器收到上传包后只做轻量接收并写入上传分支（intake branch），不直接入库、不做业务规则判断，也不批准为 AI 知识。后续由管理端本地推广入口决定推广、退回或要求补证。能否进入知识库仓库（knowledge repository）由你本机的本地技能（local skill）`akbs-curation-maintainer` 驱动的 AI 知识闭环（AI knowledge loop）判断。
 
-普通成员使用 `daily/weekly` 自动化生成成员级上传包；其中周报包（weekly report package）只做一周进度归档、成员查看和统计，不进入知识库仓库。完成或阶段性完成 Framework 修改时，通过 `patch` 模式生成 `framework_change` incoming。非成员 profile 只用于协议和服务器链路测试，不能和你本机的 `akbs-curation-maintainer` 混为一谈。
+普通成员新任务优先使用拆分入口：日报用 `android-daily-report-intake`，周报用 `android-weekly-report-intake`，补丁包和补证包用 `android-framework-patch-intake`。旧 `android-knowledge-intake daily|weekly|patch` 命令继续可用，只是作为旧命令路由（legacy route）进入同一共享内核。周报包（weekly report package）只做一周进度归档、成员查看和统计，不进入知识库仓库。非成员 profile 只用于协议和服务器链路测试，不能和你本机的 `akbs-curation-maintainer` 混为一谈。
 
 默认策略是先在成员本机保存材料，再只把达到普通上传门禁的包送到服务器。普通补丁包和补证包上传默认必须是 `validated`：功能边界清楚、项目（project）、平台（platform）、Android 版本（Android version）可追溯、补丁资产干净，并且构建与设备或等价验证通过。`candidate`、`draft`、`failed` 或 `blocked` 可以作为本地材料或日报/周报上下文保留，但不直接进入服务器上传队列。包状态不是沉淀结论（curation decision）。
 
 日报和周报没有“未来提交”模式。日报日期晚于当前本机日期时会停止；周报锚定日期晚于当前本机日期，或 `week_range` 晚于当前本机所属周时也会停止。过去日期日报和过去周期周报属于补交，允许生成。
 
-日报正文和周报正文就是成员与管理员直接阅读的主产物。新包会按 Android Framework 定制开发工作报告模板生成 `reports/daily.md` / `reports/weekly.md`，并同时写入 `materials/display/report_view.json` 作为 UI 读模型（UI read model），服务卡片、列表和详情展示；这个读模型只是同一份报告的结构化索引，不是另一套证据或 AI 层。`work_findings.json` 仍保留为审计、归档和后续分析证据。
+日报正文和周报正文就是成员与管理员直接阅读的主产物。新包会按 Codex 办公版工作报告模板生成 `reports/daily.md` / `reports/weekly.md`，并同时写入 `materials/display/report_view.json` 作为 UI 读模型（UI read model），服务卡片、列表和详情展示；这个读模型只是同一份报告的结构化索引，不是另一套证据或 AI 层。日报重点回答“今天干了什么”，周报重点回答“这一周整体推进得怎么样”，并保留需求来源地、需求种类、来源清单、分类统计、剩余事项、风险、Patch 产出和验证交付字段。`work_findings.json` 仍保留为审计、归档和后续分析证据。
 
 补丁包和补证包会同时写入两份稳定读模型：`materials/display/patch_view.json` 是成员端和管理端页面直接消费的人类可见材料视图，包含原始包/补证包身份、功能标题、问题、方案、验证结果、项目、平台、Android 版本、卡片和详情分区；`materials/evidence/patch_ai_facts.json` 是管理端本地校验、沉淀判断、复审和搜索索引使用的证据视图，包含模块、细分领域、代码锚点、补丁行为目标、验证目标、搜索使用和合并硬门禁输入。两者都来自同一份补丁事实，但 `patch_view` 不承担 AI 判断，`patch_ai_facts` 不作为 UI 主展示文案。
 
@@ -56,7 +58,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor --strict --check-remote
 ```
 
-生成当天 pending 包：
+旧命令路由生成当天 pending 包：
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --prepare
@@ -68,7 +70,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --p
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --submit-latest
 ```
 
-生成周报 pending 包：
+旧命令路由生成周报 pending 包：
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --prepare
@@ -99,7 +101,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --s
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "TVE8402M" --summary "功能补丁摘要" --status validated
 ```
 
-成员查看界面如果提示某个补丁包需补证据（needs_evidence），不要新建第四类上传包。成员端 Codex 仍以成员上传技能（android-knowledge-intake）作为入口，但要按缺口分流：项目、平台、Android 版本、验证、风险和回滚等缺口只补真实证据并关联原始上传包；补丁资产修正（patch asset correction）才需要先重新采集补丁资料包；无共同目标聚合包（aggregate package）不补证，必须按功能重新上传新的原始包（original package）。
+成员查看界面如果提示某个补丁包需补证据（needs_evidence），不要新建第四类上传包。成员端 Codex 应使用成员补丁入口（android-framework-patch-intake），并按缺口分流：项目、平台、Android 版本、验证、风险和回滚等缺口只补真实证据并关联原始上传包；补丁资产修正（patch asset correction）才需要先重新采集补丁资料包；无共同目标聚合包（aggregate package）不补证，必须按功能重新上传新的原始包（original package）。
 
 补证包必须关联最初被打回的原始上传包。`--supplement-for-package-key` 不能指向另一个补证包；如果目标 run id 看起来是 `verification-supplement`、`project-supplement` 等补证包，先找原始包键。原始包如果是无共同目标聚合包、日期合集或功能边界过宽，不继续套补证包，而是按功能上传新的原始补丁包。
 
@@ -113,7 +115,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 
 补证包会先做本地校验。如果 `--supplement-reason` 说明在补项目（project）、平台（platform）、Android 版本（Android version）或验证（verification），新包不能继续保留对应的 `unknown`、缺失或未验证状态：补项目时必须有可追溯 `TVD`/`TVE`/`TVA`/`TVI` 项目和 `project_inference` 依据；补平台或 Android 版本时对应字段不能为 `unknown`，必要时使用显式 `--platform` 和 `--android-version`；补验证时 `verification_result` 必须为 `PASS`，且必须是设备验证或带理由、覆盖范围和剩余风险的等价验证，静态补丁审查不能闭合验证缺口。如果缺口是开发前知识搜索（pre-change knowledge search），但事实是手动实现或开发前没有搜索，成员不能补造搜索；应记录实现来源，交给管理端本地技能做沉淀前重叠检索（post-change overlap check）。
 
-如果缺口是补丁资产修正（patch asset correction），成员端 Codex 必须从干净工作树重新运行补丁采集技能（android-framework-patch-capture），再通过成员上传技能（android-knowledge-intake）关联原始包上传补证包。README 里的“关键符号”“字符串资源”等清单不能用来证明污染项属于当前功能；本地校验只把功能目标和修改说明作为范围依据。如果补证包仍包含大量与功能目标无关的资源、设置、属性或日志锚点，会在上传前失败。
+如果缺口是补丁资产修正（patch asset correction），成员端 Codex 必须从干净工作树重新运行补丁采集技能（android-framework-patch-capture），再通过成员补丁入口（android-framework-patch-intake）关联原始包上传补证包。README 里的“关键符号”“字符串资源”等清单不能用来证明污染项属于当前功能；本地校验只把功能目标和修改说明作为范围依据。如果补证包仍包含大量与功能目标无关的资源、设置、属性或日志锚点，会在上传前失败。
 
 补丁资产修正补证必须使用 `--patch-package <capture package dir>`。直接 `--patch`、复制旧 patch 或手写说明不能证明已经从干净源码工作树重新采集；本地校验会停止上传。
 
@@ -143,4 +145,4 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 - [references/incoming-package-protocol.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/incoming-package-protocol.md)：`incoming` 提交目录规则。
 - [references/patch-package-status-rules.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/patch-package-status-rules.md)：补丁包状态和上传策略。
 - [references/android-framework-patch-rules.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/android-framework-patch-rules.md)：Android Framework patch 规范。
-- [scripts/android_knowledge_intake.py](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py)：生成并提交 `daily_trace`、`weekly_trace`、`framework_change` incoming 包。
+- [scripts/android_knowledge_intake.py](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py)：共享生成和提交内核；拆分后的日报、周报和补丁入口都调用它。

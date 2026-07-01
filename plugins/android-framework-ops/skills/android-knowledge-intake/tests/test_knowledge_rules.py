@@ -129,7 +129,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         from android_framework_ops.knowledge_rules import current_plugin_version, source_version_errors
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.62")
+        self.assertEqual(current, "1.0.63")
         self.assertEqual(
             source_version_errors(
                 {

@@ -11,6 +11,21 @@ category = "Framework Workflow"
 summary = "将已完成、阶段性、失败或阻塞但有价值的 Framework 功能修改整理成一个功能 README、多仓库 patch 和验证材料"
 
 [[skills]]
+name = "android-framework-patch-intake"
+category = "Knowledge System"
+summary = "将功能级补丁资料包、补证包或替换包生成 framework_change incoming 包"
+
+[[skills]]
+name = "android-daily-report-intake"
+category = "Knowledge System"
+summary = "生成个人日报正文和同源 report_view，并提交 daily_trace incoming 包"
+
+[[skills]]
+name = "android-weekly-report-intake"
+category = "Knowledge System"
+summary = "生成个人周报正文和同源 report_view，并提交 weekly_trace incoming 包"
+
+[[skills]]
 name = "android-knowledge-search"
 category = "Knowledge System"
 summary = "默认搜索团队知识库中的可复用案例、平台实现、补丁、检索锚点和验证记录"
@@ -18,7 +33,7 @@ summary = "默认搜索团队知识库中的可复用案例、平台实现、补
 [[skills]]
 name = "android-knowledge-intake"
 category = "Knowledge System"
-summary = "从会话、git、patch 和验证结果生成 incoming 包并提交到团队知识库"
+summary = "成员 incoming 共享内核、配置诊断、插件更新检查和旧命令兼容路由"
 
 [[skills]]
 name = "android-remote-channel"
