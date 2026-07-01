@@ -46,20 +46,38 @@
 ```markdown
 # YYYY-MM-DD 日报 - 成员名
 
-## 今日概览
+## 今日工作概览
 
-1 到 3 句话概括当天主要项目、主要事项、完成状态和风险。
+- 项目：项目编号
+  - 模块/功能：模块或功能点
+  - 事项类型：开发 / 问题排查 / 验证 / 文档/交接 / 工程事项
+  - 当前状态：已完成 / 推进中 / 未开始 / 有阻塞
+  - 是否阻塞：是 / 否
 
-## 项目事项
+## 今日具体事项
 
 ### 项目编号
 
-- 事项：具体事项名称
-- 进度：已完成 / 已解决 / 待验证 / 处理中 / 阻塞 / 已归档，或明确百分比
+#### 事项 1: 具体事项名称
+- 事项来源：Codex 会话记录 / 本地工程证据
+- 事项描述：具体事项描述
+- 今日处理内容：今天实际处理了什么
+- 处理方式/简要流程：如何排查、修改、验证或推进
+- 今日结果：已完成 / 待验证 / 处理中 / 阻塞，或明确百分比
+- 遗留问题：仍缺什么
+- 下一步/明日计划：明日继续做什么
 
-## 附录：今日产出 Patch
+## 今日阻塞/风险
 
-今日无产出 Patch
+项目、阻塞事项、阻塞原因、需要谁支持、预计恢复时间。
+
+## 今日产出
+
+Patch、文档、验证结果、对外同步。
+
+## 明日重点
+
+明日优先事项。
 ```
 
 ## Weekly Template
@@ -67,18 +85,55 @@
 ```markdown
 # YYYYMMDD-YYYYMMDD 周报 - 成员名
 
-## 本周概览
+## 本周整体概览
 
-截至周六 22:00，按项目概括本周完成事项、未完成事项、重点问题、风险和下周重点。
+按项目统计总数、完成、进行中、未开始、阻塞/风险和整体状态。
 
-## 项目事项
+## 本周按项目总结
 
 ### 项目编号
 
-- 事项：
-- 进度：
+- 事项来源：Codex 会话记录 / 本地工程证据
+- 来源信息：主要事项来源
+- 本周事项统计：总数、完成、进行中、未开始、阻塞/风险
+- 本周完成内容：已闭环内容
+- 本周推进中内容：仍在推进内容
+- 未完成/剩余事项：未闭环内容
+- 预计整体闭环时间：预计闭环时间或条件
 
-## 附录：本周产出 Patch
+## 本周重点问题与风险
 
-本周无产出 Patch
+重点风险列表。
+
+## 本周 Patch 产出
+
+Patch 列表。
+
+## 本周验证与交付情况
+
+验证、交付和对外同步情况。
+
+## 下周重点计划
+
+下周优先事项。
+```
+
+## UI Read Model
+
+Daily and weekly reports are the primary human-readable product. The package also writes `materials/display/report_view.json` as a structured UI read model for cards, lists, and detail views. The read model is generated from the same report inputs as `reports/daily.md` or `reports/weekly.md`; it is not a separate evidence or AI layer and must not contradict the report body.
+
+```json
+{
+  "kind": "report_view",
+  "payload": {
+    "report_type": "daily",
+    "display_title": "20260701_成员_日报",
+    "overview": "今天处理了...",
+    "ui_card": {
+      "title": "20260701_成员_日报",
+      "subtitle": "今天处理了...",
+      "status": "正常推进"
+    }
+  }
+}
 ```

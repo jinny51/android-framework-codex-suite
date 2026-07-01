@@ -16,6 +16,8 @@
 
 日报和周报没有“未来提交”模式。日报日期晚于当前本机日期时会停止；周报锚定日期晚于当前本机日期，或 `week_range` 晚于当前本机所属周时也会停止。过去日期日报和过去周期周报属于补交，允许生成。
 
+日报正文和周报正文就是成员与管理员直接阅读的主产物。新包会按 Android Framework 定制开发工作报告模板生成 `reports/daily.md` / `reports/weekly.md`，并同时写入 `materials/display/report_view.json` 作为 UI 读模型（UI read model），服务卡片、列表和详情展示；这个读模型只是同一份报告的结构化索引，不是另一套证据或 AI 层。`work_findings.json` 仍保留为审计、归档和后续分析证据。
+
 日报包和周报包按成员与报告身份防重复：日报使用 `date`，周报使用 `week_range`。成员本机已有同身份 pending 或 submitted 报告包时，`--prepare`、`--upload` 和 `--submit-latest` 会停止，避免静默产生第二个普通报告包。成员要么取消本次提交，要么显式替换已有包：日报使用 `daily --replace-daily-run-id <old_run_id>`，周报使用 `weekly --replace-weekly-run-id <old_run_id>`；新包会写入 `replacement_for_run_id` 和 `supersedes` 元数据。
 
 需要联调协议或服务器链路时，单独创建合成数据 profile；合成 profile 不读取真实 Codex 会话、不扫描真实源码、不上传真实 patch。

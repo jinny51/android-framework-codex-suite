@@ -319,6 +319,13 @@ def read_package_findings(package: Path) -> dict:
     return json.loads((package / "materials" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
 
 
+def read_report_view(package: Path) -> dict:
+    manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+    display_paths = manifest.get("files", {}).get("display", [])
+    assert display_paths
+    return json.loads((package / display_paths[0]).read_text(encoding="utf-8"))
+
+
 def prepare_daily_package(env: dict[str, str], date: str, run_id: str) -> Path:
     result = run_json(
         [
@@ -1133,6 +1140,62 @@ class MemberAutomationFlowTests(unittest.TestCase):
             for path in expected:
                 self.assertTrue(path.is_file(), path)
             self.assertFalse((Path(env["CODEX_HOME"]) / "worktrees" / "knowledge-database-member01").exists())
+
+    def test_daily_and_weekly_reports_include_human_template_and_ui_read_model(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            knowledge_remote = seed_knowledge_remote(root)
+            env = write_member_config(root, knowledge_remote)
+
+            daily = prepare_daily_package(env, "2026-06-30", "20260630-210000-daily")
+            weekly = prepare_weekly_package(env, "2026-06-30", "20260630-220000-weekly")
+
+            daily_report = read_package_report(daily, "daily")
+            weekly_report = read_package_report(weekly, "weekly")
+            for text in (
+                "## 今日工作概览",
+                "## 今日具体事项",
+                "## 今日阻塞/风险",
+                "## 今日产出",
+                "## 明日重点",
+                "事项来源",
+                "处理方式/简要流程",
+                "今日结果",
+                "遗留问题",
+            ):
+                self.assertIn(text, daily_report)
+            for text in (
+                "## 本周整体概览",
+                "## 本周按项目总结",
+                "## 本周重点问题与风险",
+                "## 本周 Patch 产出",
+                "## 本周验证与交付情况",
+                "## 下周重点计划",
+                "本周事项统计",
+                "未完成/剩余事项",
+            ):
+                self.assertIn(text, weekly_report)
+
+            daily_view = read_report_view(daily)
+            weekly_view = read_report_view(weekly)
+            self.assertEqual(daily_view["kind"], "report_view")
+            self.assertEqual(daily_view["payload"]["report_type"], "daily")
+            self.assertIn("ui_card", daily_view["payload"])
+            self.assertGreaterEqual(len(daily_view["payload"]["daily_overview"]), 1)
+            self.assertGreaterEqual(len(daily_view["payload"]["items"]), 1)
+            self.assertIn("outputs", daily_view["payload"])
+            self.assertEqual(weekly_view["kind"], "report_view")
+            self.assertEqual(weekly_view["payload"]["report_type"], "weekly")
+            self.assertGreaterEqual(len(weekly_view["payload"]["weekly_overview"]), 1)
+            self.assertGreaterEqual(len(weekly_view["payload"]["project_summaries"]), 1)
+            self.assertIn("patch_outputs", weekly_view["payload"])
+
+            daily_manifest = json.loads((daily / "manifest.json").read_text(encoding="utf-8"))
+            weekly_manifest = json.loads((weekly / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(daily_manifest["files"]["display"], ["materials/display/report_view.json"])
+            self.assertEqual(weekly_manifest["files"]["display"], ["materials/display/report_view.json"])
+            self.assertTrue((daily / "materials" / "evidence" / "work_findings.json").is_file())
+            self.assertTrue((weekly / "materials" / "evidence" / "work_findings.json").is_file())
 
     def test_daily_future_date_blocks_late_submission_allows_and_duplicate_requires_choice(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -1476,10 +1476,325 @@ def overview_text(report_type: str, items: dict[str, list[tuple[str, str]]], pat
                 tasks.append(desc)
     if not tasks:
         return "未发现可归档事项，无patch。"
-    task_text = "、".join(tasks[:3]) + ("等" if len(tasks) > 3 else "")
+    task_text = "、".join(compact_text(item, 36) for item in tasks[:3]) + ("等" if len(tasks) > 3 else "")
     patch_text = f"产出 {len(patches)} 个patch。" if patches else "无patch。"
     prefix = "今天" if report_type == "daily" else "本周"
     return f"{prefix}处理了{task_text}，{patch_text}"
+
+
+def progress_bucket(progress: str) -> str:
+    text = str(progress or "")
+    if any(token in text for token in ("阻塞", "blocked", "失败", "报错")):
+        return "blocked"
+    if any(token in text for token in ("待验证", "验证中")):
+        return "in_progress"
+    if any(token in text for token in ("处理中", "进行中", "继续排查", "未完成", "待处理")):
+        return "in_progress"
+    if any(token in text for token in ("已完成", "已解决", "已产出 Patch", "通过", "成功")):
+        return "completed"
+    return "not_started"
+
+
+def project_stats(entries: list[tuple[str, str]]) -> dict[str, int]:
+    stats = {"total": len(entries), "completed": 0, "in_progress": 0, "not_started": 0, "blocked": 0}
+    for _, progress in entries:
+        bucket = progress_bucket(progress)
+        stats[bucket] = stats.get(bucket, 0) + 1
+    return stats
+
+
+def status_label_from_stats(stats: dict[str, int]) -> str:
+    if stats.get("blocked", 0):
+        return "有阻塞"
+    if stats.get("in_progress", 0):
+        return "推进中"
+    if stats.get("not_started", 0):
+        return "未开始"
+    if stats.get("completed", 0):
+        return "已完成"
+    return "无事项"
+
+
+def item_type(desc: str, progress: str) -> str:
+    text = f"{desc} {progress}".lower()
+    if any(token in text for token in ("验证", "test", "测试")):
+        return "验证"
+    if any(token in text for token in ("排查", "问题", "报错", "失败", "定位")):
+        return "问题排查"
+    if any(token in text for token in ("补丁", "patch", "修改", "适配", "修复", "开发")):
+        return "开发"
+    if any(token in text for token in ("文档", "readme", "整理", "交接")):
+        return "文档/交接"
+    return "工程事项"
+
+
+def issue_or_none(entries: list[tuple[str, str]]) -> str:
+    issues = [desc for desc, progress in entries if progress_bucket(progress) in {"blocked", "in_progress", "not_started"}]
+    return "；".join(compact_text(item, 48) for item in issues[:3]) if issues else "暂无明确遗留问题"
+
+
+def next_step_for_entries(entries: list[tuple[str, str]], report_type: str) -> str:
+    issues = [desc for desc, progress in entries if progress_bucket(progress) in {"blocked", "in_progress", "not_started"}]
+    if issues:
+        prefix = "明日继续" if report_type == "daily" else "下周继续"
+        return f"{prefix}推进：{compact_text('；'.join(issues[:3]), 120)}"
+    return "保持验证和交付记录完整，必要时补齐 patch-capture 证据。"
+
+
+def render_patch_list(patches: list[PatchInfo], empty_text: str) -> list[str]:
+    if not patches:
+        return [empty_text]
+    return [f"- {patch.name}（项目线索：{patch.project or '未识别项目'}）" for patch in patches]
+
+
+def write_daily_report(
+    lines: list[str],
+    items: dict[str, list[tuple[str, str]]],
+    patches: list[PatchInfo],
+) -> None:
+    lines += ["## 今日工作概览", ""]
+    if not items:
+        lines += ["- 项目：未识别项目", "- 模块/功能：未发现可归档事项", "- 事项类型：工程事项", "- 当前状态：进行中", "- 是否阻塞：否", ""]
+    for project, entries in sorted(items.items()):
+        stats = project_stats(entries)
+        risk = "是" if stats.get("blocked", 0) else "否"
+        modules = "；".join(compact_text(desc, 36) for desc, _ in entries[:3])
+        types = "、".join(sorted({item_type(desc, progress) for desc, progress in entries}))
+        lines += [
+            f"- 项目：{project}",
+            f"  - 模块/功能：{modules or '未识别'}",
+            f"  - 事项类型：{types or '工程事项'}",
+            f"  - 当前状态：{status_label_from_stats(stats)}",
+            f"  - 是否阻塞：{risk}",
+        ]
+    lines += ["", "## 今日具体事项", ""]
+    if not items:
+        lines += ["### 未识别项目", "", "- 事项来源：Codex 会话记录", "- 事项描述：未发现可归档事项", "- 今日处理内容：未形成有效工作记录", "- 处理方式/简要流程：无", "- 今日结果：进行中", "- 遗留问题：暂无明确遗留问题", "- 下一步/明日计划：补充真实工作记录后重新生成日报", ""]
+    for project, entries in sorted(items.items()):
+        lines += [f"### {project}", ""]
+        for index, (desc, progress) in enumerate(entries, start=1):
+            bucket = progress_bucket(progress)
+            leftover = "暂无明确遗留问题" if bucket == "completed" else "仍需继续推进或补齐验证证据"
+            next_step = "沉淀 patch/验证材料或等待后续验收" if bucket == "completed" else "继续处理并补齐结果、验证或阻塞解除证据"
+            lines += [
+                f"#### 事项 {index}: {compact_text(desc, 80)}",
+                "- 事项来源：Codex 会话记录 / 本地工程证据",
+                f"- 事项描述：{desc}",
+                f"- 今日处理内容：{desc}",
+                "- 处理方式/简要流程：基于会话记录、命令执行和本地工程材料整理。",
+                f"- 今日结果：{progress}",
+                f"- 遗留问题：{leftover}",
+                f"- 下一步/明日计划：{next_step}",
+                "",
+            ]
+    lines += ["## 今日阻塞/风险", ""]
+    risks: list[str] = []
+    for project, entries in sorted(items.items()):
+        for desc, progress in entries:
+            if progress_bucket(progress) == "blocked":
+                risks.append(f"- 项目：{project}；阻塞事项：{compact_text(desc, 80)}；阻塞原因：见会话证据；需要支持：项目/测试/设备责任人；预计恢复时间：待确认")
+    lines += risks or ["今日未识别到明确阻塞风险。"]
+    lines += ["", "## 今日产出", "", *render_patch_list(patches, "今日无产出 Patch；如有文档、验证结果或对外同步，请在会话中明确记录后重新生成。")]
+    lines += ["", "## 明日重点", ""]
+    plans = [f"- {project}: {next_step_for_entries(entries, 'daily')}" for project, entries in sorted(items.items())]
+    lines += plans or ["- 补充真实工作记录并继续推进未闭环事项。"]
+
+
+def write_weekly_report(
+    lines: list[str],
+    items: dict[str, list[tuple[str, str]]],
+    patches: list[PatchInfo],
+) -> None:
+    lines += ["## 本周整体概览", "", "| 项目 | 总数 | 完成 | 进行中 | 未开始 | 阻塞/风险 | 整体状态 |", "| --- | ---: | ---: | ---: | ---: | ---: | --- |"]
+    if not items:
+        lines.append("| 未识别项目 | 0 | 0 | 0 | 0 | 0 | 无事项 |")
+    for project, entries in sorted(items.items()):
+        stats = project_stats(entries)
+        lines.append(
+            f"| {project} | {stats['total']} | {stats['completed']} | {stats['in_progress']} | {stats['not_started']} | {stats['blocked']} | {status_label_from_stats(stats)} |"
+        )
+    lines += ["", "## 本周按项目总结", ""]
+    if not items:
+        lines += ["### 未识别项目", "", "- 事项来源：Codex 会话记录", "- 来源信息：未发现可归档事项", "- 本周事项统计：总数 0，完成 0，进行中 0，未开始 0，阻塞/风险 0", "- 本周完成内容：无", "- 本周推进中内容：无", "- 未完成/剩余事项：无", "- 预计整体闭环时间：无", ""]
+    for project, entries in sorted(items.items()):
+        stats = project_stats(entries)
+        completed = [desc for desc, progress in entries if progress_bucket(progress) == "completed"]
+        active = [desc for desc, progress in entries if progress_bucket(progress) == "in_progress"]
+        remaining = [desc for desc, progress in entries if progress_bucket(progress) in {"blocked", "not_started"}]
+        lines += [
+            f"### {project}",
+            "",
+            "- 事项来源：Codex 会话记录 / 本地工程证据",
+            f"- 来源信息：{compact_text('；'.join(desc for desc, _ in entries[:4]), 160)}",
+            f"- 本周事项统计：总数 {stats['total']}，完成 {stats['completed']}，进行中 {stats['in_progress']}，未开始 {stats['not_started']}，阻塞/风险 {stats['blocked']}",
+            f"- 本周完成内容：{compact_text('；'.join(completed), 160) if completed else '暂无明确完成项'}",
+            f"- 本周推进中内容：{compact_text('；'.join(active), 160) if active else '暂无明确推进中事项'}",
+            f"- 未完成/剩余事项：{compact_text('；'.join(remaining), 160) if remaining else issue_or_none(entries)}",
+            f"- 预计整体闭环时间：{'待阻塞解除后确认' if stats.get('blocked', 0) else ('下周继续推进' if stats.get('in_progress', 0) or stats.get('not_started', 0) else '本周已闭环或等待验收')}",
+            "",
+        ]
+    lines += ["## 本周重点问题与风险", ""]
+    risks = [f"- {project}: {compact_text(desc, 100)}" for project, entries in sorted(items.items()) for desc, progress in entries if progress_bucket(progress) == "blocked"]
+    lines += risks or ["本周未识别到明确阻塞风险。"]
+    lines += ["", "## 本周 Patch 产出", "", *render_patch_list(patches, "本周无产出 Patch。")]
+    lines += ["", "## 本周验证与交付情况", ""]
+    if patches:
+        lines.append("本周存在 Patch 产出，请以 patch-capture 包中的构建、设备或等价验证证据为准。")
+    else:
+        lines.append("本周未从日报/会话材料中识别到明确 Patch 验证交付。")
+    lines += ["", "## 下周重点计划", ""]
+    plans = [f"- {project}: {next_step_for_entries(entries, 'weekly')}" for project, entries in sorted(items.items())]
+    lines += plans or ["- 继续补充真实工作记录并推进未闭环事项。"]
+
+
+def report_view_payload(
+    report_type: str,
+    date: dt.date,
+    week_key: str,
+    config: dict[str, str],
+    items: dict[str, list[tuple[str, str]]],
+    patches: list[PatchInfo],
+    summary: str,
+) -> dict[str, Any]:
+    display_title = f"{ymd(date) if report_type == 'daily' else week_key}_{config['member_name']}_{'日报' if report_type == 'daily' else '周报'}"
+    payload: dict[str, Any] = {
+        "report_type": report_type,
+        "display_title": display_title,
+        "report_date": date.isoformat(),
+        "week_range": week_key if report_type == "weekly" else "",
+        "member_alias": config["member_alias"],
+        "member_name": config["member_name"],
+        "overview": summary,
+        "ui_card": {
+            "title": display_title,
+            "subtitle": summary,
+            "status": "有阻塞" if any(project_stats(entries).get("blocked", 0) for entries in items.values()) else "正常推进",
+            "primary_count": sum(len(entries) for entries in items.values()),
+            "secondary_count": len(patches),
+        },
+    }
+    if report_type == "daily":
+        daily_overview: list[dict[str, Any]] = []
+        report_items: list[dict[str, Any]] = []
+        risks: list[dict[str, str]] = []
+        for project, entries in sorted(items.items()):
+            stats = project_stats(entries)
+            daily_overview.append(
+                {
+                    "project": project,
+                    "module_or_feature": "；".join(compact_text(desc, 36) for desc, _ in entries[:3]) or "未识别",
+                    "item_types": sorted({item_type(desc, progress) for desc, progress in entries}) or ["工程事项"],
+                    "status": status_label_from_stats(stats),
+                    "blocked": bool(stats.get("blocked", 0)),
+                }
+            )
+            for index, (desc, progress) in enumerate(entries, start=1):
+                bucket = progress_bucket(progress)
+                report_items.append(
+                    {
+                        "project": project,
+                        "title": compact_text(desc, 80),
+                        "source": "Codex 会话记录 / 本地工程证据",
+                        "description": desc,
+                        "today_work": desc,
+                        "method": "基于会话记录、命令执行和本地工程材料整理。",
+                        "result": progress,
+                        "remaining_issue": "暂无明确遗留问题" if bucket == "completed" else "仍需继续推进或补齐验证证据",
+                        "next_step": "沉淀 patch/验证材料或等待后续验收" if bucket == "completed" else "继续处理并补齐结果、验证或阻塞解除证据",
+                        "display_order": index,
+                    }
+                )
+                if bucket == "blocked":
+                    risks.append(
+                        {
+                            "project": project,
+                            "risk": compact_text(desc, 100),
+                            "reason": "见会话证据",
+                            "support_needed": "项目/测试/设备责任人",
+                            "expected_recovery": "待确认",
+                        }
+                    )
+        payload.update(
+            {
+                "daily_overview": daily_overview
+                or [
+                    {
+                        "project": "未识别项目",
+                        "module_or_feature": "未发现可归档事项",
+                        "item_types": ["工程事项"],
+                        "status": "进行中",
+                        "blocked": False,
+                    }
+                ],
+                "items": report_items,
+                "risks": risks,
+                "outputs": render_patch_list(patches, "今日无产出 Patch；如有文档、验证结果或对外同步，请在会话中明确记录后重新生成。"),
+                "next_steps": [f"{project}: {next_step_for_entries(entries, 'daily')}" for project, entries in sorted(items.items())]
+                or ["补充真实工作记录并继续推进未闭环事项。"],
+            }
+        )
+        return {"kind": "report_view", "payload": payload}
+
+    weekly_overview: list[dict[str, Any]] = []
+    project_summaries: list[dict[str, Any]] = []
+    completed_items: list[dict[str, str]] = []
+    in_progress_items: list[dict[str, str]] = []
+    remaining_items: list[dict[str, str]] = []
+    risks = []
+    for project, entries in sorted(items.items()):
+        stats = project_stats(entries)
+        weekly_overview.append(
+            {
+                "project": project,
+                "total": stats["total"],
+                "completed": stats["completed"],
+                "in_progress": stats["in_progress"],
+                "not_started": stats["not_started"],
+                "blocked_or_risk": stats["blocked"],
+                "status": status_label_from_stats(stats),
+            }
+        )
+        completed = [desc for desc, progress in entries if progress_bucket(progress) == "completed"]
+        active = [desc for desc, progress in entries if progress_bucket(progress) == "in_progress"]
+        remaining = [desc for desc, progress in entries if progress_bucket(progress) in {"blocked", "not_started"}]
+        project_summaries.append(
+            {
+                "project": project,
+                "source": "Codex 会话记录 / 本地工程证据",
+                "source_info": compact_text("；".join(desc for desc, _ in entries[:4]), 160),
+                "stats": stats,
+                "completed": completed or ["暂无明确完成项"],
+                "in_progress": active or ["暂无明确推进中事项"],
+                "remaining": remaining or [issue_or_none(entries)],
+                "expected_closure": "待阻塞解除后确认"
+                if stats.get("blocked", 0)
+                else ("下周继续推进" if stats.get("in_progress", 0) or stats.get("not_started", 0) else "本周已闭环或等待验收"),
+            }
+        )
+        completed_items.extend({"project": project, "title": item} for item in completed)
+        in_progress_items.extend({"project": project, "title": item} for item in active)
+        remaining_items.extend({"project": project, "title": item} for item in remaining)
+        risks.extend({"project": project, "risk": desc} for desc, progress in entries if progress_bucket(progress) == "blocked")
+    payload.update(
+        {
+            "weekly_overview": weekly_overview
+            or [{"project": "未识别项目", "total": 0, "completed": 0, "in_progress": 0, "not_started": 0, "blocked_or_risk": 0, "status": "无事项"}],
+            "project_summaries": project_summaries,
+            "completed_items": completed_items,
+            "in_progress_items": in_progress_items,
+            "remaining_items": remaining_items,
+            "risks": risks,
+            "patch_outputs": render_patch_list(patches, "本周无产出 Patch。"),
+            "verification_delivery": [
+                "本周存在 Patch 产出，请以 patch-capture 包中的构建、设备或等价验证证据为准。"
+                if patches
+                else "本周未从日报/会话材料中识别到明确 Patch 验证交付。"
+            ],
+            "next_week_plan": [f"{project}: {next_step_for_entries(entries, 'weekly')}" for project, entries in sorted(items.items())]
+            or ["继续补充真实工作记录并推进未闭环事项。"],
+        }
+    )
+    return {"kind": "report_view", "payload": payload}
 
 
 def report_dates(report_type: str, date: dt.date) -> tuple[set[dt.date], dt.date, dt.date, str]:
@@ -1502,27 +1817,28 @@ def write_report(
     report_path = package_dir / f"{report_type}.md"
     title_key = ymd(date) if report_type == "daily" else week_key
     title = "日报" if report_type == "daily" else "周报"
-    overview_heading = "今日概览" if report_type == "daily" else "本周概览"
-    patch_heading = "今日产出 Patch" if report_type == "daily" else "本周产出 Patch"
-    lines = [f"# {title_key}_{config['member_name']}_{title}", "", f"## {overview_heading}", ""]
-    lines.append(overview_text(report_type, items, patches))
-    lines += ["", "## 项目事项", ""]
-    if not items:
-        lines += ["### 未识别项目", "", "  事项: 未发现可归档事项", "  进度: 进行中", ""]
-    for project, entries in sorted(items.items()):
-        lines += [f"### {project}", ""]
-        for desc, progress in entries:
-            lines.append(f"  事项: {desc}")
-            lines.append(f"  进度: {progress}")
-            lines.append("")
-    lines += [f"## 附录: {patch_heading}", ""]
-    if patches:
-        for patch in patches:
-            lines.append(f"- {patch.name}")
+    lines = [f"# {title_key}_{config['member_name']}_{title}", ""]
+    if report_type == "daily":
+        write_daily_report(lines, items, patches)
     else:
-        lines.append("无产出 Patch")
+        write_weekly_report(lines, items, patches)
     report_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return report_path
+
+
+def write_report_view(
+    package_dir: Path,
+    report_type: str,
+    date: dt.date,
+    week_key: str,
+    config: dict[str, str],
+    items: dict[str, list[tuple[str, str]]],
+    patches: list[PatchInfo],
+    summary: str,
+) -> str:
+    rel = materials_rel("display", "report_view.json")
+    write_json(package_dir / rel, report_view_payload(report_type, date, week_key, config, items, patches, summary))
+    return rel
 
 
 def paired_readme(path: Path) -> Path | None:
@@ -2479,6 +2795,7 @@ def incoming_report_manifest(
     run_id: str,
     project: str = "",
     project_evidence_path: str = "",
+    display_path: str = "",
 ) -> dict[str, Any]:
     report_name = f"{report_type}.md"
     package_kind = "daily_trace" if report_type == "daily" else "weekly_trace"
@@ -2500,6 +2817,7 @@ def incoming_report_manifest(
                 materials_rel("evidence", "codex_sessions.json"),
                 materials_rel("evidence", "work_findings.json"),
             ],
+            "display": [display_path or materials_rel("display", "report_view.json")],
         },
     }
     if report_type == "weekly":
@@ -3075,6 +3393,47 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             work_status = item.get("work_status")
             if work_status and work_status not in PACKAGE_STATUS_VALUES:
                 errors.append(f"work_findings item work_status 非法: {work_status}")
+        display_paths = files.get("display", [])
+        if not isinstance(display_paths, list) or not display_paths:
+            errors.append("report trace files.display 必须包含 report_view.json")
+            display_paths = []
+        for rel in display_paths:
+            path = require_file(rel, "display")
+            if not path:
+                continue
+            report_view = read_referenced_json(package_dir, rel)
+            if not isinstance(report_view, dict):
+                continue
+            if report_view.get("kind") != "report_view":
+                errors.append(f"{rel} kind 必须是 report_view")
+                continue
+            view = report_view.get("payload", {})
+            if not isinstance(view, dict):
+                errors.append(f"{rel} payload 必须是对象")
+                continue
+            for field in ("report_type", "display_title", "member_alias", "member_name", "overview", "ui_card"):
+                if not view.get(field):
+                    errors.append(f"{rel} payload.{field} 必须提供")
+            if view.get("report_type") != report_type:
+                errors.append(f"{rel} payload.report_type 必须是 {report_type}")
+            if report_type == "daily":
+                for field in ("daily_overview", "items", "risks", "outputs", "next_steps"):
+                    if not isinstance(view.get(field), list):
+                        errors.append(f"{rel} payload.{field} 必须是数组")
+            else:
+                for field in (
+                    "weekly_overview",
+                    "project_summaries",
+                    "completed_items",
+                    "in_progress_items",
+                    "remaining_items",
+                    "risks",
+                    "patch_outputs",
+                    "verification_delivery",
+                    "next_week_plan",
+                ):
+                    if not isinstance(view.get(field), list):
+                        errors.append(f"{rel} payload.{field} 必须是数组")
 
     if package_kind == "framework_change":
         for field in ("case_id", "variant_id", "package_status", "platform", "android_version", "project"):
@@ -3969,7 +4328,19 @@ def prepare_package(
     reports_dir.mkdir(parents=True, exist_ok=True)
     shutil.move(str(package_dir / f"{report_type}.md"), reports_dir / f"{report_type}.md")
     source = write_package_source(package_dir, config, "android-knowledge-intake")
-    manifest = incoming_report_manifest(report_type, date, week_key, config, summary, source, run_id, report_project, project_path)
+    display_path = write_report_view(package_dir, report_type, date, week_key, config, items, patches, summary)
+    manifest = incoming_report_manifest(
+        report_type,
+        date,
+        week_key,
+        config,
+        summary,
+        source,
+        run_id,
+        report_project,
+        project_path,
+        display_path,
+    )
     if report_type in {"daily", "weekly"} and replace_report_run_id:
         replacement = next((item for item in report_duplicates if item["run_id"] == replace_report_run_id), {})
         manifest["replacement_for_run_id"] = replace_report_run_id

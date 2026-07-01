@@ -102,6 +102,7 @@ Required shape:
 ```text
 manifest.json
 reports/daily.md or reports/weekly.md
+materials/display/report_view.json
 materials/evidence/source.json
 materials/evidence/codex_sessions.json
 materials/evidence/work_findings.json
@@ -115,6 +116,9 @@ Manifest excerpt:
   "report_type": "daily",
   "report_path": "reports/daily.md",
   "files": {
+    "display": [
+      "materials/display/report_view.json"
+    ],
     "evidence": [
       "materials/evidence/source.json",
       "materials/evidence/codex_sessions.json",
@@ -124,7 +128,34 @@ Manifest excerpt:
 }
 ```
 
-Report traces must not carry `case_id` or `variant_id`. They preserve context and evidence only.
+Report traces must not carry `case_id` or `variant_id`. `reports/daily.md` and `reports/weekly.md` are the primary human-readable products. `materials/display/report_view.json` is a UI read model for cards, lists, and detail panes; it is generated from the same report inputs and must not contain a separate fact set.
+
+`report_view` is required:
+
+```json
+{
+  "kind": "report_view",
+  "payload": {
+    "report_type": "daily",
+    "display_title": "20260701_成员_日报",
+    "report_date": "2026-07-01",
+    "week_range": "",
+    "member_alias": "member01",
+    "member_name": "成员",
+    "overview": "今天处理了...",
+    "ui_card": {
+      "title": "20260701_成员_日报",
+      "subtitle": "今天处理了...",
+      "status": "正常推进"
+    },
+    "daily_overview": [],
+    "items": [],
+    "risks": [],
+    "outputs": [],
+    "next_steps": []
+  }
+}
+```
 
 `work_findings` is required:
 
