@@ -59,15 +59,14 @@ $CODEX_HOME/<skill-name>.toml
 <project>/.codex/report.toml
 ```
 
-服务器上传入口、知识库仓库和产物目录建议使用：
+普通成员配置只写身份和本地路径。服务器上传入口和只读知识库入口由 AKBS endpoint resolver 提供；管理员/测试 override 不作为普通成员必填项。知识库仓库工作树和产物目录建议使用：
 
 ```text
-test35:/home/test35/work/akbs/knowledge.git
 <Codex documents>/worktrees/knowledge
 <Codex documents>/artifacts/android-knowledge-intake
 ```
 
-这些路径是模板，不是插件硬编码要求。成员端通过私有配置指定服务器上传入口和知识库仓库工作区；成员端不需要数据库仓库工作区。
+成员端通过私有配置指定 `knowledge_repo_worktree` 和 `out_dir`；成员端不需要数据库仓库工作区，也不需要填写服务器名、submit 脚本路径或知识库远端 URL。
 
 ## 验证
 

@@ -170,12 +170,51 @@ def write_member_config(root: Path, knowledge_remote: Path, submit_command: str 
             default_profile = "member01"
             incoming_schema_version = "1"
 
+            [paths]
+            out_dir = "{(root / "artifacts" / "android-knowledge-intake").as_posix()}"
+
+            [profiles.member01]
+            member_alias = "member01"
+            member_name = "成员甲"
+            role = "member"
+            allowed_modes = ["daily", "weekly", "patch"]
+            knowledge_repo_worktree = "{(root / "worktrees" / "knowledge").as_posix()}"
+            git_user_name = "成员甲"
+            git_user_email = "member01@example.invalid"
+            synthetic_data = {str(synthetic_data).lower()}
+            synthetic_item_count = "2"
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(codex_home)
+    env["CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"] = "1"
+    env["CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_METHOD"] = "local"
+    env["CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_COMMAND"] = submit_command or "python3 -c 'import sys; sys.exit(0)'"
+    env["CODEX_REPORT_AKBS_ENDPOINT_KNOWLEDGE_REPO_URL"] = knowledge_remote.as_posix()
+    return env
+
+
+def write_legacy_test35_member_config(root: Path, synthetic_data: bool = False) -> dict[str, str]:
+    codex_home = root / "codex-home"
+    config_dir = codex_home / "report"
+    config_dir.mkdir(parents=True)
+    (config_dir / "config.toml").write_text(
+        textwrap.dedent(
+            f"""
+            default_profile = "member01"
+            incoming_schema_version = "1"
+            server_profile = "test35"
+
             [submission]
-            method = "local"
-            command = "{submit_command or "python3 -c 'import sys; sys.exit(0)'"}"
+            method = "ssh"
+            ssh_host = "test35"
+            command = "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit"
 
             [knowledge]
-            repo_url = "{knowledge_remote.as_posix()}"
+            repo_url = "test35:/home/test35/work/akbs/knowledge.git"
 
             [paths]
             out_dir = "{(root / "artifacts" / "android-knowledge-intake").as_posix()}"
@@ -490,10 +529,11 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertIn("插件更新（plugin update）", text)
         self.assertIn("新配置（new configuration）", text)
         self.assertIn("服务器上传入口（server upload endpoint）", text)
-        self.assertIn("/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit", text)
+        self.assertIn("AKBS endpoint resolver", text)
+        self.assertNotIn("/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit", text)
         self.assertNotIn("/home/test35/work/akbs/database-worktree/scripts/akbs-submit", text)
-        self.assertIn("test35:/home/test35/work/akbs/knowledge.git", text)
-        self.assertIn('git clone test35:/home/test35/work/akbs/knowledge.git "$CODEX_HOME/worktrees/knowledge"', text)
+        self.assertNotIn("test35:/home/test35/work/akbs/knowledge.git", text)
+        self.assertIn('git -C "$CODEX_HOME/worktrees/knowledge" pull --ff-only', text)
         self.assertIn('git -C "$CODEX_HOME/worktrees/knowledge" pull --ff-only', text)
         self.assertIn("doctor --strict --check-remote", text)
         self.assertNotIn("database_repo_worktree", text)
@@ -717,6 +757,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             root = Path(tmp)
             remote = seed_knowledge_remote(root)
             env = write_member_config(root, remote)
+            config_text = (Path(env["CODEX_HOME"]) / "report" / "config.toml").read_text(encoding="utf-8")
 
             result = run_json(
                 [sys.executable, str(INTAKE_SCRIPT), "--profile", "member01", "doctor"],
@@ -724,12 +765,37 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 env,
             )
 
+            self.assertNotIn("[submission]", config_text)
+            self.assertNotIn("[knowledge]", config_text)
+            self.assertNotIn("server_profile", config_text)
             self.assertEqual(result["submission_method"], "local")
+            self.assertEqual(result["akbs_endpoint"]["source"], "env_override")
             self.assertIn("submission_command", result)
             self.assertNotIn("database_repo_worktree", result)
             self.assertIn("worktrees/knowledge", result["knowledge_repo_worktree"])
             self.assertNotIn("submission_repo_url", result)
             self.assertNotIn("approved_repo_url", result)
+
+    def test_doctor_migrates_legacy_test35_endpoint_config_without_changing_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = write_legacy_test35_member_config(root)
+
+            result = run_json(
+                [sys.executable, str(INTAKE_SCRIPT), "--profile", "member01", "doctor", "--strict"],
+                SUITE_ROOT,
+                env,
+                check=False,
+            )
+
+            self.assertEqual(result["member_alias"], "member01")
+            self.assertEqual(result["member_name"], "成员甲")
+            self.assertEqual(result["akbs_endpoint"]["source"], "default")
+            self.assertEqual(result["endpoint_migration"]["status"], "MIGRATED_IN_MEMORY")
+            self.assertIn("server_profile", result["endpoint_migration"]["legacy_fields"])
+            self.assertIn("submission_command", result["endpoint_migration"]["legacy_fields"])
+            self.assertIn("knowledge_repo_url", result["endpoint_migration"]["legacy_fields"])
+            self.assertTrue(any("旧 test35" in item for item in result["strict"]["warnings"]))
 
     def test_daily_uses_remote_project_anchor_and_filters_codex_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1006,7 +1072,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(payload["status"], "FAIL")
             self.assertTrue(any("knowledge_repo_worktree 不存在" in item for item in payload["strict"]["errors"]))
 
-    def test_daily_weekly_and_patch_upload_to_simulated_incoming_remote(self) -> None:
+    def test_daily_weekly_patch_and_supplement_upload_to_resolved_endpoint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             knowledge_remote = seed_knowledge_remote(root)
@@ -1104,13 +1170,51 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 SUITE_ROOT,
                 env,
             )
+            supplement = run_json(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "patch",
+                    "--date",
+                    "2026-06-01",
+                    "--run-id",
+                    "20260601-231000-field-supplement",
+                    "--project",
+                    "TVE8402M",
+                    "--platform",
+                    "mtk",
+                    "--android-version",
+                    "15",
+                    "--summary",
+                    "补充项目展示字段",
+                    "--status",
+                    "validated",
+                    "--supplement-for-package-key",
+                    "20260601/member01/20260601-230000-patch",
+                    "--supplement-mode",
+                    "field_correction",
+                    "--corrected-field",
+                    "project=TVE8402M",
+                    "--corrected-field",
+                    "display_title=通知音量弹窗位置适配",
+                    "--correction-reason",
+                    "管理端要求补充展示字段。",
+                    "--upload",
+                ],
+                SUITE_ROOT,
+                env,
+            )
 
             daily_package = Path(daily["package"])
             weekly_package = Path(weekly["package"])
             patch_package = Path(patch["package"])
+            supplement_package = Path(supplement["package"])
             daily_manifest = json.loads((daily_package / "manifest.json").read_text(encoding="utf-8"))
             weekly_manifest = json.loads((weekly_package / "manifest.json").read_text(encoding="utf-8"))
             patch_manifest = json.loads((patch_package / "manifest.json").read_text(encoding="utf-8"))
+            supplement_manifest = json.loads((supplement_package / "manifest.json").read_text(encoding="utf-8"))
             patch_project = json.loads((patch_package / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
             daily_findings = json.loads((daily_package / "materials" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
             weekly_findings = json.loads((weekly_package / "materials" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
@@ -1130,12 +1234,16 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(patch_manifest["project"], "TVE8402M")
             self.assertEqual(patch_project["payload"]["project"], "TVE8402M")
             self.assertTrue(patch_project["payload"]["company_rule_match"])
+            self.assertEqual(supplement_manifest["package_kind"], "framework_change")
+            self.assertEqual(supplement_manifest["supplement_mode"], "field_correction")
+            self.assertEqual(supplement_manifest["corrected_fields"]["project"], "TVE8402M")
             self.assertIn("TVE8402M", (daily_package / "reports" / "daily.md").read_text(encoding="utf-8"))
 
             expected = [
                 database_root / "incoming" / "20260601" / "member01" / "20260601-210000-daily" / "manifest.json",
                 database_root / "incoming" / "20260606" / "member01" / "20260606-220000-weekly" / "manifest.json",
                 database_root / "incoming" / "20260601" / "member01" / "20260601-230000-patch" / "manifest.json",
+                database_root / "incoming" / "20260601" / "member01" / "20260601-231000-field-supplement" / "manifest.json",
             ]
             for path in expected:
                 self.assertTrue(path.is_file(), path)

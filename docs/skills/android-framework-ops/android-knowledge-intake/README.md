@@ -30,6 +30,8 @@
 
 成员首次切到当前双仓库链路时，优先把 [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md) 里的整段提示词交给成员端 Codex。提示词会要求先完成插件更新（plugin update），再直接写入新配置（new configuration）、检查服务器上传入口（server upload endpoint）、克隆或更新唯一的知识库仓库（knowledge repository）工作树并运行健康检查（doctor check），成员只需要确认自己的 `member_alias`、姓名和 Git 作者信息。
 
+普通成员配置只保留身份和本地路径，例如 `member_alias`、`member_name`、`knowledge_repo_worktree` 和 `out_dir`。服务器上传入口和只读知识库远端由 AKBS endpoint resolver 提供；旧配置里的 `server_profile = "test35"`、`submission_ssh_host`、`submission_command` 和 `knowledge_repo_url` 会由 doctor 识别并在本次运行中迁移或给出修复提示。
+
 严格健康检查（doctor strict check）会要求 `knowledge_repo_worktree` 存在且是 Git 仓库（git repository）。成员端只克隆知识库仓库（knowledge repository），不能克隆或直接读取数据库仓库（database repository）。
 
 日报、周报和补丁生成入口会先做插件版本门禁（plugin version gate）。脚本会比较三类版本：当前正在运行脚本的插件版本、Codex 已安装的最新插件缓存版本、可访问时的 GitHub marketplace 远端版本。Git checkout 如果可以安全快进，会自动执行 `git pull --ff-only`，然后停止当前生成，因为已经加载的 Python 进程和 Codex 会话不能热刷新技能说明；成员需要重新运行原命令。如果 Codex 已安装新插件，但当前会话仍在旧技能缓存里运行，也会停止并提示新开或重启 Codex 会话。

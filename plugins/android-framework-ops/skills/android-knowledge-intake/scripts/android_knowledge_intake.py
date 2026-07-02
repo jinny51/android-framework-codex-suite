@@ -68,6 +68,17 @@ DEFAULT_SUBMISSION_METHOD = "ssh"
 DEFAULT_SUBMISSION_SSH_HOST = "test35"
 DEFAULT_SUBMISSION_COMMAND = "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit"
 DEFAULT_KNOWLEDGE_REPO_URL = "test35:/home/test35/work/akbs/knowledge.git"
+AKBS_ENDPOINT_ENV_PREFIXES = ("CODEX_REPORT_AKBS_ENDPOINT_", "CODEX_WORK_REPORT_AKBS_ENDPOINT_")
+AKBS_ENDPOINT_DEFAULTS = {
+    "submission_method": DEFAULT_SUBMISSION_METHOD,
+    "submission_ssh_host": DEFAULT_SUBMISSION_SSH_HOST,
+    "submission_command": DEFAULT_SUBMISSION_COMMAND,
+    "knowledge_repo_url": DEFAULT_KNOWLEDGE_REPO_URL,
+}
+LEGACY_TEST35_ENDPOINT_VALUES = {
+    "server_profile": "test35",
+    **AKBS_ENDPOINT_DEFAULTS,
+}
 PATCH_FILENAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 USB_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])usb(?![A-Za-z0-9])", re.I)
 USB_CAMEL_PATH_RE = re.compile(r"(?:^|[/_.-])Usb(?=[A-Z0-9])")
@@ -273,15 +284,16 @@ NOISE_TEXT_RE = re.compile(
 CONFIG_DEFAULTS = {
     "default_profile": "",
     "profile": "",
+    "server_profile": "",
     "role": "",
     "allowed_modes": "",
     "member_alias": "",
     "member_name": "",
     "knowledge_repo_url": "",
     "knowledge_repo_worktree": "",
-    "submission_method": DEFAULT_SUBMISSION_METHOD,
-    "submission_ssh_host": DEFAULT_SUBMISSION_SSH_HOST,
-    "submission_command": DEFAULT_SUBMISSION_COMMAND,
+    "submission_method": "",
+    "submission_ssh_host": "",
+    "submission_command": "",
     "git_user_name": "",
     "git_user_email": "",
     "codex_home": "$CODEX_HOME",
@@ -946,6 +958,88 @@ def apply_env_overrides(config: dict[str, str]) -> None:
                 config[key] = value
 
 
+def akbs_endpoint_env_value(name: str) -> str:
+    for prefix in AKBS_ENDPOINT_ENV_PREFIXES:
+        value = os.environ.get(f"{prefix}{name.upper()}")
+        if value:
+            return value
+    return ""
+
+
+def resolve_akbs_endpoint(config: dict[str, str]) -> dict[str, str]:
+    endpoint = dict(AKBS_ENDPOINT_DEFAULTS)
+    endpoint["source"] = "default"
+    env_keys = {
+        "submission_method": "SUBMISSION_METHOD",
+        "submission_ssh_host": "SUBMISSION_SSH_HOST",
+        "submission_command": "SUBMISSION_COMMAND",
+        "knowledge_repo_url": "KNOWLEDGE_REPO_URL",
+    }
+    env_overrides = {key: akbs_endpoint_env_value(env_key) for key, env_key in env_keys.items()}
+    env_overrides = {key: value for key, value in env_overrides.items() if value}
+    if env_overrides:
+        endpoint.update(env_overrides)
+        endpoint["source"] = "env_override"
+        return endpoint
+
+    role = str(config.get("role") or "").strip()
+    configured = {
+        key: str(config.get(key) or "").strip()
+        for key in ("submission_method", "submission_ssh_host", "submission_command", "knowledge_repo_url")
+        if str(config.get(key) or "").strip()
+    }
+    if "submission_method" in configured and configured["submission_method"].lower() not in {"ssh", "local"}:
+        raise SystemExit(f"submission_method 不支持: {configured['submission_method']}")
+    if role == "admin" and configured:
+        endpoint.update(configured)
+        endpoint["source"] = "admin_config_override"
+    return endpoint
+
+
+def configured_endpoint_fields(loaded: list[Path]) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for path in loaded:
+        if not path.exists():
+            continue
+        payload = read_toml(path)
+        flattened = flatten_config_payload(payload)
+        for key in ("server_profile", "submission_method", "submission_ssh_host", "submission_command", "knowledge_repo_url"):
+            value = str(flattened.get(key) or "").strip()
+            if value:
+                fields[key] = value
+    return fields
+
+
+def endpoint_migration_report(config: dict[str, str], loaded: list[Path]) -> dict[str, Any]:
+    configured = configured_endpoint_fields(loaded)
+    legacy_fields = sorted(
+        key
+        for key, value in configured.items()
+        if value == LEGACY_TEST35_ENDPOINT_VALUES.get(key, "")
+        or (key in {"submission_ssh_host", "knowledge_repo_url", "submission_command", "server_profile"} and "test35" in value)
+    )
+    custom_fields = sorted(key for key in configured if key not in legacy_fields)
+    role = str(config.get("role") or "").strip()
+    if not configured:
+        status = "CURRENT"
+        message = "普通成员配置未包含服务器入口字段，AKBS endpoint resolver 将提供上传入口和只读知识库入口。"
+    elif role == "member" and legacy_fields and not custom_fields:
+        status = "MIGRATED_IN_MEMORY"
+        message = "检测到旧 test35 服务器硬编码；本次运行已在内存中迁移为 AKBS endpoint resolver 默认入口，未改成员身份字段。"
+    elif role == "member":
+        status = "MANUAL_ACTION_REQUIRED"
+        message = "检测到普通成员配置中的自定义服务器字段；请移除这些字段，改由管理员/测试环境 endpoint override 提供。"
+    else:
+        status = "ADMIN_OVERRIDE"
+        message = "检测到管理员/测试 endpoint override 配置；普通成员配置不应复制这些字段。"
+    return {
+        "status": status,
+        "message": message,
+        "legacy_fields": legacy_fields,
+        "custom_fields": custom_fields,
+    }
+
+
 def load_config(profile_override: str | None = None) -> tuple[dict[str, str], list[Path]]:
     config = CONFIG_DEFAULTS.copy()
     codex_home = Path(default_codex_home())
@@ -992,7 +1086,7 @@ def require_config(config: dict[str, str]) -> None:
 
 
 def knowledge_repo_url(config: dict[str, str]) -> str:
-    return (config.get("knowledge_repo_url") or "").strip()
+    return resolve_akbs_endpoint(config)["knowledge_repo_url"].strip()
 
 
 def knowledge_repo_worktree(config: dict[str, str]) -> Path:
@@ -1001,18 +1095,18 @@ def knowledge_repo_worktree(config: dict[str, str]) -> Path:
 
 
 def submission_method(config: dict[str, str]) -> str:
-    method = (config.get("submission_method") or DEFAULT_SUBMISSION_METHOD).strip().lower()
+    method = resolve_akbs_endpoint(config)["submission_method"].strip().lower()
     if method not in {"ssh", "local"}:
         raise SystemExit(f"submission_method 不支持: {method}")
     return method
 
 
 def submission_ssh_host(config: dict[str, str]) -> str:
-    return (config.get("submission_ssh_host") or DEFAULT_SUBMISSION_SSH_HOST).strip()
+    return resolve_akbs_endpoint(config)["submission_ssh_host"].strip()
 
 
 def submission_command(config: dict[str, str]) -> str:
-    return (config.get("submission_command") or DEFAULT_SUBMISSION_COMMAND).strip()
+    return resolve_akbs_endpoint(config)["submission_command"].strip()
 
 
 def allowed_modes(config: dict[str, str]) -> set[str]:
@@ -6486,6 +6580,12 @@ def doctor_strict_checks(
     if synthetic_mode(config) and not allow_synthetic:
         error("synthetic_data=true 只能用于协议/灰度测试，成员端正式自动化必须关闭。")
 
+    migration = endpoint_migration_report(config, loaded)
+    if migration["status"] == "MIGRATED_IN_MEMORY":
+        warn("检测到旧 test35 服务器硬编码；已由 AKBS endpoint resolver 在内存中迁移，普通成员无需继续维护服务器字段。")
+    elif migration["status"] == "MANUAL_ACTION_REQUIRED":
+        error(str(migration["message"]))
+
     if submit_method in {"ssh", "local"} and not submit_command:
         error("submission_command 不能为空。")
     if submit_method == "ssh" and not submit_host:
@@ -6547,6 +6647,7 @@ def doctor(
     allow_synthetic: bool = False,
 ) -> dict[str, Any]:
     knowledge_repo = knowledge_repo_worktree(config)
+    endpoint = resolve_akbs_endpoint(config)
     payload: dict[str, Any] = {
         "skill_root": str(PLUGIN_ROOT),
         "codex_home": default_codex_home(),
@@ -6557,6 +6658,8 @@ def doctor(
         "synthetic_data": synthetic_mode(config),
         "member_alias": config.get("member_alias"),
         "member_name": config.get("member_name"),
+        "akbs_endpoint": endpoint,
+        "endpoint_migration": endpoint_migration_report(config, loaded),
         "submission_method": submission_method(config),
         "submission_ssh_host": submission_ssh_host(config),
         "submission_command": submission_command(config),

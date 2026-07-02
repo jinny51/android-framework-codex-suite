@@ -1,13 +1,5 @@
 default_profile = "member_alias"
 
-[submission]
-method = "ssh"
-ssh_host = "test35"
-command = "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit"
-
-[knowledge]
-repo_url = "test35:/home/test35/work/akbs/knowledge.git"
-
 [paths]
 codex_home = "$CODEX_HOME"
 out_dir = "$CODEX_HOME/artifacts/android-knowledge-intake"
@@ -35,3 +27,6 @@ allowed_modes = ["patch"]
 knowledge_repo_worktree = "$CODEX_HOME/worktrees/knowledge"
 git_user_name = "链路测试"
 git_user_email = "admin_alias@codex.local"
+
+# 普通成员不要填写 server_profile、submission_ssh_host、submission_command 或 knowledge_repo_url。
+# AKBS endpoint resolver 会提供上传入口和只读知识库入口；管理员/测试 override 应通过受控环境变量或管理员配置处理。

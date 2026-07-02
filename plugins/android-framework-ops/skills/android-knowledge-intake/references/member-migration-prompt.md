@@ -10,7 +10,7 @@
 - 不要让我手动理解或维护版本、配置字段、仓库路径。只有 member_alias、member_name、Git 用户名/邮箱需要向我确认。
 - 成员端使用 Android Framework Ops 插件套件（plugin suite）生成和上传材料。
 - 成员端通过服务器上传入口（server upload endpoint）发送上传包（incoming package），不要克隆、拉取、搜索或 push 数据库仓库（database repository）。
-- 成员端用技能搜索（skill search）时只读取知识库仓库（knowledge repository）：test35:/home/test35/work/akbs/knowledge.git
+- 成员端用技能搜索（skill search）时只读取知识库仓库（knowledge repository）；只读入口由 AKBS endpoint resolver 提供，成员不要填写服务器远端。
 - 成员查看 UI（member view UI）如果需要看本人提交记录，由服务器读取数据库仓库并按成员身份过滤，这不是成员本机 skill 的搜索入口。
 
 请按顺序执行：
@@ -24,17 +24,9 @@
 2. 找到成员端上传材料脚本（member-side intake script）：
    plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py
 
-3. 直接创建或覆盖 $CODEX_HOME/report/config.toml，使用下面的新配置。只按当前双仓库链路写入，不解析残留配置字段，不把工作树放进 .codex/plugins/cache，不配置成员数据库仓库工作树。
+3. 直接创建或覆盖 $CODEX_HOME/report/config.toml，使用下面的新配置。普通成员配置只写身份和本地路径，不写 server_profile、submission_ssh_host、submission_command 或 knowledge_repo_url；这些服务器入口由 AKBS endpoint resolver 提供。不解析残留配置字段，不把工作树放进 .codex/plugins/cache，不配置成员数据库仓库工作树。
 
    default_profile = "<member_alias>"
-
-   [submission]
-   method = "ssh"
-   ssh_host = "test35"
-   command = "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit"
-
-   [knowledge]
-   repo_url = "test35:/home/test35/work/akbs/knowledge.git"
 
    [paths]
    codex_home = "$CODEX_HOME"
@@ -54,8 +46,7 @@
    synthetic_data = false
 
 4. 确保成员端只克隆并更新知识库仓库（knowledge repository），不要克隆数据库仓库（database repository）。
-   - 如果 $CODEX_HOME/worktrees/knowledge 不存在，执行：
-     git clone test35:/home/test35/work/akbs/knowledge.git "$CODEX_HOME/worktrees/knowledge"
+   - 如果 $CODEX_HOME/worktrees/knowledge 不存在，先运行 doctor，让 AKBS endpoint resolver 给出当前只读知识库入口，再按 doctor 的提示克隆。
    - 如果 $CODEX_HOME/worktrees/knowledge 已经是 Git 仓库（git repository），执行：
      git -C "$CODEX_HOME/worktrees/knowledge" pull --ff-only
    - 如果该路径存在但不是 Git 仓库，先停止并告诉我具体路径，不要继续生成上传包。

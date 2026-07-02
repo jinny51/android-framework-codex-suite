@@ -182,20 +182,14 @@ Configuration is loaded from low to high priority:
 3. `$CODEX_HOME/android-knowledge-intake.toml`.
 4. `$CODEX_HOME/report/config.toml`.
 5. The current repository's nearest `.codex/report.toml`.
-6. Environment variables such as `CODEX_REPORT_PROFILE`, `CODEX_REPORT_MEMBER_ALIAS`, `CODEX_REPORT_MEMBER_NAME`, `CODEX_REPORT_SUBMISSION_METHOD`, `CODEX_REPORT_SUBMISSION_SSH_HOST`, `CODEX_REPORT_SUBMISSION_COMMAND`, and `CODEX_REPORT_KNOWLEDGE_REPO_WORKTREE`.
+6. Environment variables such as `CODEX_REPORT_PROFILE`, `CODEX_REPORT_MEMBER_ALIAS`, `CODEX_REPORT_MEMBER_NAME`, and `CODEX_REPORT_KNOWLEDGE_REPO_WORKTREE`.
+
+Normal member config only stores identity and local paths. Server upload and read-only knowledge remote are resolved by the AKBS endpoint resolver. Admin or test overrides may use `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_METHOD`, `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_SSH_HOST`, `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_COMMAND`, and `CODEX_REPORT_AKBS_ENDPOINT_KNOWLEDGE_REPO_URL`; do not write those values into ordinary member profiles.
 
 Recommended profile config:
 
 ```toml
 default_profile = "member_alias"
-
-[submission]
-method = "ssh"
-ssh_host = "test35"
-command = "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit"
-
-[knowledge]
-repo_url = "test35:/home/test35/work/akbs/knowledge.git"
 
 incoming_schema_version = "1"
 
