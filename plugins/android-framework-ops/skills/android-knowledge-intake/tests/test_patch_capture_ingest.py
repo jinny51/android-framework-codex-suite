@@ -967,6 +967,121 @@ class PatchCaptureIngestTests(unittest.TestCase):
 
             self.assertEqual(check["status"], "PASS")
 
+    def test_lightweight_field_correction_supplement_does_not_require_patch_capture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = "20260702/lincong/20260702-193308-patch"
+            package = intake.prepare_patch_package(
+                dt.date(2026, 7, 2),
+                self.config(root),
+                run_id="20260702-204500-field-supplement",
+                patch_paths=[],
+                patch_package_paths=[],
+                project="TVI3315A",
+                summary="补充 TVI3315A 项目名和展示字段",
+                status="validated",
+                schema_version="1",
+                supplement_for_package_key=target,
+                supplement_reason="补充项目名（project）和展示标题字段。",
+                supplement_mode="field_correction",
+                corrected_fields={
+                    "project": "TVI3315A",
+                    "platform": "rk",
+                    "android_version": "14",
+                    "display_title": "TVI3315A 相机策略补证",
+                },
+                correction_reason="管理端原包项目名识别为 unknown，需要补充可见字段。",
+                platform_override="rk",
+                android_version_override="14",
+            )
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            supplement = json.loads((package / "materials" / "evidence" / "evidence_supplement.json").read_text(encoding="utf-8"))
+            field_correction = json.loads((package / "materials" / "evidence" / "field_correction.json").read_text(encoding="utf-8"))
+            patch_view = json.loads((package / "materials" / "display" / "patch_view.json").read_text(encoding="utf-8"))
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "PASS")
+            self.assertEqual(manifest["supplement_mode"], "field_correction")
+            self.assertEqual(manifest["corrected_fields"]["project"], "TVI3315A")
+            self.assertEqual(manifest["correction_reason"], "管理端原包项目名识别为 unknown，需要补充可见字段。")
+            self.assertEqual(manifest["files"]["patches"], [])
+            self.assertIn("materials/evidence/field_correction.json", manifest["files"]["evidence"])
+            self.assertNotIn("materials/evidence/patch_diff_facts.json", manifest["files"]["evidence"])
+            self.assertNotIn("materials/evidence/patch_ai_facts.json", manifest["files"]["evidence"])
+            self.assertNotIn("materials/evidence/verification_result.json", manifest["files"]["evidence"])
+            self.assertEqual(supplement["payload"]["supplement_mode"], "field_correction")
+            self.assertEqual(supplement["payload"]["corrected_fields"]["project"], "TVI3315A")
+            self.assertEqual(field_correction["payload"]["target_package_key"], target)
+            self.assertEqual(field_correction["payload"]["corrected_by"]["member_alias"], "admin_alias")
+            self.assertEqual(patch_view["payload"]["material_kind_label"], "字段补证包")
+            self.assertIn("不包含补丁 diff", patch_view["payload"]["result_summary"])
+
+    def test_asset_correction_mode_still_requires_patch_capture_package(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patch = root / "mtk16-frameworks-base@nav-policy-toggle.patch"
+            patch.write_text(
+                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
+                "--- a/frameworks/base/services/core/java/X.java\n"
+                "+++ b/frameworks/base/services/core/java/X.java\n"
+                "@@ -1 +1,2 @@\n"
+                "+//gyf 20260702@ nav policy toggle\n",
+                encoding="utf-8",
+            )
+            (root / "mtk16-frameworks-base@nav-policy-toggle.readme.md").write_text(valid_patch_readme(), encoding="utf-8")
+
+            package = intake.prepare_patch_package(
+                dt.date(2026, 7, 2),
+                self.config(root),
+                run_id="20260702-204501-asset-supplement",
+                patch_paths=[str(patch)],
+                patch_package_paths=[],
+                project="TVE1067M",
+                summary="补充补丁资产",
+                status="candidate",
+                schema_version="1",
+                supplement_for_package_key="20260702/lincong/20260702-193308-patch",
+                supplement_reason="补充补丁资产。",
+                supplement_mode="asset_correction",
+                platform_override="mtk",
+                android_version_override="16",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "FAIL")
+            errors = "\n".join(check["errors"])
+            self.assertIn("补丁资产修正", errors)
+            self.assertIn("android-framework-patch-capture", errors)
+
+    def test_field_correction_supplement_rejects_core_evidence_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = intake.prepare_patch_package(
+                dt.date(2026, 7, 2),
+                self.config(root),
+                run_id="20260702-204502-field-supplement",
+                patch_paths=[],
+                patch_package_paths=[],
+                project="TVI3315A",
+                summary="错误补充验证结果",
+                status="validated",
+                schema_version="1",
+                supplement_for_package_key="20260702/lincong/20260702-193308-patch",
+                supplement_reason="补充验证（verification）字段。",
+                supplement_mode="field_correction",
+                corrected_fields={"verification_result": "PASS"},
+                correction_reason="试图用字段补证声明验证通过。",
+                platform_override="rk",
+                android_version_override="14",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(check["status"], "FAIL")
+            self.assertIn("字段级补证不能补核心证据字段", "\n".join(check["errors"]))
+
     def test_project_supplement_fails_when_project_is_still_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

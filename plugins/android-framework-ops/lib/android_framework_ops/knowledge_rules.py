@@ -35,6 +35,10 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
         "min_plugin_version": "1.0.63",
         "description": "daily and weekly report_view contains the v2 UI read model",
     },
+    "lightweight_supplement_v1": {
+        "min_plugin_version": "1.0.65",
+        "description": "field_correction supplements can correct metadata/display fields without patch asset recapture",
+    },
 }
 DEFAULT_SOURCE_VERSION_CAPABILITIES = ("source_version_evidence",)
 VALID_FRAMEWORK_PLATFORMS = {"mtk", "rk", "unisoc"}

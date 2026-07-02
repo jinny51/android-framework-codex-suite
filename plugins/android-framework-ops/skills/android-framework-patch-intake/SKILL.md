@@ -48,3 +48,19 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
   --supplement-for-package-key 20260612/lincong/20260612-172836-patch \
   --supplement-reason "补充验证证据"
 ```
+
+Lightweight field correction example for project/platform/Android version/material/display gaps:
+
+```bash
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare \
+  --supplement-for-package-key 20260702/lincong/20260702-193308-patch \
+  --supplement-mode field_correction \
+  --corrected-field project=TVI3315A \
+  --corrected-field platform=rk \
+  --corrected-field android_version=14 \
+  --correction-reason "管理端提示项目名缺失，按成员可追溯字段补证" \
+  --summary "补充 TVI3315A 项目和展示字段" \
+  --status validated
+```
+
+Field correction packages do not include patch diff, verification, search evidence, or `patch_ai_facts`. If the missing item is verification, patch asset, local-check, `patch_ai_facts`, or polluted diff, rerun `android-framework-patch-capture` from a clean source tree and submit an asset correction supplement.

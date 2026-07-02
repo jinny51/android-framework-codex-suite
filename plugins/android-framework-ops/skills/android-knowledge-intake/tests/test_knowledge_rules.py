@@ -133,12 +133,13 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.64")
+        self.assertEqual(current, "1.0.65")
         matrix = source_version_compatibility_matrix()
         self.assertEqual(matrix["source_version_evidence"]["min_plugin_version"], "1.0.60")
         self.assertEqual(matrix["report_view_v1"]["min_plugin_version"], "1.0.61")
         self.assertEqual(matrix["patch_view_v1"]["min_plugin_version"], "1.0.62")
         self.assertEqual(matrix["report_view_v2"]["min_plugin_version"], "1.0.63")
+        self.assertEqual(matrix["lightweight_supplement_v1"]["min_plugin_version"], "1.0.65")
 
         self.assertEqual(
             source_version_errors(
@@ -185,6 +186,18 @@ class KnowledgeRulesTest(unittest.TestCase):
                 },
                 expected_version=current,
                 required_capabilities=["split_report_skills", "report_view_v2"],
+            ),
+            [],
+        )
+        self.assertEqual(
+            source_version_errors(
+                {
+                    "plugin_name": "android-framework-ops",
+                    "plugin_version": "1.0.65",
+                    "skill_version": "1.0.65",
+                },
+                expected_version=current,
+                required_capabilities=["lightweight_supplement_v1"],
             ),
             [],
         )

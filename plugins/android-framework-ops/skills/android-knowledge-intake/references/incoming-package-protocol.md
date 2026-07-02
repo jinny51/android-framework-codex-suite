@@ -298,7 +298,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.64"
+    "plugin_version": "1.0.65"
   }
 }
 ```
@@ -329,9 +329,10 @@ patch_view_v1 = 1.0.62
 patch_ai_facts_v1 = 1.0.62
 split_report_skills = 1.0.63
 report_view_v2 = 1.0.63
+lightweight_supplement_v1 = 1.0.65
 ```
 
-The required capabilities come from package contents, not from the current plugin release. For example, a package that only needs source version evidence can remain compatible at `1.0.60`; a patch package with `patch_view.json` and `patch_ai_facts.json` requires `1.0.62`; a package relying on split report skills or report view v2 requires `1.0.63`.
+The required capabilities come from package contents, not from the current plugin release. For example, a package that only needs source version evidence can remain compatible at `1.0.60`; a patch package with `patch_view.json` and `patch_ai_facts.json` requires `1.0.62`; a package relying on split report skills or report view v2 requires `1.0.63`; a field correction supplement requires `1.0.65`.
 
 Codex normal development should carry pre-change knowledge search evidence in `materials/evidence/search_before_change.json`. If no reusable knowledge was found, record the explicit search result as `not_found` instead of omitting the evidence. When pre-change search did not really happen, `validated` still means the verification evidence passed; preserve `payload.searched = false`, warn locally, and let admin-side curation perform post-change overlap check without awarding search-loop reuse score. Manual, external, historical, mixed, or unknown implementation origin must not fabricate pre-change search and can still carry verification and patch facts for later admin-side curation.
 
@@ -356,6 +357,19 @@ If a previous `framework_change` package is marked 需补证据（needs_evidence
 ```
 
 This association only says the new patch package supplements evidence for an earlier package. It is not a curation decision and does not create another allowed `package_kind`.
+
+Supplement packages use `supplement_mode` to distinguish lightweight field/display correction from asset recapture:
+
+```text
+field_correction
+  Corrects project, platform, Android version, material name, feature name, patch_view/report_view display fields, or equivalent structured display metadata.
+  Must include corrected_fields, correction_reason, evidence_supplement, and field_correction evidence.
+  Must not include patch diff, verification_result, search_before_change, patch_ai_facts, build/deploy evidence, or patch assets.
+
+asset_correction
+  Corrects patch diff, polluted patch assets, local-check, verification, or patch_ai_facts.
+  Must come from a fresh android-framework-patch-capture package for the same feature.
+```
 
 The member-side local check treats supplement packages as evidence closure attempts. If `supplement_reason` says the package补项目（project）, the new package must carry a traceable TVD/TVE/TVA/TVI project in `manifest.project` and `project_inference` must confirm `recognized=true`, `company_rule_match=true`, `basis`, and `checked_sources`. If it补平台（platform） or Android 版本（Android version）, the new package cannot keep the requested field as `unknown`; when capture evidence cannot prove those fields, `android_knowledge_intake.py patch` may use explicit `--platform mtk|rk|unisoc|unknown` and `--android-version <number>` to write the corrected boundary into `manifest.json`, `materials/variant.json`, and `materials/evidence/evidence_supplement.json`. If it补验证（verification）, `verification_result` must be `PASS`. If it补补丁资产修正（patch asset correction）, patch filenames must use a legal project（project）prefix or controlled platform prefixes such as `TVE1067M1-`, `mtk15-`, `rk14-`, or `unisoc16-`; other uncontrolled prefixes remain invalid because they cannot prove the project/platform boundary. If the old gap is pre-change knowledge search but the search did not happen before development, the member must not fabricate it; record the implementation origin and let admin-side curation perform post-change overlap check.
 
