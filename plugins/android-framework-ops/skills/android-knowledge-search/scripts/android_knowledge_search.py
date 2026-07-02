@@ -9,6 +9,9 @@ import os
 import re
 import subprocess
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +24,9 @@ ROOT_MARKERS = (
     Path("index") / "search-docs.jsonl",
 )
 ENV_PREFIXES = ("CODEX_KNOWLEDGE_", "CODEX_REPORT_", "CODEX_WORK_REPORT_")
+AKBS_ENDPOINT_ENV_PREFIXES = ("CODEX_REPORT_AKBS_ENDPOINT_", "CODEX_WORK_REPORT_AKBS_ENDPOINT_")
+DEFAULT_AKBS_API_BASE_URL = "http://test35:8090"
+MEMBER_SEARCH_PATH = "/akbs/api/member/knowledge-search"
 AI_DEFAULT_RESULT_KINDS = {"case", "variant", "patch", "symbol"}
 AI_EVIDENCE_KINDS = {
     "patch_diff_facts",
@@ -207,6 +213,44 @@ def config_payloads() -> list[dict[str, Any]]:
     return payloads
 
 
+def selected_profile_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    profile = selected_profile(payload)
+    profiles = payload.get("profiles")
+    if profile and isinstance(profiles, dict):
+        profile_payload = profiles.get(profile)
+        if isinstance(profile_payload, dict):
+            return profile_payload
+    return {}
+
+
+def configured_endpoint_values(payload: dict[str, Any]) -> dict[str, str]:
+    values: dict[str, str] = {}
+
+    def add(key: str, value: Any) -> None:
+        if isinstance(value, str) and value.strip():
+            values[key] = value.strip()
+
+    def add_section(section: Any) -> None:
+        if not isinstance(section, dict):
+            return
+        add("member_search_url", section.get("member_search_url"))
+        add("api_base_url", section.get("api_base_url"))
+
+    add("member_search_url", payload.get("member_search_url"))
+    add("api_base_url", payload.get("api_base_url"))
+    add_section(payload.get("akbs_endpoint"))
+    add_section(payload.get("endpoint"))
+
+    profile_payload = selected_profile_payload(payload)
+    role = str(profile_payload.get("role") or payload.get("role") or "").strip()
+    if role == "admin":
+        add("member_search_url", profile_payload.get("member_search_url"))
+        add("api_base_url", profile_payload.get("api_base_url"))
+        add_section(profile_payload.get("akbs_endpoint"))
+        add_section(profile_payload.get("endpoint"))
+    return values
+
+
 def configured_out_dir_values(payload: dict[str, Any]) -> list[str]:
     values: list[str] = []
 
@@ -250,6 +294,31 @@ def selected_member_alias() -> tuple[str, str]:
     return "", ""
 
 
+def akbs_endpoint_env_value(name: str) -> str:
+    for prefix in AKBS_ENDPOINT_ENV_PREFIXES:
+        value = os.environ.get(f"{prefix}{name.upper()}")
+        if value:
+            return value.strip()
+    return ""
+
+
+def member_search_endpoint_url() -> tuple[str, str]:
+    explicit = akbs_endpoint_env_value("MEMBER_SEARCH_URL")
+    if explicit:
+        return explicit, "env_override"
+    env_base = akbs_endpoint_env_value("API_BASE_URL")
+    if env_base:
+        return env_base.rstrip("/") + MEMBER_SEARCH_PATH, "env_override"
+    for payload in config_payloads():
+        configured = configured_endpoint_values(payload)
+        if configured.get("member_search_url"):
+            return configured["member_search_url"], "admin_config_override"
+        if configured.get("api_base_url"):
+            return configured["api_base_url"].rstrip("/") + MEMBER_SEARCH_PATH, "admin_config_override"
+    base = DEFAULT_AKBS_API_BASE_URL
+    return base.rstrip("/") + MEMBER_SEARCH_PATH, "default"
+
+
 def result_id(row: dict[str, Any]) -> str:
     for key in ("case_id", "variant_id", "patch_id", "symbol", "evidence_id", "report_id", "event_id", "id"):
         value = row.get(key)
@@ -272,6 +341,10 @@ def usage_result(row: dict[str, Any]) -> dict[str, Any]:
     score = row.get("_score")
     if isinstance(score, (int, float)):
         payload["score"] = score
+    for key in ("source", "search_mode", "reuse_grade", "matched_channels", "matched_anchors", "case_id", "package_id"):
+        value = row.get(key)
+        if value not in (None, "", []):
+            payload[key] = value
     return payload
 
 
@@ -280,7 +353,16 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def record_search_usage(args: argparse.Namespace, root: Path, query: str, results: list[dict[str, Any]]) -> Path | None:
+def record_search_usage(
+    args: argparse.Namespace,
+    root: Path | None,
+    query: str,
+    results: list[dict[str, Any]],
+    *,
+    source: str,
+    search_mode: str,
+    fallback_reason: str = "",
+) -> Path | None:
     if args.no_record_usage or not query:
         return None
     now = dt.datetime.now().astimezone()
@@ -306,10 +388,14 @@ def record_search_usage(args: argparse.Namespace, root: Path, query: str, result
         "date": now.date().isoformat(),
         "profile": profile,
         "member_alias": member_alias,
-        "root": str(root),
+        "root": str(root) if root else "",
         "query": query,
         "type": args.type,
         "limit": max(args.limit, 1),
+        "source": source,
+        "search_mode": search_mode,
+        "fallback_reason": fallback_reason,
+        "reuse_grades": sorted({str(item.get("reuse_grade") or "") for item in results if item.get("reuse_grade")}),
         "searched": True,
         "decision": decision,
         "reuse_decision": decision,
@@ -351,7 +437,10 @@ def codex_documents_roots() -> list[Path]:
 
 
 def is_knowledge_root(path: Path) -> bool:
-    return path.is_dir() and any((path / marker).exists() for marker in ROOT_MARKERS)
+    try:
+        return path.is_dir() and any((path / marker).exists() for marker in ROOT_MARKERS)
+    except OSError:
+        return False
 
 
 def parent_candidates(path: Path) -> list[Path]:
@@ -414,6 +503,83 @@ def find_root(explicit_root: str | None) -> Path:
         "knowledge repository root not found. Pass --root <path>, set CODEX_KNOWLEDGE_ROOT, or configure knowledge_repo_worktree. Checked:\n"
         + "\n".join(f" - {item}" for item in checked[:16])
     )
+
+
+def should_try_server(args: argparse.Namespace) -> bool:
+    if args.source == "local":
+        return False
+    if args.source == "server":
+        return True
+    if akbs_endpoint_env_value("MEMBER_SEARCH_URL"):
+        return True
+    return not bool(args.root)
+
+
+def server_search_url(args: argparse.Namespace, query: str) -> str:
+    endpoint, _source = member_search_endpoint_url()
+    separator = "&" if "?" in endpoint else "?"
+    params = {
+        "q": query,
+        "limit": str(max(args.limit, 1)),
+    }
+    if args.type and args.type != "all":
+        params["type"] = args.type
+    return endpoint + separator + urllib.parse.urlencode(params)
+
+
+def normalize_server_results(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_results = payload.get("results")
+    if raw_results is None:
+        raw_results = payload.get("items")
+    if not isinstance(raw_results, list):
+        raw_results = []
+    normalized: list[dict[str, Any]] = []
+    search_mode = str(payload.get("search_mode") or "hybrid")
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        row.setdefault("kind", row.get("type") or "knowledge")
+        row.setdefault("id", row.get("case_id") or row.get("package_id") or row.get("knowledge_id") or row.get("id") or "")
+        row.setdefault("title", row.get("title") or row.get("material_title") or row.get("summary") or row.get("case_title") or "")
+        row["source"] = "server_hybrid"
+        row["search_mode"] = search_mode
+        row["reuse_grade"] = str(row.get("reuse_grade") or "unknown")
+        if not isinstance(row.get("matched_channels"), list):
+            row["matched_channels"] = []
+        if not isinstance(row.get("matched_anchors"), list):
+            row["matched_anchors"] = []
+        normalized.append(row)
+    return normalized
+
+
+def fetch_server_hybrid_results(args: argparse.Namespace, query: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    profile, member_alias = selected_member_alias()
+    user = member_alias or profile or "unknown"
+    request = urllib.request.Request(
+        server_search_url(args, query),
+        headers={
+            "Accept": "application/json",
+            "X-AKBS-User": user,
+            "X-AKBS-Role": "member",
+        },
+        method="GET",
+    )
+    with urllib.request.urlopen(request, timeout=args.server_timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise RuntimeError("server hybrid search response is not a JSON object")
+    if str(payload.get("schema") or "") != "akbs-member-knowledge-search-v1":
+        raise RuntimeError("server hybrid search response schema mismatch")
+    return normalize_server_results(payload), payload
+
+
+def server_fallback_reason(exc: BaseException) -> str:
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"server hybrid search HTTP {exc.code}: {exc.reason}"
+    if isinstance(exc, urllib.error.URLError):
+        return f"server hybrid search unavailable: {exc.reason}"
+    return f"server hybrid search unavailable: {exc}"
 
 
 def refresh_root(root: Path) -> str:
@@ -1146,14 +1312,61 @@ def format_evidence(root: Path, row: dict[str, Any], index: int) -> str:
     return "\n".join(lines)
 
 
-def format_markdown(root: Path, q: str, results: list[dict[str, Any]], refresh_status: str | None) -> str:
+REUSE_GRADE_LABELS = {
+    "reusable": "可复用候选",
+    "reference_only": "仅参考",
+    "insufficient_evidence": "证据不足",
+    "different_function": "功能不同",
+    "duplicate_source": "重复来源线索",
+    "unknown": "未知分级",
+}
+
+
+def format_server_result(row: dict[str, Any], index: int) -> str:
+    grade = str(row.get("reuse_grade") or "unknown")
+    label = REUSE_GRADE_LABELS.get(grade, grade or "未知分级")
+    title = row.get("title") or row.get("summary") or row.get("case_title") or "未命名知识候选"
+    lines = [
+        f"{index}. [{label}] {title}",
+    ]
+    if row.get("summary") and row.get("summary") != title:
+        lines.append(f"   - 摘要: {row.get('summary')}")
+    if row.get("problem_summary"):
+        lines.append(f"   - 问题: {row.get('problem_summary')}")
+    if row.get("solution_summary"):
+        lines.append(f"   - 方案: {row.get('solution_summary')}")
+    if row.get("matched_channels"):
+        lines.append(f"   - 命中通道: {compact_list(row.get('matched_channels'), 6)}")
+    if row.get("matched_anchors"):
+        lines.append(f"   - 命中锚点: {compact_list(row.get('matched_anchors'), 6)}")
+    technical = [value for value in (row.get("case_id"), row.get("package_id"), row.get("id")) if value]
+    if technical:
+        lines.append(f"   - 技术标识: {compact_list(technical, 6)}")
+    return "\n".join(lines)
+
+
+def format_markdown(
+    root: Path | None,
+    q: str,
+    results: list[dict[str, Any]],
+    refresh_status: str | None,
+    *,
+    source: str = "local_jsonl_fallback",
+    search_mode: str = "local_jsonl",
+    fallback_reason: str = "",
+) -> str:
     lines = [
         "# 知识库搜索结果",
         "",
-        f"- root: {root}",
+        f"- source: {source}",
+        f"- search_mode: {search_mode}",
+        f"- root: {root or '(server)'}",
         f"- query: {q or '(empty)'}",
         f"- results: {len(results)}",
     ]
+    if fallback_reason:
+        lines.append(f"- fallback_reason: {fallback_reason}")
+        lines.append("- fallback 提示: 本地文本搜索，未经过服务端 hybrid 分级；不要把本地命中直接当作可复用结论。")
     if refresh_status:
         lines.append(f"- refresh: {refresh_status}")
     lines.append("")
@@ -1162,6 +1375,10 @@ def format_markdown(root: Path, q: str, results: list[dict[str, Any]], refresh_s
         return "\n".join(lines)
 
     for index, row in enumerate(results, start=1):
+        if row.get("source") == "server_hybrid":
+            lines.append(format_server_result(row, index))
+            lines.append("")
+            continue
         kind = row.get("kind")
         if kind == "case":
             lines.append(format_case(root, row, index))
@@ -1193,6 +1410,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--refresh", action="store_true", help="Run git pull --ff-only first when root is a clean Git worktree.")
     parser.add_argument("--include-synthetic", action="store_true", help="Include synthetic test data.")
     parser.add_argument("--no-record-usage", action="store_true", help="Do not write member-side search usage evidence.")
+    parser.add_argument("--source", choices=["auto", "server", "local"], default="auto", help="Search source: auto prefers server hybrid search, server forbids fallback, local uses JSONL only.")
+    parser.add_argument("--server-timeout", type=float, default=3.0, help="Server hybrid search timeout in seconds.")
     parser.add_argument("--reuse-decision", choices=REUSE_DECISIONS, help="Member-side use decision for this search.")
     parser.add_argument("--reuse-target", action="append", default=[], help="Matched case, variant, patch, or evidence id considered by this search. Repeatable.")
     parser.add_argument("--reuse-match", action="append", default=[], help="Why the matched knowledge may apply. Repeatable.")
@@ -1206,19 +1425,48 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     query = " ".join(args.query).strip()
-    root = find_root(args.root)
-    refresh_status = refresh_root(root) if args.refresh else None
-    rows = load_rows(root, include_archive=args.type in {"report", "event", "evidence"})
-    results = search(rows, query, args.type, max(args.limit, 1), args.include_synthetic)
-    record_search_usage(args, root, query, results)
+    root: Path | None = None
+    refresh_status = None
+    fallback_reason = ""
+    source = "server_hybrid"
+    search_mode = "hybrid"
+    results: list[dict[str, Any]] = []
+
+    if should_try_server(args):
+        try:
+            results, server_payload = fetch_server_hybrid_results(args, query)
+            search_mode = str(server_payload.get("search_mode") or "hybrid")
+        except Exception as exc:
+            fallback_reason = server_fallback_reason(exc)
+            if args.source == "server":
+                raise SystemExit(fallback_reason)
+            source = "local_jsonl_fallback"
+            search_mode = "local_jsonl"
+    else:
+        source = "local_jsonl_fallback"
+        search_mode = "local_jsonl"
+
+    if source == "local_jsonl_fallback":
+        root = find_root(args.root)
+        refresh_status = refresh_root(root) if args.refresh else None
+        rows = load_rows(root, include_archive=args.type in {"report", "event", "evidence"})
+        results = search(rows, query, args.type, max(args.limit, 1), args.include_synthetic)
+        for item in results:
+            item["source"] = "local_jsonl_fallback"
+            item["search_mode"] = "local_jsonl"
+
+    record_search_usage(args, root, query, results, source=source, search_mode=search_mode, fallback_reason=fallback_reason)
 
     if args.json:
         print(
             json.dumps(
                 {
-                    "root": str(root),
+                    "root": str(root) if root else "",
                     "query": query,
                     "type": args.type,
+                    "source": source,
+                    "search_mode": search_mode,
+                    "fallback_reason": fallback_reason,
                     "count": len(results),
                     "refresh": refresh_status,
                     "results": results,
@@ -1228,7 +1476,17 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
     else:
-        print(format_markdown(root, query, results, refresh_status))
+        print(
+            format_markdown(
+                root,
+                query,
+                results,
+                refresh_status,
+                source=source,
+                search_mode=search_mode,
+                fallback_reason=fallback_reason,
+            )
+        )
     return 0
 
 

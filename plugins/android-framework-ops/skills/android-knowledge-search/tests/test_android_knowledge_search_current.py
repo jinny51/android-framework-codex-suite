@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +15,20 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import android_knowledge_search as search
+
+
+class FakeHttpResponse:
+    def __init__(self, payload: dict):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self) -> bytes:
+        return json.dumps(self.payload, ensure_ascii=False).encode("utf-8")
 
 
 def write_json(path: Path, payload: dict) -> None:
@@ -288,6 +303,244 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         self.assertEqual(payload["reuse_decision"], "adapt")
         self.assertEqual(payload["targets"], ["case-power-key"])
         self.assertGreater(payload["result_count"], 0)
+
+    def test_main_prefers_server_hybrid_search_for_reusable_results(self):
+        temp = Path(tempfile.mkdtemp())
+        codex_home = temp / "codex-home"
+        out_dir = temp / "artifacts" / "android-knowledge-intake"
+        config_dir = codex_home / "report"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text(
+            f"""
+            default_profile = "member01"
+
+            [paths]
+            out_dir = "{out_dir.as_posix()}"
+
+            [profiles.member01]
+            member_alias = "member01"
+            member_name = "成员一"
+            """,
+            encoding="utf-8",
+        )
+        payload = {
+            "schema": "akbs-member-knowledge-search-v1",
+            "search_mode": "hybrid",
+            "results": [
+                {
+                    "title": "电源键策略复用",
+                    "summary": "已有同功能可复用实现",
+                    "reuse_grade": "reusable",
+                    "case_id": "case-power-key",
+                    "matched_channels": ["semantic", "symbol"],
+                    "matched_anchors": ["PowerManagerService", "电源键"],
+                }
+            ],
+        }
+        seen_headers = {}
+
+        def fake_urlopen(request, timeout=0):
+            seen_headers["user"] = request.get_header("X-akbs-user")
+            seen_headers["role"] = request.get_header("X-akbs-role")
+            return FakeHttpResponse(payload)
+
+        with patch.dict(
+            os.environ,
+            {
+                "CODEX_HOME": str(codex_home),
+                "CODEX_REPORT_PROFILE": "member01",
+                "CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL": "http://akbs.invalid/akbs/api/member/knowledge-search",
+            },
+        ):
+            stdout = io.StringIO()
+            with patch("urllib.request.urlopen", fake_urlopen), patch("sys.stdout", new=stdout):
+                code = search.main(["电源键", "PowerManagerService"])
+
+        self.assertEqual(code, 0)
+        text = stdout.getvalue()
+        self.assertIn("server_hybrid", text)
+        self.assertIn("可复用候选", text)
+        self.assertIn("电源键策略复用", text)
+        self.assertEqual(seen_headers["user"], "member01")
+        self.assertEqual(seen_headers["role"], "member")
+
+        records = list((out_dir / "search-usage").rglob("*.json"))
+        self.assertEqual(len(records), 1)
+        usage = json.loads(records[0].read_text(encoding="utf-8"))
+        self.assertEqual(usage["source"], "server_hybrid")
+        self.assertEqual(usage["search_mode"], "hybrid")
+        self.assertEqual(usage["results"][0]["reuse_grade"], "reusable")
+        self.assertEqual(usage["results"][0]["matched_channels"], ["semantic", "symbol"])
+        self.assertEqual(usage["results"][0]["matched_anchors"], ["PowerManagerService", "电源键"])
+
+    def test_server_reference_only_is_not_displayed_as_reusable(self):
+        payload = {
+            "schema": "akbs-member-knowledge-search-v1",
+            "search_mode": "hybrid",
+            "results": [
+                {
+                    "title": "宽泛代码锚点",
+                    "summary": "只有单个宽泛锚点命中",
+                    "reuse_grade": "reference_only",
+                    "case_id": "case-reference",
+                    "matched_channels": ["code_anchor"],
+                    "matched_anchors": ["SettingsProvider"],
+                }
+            ],
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "CODEX_HOME": str(Path(tempfile.mkdtemp()) / "codex-home"),
+                "CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL": "http://akbs.invalid/akbs/api/member/knowledge-search",
+            },
+        ):
+            stdout = io.StringIO()
+            with patch("urllib.request.urlopen", return_value=FakeHttpResponse(payload)), patch("sys.stdout", new=stdout):
+                code = search.main(["SettingsProvider"])
+
+        self.assertEqual(code, 0)
+        text = stdout.getvalue()
+        self.assertIn("仅参考", text)
+        self.assertNotIn("可复用候选", text)
+
+    def test_json_output_keeps_server_fields_and_source_metadata(self):
+        payload = {
+            "schema": "akbs-member-knowledge-search-v1",
+            "search_mode": "hybrid",
+            "results": [
+                {
+                    "title": "电源键策略复用",
+                    "reuse_grade": "reusable",
+                    "case_id": "case-power-key",
+                    "package_id": "pkg-power-key",
+                    "matched_channels": ["semantic"],
+                    "matched_anchors": ["PowerManagerService"],
+                }
+            ],
+        }
+
+        with patch.dict(
+            os.environ,
+            {
+                "CODEX_HOME": str(Path(tempfile.mkdtemp()) / "codex-home"),
+                "CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL": "http://akbs.invalid/akbs/api/member/knowledge-search",
+            },
+        ):
+            stdout = io.StringIO()
+            with patch("urllib.request.urlopen", return_value=FakeHttpResponse(payload)), patch("sys.stdout", new=stdout):
+                code = search.main(["--json", "电源键"])
+
+        self.assertEqual(code, 0)
+        output = json.loads(stdout.getvalue())
+        self.assertEqual(output["source"], "server_hybrid")
+        self.assertEqual(output["search_mode"], "hybrid")
+        self.assertEqual(output["fallback_reason"], "")
+        self.assertEqual(output["results"][0]["reuse_grade"], "reusable")
+        self.assertEqual(output["results"][0]["case_id"], "case-power-key")
+        self.assertEqual(output["results"][0]["package_id"], "pkg-power-key")
+
+    def test_member_config_without_server_fields_uses_default_endpoint_resolver(self):
+        temp = Path(tempfile.mkdtemp())
+        codex_home = temp / "codex-home"
+        config_dir = codex_home / "report"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text(
+            """
+            default_profile = "member01"
+
+            [profiles.member01]
+            member_alias = "member01"
+            member_name = "成员一"
+            role = "member"
+            """,
+            encoding="utf-8",
+        )
+        payload = {
+            "schema": "akbs-member-knowledge-search-v1",
+            "search_mode": "hybrid",
+            "results": [],
+        }
+        seen_url = {}
+
+        def fake_urlopen(request, timeout=0):
+            seen_url["value"] = request.full_url
+            return FakeHttpResponse(payload)
+
+        with patch.dict(os.environ, {"CODEX_HOME": str(codex_home), "CODEX_REPORT_PROFILE": "member01"}, clear=True):
+            stdout = io.StringIO()
+            with patch("urllib.request.urlopen", fake_urlopen), patch("sys.stdout", new=stdout):
+                code = search.main(["电源键"])
+
+        self.assertEqual(code, 0)
+        self.assertTrue(seen_url["value"].startswith("http://test35:8090/akbs/api/member/knowledge-search?"))
+        self.assertIn("q=", seen_url["value"])
+
+    def test_server_unavailable_falls_back_to_local_jsonl_and_records_reason(self):
+        root = self.make_root()
+        temp = Path(tempfile.mkdtemp())
+        codex_home = temp / "codex-home"
+        out_dir = temp / "artifacts" / "android-knowledge-intake"
+        config_dir = codex_home / "report"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.toml").write_text(
+            f"""
+            default_profile = "member01"
+
+            [paths]
+            out_dir = "{out_dir.as_posix()}"
+
+            [profiles.member01]
+            member_alias = "member01"
+            member_name = "成员一"
+            """,
+            encoding="utf-8",
+        )
+
+        with patch.dict(
+            os.environ,
+            {
+                "CODEX_HOME": str(codex_home),
+                "CODEX_REPORT_PROFILE": "member01",
+                "CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL": "http://akbs.invalid/akbs/api/member/knowledge-search",
+            },
+        ):
+            stdout = io.StringIO()
+            with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("offline")), patch("sys.stdout", new=stdout):
+                code = search.main(["--root", str(root), "电源键", "rk3576"])
+
+        self.assertEqual(code, 0)
+        text = stdout.getvalue()
+        self.assertIn("local_jsonl_fallback", text)
+        self.assertIn("本地文本搜索，未经过服务端 hybrid 分级", text)
+        records = list((out_dir / "search-usage").rglob("*.json"))
+        self.assertEqual(len(records), 1)
+        usage = json.loads(records[0].read_text(encoding="utf-8"))
+        self.assertEqual(usage["source"], "local_jsonl_fallback")
+        self.assertEqual(usage["search_mode"], "local_jsonl")
+        self.assertIn("offline", usage["fallback_reason"])
+
+    def test_server_unauthorized_falls_back_to_local_jsonl(self):
+        root = self.make_root()
+        temp = Path(tempfile.mkdtemp())
+        codex_home = temp / "codex-home"
+        with patch.dict(
+            os.environ,
+            {
+                "CODEX_HOME": str(codex_home),
+                "CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL": "http://akbs.invalid/akbs/api/member/knowledge-search",
+            },
+        ):
+            stdout = io.StringIO()
+            error = urllib.error.HTTPError("http://akbs.invalid", 401, "Unauthorized", None, None)
+            with patch("urllib.request.urlopen", side_effect=error), patch("sys.stdout", new=stdout):
+                code = search.main(["--root", str(root), "电源键"])
+
+        self.assertEqual(code, 0)
+        text = stdout.getvalue()
+        self.assertIn("local_jsonl_fallback", text)
+        self.assertIn("HTTP 401", text)
 
     def test_current_rebuild_case_and_variant_indexes_are_searchable(self):
         root = Path(tempfile.mkdtemp())

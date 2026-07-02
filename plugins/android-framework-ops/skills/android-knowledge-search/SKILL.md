@@ -9,6 +9,10 @@ Use this skill to search the team knowledge repository before starting new analy
 
 This skill does not submit reports, create patches, edit source, or decide correctness by itself. It returns prior facts so Codex can judge whether an existing case, variant, patch, symbol, or validation fact is relevant to the current requirement.
 
+Default search uses the AKBS member hybrid search endpoint when reachable. The request must carry `X-AKBS-User=<member_alias>` and `X-AKBS-Role=member`, and the endpoint address comes from the AKBS endpoint resolver defaults or `CODEX_REPORT_AKBS_ENDPOINT_*` admin/test overrides. Do not ask ordinary members to configure test35, server paths, submit commands, or a raw database repository path for search.
+
+If the server endpoint is unavailable, unauthorized, or times out, the script falls back to the local JSONL knowledge repository worktree and marks the result as `source=local_jsonl_fallback`. Treat fallback output as local text search that has not passed server hybrid grading.
+
 Each normal search writes a member-side search usage record under the intake artifact directory so later daily and patch packages can carry the pre-change knowledge use evidence. The record is development evidence only; it is not a curation decision.
 
 If a search result shows a recommended replacement case, treat it as curation guidance from the local knowledge loop: inspect the replacement before reusing the obsolete or contradicted case. The replacement hint is still evidence, not an automatic reuse decision.
@@ -24,7 +28,7 @@ python3 "scripts/android_knowledge_search.py" \
 Useful variants:
 
 ```bash
-# Search primary cases.
+# Search primary cases. Default `--source auto` prefers server hybrid search.
 python3 "scripts/android_knowledge_search.py" \
   "通知音量 SystemUI" --type case
 
@@ -40,6 +44,10 @@ python3 "scripts/android_knowledge_search.py" \
 python3 "scripts/android_knowledge_search.py" \
   "WindowManager display" --json
 
+# Force local JSONL fallback for offline work.
+python3 "scripts/android_knowledge_search.py" \
+  "PackageManager permission" --source local --root /path/to/knowledge-worktree
+
 # Record an explicit member-side use decision with the search.
 python3 "scripts/android_knowledge_search.py" \
   "电源键 rk3576" \
@@ -54,7 +62,7 @@ python3 "scripts/android_knowledge_search.py" \
 
 ## Source Selection
 
-The script searches the first valid knowledge repository root it can find:
+In `--source auto`, the script first tries the server hybrid endpoint. Local JSONL fallback searches the first valid knowledge repository root it can find:
 
 1. `--root <path>`
 2. `CODEX_KNOWLEDGE_ROOT`

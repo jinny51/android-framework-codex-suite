@@ -6,7 +6,7 @@
 
 ## 用途
 
-该 skill 默认搜索知识库仓库里的案例、平台实现、补丁、修改文件、检索锚点（文件/类名/属性/资源 key）和可复用验证证据。
+该 skill 默认优先调用 AKBS 成员只读 hybrid 搜索接口，搜索知识库里的案例、平台实现、补丁、修改文件、检索锚点（文件/类名/属性/资源 key）和可复用验证证据。服务端不可用、未授权或超时时，会回退到本地知识库 JSONL 搜索，并明确标注 `source=local_jsonl_fallback`。
 
 它的价值是让成员或其他 skill 在重新分析、重新开发之前，先查团队是否已经保存过类似功能、补丁或问题处理记录。
 
@@ -29,6 +29,8 @@ python3 "scripts/android_knowledge_search.py" \
   "电源键 frameworks/base" \
   --limit 8
 ```
+
+默认 `--source auto` 会优先使用服务端 hybrid search；请求带 `X-AKBS-User=<member_alias>` 和 `X-AKBS-Role=member`。普通成员配置不需要写 `test35`、服务器路径或数据库仓库路径，endpoint 由 AKBS endpoint resolver 默认值提供；管理员/测试 override 可使用受控 `CODEX_REPORT_AKBS_ENDPOINT_*` 环境变量。
 
 只搜补丁：
 
@@ -72,9 +74,20 @@ python3 "scripts/android_knowledge_search.py" \
   --root /path/to/knowledge-worktree
 ```
 
-未显式指定 `--root` 时，脚本会优先使用 `CODEX_KNOWLEDGE_ROOT`、`CODEX_KNOWLEDGE_REPO_WORKTREE`、报告配置里的当前 profile `knowledge_repo_worktree`，再尝试当前目录父级和通用 `worktrees/knowledge` 路径。成员端应通过自己的 `config.toml` 或环境变量指向知识库仓库副本，不依赖维护者本机路径。
+离线强制本地 JSONL 搜索：
+
+```bash
+python3 "scripts/android_knowledge_search.py" \
+  "WindowManager display" \
+  --source local \
+  --root /path/to/knowledge-worktree
+```
+
+本地 fallback 或显式 `--source local` 时，脚本会优先使用 `--root`、`CODEX_KNOWLEDGE_ROOT`、`CODEX_KNOWLEDGE_REPO_WORKTREE`、报告配置里的当前 profile `knowledge_repo_worktree`，再尝试当前目录父级和通用 `worktrees/knowledge` 路径。成员端应通过自己的 `config.toml` 或环境变量指向知识库仓库副本，不依赖维护者本机路径。
 
 它不会自动读取数据库仓库或成员 incoming 工作区。管理员要排查数据库仓库内部数据时，必须显式传 `--root`。
+
+服务端结果按 `reuse_grade` 展示：`reusable` 显示“可复用候选”，`reference_only` 显示“仅参考”，`insufficient_evidence` 显示“证据不足”，`different_function` 显示“功能不同”，`duplicate_source` 显示“重复来源线索”。本地 fallback 会提示“本地文本搜索，未经过服务端 hybrid 分级”，不能直接当作服务端可复用结论。
 
 ## 搜索使用证据
 
@@ -85,6 +98,8 @@ $CODEX_HOME/artifacts/android-knowledge-intake/search-usage/<YYYYMMDD>/*.json
 ```
 
 如果报告配置里设置了 `out_dir`，会写入该目录下的 `search-usage/`。日报包（daily report package）和补丁包（patch package）会读取这些记录，并生成 `materials/evidence/search_before_change.json`。
+
+搜索使用证据会记录 `source`、`search_mode`、`reuse_grade`、`matched_channels`、`matched_anchors`，fallback 时还会记录 `fallback_reason`。
 
 明确记录使用决策：
 
