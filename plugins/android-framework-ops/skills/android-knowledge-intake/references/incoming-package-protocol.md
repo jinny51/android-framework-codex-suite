@@ -298,7 +298,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.63"
+    "plugin_version": "1.0.64"
   }
 }
 ```
@@ -306,6 +306,32 @@ Manifest excerpt:
 `package_status` must match `materials/variant.json` `package_status`.
 
 `validated` requires `verification_result.payload.result = PASS`.
+
+## Source Version Compatibility
+
+Generation-time plugin freshness and historical package compatibility are separate rules.
+
+Member-side generation or upload must stop when `materials/evidence/source.json` records `plugin_version_check.blocking=true` or `plugin_version_check.status=SESSION_CACHE_STALE`. A stale Codex session cannot be treated as a valid package generator.
+
+Admin-side processing of older incoming packages must not require `plugin_version` or `skill_version` to equal the latest plugin version at processing time. It should call the shared deterministic rules layer:
+
+```python
+source_version_compatibility_matrix()
+source_version_errors(source_payload, required_capabilities=[...])
+```
+
+Current capability minima:
+
+```text
+source_version_evidence = 1.0.60
+report_view_v1 = 1.0.61
+patch_view_v1 = 1.0.62
+patch_ai_facts_v1 = 1.0.62
+split_report_skills = 1.0.63
+report_view_v2 = 1.0.63
+```
+
+The required capabilities come from package contents, not from the current plugin release. For example, a package that only needs source version evidence can remain compatible at `1.0.60`; a patch package with `patch_view.json` and `patch_ai_facts.json` requires `1.0.62`; a package relying on split report skills or report view v2 requires `1.0.63`.
 
 Codex normal development should carry pre-change knowledge search evidence in `materials/evidence/search_before_change.json`. If no reusable knowledge was found, record the explicit search result as `not_found` instead of omitting the evidence. When pre-change search did not really happen, `validated` still means the verification evidence passed; preserve `payload.searched = false`, warn locally, and let admin-side curation perform post-change overlap check without awarding search-loop reuse score. Manual, external, historical, mixed, or unknown implementation origin must not fabricate pre-change search and can still carry verification and patch facts for later admin-side curation.
 

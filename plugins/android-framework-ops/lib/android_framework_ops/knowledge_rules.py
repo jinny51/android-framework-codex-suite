@@ -10,6 +10,33 @@ from typing import Any
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
+SOURCE_VERSION_COMPATIBILITY_MATRIX = {
+    "source_version_evidence": {
+        "min_plugin_version": "1.0.60",
+        "description": "source.json records plugin, installed, remote, skill cache, and gate check versions",
+    },
+    "report_view_v1": {
+        "min_plugin_version": "1.0.61",
+        "description": "daily and weekly packages include reports/*.md plus materials/display/report_view.json",
+    },
+    "patch_view_v1": {
+        "min_plugin_version": "1.0.62",
+        "description": "patch packages include human-visible patch view fields",
+    },
+    "patch_ai_facts_v1": {
+        "min_plugin_version": "1.0.62",
+        "description": "patch packages include AI-usable patch facts evidence",
+    },
+    "split_report_skills": {
+        "min_plugin_version": "1.0.63",
+        "description": "daily, weekly, and patch intake are exposed as separate member skills",
+    },
+    "report_view_v2": {
+        "min_plugin_version": "1.0.63",
+        "description": "daily and weekly report_view contains the v2 UI read model",
+    },
+}
+DEFAULT_SOURCE_VERSION_CAPABILITIES = ("source_version_evidence",)
 VALID_FRAMEWORK_PLATFORMS = {"mtk", "rk", "unisoc"}
 PROJECT_PLATFORM_CODES = {
     "mtk": "M",
@@ -560,26 +587,62 @@ def current_plugin_version() -> str:
     return str(payload.get("version") or "").strip()
 
 
-def source_version_errors(payload: dict[str, Any] | None, *, expected_version: str | None = None) -> list[str]:
+def source_version_compatibility_matrix() -> dict[str, dict[str, str]]:
+    return {key: dict(value) for key, value in SOURCE_VERSION_COMPATIBILITY_MATRIX.items()}
+
+
+def _version_parts(version: str) -> tuple[int, int, int, int]:
+    normalized = str(version or "").strip()
+    core = re.split(r"[-+]", normalized, maxsplit=1)[0]
+    parts = [int(part) for part in core.split(".") if part.isdigit()]
+    while len(parts) < 4:
+        parts.append(0)
+    return (parts[0], parts[1], parts[2], parts[3])
+
+
+def _version_at_least(version: str, minimum: str) -> bool:
+    return _version_parts(version) >= _version_parts(minimum)
+
+
+def source_version_errors(
+    payload: dict[str, Any] | None,
+    *,
+    expected_version: str | None = None,
+    required_capabilities: list[str] | tuple[str, ...] | None = None,
+) -> list[str]:
     source = payload if isinstance(payload, dict) else {}
     plugin_name = str(source.get("plugin_name") or "").strip()
     plugin_version = str(source.get("plugin_version") or "").strip()
     skill_version = str(source.get("skill_version") or "").strip()
-    current_version = str(expected_version if expected_version is not None else current_plugin_version()).strip()
     errors: list[str] = []
     if plugin_name != "android-framework-ops":
         errors.append("source evidence plugin_name must be android-framework-ops")
-    if not SEMVER_RE.fullmatch(plugin_version):
+    plugin_version_valid = bool(SEMVER_RE.fullmatch(plugin_version))
+    skill_version_valid = bool(SEMVER_RE.fullmatch(skill_version))
+    if not plugin_version_valid:
         errors.append("source evidence plugin_version is required for strict new uploads")
-    if not SEMVER_RE.fullmatch(skill_version):
+    if not skill_version_valid:
         errors.append("source evidence skill_version is required for strict new uploads")
-    if current_version:
-        if plugin_version and plugin_version != current_version:
-            errors.append(f"source evidence plugin_version must match current plugin version {current_version}")
-        if skill_version and skill_version != current_version:
-            errors.append(f"source evidence skill_version must match current plugin version {current_version}")
-    else:
-        errors.append("current plugin version is unavailable; server upload entry cannot verify latest plugin")
+    capabilities = tuple(required_capabilities or DEFAULT_SOURCE_VERSION_CAPABILITIES)
+    matrix = SOURCE_VERSION_COMPATIBILITY_MATRIX
+    for capability in capabilities:
+        spec = matrix.get(str(capability or "").strip())
+        if spec is None:
+            errors.append(f"source evidence required capability is unknown: {capability}")
+            continue
+        minimum = spec["min_plugin_version"]
+        if plugin_version_valid and not _version_at_least(plugin_version, minimum):
+            errors.append(
+                f"source evidence plugin_version {plugin_version} does not satisfy {capability} minimum {minimum}"
+            )
+        if skill_version_valid and not _version_at_least(skill_version, minimum):
+            errors.append(
+                f"source evidence skill_version {skill_version} does not satisfy {capability} minimum {minimum}"
+            )
+    version_check = source.get("plugin_version_check") if isinstance(source.get("plugin_version_check"), dict) else {}
+    status = str(version_check.get("status") or version_check.get("result") or "").strip()
+    if status == "SESSION_CACHE_STALE" or bool(version_check.get("blocking")):
+        errors.append(f"source evidence plugin_version_check is blocking: {status or 'UNKNOWN'}")
     return errors
 
 

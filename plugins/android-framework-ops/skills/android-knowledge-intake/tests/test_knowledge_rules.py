@@ -125,30 +125,99 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertFalse(codex_closed["member_can_supplement"])
         self.assertFalse(codex_closed["requires_post_change_overlap_check"])
 
-    def test_source_version_contract_requires_current_plugin_version(self) -> None:
-        from android_framework_ops.knowledge_rules import current_plugin_version, source_version_errors
+    def test_source_version_contract_uses_compatibility_matrix_not_current_version(self) -> None:
+        from android_framework_ops.knowledge_rules import (
+            current_plugin_version,
+            source_version_compatibility_matrix,
+            source_version_errors,
+        )
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.63")
+        self.assertEqual(current, "1.0.64")
+        matrix = source_version_compatibility_matrix()
+        self.assertEqual(matrix["source_version_evidence"]["min_plugin_version"], "1.0.60")
+        self.assertEqual(matrix["report_view_v1"]["min_plugin_version"], "1.0.61")
+        self.assertEqual(matrix["patch_view_v1"]["min_plugin_version"], "1.0.62")
+        self.assertEqual(matrix["report_view_v2"]["min_plugin_version"], "1.0.63")
+
         self.assertEqual(
             source_version_errors(
                 {
                     "plugin_name": "android-framework-ops",
-                    "plugin_version": current,
-                    "skill_version": current,
-                }
+                    "plugin_version": "1.0.60",
+                    "skill_version": "1.0.60",
+                },
+                expected_version=current,
+                required_capabilities=["source_version_evidence"],
             ),
             [],
         )
-        stale_errors = source_version_errors(
+        self.assertEqual(
+            source_version_errors(
+                {
+                    "plugin_name": "android-framework-ops",
+                    "plugin_version": "1.0.61",
+                    "skill_version": "1.0.61",
+                },
+                expected_version=current,
+                required_capabilities=["report_view_v1"],
+            ),
+            [],
+        )
+        self.assertEqual(
+            source_version_errors(
+                {
+                    "plugin_name": "android-framework-ops",
+                    "plugin_version": "1.0.62",
+                    "skill_version": "1.0.62",
+                },
+                expected_version=current,
+                required_capabilities=["patch_view_v1", "patch_ai_facts_v1"],
+            ),
+            [],
+        )
+        self.assertEqual(
+            source_version_errors(
+                {
+                    "plugin_name": "android-framework-ops",
+                    "plugin_version": "1.0.63",
+                    "skill_version": "1.0.63",
+                },
+                expected_version=current,
+                required_capabilities=["split_report_skills", "report_view_v2"],
+            ),
+            [],
+        )
+
+        incompatible_errors = source_version_errors(
             {
                 "plugin_name": "android-framework-ops",
-                "plugin_version": "1.0.43",
-                "skill_version": "1.0.43",
+                "plugin_version": "1.0.60",
+                "skill_version": "1.0.60",
+            },
+            expected_version=current,
+            required_capabilities=["patch_view_v1"],
+        )
+        self.assertIn("source evidence plugin_version 1.0.60 does not satisfy patch_view_v1 minimum 1.0.62", incompatible_errors)
+        self.assertIn("source evidence skill_version 1.0.60 does not satisfy patch_view_v1 minimum 1.0.62", incompatible_errors)
+
+    def test_source_version_contract_blocks_session_cache_stale_evidence(self) -> None:
+        from android_framework_ops.knowledge_rules import current_plugin_version, source_version_errors
+
+        current = current_plugin_version()
+        errors = source_version_errors(
+            {
+                "plugin_name": "android-framework-ops",
+                "plugin_version": current,
+                "skill_version": current,
+                "plugin_version_check": {
+                    "status": "SESSION_CACHE_STALE",
+                    "blocking": True,
+                    "message": "当前会话仍在使用旧技能缓存。",
+                },
             }
         )
-        self.assertIn(f"source evidence plugin_version must match current plugin version {current}", stale_errors)
-        self.assertIn(f"source evidence skill_version must match current plugin version {current}", stale_errors)
+        self.assertIn("source evidence plugin_version_check is blocking: SESSION_CACHE_STALE", errors)
 
     def test_supplement_field_policy_contract(self) -> None:
         from android_framework_ops.knowledge_rules import supplement_field_policy

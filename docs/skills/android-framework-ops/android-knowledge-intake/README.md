@@ -36,6 +36,8 @@
 
 生成日报包、周报包、补丁包或补证包之前，技能会先确认运行插件、已安装插件缓存、会话技能缓存和远端插件版本兼容；无法确认最新时停止生成，避免旧规则继续产出材料。生成出的上传包会在 `materials/evidence/source.json` 写入 `plugin_name`、当前 `plugin_version`、当前 `skill_version`、`plugin_installation`、可用的 `plugin_commit`、`installed_plugin_version`、`remote_plugin_version`、`skill_cache_version` 和 `plugin_version_check` 检查结果；补丁包还会同步写入实现来源（implementation origin），例如 `codex`、`manual`、`external` 或 `mixed`。服务器上传入口只做轻量接收并写入上传分支（intake branch）；管理端本地推广入口用这些字段区分插件未更新、会话缓存未刷新、旧包不再兼容或版本证据缺失。
 
+生成前门禁仍按最新插件和当前会话缓存判断；处理历史上传包时按共享规则层的 source version compatibility matrix 判断生成时能力，不要求旧包的 `plugin_version` / `skill_version` 等于处理时最新插件版本。显式 `SESSION_CACHE_STALE` 或 `plugin_version_check.blocking=true` 仍表示当次生成/上传应被阻止。
+
 生成出的上传包还会做基础文本质量和时间检查。`summary`、补证原因、案例标题、问题和方案摘要不能包含连续问号乱码（garbled question marks）；如果出现这类文本，说明生成阶段已经损坏，必须重新生成，不能上传。包的 `run_id` 也不能晚于服务器当前时间；如果服务器提示未来上传时间（future upload timestamp），先同步本机时间并更新整个插件（plugin update），再重新生成和上传。
 
 日报包（daily report package）和补丁包（patch package）会携带成员侧知识搜索使用证据（search usage evidence）。Codex 正常开发流程应在开发前执行开发前知识搜索（pre-change knowledge search）；没有找到可用知识时也要记录未命中（not_found）。如果命中了知识搜索候选，local-check 会要求把未知（unknown）闭合为直接复用（reuse）、适配复用（adapt）、仅作参考（reference_only）、不适用（not_applicable）或未命中（not_found）。如果开发前搜索事实没有发生，成员上传技能会如实保留 `searched=false` 并给出警告，不要求成员补造搜索；后续由管理端本地技能执行沉淀前重叠检索（post-change overlap check），且不获得搜索闭环加分。手动实现（manual implementation）、外部实现、历史材料、混合实现或未知来源也不能事后伪造开发前搜索。捕获包（patch capture package）里只有未知（unknown）时，只能用和当前功能锚点匹配的当天搜索记录补齐；同一成员同一天并不足以关联。这些值只说明开发时如何使用搜索结果，不是沉淀结论（curation decision）。
