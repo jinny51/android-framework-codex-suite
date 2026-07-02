@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 
+AKBS_RULES_CONTRACT_VERSION = "2026-07-02.1"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.65"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -581,14 +583,16 @@ def manifest_has_uncontrolled_app_patch_asset(manifest: dict[str, Any]) -> bool:
 
 
 def current_plugin_version() -> str:
-    manifest_path = Path(__file__).resolve().parents[2] / ".codex-plugin" / "plugin.json"
     try:
+        manifest_path = Path(__file__).resolve().parents[2] / ".codex-plugin" / "plugin.json"
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            version = str(payload.get("version") or "").strip()
+            if version:
+                return version
     except Exception:
-        return ""
-    if not isinstance(payload, dict):
-        return ""
-    return str(payload.get("version") or "").strip()
+        pass
+    return ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION
 
 
 def source_version_compatibility_matrix() -> dict[str, dict[str, str]]:

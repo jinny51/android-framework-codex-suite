@@ -127,6 +127,7 @@ class KnowledgeRulesTest(unittest.TestCase):
 
     def test_source_version_contract_uses_compatibility_matrix_not_current_version(self) -> None:
         from android_framework_ops.knowledge_rules import (
+            AKBS_RULES_CONTRACT_VERSION,
             current_plugin_version,
             source_version_compatibility_matrix,
             source_version_errors,
@@ -134,6 +135,7 @@ class KnowledgeRulesTest(unittest.TestCase):
 
         current = current_plugin_version()
         self.assertEqual(current, "1.0.65")
+        self.assertEqual(AKBS_RULES_CONTRACT_VERSION, "2026-07-02.1")
         matrix = source_version_compatibility_matrix()
         self.assertEqual(matrix["source_version_evidence"]["min_plugin_version"], "1.0.60")
         self.assertEqual(matrix["report_view_v1"]["min_plugin_version"], "1.0.61")
