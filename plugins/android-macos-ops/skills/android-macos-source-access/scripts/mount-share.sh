@@ -96,7 +96,7 @@ akbs_root="$("$script_dir/resolve-akbs-root.sh" | awk -F= '/^AKBS_ROOT=/{print $
 samba_root="$("$script_dir/resolve-samba-root.sh" | awk -F= '/^SAMBA_SOURCE_ROOT=/{print $2}')"
 case "$mount_point" in
   "$akbs_root"|"$akbs_root"/*)
-    die 2 "SMB/Samba 源码不能挂到 AKBS_ROOT 下: $mount_point；请使用 Samba source root: $samba_root"
+    die 2 "SMB/Samba 源码不能挂到 AKBS_ROOT 下: ${mount_point}；请使用 Samba source root: ${samba_root}"
     ;;
 esac
 

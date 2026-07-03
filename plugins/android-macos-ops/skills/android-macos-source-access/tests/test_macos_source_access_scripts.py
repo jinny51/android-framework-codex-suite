@@ -82,6 +82,9 @@ def test_mount_share_save_credentials_uses_keychain_store(tmp_path: Path) -> Non
     assert "MOUNT_STATUS=mounted" in result.stdout
     assert "WARN: Keychain 保存失败" not in result.stderr
     assert "add-generic-password" in security_log.read_text(encoding="utf-8")
+    env_files = list((tmp_path / "credentials").glob("*.keychain.env"))
+    assert len(env_files) == 1
+    assert "SMB_PASSWORD_STATE=stored" in env_files[0].read_text(encoding="utf-8")
 
 
 def test_register_project_and_restore_mounts_use_same_json_registry(tmp_path: Path) -> None:
@@ -170,3 +173,24 @@ def test_mount_share_rejects_mounting_sources_under_akbs_root(tmp_path: Path) ->
 
     assert result.returncode == 2
     assert "不能挂到 AKBS_ROOT 下" in result.stderr
+    assert "unbound variable" not in result.stderr
+
+
+def test_mount_share_akbs_root_error_is_bash32_safe(tmp_path: Path) -> None:
+    script = f"""
+set -eu
+mount_point={str(tmp_path / "AKBS" / "source")!r}
+akbs_root={str(tmp_path / "AKBS")!r}
+samba_root={str(tmp_path / "Samba")!r}
+die() {{ echo "ERROR: $*" >&2; exit "$1"; }}
+case "$mount_point" in
+  "$akbs_root"|"$akbs_root"/*)
+    die 2 "SMB/Samba 源码不能挂到 AKBS_ROOT 下: ${{mount_point}}；请使用 Samba source root: ${{samba_root}}"
+    ;;
+esac
+"""
+    result = subprocess.run(["bash", "-c", script], check=False, text=True, capture_output=True)
+
+    assert result.returncode == 2
+    assert "不能挂到 AKBS_ROOT 下" in result.stderr
+    assert "unbound variable" not in result.stderr
