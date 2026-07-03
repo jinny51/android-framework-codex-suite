@@ -10,6 +10,7 @@ count_skills() {
 
 android_count="$(count_skills android-framework-ops | tr -d ' ')"
 windows_count="$(count_skills android-framework-windows-ops | tr -d ' ')"
+macos_count="$(count_skills android-macos-ops | tr -d ' ')"
 workspace_count="$(count_skills codex-workspace-care | tr -d ' ')"
 
 if [[ "$android_count" != "10" ]]; then
@@ -22,6 +23,11 @@ if [[ "$windows_count" != "3" ]]; then
   exit 1
 fi
 
+if [[ "$macos_count" != "2" ]]; then
+  echo "android-macos-ops should contain 2 skills, found $macos_count" >&2
+  exit 1
+fi
+
 if [[ "$workspace_count" != "2" ]]; then
   echo "codex-workspace-care should contain 2 skills, found $workspace_count" >&2
   exit 1
@@ -29,6 +35,11 @@ fi
 
 if find "$repo_root/plugins/android-framework-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-windows-*' | grep -q .; then
   echo "Windows-native skills must not be inside android-framework-ops" >&2
+  exit 1
+fi
+
+if find "$repo_root/plugins/android-framework-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-macos-*' | grep -q .; then
+  echo "macOS-native skills must not be inside android-framework-ops" >&2
   exit 1
 fi
 

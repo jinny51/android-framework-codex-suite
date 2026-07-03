@@ -4,7 +4,7 @@ Android Framework Ops 是本套件的 WSL 主链路核心工程插件。它负�
 
 这个插件只提供中立工程能力，不内置个人代码风格，不替代项目本地规范，也不强制接管 review workflow。
 
-Windows 原生 Codex 的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力不放在本核心插件中；需要时额外安装 `android-framework-windows-ops`。
+Windows 原生 Codex 的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力不放在本核心插件中；需要时额外安装 `android-framework-windows-ops`。macOS 原生 Codex 的 SMB、Keychain 凭据引用和本地 `adb` 兼容能力也不放在本核心插件中；需要时额外安装 `android-macos-ops`。
 
 ## 包含的 skill
 
@@ -46,6 +46,7 @@ Windows 原生 Codex 的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力�
 
 - 个人代码风格、项目本地规范、review 口径由用户提供的 skill 或项目 `AGENTS.md` 负责。
 - 本插件只补 Android Framework 工程证据链和远程构建链路。
+- Windows 和 macOS 原生源码接入、平台挂载、产物本地推送属于可选平台层；不要把平台层实现复制进本核心插件。
 - 当个人规范和本插件流程都适用时，Codex 应同时满足个人规范，并保留本插件的源码证据、构建证据、设备验证证据和风险说明。
 - 不要把 `jinny-android-practices` 当成本插件的硬依赖；它是可选实践层。
 
