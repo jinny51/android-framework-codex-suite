@@ -25,6 +25,23 @@ Current repositories are case/variant first. `case-index.jsonl` and `variant-ind
 
 Search must not automatically use the database repository or member incoming worktree. It may inspect those only when an administrator passes an explicit `--root`.
 
+Merge confirmation review is a separate member API path and must remain server-backed. It reads:
+
+```text
+GET /akbs/api/member/me/merge-confirmations
+GET /akbs/api/member/me/merge-confirmations/{review_id_or_package_key}
+GET /akbs/api/member/me/merge-confirmations/{review_id_or_package_key}/target
+GET /akbs/api/member/me/merge-confirmations/{review_id_or_package_key}/compare
+```
+
+These reads do not fall back to local JSONL and must not fabricate merge basis when the API is unavailable. Dispute submission is the only write action and requires an explicit send command:
+
+```text
+POST /akbs/api/member/me/merge-confirmations/{review_id_or_package_key}/dispute
+```
+
+Read-only analysis must not call the dispute endpoint.
+
 When `search-docs.jsonl` includes replacement fields, case results must preserve and display them:
 
 ```text
@@ -107,6 +124,19 @@ The CLI must support:
 ```text
 android_knowledge_search.py <query> [--root PATH] [--type all|case|variant|patch|report|symbol|event|evidence] [--limit N] [--json] [--refresh]
 ```
+
+The same script also supports merge confirmation review:
+
+```text
+android_knowledge_search.py --merge-confirmation list
+android_knowledge_search.py --merge-confirmation detail --merge-confirmation-id <review_id_or_package_key>
+android_knowledge_search.py --merge-confirmation target --merge-confirmation-id <review_id_or_package_key>
+android_knowledge_search.py --merge-confirmation compare --merge-confirmation-id <review_id_or_package_key>
+android_knowledge_search.py --merge-confirmation analyze --merge-confirmation-id <review_id_or_package_key>
+android_knowledge_search.py --merge-confirmation dispute --merge-confirmation-id <review_id_or_package_key> --send-dispute --dispute-reason <reason>
+```
+
+`analyze` output must separate human summary from Codex evidence and include target knowledge, merge basis, matched anchors, counter evidence, recommendation, and a dispute reason draft when the backend says dispute is allowed.
 
 Full type filter:
 

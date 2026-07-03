@@ -13,6 +13,8 @@ Default search uses the AKBS member hybrid search endpoint when reachable. The r
 
 If the server endpoint is unavailable, unauthorized, or times out, the script falls back to the local JSONL knowledge repository worktree and marks the result as `source=local_jsonl_fallback`. Treat fallback output as local text search that has not passed server hybrid grading.
 
+For merge confirmations, this skill can read the member-only AKBS merge confirmation API: list, detail, target knowledge, compare, and a Codex analysis summary. These actions are read-only. It must not submit a merge dispute unless the user explicitly asks to send an objection and the command includes `--merge-confirmation dispute --send-dispute` plus a reason or assessment.
+
 Each normal search writes a member-side search usage record under the intake artifact directory so later daily and patch packages can carry the pre-change knowledge use evidence. The record is development evidence only; it is not a curation decision.
 
 If a search result shows a recommended replacement case, treat it as curation guidance from the local knowledge loop: inspect the replacement before reusing the obsolete or contradicted case. The replacement hint is still evidence, not an automatic reuse decision.
@@ -58,6 +60,22 @@ python3 "scripts/android_knowledge_search.py" \
 # Use an explicit mounted or cloned knowledge repository root.
 python3 "scripts/android_knowledge_search.py" \
   "PackageManager permission" --root /path/to/knowledge-worktree
+
+# Review pending merge confirmations without sending anything.
+python3 "scripts/android_knowledge_search.py" \
+  --merge-confirmation list
+
+# Generate a human-readable and Codex-evidence merge analysis.
+python3 "scripts/android_knowledge_search.py" \
+  --merge-confirmation analyze \
+  --merge-confirmation-id review-20260703-member-patch
+
+# Send a dispute only after the member explicitly asks for it.
+python3 "scripts/android_knowledge_search.py" \
+  --merge-confirmation dispute \
+  --merge-confirmation-id review-20260703-member-patch \
+  --send-dispute \
+  --dispute-reason "目标知识没有覆盖当前补丁的功能目标"
 ```
 
 ## Source Selection
