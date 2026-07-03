@@ -88,7 +88,12 @@ keychain_env_set() {
   local file="$1" key="$2" value="$3"
   if [ -f "$file" ]; then
     if grep -q "^${key}=" "$file"; then
-      sed -i '' "s|^${key}=.*|${key}=${value}|" "$file"
+      tmp_file="${file}.tmp.$$"
+      awk -v key="$key" -v value="$value" '
+        index($0, key "=") == 1 { print key "=" value; next }
+        { print }
+      ' "$file" > "$tmp_file"
+      mv "$tmp_file" "$file"
     else
       printf "\n%s=%s\n" "$key" "$value" >> "$file"
     fi

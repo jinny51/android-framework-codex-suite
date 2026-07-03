@@ -1,6 +1,6 @@
 # Android macOS Ops
 
-Android macOS Ops 是可选 macOS 原生兼容插件。它用于 Codex 运行在 macOS 原生环境、需要通过 macOS SMB 挂载 Android 服务器源码、用 Keychain 保存凭据引用，并用本地 `adb` 推送产物的场景。
+Android macOS Ops 是可选 macOS 原生兼容插件。它用于 Codex 运行在 macOS 原生环境、需要通过 macOS SMB/Samba 访问 Android 服务器源码、优先复用 Keychain 中已有凭据，并用本地 `adb` 推送产物的场景。
 
 团队默认主链路仍是 WSL 版 [android-framework-ops](../android-framework-ops/README.md)。只有确实需要 macOS 原生 Codex 时，才额外安装本插件。
 
@@ -16,6 +16,7 @@ Android macOS Ops 是可选 macOS 原生兼容插件。它用于 Codex 运行在
 ## 使用边界
 
 - 不要把 macOS SMB 挂载路径当作权威 Android 源码操作路径。源码搜索、修改、`git`、`repo` 和构建都必须在远程 Linux 源码树上执行。
+- `/Users/jinny/Work/AKBS` 是 AKBS 系统根目录，`/Users/jinny/Work/Samba` 是 SMB/Samba 源码挂载根目录；不要把源码 share 挂到 AKBS 根目录下面。
 - 本插件是 `android-framework-ops` 的可选补充，不是团队默认主链路。
 - WSL 环境不要使用本插件；使用 `android-wsl-source-access`、`android-remote-channel` 和 `android-wsl-remote-build-deploy`。
 - Windows 原生环境不要使用本插件；使用 `android-framework-windows-ops`。

@@ -14,7 +14,7 @@ usage() {
 
 选项:
   --share URL            Samba 地址，如 //192.168.100.23/unisoc。必需。
-  --mount-point PATH     本地挂载目录。不存在则自动创建。必需。
+  --mount-point PATH     本地挂载目录。不存在则自动创建。必需。应位于 Samba source root 下。
   --user USER            Samba 用户名。除非 --guest，否则必需。
   --password-env NAME    Samba 密码所在环境变量名。默认: SAMBA_PASSWORD。
   --guest                无凭据挂载（匿名/游客）。
@@ -91,6 +91,15 @@ if [ "$use_keychain" -eq 1 ] || [ "$save_creds" -eq 1 ]; then
   [ -n "$server" ] || die 2 "--keychain/--save-credentials 需要 --server"
 fi
 
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+akbs_root="$("$script_dir/resolve-akbs-root.sh" | awk -F= '/^AKBS_ROOT=/{print $2}')"
+samba_root="$("$script_dir/resolve-samba-root.sh" | awk -F= '/^SAMBA_SOURCE_ROOT=/{print $2}')"
+case "$mount_point" in
+  "$akbs_root"|"$akbs_root"/*)
+    die 2 "SMB/Samba 源码不能挂到 AKBS_ROOT 下: $mount_point；请使用 Samba source root: $samba_root"
+    ;;
+esac
+
 # 检查是否已挂载
 if mount | grep -q " on $mount_point (" 2>/dev/null; then
   echo "MOUNT_POINT=$mount_point"
@@ -117,8 +126,7 @@ if [ "$guest" -ne 1 ]; then
   password="${!password_env-}"
 
   # 优先级 2: Keychain
-  if [ -z "$password" ] && [ "$use_keychain" -eq 1 ]; then
-    script_dir="$(cd "$(dirname "$0")" && pwd)"
+  if [ -z "$password" ] && { [ "$use_keychain" -eq 1 ] || { [ -n "$remote_user" ] && [ -n "$server" ]; }; }; then
     # shellcheck disable=SC1091
     source "$script_dir/_keychain_helpers.sh"
     password="$(credential_read "smb" "$remote_user" "$server")"
@@ -169,15 +177,13 @@ rm -f /tmp/mount-share.err
 
 # 挂载成功，保存凭据（如果 --save-credentials）
 if [ "$save_creds" -eq 1 ] && [ "$guest" -ne 1 ] && [ -n "$remote_user" ] && [ -n "$server" ]; then
-  script_dir="$(cd "$(dirname "$0")" && pwd)"
   # shellcheck disable=SC1091
   source "$script_dir/_keychain_helpers.sh"
   export CODEX_TARGET_PASSWORD="$password"
-  if ! "$script_dir/save-credentials.sh" \
+  if ! "$script_dir/keychain-store.sh" \
     --role smb \
     --remote-user "$remote_user" \
-    --server "$server" \
-    --verified 2>/dev/null; then
+    --server "$server" 2>/dev/null; then
     echo "WARN: Keychain 保存失败（挂载已成功）" >&2
   fi
   unset CODEX_TARGET_PASSWORD

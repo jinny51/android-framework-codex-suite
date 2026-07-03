@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# 从本地 registry + Keychain 恢复所有已记录的项目挂载。
+# 从本地 JSON registry + Keychain 恢复所有已记录的 SMB/Samba share root 挂载。
 # 用于重启或 Codex 重启后的恢复。
 #
 # macOS 版差异（相对 WSL）:
 # - 密码从 Keychain 读取，不是从明文 .cred / .passwords.env
-# - 使用 .keychain.env 作为 Keychain 引用
+# - register-project.sh 写 JSON registry，恢复必须读取同一格式
 
 usage() {
   cat <<'USAGE_EOF'
@@ -14,8 +14,8 @@ usage() {
 
 选项:
   --server NAME           仅恢复指定服务器的挂载。
+  --smb-user USER         覆盖 registry 中的 SMB/Samba 用户名。
   --registry-dir PATH     Registry 目录。默认: ~/.codex/android-macos-source-access-info/projects。
-  --credentials-dir PATH  凭据引用目录。默认: ~/.codex/android-macos-source-access-info/credentials。
   -h, --help              显示此帮助。
 
 输出 (每个共享一行):
@@ -25,6 +25,7 @@ usage() {
   0  成功
   2  参数错误
   3  registry 目录不存在
+  4  至少一个挂载失败
 USAGE_EOF
 }
 
@@ -35,14 +36,14 @@ die() {
 }
 
 server_filter=
+smb_user_override=
 registry_dir="${HOME}/.codex/android-macos-source-access-info/projects"
-credentials_dir="${HOME}/.codex/android-macos-source-access-info/credentials"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --server)          server_filter="${2:?缺少 --server 的值}"; shift 2 ;;
+    --smb-user)        smb_user_override="${2:?缺少 --smb-user 的值}"; shift 2 ;;
     --registry-dir)    registry_dir="${2:?缺少 --registry-dir 的值}"; shift 2 ;;
-    --credentials-dir) credentials_dir="${2:?缺少 --credentials-dir 的值}"; shift 2 ;;
     -h|--help)         usage; exit 0 ;;
     *)                 die 2 "未知参数: $1" ;;
   esac
@@ -55,80 +56,83 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC1091
 source "$script_dir/_keychain_helpers.sh"
 
-find "$registry_dir" -name '*.env' -maxdepth 1 | while IFS= read -r reg_file; do
-  [ -f "$reg_file" ] || continue
-  server="$(basename "$reg_file" .env)"
-  [ -n "$server_filter" ] && [ "$server" != "$server_filter" ] && continue
+entries_file="$(mktemp "${TMPDIR:-/tmp}/restore-mounts.XXXXXX")"
+trap 'rm -f "$entries_file"' EXIT
 
-  # shellcheck disable=SC1090
-  source "$reg_file"
+python3 - "$registry_dir" "$server_filter" "$smb_user_override" > "$entries_file" <<'PY'
+import json
+import sys
+from pathlib import Path
 
-  SAMBA_USER="${SAMBA_USER:-$server}"
-  SAMBA_SERVER="${SAMBA_SERVER:-}"
-  ACCOUNT_KEY="${ACCOUNT_KEY:-}"
-  SMB_KEYCHAIN_SERVICE="${SMB_KEYCHAIN_SERVICE:-}"
+registry_dir = Path(sys.argv[1])
+server_filter = sys.argv[2]
+smb_user_override = sys.argv[3]
 
-  if [ -z "$SAMBA_SERVER" ]; then
-    echo "RESTORE_STATUS=no_server_info server=$server"
+for path in sorted(registry_dir.glob("*.json")):
+    with path.open(encoding="utf-8") as handle:
+        data = json.load(handle)
+    server = str(data.get("server") or path.stem)
+    if server_filter and server != server_filter:
+        continue
+    server_ip = str(data.get("server_ip") or server)
+    default_user = smb_user_override or str(data.get("smb_user") or server)
+    shares = data.get("shares") or {}
+    if not isinstance(shares, dict):
+        continue
+    for share, item in shares.items():
+        if not isinstance(item, dict):
+            continue
+        mount_point = str(item.get("mount_point") or "")
+        if not mount_point:
+            continue
+        smb_user = smb_user_override or str(item.get("smb_user") or default_user)
+        print("\t".join([server, server_ip, smb_user, str(share), mount_point]))
+PY
+
+mounted=0
+already=0
+no_credentials=0
+failed=0
+entries=0
+
+while IFS=$'\t' read -r server server_ip smb_user share mount_point; do
+  [ -n "$server" ] || continue
+  entries=$((entries + 1))
+
+  if mount | grep -q " on $mount_point (" 2>/dev/null; then
+    echo "RESTORE_STATUS=already_mounted server=$server share=$share mount_point=$mount_point"
+    already=$((already + 1))
     continue
   fi
 
-  # 从 Keychain 读取 SMB 密码
-  smb_password=""
-  if [ -n "$SMB_KEYCHAIN_SERVICE" ] && [ -n "$SAMBA_USER" ]; then
-    smb_password="$(keychain_read "$SMB_KEYCHAIN_SERVICE" "${SAMBA_USER}@${SAMBA_SERVER}")"
-  elif [ -n "$ACCOUNT_KEY" ] && [ -n "$SAMBA_USER" ]; then
-    # 兼容旧版：通过 account_key 反推 service
-    fallback_service="$(keychain_service "smb" "$ACCOUNT_KEY")"
-    smb_password="$(keychain_read "$fallback_service" "${SAMBA_USER}@${SAMBA_SERVER}")"
+  smb_password="$(credential_read "smb" "$smb_user" "$server_ip")"
+  if [ -z "$smb_password" ] && [ "$server_ip" != "$server" ]; then
+    smb_password="$(credential_read "smb" "$smb_user" "$server")"
   fi
 
   if [ -z "$smb_password" ]; then
-    echo "RESTORE_STATUS=no_credentials server=$server"
-    # 尝试无密码挂载 guest 模式
-    for i in "${!PROJECT_PATHS[@]}"; do
-      mp="${PROJECT_PATHS[$i]}"
-      share_url="${SAMBA_SHARES[$i]:-}"
-      if [ -n "$share_url" ] && [ ! -d "$mp/build" ] && [ ! -d "$mp/.repo" ]; then
-        # 只能用 smbutil 验证
-        echo "WARN: 无法恢复 $mp（Keychain 中无密码）" >&2
-      fi
-    done
+    echo "RESTORE_STATUS=no_credentials server=$server share=$share mount_point=$mount_point"
+    echo "WARN: Keychain 中没有 ${smb_user}@${server_ip} 的 SMB/Samba 密码；请先用 mount-share.sh --keychain 检查，必要时显式 --save-credentials 修复。" >&2
+    no_credentials=$((no_credentials + 1))
     continue
   fi
 
-  # 遍历项目路径
-  for i in "${!PROJECT_PATHS[@]}"; do
-    mp="${PROJECT_PATHS[$i]}"
-    share_url="${SAMBA_SHARES[$i]:-}"
+  mkdir -p "$mount_point" 2>/dev/null || true
+  mount_url="//${smb_user}:${smb_password}@${server_ip}/${share}"
 
-    if [ -z "$share_url" ]; then
-      echo "RESTORE_STATUS=no_share_url server=$server"
-      continue
+  if mount -t smbfs "$mount_url" "$mount_point" 2>/dev/null; then
+    echo "RESTORE_STATUS=mounted server=$server share=$share mount_point=$mount_point"
+    mounted=$((mounted + 1))
+  else
+    echo "RESTORE_STATUS=failed server=$server share=$share mount_point=$mount_point"
+    hash="$(account_key "$smb_user" "$server_ip" 2>/dev/null || echo "")"
+    if [ -n "$hash" ]; then
+      env_file="$(keychain_env_path "$hash")"
+      keychain_env_set "$env_file" "SMB_PASSWORD_STATE" "failed" 2>/dev/null || true
     fi
+    failed=$((failed + 1))
+  fi
+done < "$entries_file"
 
-    # 检查是否已挂载
-    if mount | grep -q " on $mp (" 2>/dev/null; then
-      echo "RESTORE_STATUS=already_mounted server=$server path=$mp"
-      continue
-    fi
-
-    # 挂载
-    mkdir -p "$mp" 2>/dev/null || true
-    share_body="${share_url#//}"
-    mount_url="//${SAMBA_USER}:${smb_password}@${share_body}"
-
-    if mount -t smbfs "$mount_url" "$mp" 2>/dev/null; then
-      echo "RESTORE_STATUS=mounted server=$server path=$mp"
-    else
-      echo "RESTORE_STATUS=failed server=$server path=$mp"
-      # 更新 Keychain 状态
-      if [ -n "$ACCOUNT_KEY" ]; then
-        env_file="$(keychain_env_path "$ACCOUNT_KEY")"
-        keychain_env_set "$env_file" "SMB_PASSWORD_STATE" "failed" 2>/dev/null || true
-      fi
-    fi
-  done
-done
-
-echo "RESTORE_SUMMARY OK"
+echo "RESTORE_SUMMARY mounted=$mounted already_mounted=$already no_credentials=$no_credentials failed=$failed entries=$entries"
+[ "$failed" -eq 0 ] || exit 4

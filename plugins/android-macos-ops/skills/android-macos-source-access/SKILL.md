@@ -12,12 +12,12 @@ Use this skill to access Android remote build server source trees on macOS throu
 This skill owns:
 
 - Samba share discovery on remote build servers (read `/etc/samba/smb.conf` over SSH).
-- macOS native SMB mount (`mount -t smbfs`), no extra software required.
+- macOS SMB/Samba source access using the platform's native SMB implementation.
 - Post-mount project detection: scan the mounted tree to identify Android source projects.
 - Platform inference from source evidence (not from directory names).
 - Project-level `.codex/android-source-access.json` registry.
 - Remount/recovery from saved projects.
-- Samba credential storage under `~/.codex/android-macos-source-access-info/credentials/`.
+- Samba credential reuse and storage through macOS Keychain.
 
 Do not use this skill for:
 
@@ -47,8 +47,17 @@ and Android projects are subdirectories inside it. Therefore:
 恢复流程：
 
 ```
-restore-mounts.sh → 从 registry 恢复所有已记录的项目挂载
+restore-mounts.sh → 从 JSON registry 恢复所有已记录的 SMB/Samba share root 挂载
 ```
+
+AKBS system root and Samba source root are separate:
+
+```text
+AKBS_ROOT default:          /Users/jinny/Work/AKBS
+SAMBA_SOURCE_ROOT default:  /Users/jinny/Work/Samba
+```
+
+`AKBS_ROOT` is only for the AKBS local system checkout. Do not mount source shares under it.
 
 ## Credential Storage
 
@@ -60,7 +69,7 @@ restore-mounts.sh → 从 registry 恢复所有已记录的项目挂载
 │   ├── <sha256(remote-user@server)>.keychain.env    # Keychain 引用（无密码）
 │   └── local.keychain.env                             # 本机 sudo Keychain 引用
 └── projects/
-    └── <sha256(remote-user@server)>.env               # 项目 registry（无密码）
+    └── <server>.json                                  # 项目 registry（无密码）
 ```
 
 ### Keychain Service 命名
@@ -90,24 +99,26 @@ REMOTE_SUDO_PASSWORD_STATE=missing
 UPDATED_AT=2026-06-16T12:00:00+08:00
 ```
 
-### 密码保存规则（继承 WSL 版）
+### 密码复用和保存规则
+
+默认优先复用 macOS 本地已保存的 Keychain 凭据。不要把重新保存密码作为默认路径。
+只有凭据缺失、失效或权限不足时，才提示用户使用明确修复入口重新保存。
 
 "验证后才保存" — 不因为用户输入了密码就保存。只有对应角色实际操作成功后才写入 Keychain。
 
 | 角色 | 验证条件 |
 |---|---|
 | SSH | SSH key bootstrap 成功后保存 |
-| SMB | smbutil view / mount_smbfs 认证成功后保存 |
+| SMB | SMB/Samba share 挂载或认证成功后保存 |
 | Remote sudo | 远端 sudo 操作成功后保存 |
 | Local sudo | 本机 sudo 操作成功后保存 |
 
 ### 密码读取优先级
 
 ```text
-1. 本次运行时显式输入密码
+1. 本次运行时显式传入的密码环境变量
 2. Keychain 中已保存的密码
-3. 本次 bare fallback 密码
-4. 提示用户输入
+3. 提示用户输入
 ```
 
 ### macOS vs WSL 差异
@@ -143,8 +154,8 @@ Project/SDK name is determined by:
 ## Local Mount Path Convention
 
 ```text
-$HOME/Work/Samba/<hostname>/   → share mount point
-$HOME/Work/Samba/<hostname>/<project>/   → project root (detected)
+/Users/jinny/Work/Samba/<hostname>/   → share mount point
+/Users/jinny/Work/Samba/<hostname>/<project>/   → project root (detected)
 ```
 
 For test61 with share `[unisoc]`:
@@ -157,7 +168,9 @@ For test61 with share `[unisoc]`:
 ## Scripts
 
 - `scripts/discover-samba-share.sh`: discover available Samba shares from remote server's `/etc/samba/smb.conf` over SSH.
-- `scripts/mount-share.sh`: mount a Samba share via macOS native `mount -t smbfs`.
+- `scripts/resolve-akbs-root.sh`: resolve the local AKBS system root (`AKBS_ROOT` override supported).
+- `scripts/resolve-samba-root.sh`: resolve the SMB/Samba source root (`SAMBA_SOURCE_ROOT` override supported).
+- `scripts/mount-share.sh`: mount a Samba share through macOS SMB support.
 - `scripts/detect-projects.sh`: scan a mounted share tree to identify Android projects and infer platforms.
 - `scripts/register-project.sh`: register project mapping in `.codex/android-source-access.json`.
 - `scripts/unmount-share.sh`: unmount a Samba share.
@@ -171,10 +184,12 @@ For test61 with share `[unisoc]`:
 {
   "server": "test61",
   "server_ip": "192.168.100.23",
+  "smb_user": "test61",
   "shares": {
     "unisoc": {
       "mount_point": "/Users/jinny/Work/Samba/test61",
       "remote_path": "/home/test61/unisoc",
+      "smb_user": "test61",
       "projects": {
         "huiwei_uis7885_5g": {
           "platform": "unisoc",
@@ -212,3 +227,4 @@ Samba 共享: //192.168.100.23/unisoc
 - Do not unmount or replace an existing mount unless the user explicitly asks.
 - Do not run authoritative Android `git` or builds through the SMB mount.
 - If the mount target directory is non-empty, refuse to mount over it.
+- Do not mount SMB/Samba source shares under `AKBS_ROOT`; use `SAMBA_SOURCE_ROOT`.
