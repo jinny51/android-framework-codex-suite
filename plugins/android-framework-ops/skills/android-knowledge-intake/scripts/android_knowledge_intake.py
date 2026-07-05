@@ -1994,6 +1994,124 @@ def weekly_item_statistics(items: dict[str, list[tuple[str, str]]]) -> list[dict
     ]
 
 
+def project_source_type(entries: list[tuple[str, str]]) -> str:
+    list_types = {report_list_type(desc) for desc, _ in entries}
+    has_custom = "需求清单" in list_types
+    has_bug = "Buglist" in list_types
+    if has_custom and has_bug:
+        return "混合"
+    if has_custom:
+        return "定制"
+    if has_bug:
+        return "Buglist"
+    return "临时支持"
+
+
+def project_source_note(entries: list[tuple[str, str]]) -> str:
+    origins = sorted({report_item_source(desc) for desc, _ in entries})
+    list_types = sorted({report_list_type(desc) for desc, _ in entries})
+    if not entries:
+        return "需成员补充需求单、Buglist 或临时安排来源"
+    return f"来源：{'、'.join(origins)}；类型：{'、'.join(list_types)}"
+
+
+def project_ledger_totals(entries: list[tuple[str, str]]) -> dict[str, int]:
+    totals = {"feature_add": 0, "feature_port": 0, "bug": 0, "other": 0, "total": 0}
+    for desc, progress in entries:
+        category = report_category(desc, progress)
+        if category == "功能添加":
+            totals["feature_add"] += 1
+        elif category == "功能移植":
+            totals["feature_port"] += 1
+        elif category == "Bug处理":
+            totals["bug"] += 1
+        else:
+            totals["other"] += 1
+    totals["total"] = totals["feature_add"] + totals["feature_port"] + totals["bug"] + totals["other"]
+    return totals
+
+
+def project_ledger_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    source_rows = weekly_source_rows(items)
+    if not items:
+        return [
+            {
+                "project": "未识别项目",
+                "source_type": "需补项目总盘子",
+                "source_note": "未发现可归档事项",
+                "start_date": "需成员确认",
+                "duration_label": "需成员确认",
+                "totals": {"feature_add": 0, "feature_port": 0, "bug": 0, "other": 0, "total": 0},
+                "this_week_completed": 0,
+                "cumulative_completed": 0,
+                "remaining": 0,
+                "expected_completion_week": "需成员确认",
+                "status": "无事项",
+                "risk": "无明确风险",
+            }
+        ]
+    for project, entries in sorted(items.items()):
+        stats = project_stats(entries)
+        totals = project_ledger_totals(entries)
+        remaining = max(0, totals["total"] - stats["completed"])
+        project_sources = [row for row in source_rows if row["project"] == project]
+        risk_items = [desc for desc, progress in entries if progress_bucket(progress) == "blocked"]
+        rows.append(
+            {
+                "project": project,
+                "source_type": project_source_type(entries),
+                "source_note": project_source_note(entries),
+                "start_date": "需成员确认",
+                "duration_label": "需成员确认",
+                "source_lists": project_sources,
+                "totals": totals,
+                "this_week_completed": stats["completed"],
+                "cumulative_completed": stats["completed"],
+                "remaining": remaining,
+                "expected_completion_week": "本周已完成" if remaining == 0 and totals["total"] else "需成员确认",
+                "status": status_label_from_stats(stats),
+                "risk": "；".join(compact_text(item, 80) for item in risk_items[:3]) if risk_items else "无明确风险",
+            }
+        )
+    return rows
+
+
+def weekly_progress_summary_payload(items: dict[str, list[tuple[str, str]]]) -> dict[str, Any]:
+    ledgers = project_ledger_rows(items)
+    return {
+        "project_count": len([row for row in ledgers if row["project"] != "未识别项目"]),
+        "total": sum(int(row["totals"]["total"]) for row in ledgers),
+        "this_week_completed": sum(int(row["this_week_completed"]) for row in ledgers),
+        "cumulative_completed": sum(int(row["cumulative_completed"]) for row in ledgers),
+        "remaining": sum(int(row["remaining"]) for row in ledgers),
+        "risk_count": sum(1 for row in ledgers if row.get("risk") not in ("", "无明确风险")),
+    }
+
+
+def weekly_detail_sections_payload(items: dict[str, list[tuple[str, str]]], patches: list[PatchInfo]) -> list[dict[str, Any]]:
+    sections: list[dict[str, Any]] = []
+    patch_outputs = render_patch_list(patches, "本周无产出 Patch。")
+    for ledger in project_ledger_rows(items):
+        project = str(ledger["project"])
+        entries = items.get(project, [])
+        completed = [desc for desc, progress in entries if progress_bucket(progress) == "completed"]
+        unfinished = [desc for desc, progress in entries if progress_bucket(progress) != "completed"]
+        sections.append(
+            {
+                "project": project,
+                "source_type": ledger["source_type"],
+                "completed_focus": [compact_text(item, 100) for item in completed[:5]] or ["暂无明确完成项"],
+                "remaining_focus": [compact_text(item, 100) for item in unfinished[:5]] or ["无明确剩余项"],
+                "category_summary": ledger["totals"],
+                "patch_outputs": patch_outputs,
+                "risk": ledger["risk"],
+                "next_week_focus": next_step_for_entries(entries, "weekly") if entries else "补充真实工作记录并推进未闭环事项。",
+            }
+        )
+    return sections
+
+
 def write_daily_report(
     lines: list[str],
     items: dict[str, list[tuple[str, str]]],
@@ -2104,134 +2222,74 @@ def write_weekly_report(
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
 ) -> None:
+    ledgers = project_ledger_rows(items)
+    summary = weekly_progress_summary_payload(items)
     lines += [
-        "## 一、本周整体概览",
+        "## 一、本周概览",
         "",
-        "| 项目 | 来源清单数 | 本周事项总数 | 本周新增 | 本周完成 | 进行中 | 未开始 | 阻塞/风险 | 超3天未进展 | 整体状态 |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        f"- 本周涉及项目：{summary['project_count']}",
+        f"- 项目总盘子事项合计：{summary['total']}",
+        f"- 本周完成：{summary['this_week_completed']}",
+        f"- 当前剩余：{summary['remaining']}",
+        f"- 风险项目：{summary['risk_count']}",
+        f"- 一句话总结：本周围绕 {summary['project_count']} 个项目推进，完成 {summary['this_week_completed']} 项，剩余 {summary['remaining']} 项。",
+        "",
+        "| 项目 | 来源类型 | 启动时间 | 已持续时间 | 新增功能 | 移植适配 | Bug | 其他 | 合计 | 本周完成 | 累计完成 | 当前剩余 | 预计完成周 | 状态 |",
+        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ]
-    source_rows = weekly_source_rows(items)
-    if not items:
-        lines.append("| 未识别项目 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 无事项 |")
-    for project, entries in sorted(items.items()):
-        stats = project_stats(entries)
-        source_count = len([row for row in source_rows if row["project"] == project])
+    for ledger in ledgers:
+        totals = ledger["totals"]
         lines.append(
-            f"| {project} | {source_count} | {stats['total']} | {stats['total']} | {stats['completed']} | {stats['in_progress']} | {stats['not_started']} | {stats['blocked']} | 0 | {status_label_from_stats(stats)} |"
+            f"| {ledger['project']} | {ledger['source_type']} | {ledger['start_date']} | {ledger['duration_label']} | {totals['feature_add']} | {totals['feature_port']} | {totals['bug']} | {totals['other']} | {totals['total']} | {ledger['this_week_completed']} | {ledger['cumulative_completed']} | {ledger['remaining']} | {ledger['expected_completion_week']} | {ledger['status']} |"
         )
-    lines += ["", "## 二、本周按项目总结", ""]
-    if not items:
-        lines += ["### 1. 项目名称：未识别项目", "", "**当前状态：** 无事项", "", "**需求来源地：** 临时工作/内部优化", "", "**需求种类：** 临时工作", ""]
-    for project, entries in sorted(items.items()):
-        stats = project_stats(entries)
+    lines += ["", "## 二、按项目汇报", ""]
+    for ledger in ledgers:
+        project = str(ledger["project"])
+        entries = items.get(project, [])
         completed = [desc for desc, progress in entries if progress_bucket(progress) == "completed"]
-        active = [desc for desc, progress in entries if progress_bucket(progress) == "in_progress"]
-        remaining = [desc for desc, progress in entries if progress_bucket(progress) in {"blocked", "not_started"}]
-        project_sources = [row for row in source_rows if row["project"] == project]
-        category_rows = [row for row in weekly_category_rows({project: entries})]
+        unfinished = [desc for desc, progress in entries if progress_bucket(progress) != "completed"]
+        totals = ledger["totals"]
         lines += [
             f"### 项目名称：{project}",
             "",
-            f"**当前状态：** {status_label_from_stats(stats)}",
+            "### 项目总盘子",
             "",
-            f"**需求来源地：** {'、'.join(sorted({str(row['origin']) for row in project_sources}))}",
+            f"- 来源类型：{ledger['source_type']}",
+            f"- 来源说明：{ledger['source_note']}",
+            f"- 启动时间：{ledger['start_date']}",
+            f"- 已持续时间：{ledger['duration_label']}",
+            f"- 新增功能：{totals['feature_add']}",
+            f"- 移植适配：{totals['feature_port']}",
+            f"- Bug：{totals['bug']}",
+            f"- 其他：{totals['other']}",
+            f"- 合计：{totals['total']}",
             "",
-            f"**需求种类：** {'、'.join(sorted({str(row['list_type']) for row in project_sources}))}",
+            "### 本周进展",
             "",
-            "**来源清单：**",
+            f"- 本周完成：{ledger['this_week_completed']}",
+            f"- 累计完成：{ledger['cumulative_completed']}",
+            f"- 当前剩余：{ledger['remaining']}",
+            f"- 预计完成周：{ledger['expected_completion_week']}",
+            f"- 当前状态：{ledger['status']}",
             "",
-            "| 项目 | 来源地 | 需求种类 | 清单名称 | 总数 | 本周新增 | 本周完成 | 剩余 | 风险 | 说明 |",
-            "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
-        ]
-        for row in project_sources:
-            lines.append(
-                f"| {row['project']} | {row['origin']} | {row['list_type']} | {row['list_name']} | {row['total']} | {row['new_this_week']} | {row['completed_this_week']} | {row['remaining']} | {row['risks']} | {row['note']} |"
-            )
-        lines += [
+            "### 本周重点说明",
             "",
-            "**来源分类统计：**",
+            "**本周完成重点：**",
             "",
-            "| 来源地 | 需求种类 | 清单名称 | 功能添加总数 | Bug处理总数 | UI修改总数 | 功能移植总数 | 本周完成：功能添加 | 本周完成：Bug处理 | 本周完成：UI修改 | 本周完成：功能移植 | 剩余 |",
-            "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-        ]
-        for row in category_rows:
-            lines.append(
-                f"| {row['origin']} | {row['list_type']} | {row['list_name']} | {row['feature_total']} | {row['bug_total']} | {row['ui_total']} | {row['porting_total']} | {row['feature_done']} | {row['bug_done']} | {row['ui_done']} | {row['porting_done']} | {row['remaining']} |"
-            )
-        lines += [
+            *(f"{index}. {compact_text(item, 120)}" for index, item in enumerate(completed or ["暂无明确完成项"], start=1)),
             "",
-            "**本周事项统计：**",
+            "**剩余重点：**",
             "",
-            "| 类型 | 数量 | 说明 |",
-            "| --- | ---: | --- |",
-            f"| 本周接收事项 | {stats['total']} | 本周新接收或本周被记录的需求 / Bug / 客户问题 |",
-            "| 历史遗留事项 | 0 | 无明确历史遗留证据时为 0 |",
-            f"| 本周完成事项 | {stats['completed']} | 已开发完成 / 已修复 / 已验证 / 已提交测试 |",
-            f"| 进行中事项 | {stats['in_progress']} | 已开始处理但未闭环 |",
-            f"| 未开始事项 | {stats['not_started']} | 已接收但暂未处理 |",
-            f"| 阻塞事项 | {stats['blocked']} | 当前无法继续推进 |",
-            f"| 剩余事项 | {stats['in_progress'] + stats['not_started'] + stats['blocked']} | 本周后仍未闭环的事项 |",
+            *(f"{index}. {compact_text(item, 120)}" for index, item in enumerate(unfinished or ["无明确剩余项"], start=1)),
             "",
-            "**本周完成内容：**",
+            f"**风险/依赖：** {ledger['risk']}",
             "",
-            *(f"{index}. {item}" for index, item in enumerate(completed or ["暂无明确完成项"], start=1)),
-            "",
-            "**本周推进中内容：**",
-            "",
-            *(f"{index}. {item}" for index, item in enumerate(active or ["暂无明确推进中事项"], start=1)),
-            "",
-            "**未完成 / 剩余事项：**",
-            "",
-            "| 事项 | 当前进度 | 未完成原因 | 是否有风险 | 已卡多久 | 预计完成时间 |",
-            "| --- | --- | --- | --- | --- | --- |",
-        ]
-        for item in remaining:
-            lines.append(f"| {compact_text(item, 80)} | 进行中 | 仍需继续推进或补齐验证证据 | 否 | 需补充 | 待确认 |")
-        if not remaining:
-            lines.append("| 无 | 已闭环或等待验收 | 无 | 否 | - | - |")
-        lines += [
-            "",
-            f"**预计整体闭环时间：** {'待阻塞解除后确认' if stats.get('blocked', 0) else ('下周继续推进' if stats.get('in_progress', 0) or stats.get('not_started', 0) else '本周已闭环或等待验收')}",
-            "",
-            "**风险/说明：**",
-            "",
-            "1. 超过 3 天没有实质进展的事项需要单独标记。",
-            "2. 依赖客户、测试、平台、项目经理或 TL 的事项需要写清需要谁支持。",
+            f"**Patch / 验证 / 交付：** {'；'.join(render_patch_list(patches, '本周无产出 Patch。'))}",
             "",
         ]
-    lines += [
-        "## 三、本周重点问题与风险",
-        "",
-        "| 项目 | 风险事项 | 风险类型 | 当前卡点 | 已持续时间 | 影响范围 | 需要支持 | 预计处理时间 |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ]
-    risk_rows = [
-        f"| {project} | {compact_text(desc, 100)} | 阻塞 | 见会话证据 | 需补充 | 影响提测 / 交付需复核 | 项目/测试/平台/TL | 待确认 |"
-        for project, entries in sorted(items.items())
-        for desc, progress in entries
-        if progress_bucket(progress) == "blocked"
-    ]
-    lines += risk_rows or ["| - | - | 本周未识别到明确阻塞风险 | - | - | - | - | - |"]
-    lines += ["", "## 四、本周 Patch 产出", "", "| 项目 | Patch / Commit | 关联事项 | 模块 | 当前状态 | 备注 |", "| --- | --- | --- | --- | --- | --- |"]
-    if patches:
-        for patch in patches:
-            lines.append(f"| {patch.project or '未识别项目'} | {patch.name} | 本周补丁产出 | Framework | 已产出 | 以 patch-capture 证据为准 |")
-    else:
-        lines.append("| - | 本周无产出 Patch | - | - | - | - |")
-    lines += ["", "## 五、本周验证与交付情况", "", "| 项目 | 版本 / 分支 | 验证内容 | 验证结果 | 是否提测 | 遗留问题 |", "| --- | --- | --- | --- | --- | --- |"]
-    if patches:
-        for patch in patches:
-            lines.append(f"| {patch.project or '未识别项目'} | 需补充 | {patch.name} | 以 patch-capture 证据为准 | 需补充 | 需补充 |")
-    else:
-        lines.append("| - | - | 本周未从日报/会话材料中识别到明确 Patch 验证交付 | - | 否 | - |")
-    lines += ["", "## 六、下周重点计划", "", "### 1. 项目推进重点", ""]
+    lines += ["## 三、下周重点", ""]
     plans = [f"{project}：{next_step_for_entries(entries, 'weekly')}" for project, entries in sorted(items.items())]
     lines += [f"{index}. {plan}" for index, plan in enumerate(plans, start=1)] or ["1. 继续补充真实工作记录并推进未闭环事项。"]
-    lines += ["", "### 2. 风险处理重点", "", "1. 超过 3 天无实质进展、依赖客户/测试/平台确认的事项优先推动。", "", "### 3. 预计交付目标", "", "| 项目 | 下周目标 | 预计完成时间 |", "| --- | --- | --- |"]
-    for project, entries in sorted(items.items()):
-        lines.append(f"| {project} | {next_step_for_entries(entries, 'weekly')} | 待确认 |")
-    if not items:
-        lines.append("| 未识别项目 | 继续补充真实工作记录 | 待确认 |")
 
 
 def report_view_payload(
@@ -2352,12 +2410,22 @@ def report_view_payload(
     in_progress_items: list[dict[str, str]] = []
     remaining_items: list[dict[str, str]] = []
     risks = []
+    project_ledgers = project_ledger_rows(items)
+    weekly_progress_summary = weekly_progress_summary_payload(items)
+    weekly_detail_sections = weekly_detail_sections_payload(items, patches)
     source_lists = weekly_source_rows(items)
     source_category_stats = weekly_category_rows(items)
     for project, entries in sorted(items.items()):
         stats = project_stats(entries)
+        ledger = next((row for row in project_ledgers if row["project"] == project), {})
         overview_row = {
             "project": project,
+            "source_type": ledger.get("source_type", project_source_type(entries)),
+            "source_note": ledger.get("source_note", project_source_note(entries)),
+            "start_date": ledger.get("start_date", "需成员确认"),
+            "duration_label": ledger.get("duration_label", "需成员确认"),
+            "expected_completion_week": ledger.get("expected_completion_week", "需成员确认"),
+            "ledger_totals": ledger.get("totals", project_ledger_totals(entries)),
             "source_list_count": len([row for row in source_lists if row["project"] == project]),
             "total": stats["total"],
             "new_this_week": stats["total"],
@@ -2395,6 +2463,9 @@ def report_view_payload(
         risks.extend({"project": project, "risk": desc} for desc, progress in entries if progress_bucket(progress) == "blocked")
     payload.update(
         {
+            "project_ledgers": project_ledgers,
+            "weekly_progress_summary": weekly_progress_summary,
+            "weekly_detail_sections": weekly_detail_sections,
             "project_overview": project_overview
             or [{"project": "未识别项目", "source_list_count": 0, "total": 0, "new_this_week": 0, "completed": 0, "in_progress": 0, "not_started": 0, "blocked_or_risk": 0, "stale_over_three_days": 0, "status": "无事项"}],
             "weekly_overview": weekly_overview

@@ -17,18 +17,38 @@ This skill is an entrypoint, not a separate upload implementation. It routes to 
 
 ## Report Model
 
-Generate `reports/weekly.md` with the Codex office weekly template:
+Daily reports record what happened today, how the member handled it, and the
+current result. Weekly reports do not repeat daily execution details. They
+summarize the week around project total ledgers that the member can correct
+before uploading.
 
-- 本周整体概览
-- 本周按项目总结
-- 本周重点问题与风险
-- 本周 Patch 产出
-- 本周验证与交付情况
-- 下周重点计划
+Generate `reports/weekly.md` with this required structure:
+
+- 本周概览
+- 按项目汇报
+  - 项目总盘子
+  - 本周进展
+  - 本周重点说明
+- 下周重点
+
+Each project total ledger must preserve:
+
+- 项目名称
+- 来源类型：定制 / Buglist / 混合 / 临时支持
+- 来源说明：需求单、Buglist、客户、测试、项目经理、临时安排等
+- 启动时间 and 已持续时间; if not proven, write `需成员确认`
+- 新增功能、移植适配、Bug、其他、合计
+- 本周完成、累计完成、当前剩余、预计完成周
+- 风险或依赖
 
 Every formal weekly item should preserve both dimensions when available: 需求来源地（项目经理、上级、客户、测试、禅道） and 需求种类（需求清单、Buglist）. Work without a formal source should stay as 临时工作 / 内部优化 instead of being mixed into formal requirement or Buglist statistics.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `report_type=weekly`, `week_range`, `display_date`, `display_title`, `one_line_summary`, `project_overview[]`, `source_lists[]`, `source_category_stats[]`, `requirement_origin`, `requirement_list_type`, `item_statistics[]`, `completed_items[]`, `in_progress_items[]`, `remaining_items[]`, `risks[]`, `patch_outputs[]`, `delivery_verifications[]`, and `next_week_plan[]`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `report_type=weekly`, `week_range`, `display_date`, `display_title`, `one_line_summary`, `project_ledgers[]`, `weekly_progress_summary`, `weekly_detail_sections[]`, `project_overview[]`, `source_lists[]`, `source_category_stats[]`, `requirement_origin`, `requirement_list_type`, `item_statistics[]`, `completed_items[]`, `in_progress_items[]`, `remaining_items[]`, `risks[]`, `patch_outputs[]`, `delivery_verifications[]`, and `next_week_plan[]`.
+
+`project_ledgers[]` is the preferred input for administrator team weekly and
+monthly reports. Members may manually correct the Markdown before upload, but
+the generated `report_view.json` must remain the same-source structured view of
+that report content.
 
 The weekly display date is the last workday of the period. A late weekly submission still displays the weekly period date, not the upload day.
 

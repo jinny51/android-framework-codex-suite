@@ -1445,20 +1445,23 @@ class MemberAutomationFlowTests(unittest.TestCase):
             ):
                 self.assertIn(text, daily_report)
             for text in (
-                "## 一、本周整体概览",
-                "## 二、本周按项目总结",
-                "## 三、本周重点问题与风险",
-                "## 四、本周 Patch 产出",
-                "## 五、本周验证与交付情况",
-                "## 六、下周重点计划",
-                "需求来源地",
-                "需求种类",
-                "来源清单",
-                "来源分类统计",
-                "本周事项统计",
-                "未完成 / 剩余事项",
-                "预计整体闭环时间",
-                "| 项目 | 来源清单数 | 本周事项总数 | 本周新增 | 本周完成 | 进行中 | 未开始 | 阻塞/风险 | 超3天未进展 | 整体状态 |",
+                "## 一、本周概览",
+                "## 二、按项目汇报",
+                "### 项目总盘子",
+                "来源类型",
+                "启动时间",
+                "已持续时间",
+                "新增功能",
+                "移植适配",
+                "Bug",
+                "合计",
+                "### 本周进展",
+                "本周完成",
+                "累计完成",
+                "当前剩余",
+                "预计完成周",
+                "### 本周重点说明",
+                "## 三、下周重点",
             ):
                 self.assertIn(text, weekly_report)
 
@@ -1501,6 +1504,26 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertIn("delivery_verifications", weekly_view["payload"])
             self.assertIn("next_week_plan", weekly_view["payload"])
             self.assertIn("patch_outputs", weekly_view["payload"])
+            self.assertIn("project_ledgers", weekly_view["payload"])
+            self.assertGreaterEqual(len(weekly_view["payload"]["project_ledgers"]), 1)
+            ledger = weekly_view["payload"]["project_ledgers"][0]
+            for field in (
+                "project",
+                "source_type",
+                "source_note",
+                "start_date",
+                "duration_label",
+                "totals",
+                "this_week_completed",
+                "cumulative_completed",
+                "remaining",
+                "expected_completion_week",
+            ):
+                self.assertIn(field, ledger)
+            for field in ("feature_add", "feature_port", "bug", "other", "total"):
+                self.assertIn(field, ledger["totals"])
+            self.assertIn("weekly_progress_summary", weekly_view["payload"])
+            self.assertIn("weekly_detail_sections", weekly_view["payload"])
 
             daily_manifest = json.loads((daily / "manifest.json").read_text(encoding="utf-8"))
             weekly_manifest = json.loads((weekly / "manifest.json").read_text(encoding="utf-8"))

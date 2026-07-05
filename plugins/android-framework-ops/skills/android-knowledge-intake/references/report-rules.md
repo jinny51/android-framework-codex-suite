@@ -83,36 +83,34 @@ Patch、文档、验证结果、对外同步。
 ```markdown
 # YYYYMMDD-YYYYMMDD 周报 - 成员名
 
-## 一、本周整体概览
+## 一、本周概览
 
-按项目统计来源清单数、本周事项总数、本周新增、本周完成、进行中、未开始、阻塞/风险、超3天未进展和整体状态。
+按项目汇总：本周涉及项目数、项目总盘子事项合计、本周完成、累计完成、当前剩余、风险项目和一句话总结。
 
-## 二、本周按项目总结
+## 二、按项目汇报
 
 ### 项目编号
 
-需求来源地：项目经理 / 上级 / 客户 / 测试 / 禅道 / 临时工作。
-需求种类：需求清单 / Buglist / 临时工作。
-来源清单：清单名称、总数、本周新增、本周完成、剩余、风险。
-来源分类统计：功能添加、Bug处理、UI修改、功能移植。
-本周事项统计：本周接收、历史遗留、本周完成、进行中、未开始、阻塞、剩余。
-未完成 / 剩余事项：当前进度、未完成原因、风险、已卡多久、预计时间。
+### 项目总盘子
 
-## 三、本周重点问题与风险
+- 来源类型：定制 / Buglist / 混合 / 临时支持。
+- 来源说明：需求单、Buglist、客户、测试、项目经理、临时安排等。
+- 启动时间：能证明时写日期，不能证明时写 `需成员确认`。
+- 已持续时间：能证明时写持续时长，不能证明时写 `需成员确认`。
+- 分类总量：新增功能、移植适配、Bug、其他、合计。
+- 进度数字：本周完成、累计完成、当前剩余、预计完成周。
 
-重点风险列表。
+### 本周进展
 
-## 四、本周 Patch 产出
+围绕总盘子说明本周推进了多少、完成了多少、还剩多少。
 
-Patch 列表。
+### 本周重点说明
 
-## 五、本周验证与交付情况
+重要定制、移植、Bug、Patch、验证、交付、风险和依赖。
 
-验证、交付和对外同步情况。
+## 三、下周重点
 
-## 六、下周重点计划
-
-下周优先事项。
+按项目说明下周优先处理什么、剩余问题预计哪周完成。
 ```
 
 ## UI Read Model
@@ -139,3 +137,12 @@ Daily and weekly reports are the primary human-readable product. The package als
   }
 }
 ```
+
+Weekly `report_view.json` must preserve the same report facts in structured
+form. Required weekly payload fields include `project_ledgers[]`,
+`weekly_progress_summary`, and `weekly_detail_sections[]`; legacy fields such
+as `project_overview[]`, `source_lists[]`, `source_category_stats[]`,
+`item_statistics[]`, `remaining_items[]`, `patch_outputs[]`,
+`delivery_verifications[]`, and `next_week_plan[]` remain for UI compatibility.
+Administrator team weekly and monthly summaries should prefer
+`project_ledgers[]` over re-counting daily records.
