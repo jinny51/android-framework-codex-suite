@@ -549,6 +549,15 @@ class MemberAutomationFlowTests(unittest.TestCase):
 
         self.assertIn("不支持", str(caught.exception))
 
+    def test_default_endpoint_targets_new_akbs_http_upload_api(self) -> None:
+        module = load_intake_module()
+
+        endpoint = module.resolve_akbs_endpoint({})
+
+        self.assertEqual(endpoint["source"], "default")
+        self.assertEqual(endpoint["submission_method"], "http")
+        self.assertEqual(endpoint["submission_api_base_url"], "http://192.168.100.118:8088/akbs/api")
+
     def test_http_submission_posts_tarball_to_new_akbs_upload_api(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -603,6 +612,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(request.get_header("Content-type"), "application/gzip")
             self.assertEqual(request.get_header("Cookie"), "akbs_session=test-session")
             self.assertEqual(request.get_header("X-akbs-user"), "member01")
+            self.assertEqual(request.get_header("X-akbs-token"), "member01")
             self.assertGreater(len(request.data), 0)
 
     def test_http_upload_type_uses_four_physical_package_kinds(self) -> None:

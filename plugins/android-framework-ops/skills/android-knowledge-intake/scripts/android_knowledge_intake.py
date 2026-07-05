@@ -64,10 +64,10 @@ ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
 PLUGIN_UPDATE_SKIP_ENV = "CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"
 PLUGIN_UPDATE_REQUIRE_ENV = "CODEX_REPORT_REQUIRE_PLUGIN_UPDATE_CHECK"
 PLUGIN_REMOTE_MANIFEST_TIMEOUT = 6
-DEFAULT_SUBMISSION_METHOD = "ssh"
+DEFAULT_SUBMISSION_METHOD = "http"
 DEFAULT_SUBMISSION_SSH_HOST = "test35"
 DEFAULT_SUBMISSION_COMMAND = "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit"
-DEFAULT_SUBMISSION_API_BASE_URL = ""
+DEFAULT_SUBMISSION_API_BASE_URL = "http://192.168.100.118:8088/akbs/api"
 DEFAULT_SUBMISSION_SESSION_COOKIE = ""
 DEFAULT_SUBMISSION_API_TOKEN = ""
 DEFAULT_KNOWLEDGE_REPO_URL = "test35:/home/test35/work/akbs/knowledge.git"
@@ -83,7 +83,13 @@ AKBS_ENDPOINT_DEFAULTS = {
 }
 LEGACY_TEST35_ENDPOINT_VALUES = {
     "server_profile": "test35",
-    **AKBS_ENDPOINT_DEFAULTS,
+    "submission_method": "ssh",
+    "submission_ssh_host": "test35",
+    "submission_command": "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit",
+    "submission_api_base_url": "",
+    "submission_session_cookie": "",
+    "submission_api_token": "",
+    "knowledge_repo_url": "test35:/home/test35/work/akbs/knowledge.git",
 }
 PATCH_FILENAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 USB_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])usb(?![A-Za-z0-9])", re.I)
@@ -6574,9 +6580,8 @@ def http_submit_package(package_dir: Path, config: dict[str, str], member: str, 
     cookie = submission_session_cookie(config)
     if cookie:
         request.add_header("Cookie", cookie)
-    token = submission_api_token(config)
-    if token:
-        request.add_header("X-AKBS-Token", token)
+    token = submission_api_token(config) or member
+    request.add_header("X-AKBS-Token", token)
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             stdout = response.read().decode("utf-8", errors="replace")
