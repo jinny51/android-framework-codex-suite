@@ -1,6 +1,6 @@
 # Incoming Package Protocol
 
-Member-side Codex creates only `incoming` packages and sends them through the server submission channel. It does not clone, pull, directly search, or push the database repository, and it does not write final knowledge views such as reports, patches, index, or site. The server submission channel performs lightweight intake and writes packages to the intake branch. Admin-side local promotion later validates, rejects, requests evidence, or promotes packages into the database repository. The server does not approve knowledge, apply business rules, or materialize the knowledge repository.
+Member-side Codex creates only `incoming` packages and sends them through the server submission channel. It does not clone, pull, directly search, or push the database repository, and it does not write final knowledge views such as reports, patches, index, or site. The normal server submission channel is the AKBS HTTP API. It receives packages into the server-side AKBS facts database and exposes them to the curation flow. Legacy SSH/intake-branch submission is rollback compatibility only, not the normal member path.
 
 Only the user's local `akbs-curation-maintainer` skill and the AI knowledge loop can decide whether and how an uploaded package enters the knowledge repository.
 
@@ -298,7 +298,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.71"
+    "plugin_version": "1.0.72"
   }
 }
 ```

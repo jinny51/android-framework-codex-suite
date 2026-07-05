@@ -25,7 +25,7 @@ ROOT_MARKERS = (
 )
 ENV_PREFIXES = ("CODEX_KNOWLEDGE_", "CODEX_REPORT_", "CODEX_WORK_REPORT_")
 AKBS_ENDPOINT_ENV_PREFIXES = ("CODEX_REPORT_AKBS_ENDPOINT_", "CODEX_WORK_REPORT_AKBS_ENDPOINT_")
-DEFAULT_AKBS_API_BASE_URL = "http://test35:8090"
+DEFAULT_AKBS_API_BASE_URL = "http://192.168.100.118:8088"
 MEMBER_SEARCH_PATH = "/akbs/api/member/knowledge-search"
 MEMBER_MERGE_CONFIRMATIONS_PATH = "/akbs/api/member/me/merge-confirmations"
 AI_DEFAULT_RESULT_KINDS = {"case", "variant", "patch", "symbol"}
@@ -503,7 +503,6 @@ def candidate_roots(explicit_root: str | None) -> list[Path]:
             home / "worktrees" / "knowledge",
             Path("/mnt/z/knowledge/knowledge-worktree"),
             Path("/mnt/z/knowledge/knowledge"),
-            Path("/home/test35/work/akbs/knowledge-worktree"),
         ]
     )
 

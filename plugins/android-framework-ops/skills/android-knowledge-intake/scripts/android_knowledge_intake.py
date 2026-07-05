@@ -66,12 +66,12 @@ PLUGIN_UPDATE_REQUIRE_ENV = "CODEX_REPORT_REQUIRE_PLUGIN_UPDATE_CHECK"
 PLUGIN_REEXEC_ATTEMPT_ENV = "CODEX_REPORT_PLUGIN_REEXEC_ATTEMPTED"
 PLUGIN_REMOTE_MANIFEST_TIMEOUT = 6
 DEFAULT_SUBMISSION_METHOD = "http"
-DEFAULT_SUBMISSION_SSH_HOST = "test35"
-DEFAULT_SUBMISSION_COMMAND = "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit"
+DEFAULT_SUBMISSION_SSH_HOST = ""
+DEFAULT_SUBMISSION_COMMAND = ""
 DEFAULT_SUBMISSION_API_BASE_URL = "http://192.168.100.118:8088/akbs/api"
 DEFAULT_SUBMISSION_SESSION_COOKIE = ""
 DEFAULT_SUBMISSION_API_TOKEN = ""
-DEFAULT_KNOWLEDGE_REPO_URL = "test35:/home/test35/work/akbs/knowledge.git"
+DEFAULT_KNOWLEDGE_REPO_URL = ""
 AKBS_ENDPOINT_ENV_PREFIXES = ("CODEX_REPORT_AKBS_ENDPOINT_", "CODEX_WORK_REPORT_AKBS_ENDPOINT_")
 AKBS_ENDPOINT_DEFAULTS = {
     "submission_method": DEFAULT_SUBMISSION_METHOD,
@@ -6896,18 +6896,18 @@ def doctor_strict_checks(
         warn(str(freshness.get("message") or "无法确认插件是否为最新版本。"))
 
     if not knowledge_url:
-        error("knowledge_repo_url 不能为空，成员端必须配置只读知识库仓库。")
+        warn("未配置 knowledge_repo_url；成员端知识检索将优先使用新 AKBS API，本地知识库只作为可选兜底。")
     if not knowledge_repo.exists():
         clone_hint = f"git clone {knowledge_url} {shlex.quote(str(knowledge_repo))}" if knowledge_url else ""
-        suffix = f" 请先克隆知识库仓库: {clone_hint}" if clone_hint else ""
-        error(f"knowledge_repo_worktree 不存在: {knowledge_repo}.{suffix}")
+        suffix = f" 可选兜底克隆命令: {clone_hint}" if clone_hint else ""
+        warn(f"knowledge_repo_worktree 不存在: {knowledge_repo}.{suffix}")
     elif not (knowledge_repo / ".git").exists():
-        error(f"knowledge_repo_worktree 已存在但不是 Git 仓库: {knowledge_repo}")
+        warn(f"knowledge_repo_worktree 已存在但不是 Git 仓库，本地兜底搜索不可用: {knowledge_repo}")
     elif knowledge_url:
         origin = git_run(knowledge_repo, ["config", "--get", "remote.origin.url"], check=False)
         origin_url = origin.stdout.strip()
         if origin_url and origin_url != knowledge_url:
-            error(f"knowledge_repo_worktree origin 与 knowledge_repo_url 不一致: origin={origin_url}, knowledge_repo_url={knowledge_url}")
+            warn(f"knowledge_repo_worktree origin 与 knowledge_repo_url 不一致，本地兜底搜索可能不可用: origin={origin_url}, knowledge_repo_url={knowledge_url}")
 
     out_parent = nearest_existing_parent(out_dir.parent)
     if not os.access(out_parent, os.W_OK):
@@ -6920,7 +6920,7 @@ def doctor_strict_checks(
     if check_remote and knowledge_url:
         remote = run(["git", "ls-remote", "--heads", knowledge_url])
         if remote.returncode != 0:
-            error("knowledge_repo_url 无法访问，请先配置 SSH/Git 权限: " + (remote.stderr.strip() or remote.stdout.strip()))
+            warn("knowledge_repo_url 无法访问；新 AKBS API 上传不受影响，本地兜底搜索不可用: " + (remote.stderr.strip() or remote.stdout.strip()))
 
     return {
         "status": "FAIL" if errors else "PASS",

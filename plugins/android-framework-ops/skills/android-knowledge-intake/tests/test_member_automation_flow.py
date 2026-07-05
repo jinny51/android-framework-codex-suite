@@ -557,6 +557,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertEqual(endpoint["source"], "default")
         self.assertEqual(endpoint["submission_method"], "http")
         self.assertEqual(endpoint["submission_api_base_url"], "http://192.168.100.118:8088/akbs/api")
+        self.assertEqual(endpoint["submission_ssh_host"], "")
+        self.assertEqual(endpoint["submission_command"], "")
+        self.assertEqual(endpoint["knowledge_repo_url"], "")
 
     def test_http_submission_posts_tarball_to_new_akbs_upload_api(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1234,10 +1237,10 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 check=False,
             )
 
-            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.returncode, 0)
             payload = json.loads(result.stdout)
-            self.assertEqual(payload["status"], "FAIL")
-            self.assertTrue(any("knowledge_repo_worktree 不存在" in item for item in payload["strict"]["errors"]))
+            self.assertEqual(payload["status"], "PASS")
+            self.assertTrue(any("knowledge_repo_worktree 不存在" in item for item in payload["strict"]["warnings"]))
 
     def test_daily_weekly_patch_and_supplement_upload_to_resolved_endpoint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

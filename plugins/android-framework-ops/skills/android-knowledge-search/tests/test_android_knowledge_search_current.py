@@ -474,7 +474,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                 code = search.main(["电源键"])
 
         self.assertEqual(code, 0)
-        self.assertTrue(seen_url["value"].startswith("http://test35:8090/akbs/api/member/knowledge-search?"))
+        self.assertTrue(seen_url["value"].startswith("http://192.168.100.118:8088/akbs/api/member/knowledge-search?"))
         self.assertIn("q=", seen_url["value"])
 
     def test_server_unavailable_falls_back_to_local_jsonl_and_records_reason(self):
