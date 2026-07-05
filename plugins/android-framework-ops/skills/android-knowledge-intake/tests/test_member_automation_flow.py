@@ -665,24 +665,43 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(forced["status"], "UNKNOWN")
             self.assertTrue(forced["blocking"])
 
-    def test_packaged_plugin_freshness_detects_newer_marketplace_version(self) -> None:
+    def test_packaged_plugin_freshness_auto_installs_newer_marketplace_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             plugin_root = seed_packaged_plugin_install(root, version="1.0.24")
             module = load_intake_module()
             module.PLUGIN_ROOT = plugin_root
             module.fetch_remote_plugin_manifest = lambda metadata: {"version": "1.0.26"}
+            calls: list[list[str]] = []
+
+            def fake_run(cmd: list[str], check: bool = False, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+                calls.append(cmd)
+                if cmd[:4] == ["git", "-C", str(plugin_root), "rev-parse"]:
+                    return subprocess.CompletedProcess(cmd, 1, "", "not a git repository")
+                if cmd[:4] == ["codex", "plugin", "marketplace", "upgrade"]:
+                    return subprocess.CompletedProcess(cmd, 0, json.dumps({"upgraded": True}), "")
+                if cmd[:3] == ["codex", "plugin", "add"]:
+                    return subprocess.CompletedProcess(cmd, 0, json.dumps({"installed": True, "version": "1.0.26"}), "")
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+
+            module.run = fake_run
             old_env = os.environ.copy()
             try:
                 os.environ["CODEX_HOME"] = str(root / "empty-codex-home")
 
                 result = module.plugin_freshness_check(fetch=True)
 
-                self.assertEqual(result["status"], "STALE")
+                self.assertEqual(result["status"], "UPDATED_RESTART_REQUIRED")
                 self.assertTrue(result["blocking"])
                 self.assertEqual(result["local_version"], "1.0.24")
                 self.assertEqual(result["remote_version"], "1.0.26")
-                self.assertIn("GitHub 已发布", result["message"])
+                self.assertEqual(result["auto_update"]["status"], "PASS")
+                self.assertIn(
+                    ["codex", "plugin", "marketplace", "upgrade", "android-framework-codex-suite", "--json"],
+                    calls,
+                )
+                self.assertIn(["codex", "plugin", "add", "android-framework-ops@android-framework-codex-suite", "--json"], calls)
+                self.assertIn("当前会话不能热刷新", result["message"])
             finally:
                 os.environ.clear()
                 os.environ.update(old_env)
@@ -709,6 +728,69 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 self.assertEqual(result["skill_cache_version"], "1.0.24")
                 self.assertIn("当前会话不能热刷新技能", result["message"])
             finally:
+                os.environ.clear()
+                os.environ.update(old_env)
+
+    def test_member_generation_reexecs_new_packaged_skill_after_auto_update(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote)
+            env.pop("CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK", None)
+            skill_root = seed_codex_plugin_cache(Path(env["CODEX_HOME"]), "1.0.26")
+            script_path = skill_root / "scripts" / "android_knowledge_intake.py"
+            script_path.parent.mkdir(parents=True)
+            script_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+            plugin_root = skill_root.parents[1]
+            module = load_intake_module()
+            module.plugin_version_gate_check = lambda config, fetch=True, require=True: {
+                "status": "UPDATED_RESTART_REQUIRED",
+                "blocking": True,
+                "plugin_name": "android-framework-ops",
+                "local_version": "1.0.24",
+                "remote_version": "1.0.26",
+                "auto_update": {
+                    "status": "PASS",
+                    "installed_plugin_path": str(plugin_root),
+                    "installed_plugin_version": "1.0.26",
+                },
+                "message": "插件已自动更新。",
+            }
+            exec_calls: list[tuple[str, list[str]]] = []
+
+            def fake_execv(executable: str, args: list[str]) -> None:
+                exec_calls.append((executable, args))
+                raise RuntimeError("execv called")
+
+            old_argv = sys.argv[:]
+            old_env = os.environ.copy()
+            try:
+                os.environ.clear()
+                os.environ.update(env)
+                sys.argv = [
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "daily",
+                    "--date",
+                    "2026-06-01",
+                    "--run-id",
+                    "20260601-210000-daily",
+                    "--prepare",
+                ]
+                with patch("os.execv", fake_execv):
+                    with self.assertRaisesRegex(RuntimeError, "execv called"):
+                        module.main()
+
+                self.assertEqual(len(exec_calls), 1)
+                executable, args = exec_calls[0]
+                self.assertEqual(executable, sys.executable)
+                self.assertEqual(args[0], sys.executable)
+                self.assertEqual(args[1], str(script_path))
+                self.assertEqual(args[2:], sys.argv[1:])
+                self.assertEqual(os.environ["CODEX_REPORT_PLUGIN_REEXEC_ATTEMPTED"], "1")
+            finally:
+                sys.argv = old_argv
                 os.environ.clear()
                 os.environ.update(old_env)
 

@@ -63,6 +63,7 @@ INCOMING_SCHEMA_VERSION = "1"
 ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
 PLUGIN_UPDATE_SKIP_ENV = "CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"
 PLUGIN_UPDATE_REQUIRE_ENV = "CODEX_REPORT_REQUIRE_PLUGIN_UPDATE_CHECK"
+PLUGIN_REEXEC_ATTEMPT_ENV = "CODEX_REPORT_PLUGIN_REEXEC_ATTEMPTED"
 PLUGIN_REMOTE_MANIFEST_TIMEOUT = 6
 DEFAULT_SUBMISSION_METHOD = "http"
 DEFAULT_SUBMISSION_SSH_HOST = "test35"
@@ -563,13 +564,28 @@ def packaged_plugin_freshness(metadata: dict[str, str], fetch: bool, require: bo
     payload["remote_version"] = remote_version
     payload["remote_plugin_version"] = remote_version
     if remote_version and compare_versions(local_version, remote_version) < 0:
+        auto_update = auto_update_packaged_plugin(str(metadata.get("plugin_name") or "android-framework-ops"))
+        payload["auto_update"] = auto_update
+        if auto_update.get("status") == "PASS":
+            payload.update(
+                {
+                    "status": "UPDATED_RESTART_REQUIRED",
+                    "blocking": True,
+                    "message": (
+                        f"Codex 插件缓存已自动更新到 Android Framework Ops {remote_version}。"
+                        "当前 Python 进程和 Codex 会话已经加载了旧技能缓存，当前会话不能热刷新；"
+                        "请重新运行原命令，并在 Codex 会话仍显示旧技能时新开或重启会话。"
+                    ),
+                }
+            )
+            return payload
         payload.update(
             {
                 "status": "STALE",
                 "blocking": True,
                 "message": (
                     f"GitHub 已发布 Android Framework Ops {remote_version}，当前插件缓存是 {local_version}。"
-                    "请先在 Codex 插件市场更新插件；如果已更新但当前会话仍显示旧版本，请新开或重启会话后再生成或上传。"
+                    "自动更新插件缓存失败，请先在 Codex 插件市场更新插件；如果已更新但当前会话仍显示旧版本，请新开或重启会话后再生成或上传。"
                 ),
             }
         )
@@ -584,6 +600,87 @@ def packaged_plugin_freshness(metadata: dict[str, str], fetch: bool, require: bo
             }
         )
     return payload
+
+
+def auto_update_packaged_plugin(plugin_name: str) -> dict[str, Any]:
+    marketplace = "android-framework-codex-suite"
+    upgrade_cmd = ["codex", "plugin", "marketplace", "upgrade", marketplace, "--json"]
+    add_cmd = ["codex", "plugin", "add", f"{plugin_name}@{marketplace}", "--json"]
+    upgrade_cp = run(upgrade_cmd)
+    if upgrade_cp.returncode != 0:
+        return {
+            "attempted": True,
+            "status": "FAIL",
+            "upgrade_command": shlex.join(upgrade_cmd),
+            "stderr": upgrade_cp.stderr.strip(),
+            "stdout": upgrade_cp.stdout.strip(),
+        }
+    add_cp = run(add_cmd)
+    if add_cp.returncode != 0:
+        return {
+            "attempted": True,
+            "status": "FAIL",
+            "upgrade_command": shlex.join(upgrade_cmd),
+            "install_command": shlex.join(add_cmd),
+            "marketplace_stdout": upgrade_cp.stdout.strip(),
+            "stderr": add_cp.stderr.strip(),
+            "stdout": add_cp.stdout.strip(),
+        }
+    payload = {
+        "attempted": True,
+        "status": "PASS",
+        "upgrade_command": shlex.join(upgrade_cmd),
+        "install_command": shlex.join(add_cmd),
+        "marketplace_stdout": upgrade_cp.stdout.strip(),
+        "install_stdout": add_cp.stdout.strip(),
+    }
+    payload.update(latest_installed_plugin_cache_metadata(plugin_name))
+    return payload
+
+
+def plugin_intake_script_from_root(root: Path) -> Path:
+    if root.name == "android-knowledge-intake" and root.parent.name == "skills":
+        return root / "scripts" / "android_knowledge_intake.py"
+    return root / "skills" / "android-knowledge-intake" / "scripts" / "android_knowledge_intake.py"
+
+
+def updated_plugin_intake_script_path(freshness: dict[str, Any]) -> Path | None:
+    auto_update = freshness.get("auto_update") if isinstance(freshness.get("auto_update"), dict) else {}
+    plugin_name = str(freshness.get("plugin_name") or "android-framework-ops")
+    root_values = [
+        auto_update.get("installed_plugin_path"),
+        freshness.get("installed_plugin_path"),
+    ]
+    cache_metadata = latest_installed_plugin_cache_metadata(plugin_name)
+    if cache_metadata.get("installed_plugin_path"):
+        root_values.append(cache_metadata["installed_plugin_path"])
+
+    for root_value in root_values:
+        if not root_value:
+            continue
+        script_path = plugin_intake_script_from_root(Path(str(root_value))).resolve()
+        if script_path.is_file():
+            return script_path
+
+    if auto_update.get("status") == "PASS" and auto_update.get("command"):
+        return Path(__file__).resolve()
+    return None
+
+
+def reexec_latest_plugin_script_after_update(freshness: dict[str, Any]) -> str:
+    if freshness.get("status") not in {"UPDATED_RESTART_REQUIRED", "SESSION_CACHE_STALE"}:
+        return ""
+    if os.environ.get(PLUGIN_REEXEC_ATTEMPT_ENV):
+        return ""
+    script_path = updated_plugin_intake_script_path(freshness)
+    if not script_path:
+        return "已更新插件缓存，但未找到新缓存里的上传脚本；请新开或重启 Codex 会话后重新运行。"
+    os.environ[PLUGIN_REEXEC_ATTEMPT_ENV] = "1"
+    try:
+        os.execv(sys.executable, [sys.executable, str(script_path), *sys.argv[1:]])
+    except OSError as exc:
+        return f"已更新插件缓存，但无法切换到新脚本继续执行: {exc}。请新开或重启 Codex 会话后重新运行。"
+    return ""
 
 
 def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[str, Any]:
@@ -6870,11 +6967,14 @@ def main() -> int:
     if args.command in PACKAGE_TYPES and not args.validate and (args.prepare or args.submit_latest or args.upload):
         freshness = plugin_version_gate_check(config, fetch=True, require=True)
         if freshness.get("blocking"):
+            reexec_error = reexec_latest_plugin_script_after_update(freshness)
+            if reexec_error:
+                freshness["reexec_error"] = reexec_error
             print(
                 json.dumps(
                     {
                         "status": "FAIL",
-                        "message": freshness.get("message") or "插件更新检查失败。",
+                        "message": freshness.get("reexec_error") or freshness.get("message") or "插件更新检查失败。",
                         "plugin_freshness": freshness,
                     },
                     ensure_ascii=False,

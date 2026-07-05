@@ -34,11 +34,11 @@
 
 严格健康检查（doctor strict check）会要求 `knowledge_repo_worktree` 存在且是 Git 仓库（git repository）。成员端只克隆知识库仓库（knowledge repository），不能克隆或直接读取数据库仓库（database repository）。
 
-日报、周报和补丁生成入口会先做插件版本门禁（plugin version gate）。脚本会比较三类版本：当前正在运行脚本的插件版本、Codex 已安装的最新插件缓存版本、可访问时的 GitHub marketplace 远端版本。Git checkout 如果可以安全快进，会自动执行 `git pull --ff-only`，然后停止当前生成，因为已经加载的 Python 进程和 Codex 会话不能热刷新技能说明；成员需要重新运行原命令。如果 Codex 已安装新插件，但当前会话仍在旧技能缓存里运行，也会停止并提示新开或重启 Codex 会话。
+日报、周报和补丁生成入口会先做插件版本门禁（plugin version gate）。脚本会比较三类版本：当前正在运行脚本的插件版本、Codex 已安装的最新插件缓存版本、可访问时的 GitHub marketplace 远端版本。Git checkout 如果可以安全快进，会自动执行 `git pull --ff-only`，然后用更新后的脚本重新执行当前命令。Codex 插件市场安装的包如果发现 GitHub marketplace 有新版，会自动刷新 marketplace 和本地插件缓存，再用最新缓存里的脚本重新执行当前命令。如果 Codex 已安装新插件，但当前会话仍在旧技能缓存里运行，也会先尝试切到最新缓存脚本；只有找不到新脚本或当前 Codex 会话无法刷新已加载技能说明时，才停止并提示新开或重启 Codex 会话。
 
 生成日报包、周报包、补丁包或补证包之前，技能会先确认运行插件、已安装插件缓存、会话技能缓存和远端插件版本兼容；无法确认最新时停止生成，避免旧规则继续产出材料。生成出的上传包会在 `materials/evidence/source.json` 写入 `plugin_name`、当前 `plugin_version`、当前 `skill_version`、`plugin_installation`、可用的 `plugin_commit`、`installed_plugin_version`、`remote_plugin_version`、`skill_cache_version` 和 `plugin_version_check` 检查结果；补丁包还会同步写入实现来源（implementation origin），例如 `codex`、`manual`、`external` 或 `mixed`。服务器上传入口只做轻量接收并写入上传分支（intake branch）；管理端本地推广入口用这些字段区分插件未更新、会话缓存未刷新、旧包不再兼容或版本证据缺失。
 
-生成前门禁仍按最新插件和当前会话缓存判断；处理历史上传包时按共享规则层的 source version compatibility matrix 判断生成时能力，不要求旧包的 `plugin_version` / `skill_version` 等于处理时最新插件版本。显式 `SESSION_CACHE_STALE` 或 `plugin_version_check.blocking=true` 仍表示当次生成/上传应被阻止。
+生成前门禁仍按最新插件和当前会话缓存判断；处理历史上传包时按共享规则层的 source version compatibility matrix 判断生成时能力，不要求旧包的 `plugin_version` / `skill_version` 等于处理时最新插件版本。显式 `SESSION_CACHE_STALE` 或 `plugin_version_check.blocking=true` 会先尝试自动切到最新脚本；自动切换失败时，当次生成/上传必须被阻止。
 
 成员端看到“缺项目名、平台、Android 版本、材料名、功能名或展示字段”时，可生成 `supplement_mode=field_correction` 的轻量补证包；它只写 `corrected_fields`、`correction_reason`、`field_correction` 和补证关系，不携带补丁 diff、验证结论、搜索证据或 `patch_ai_facts`。看到“缺验证、缺补丁资产、缺 `patch_ai_facts`、local-check 失败或补丁资产污染”时，仍必须重新运行 `android-framework-patch-capture` 完整采集同一功能补丁包，再作为资产级补证提交。
 
