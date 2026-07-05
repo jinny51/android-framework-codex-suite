@@ -144,5 +144,6 @@ form. Required weekly payload fields include `project_ledgers[]`,
 as `project_overview[]`, `source_lists[]`, `source_category_stats[]`,
 `item_statistics[]`, `remaining_items[]`, `patch_outputs[]`,
 `delivery_verifications[]`, and `next_week_plan[]` remain for UI compatibility.
-Administrator team weekly and monthly summaries should prefer
-`project_ledgers[]` over re-counting daily records.
+Management-side aggregation should prefer `project_ledgers[]` over re-counting
+daily records. Member-side weekly report generation should still present this
+only as a personal weekly report structure.

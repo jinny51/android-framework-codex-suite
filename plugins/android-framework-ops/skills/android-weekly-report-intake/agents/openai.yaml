@@ -1,7 +1,7 @@
 interface:
   display_name: "Android Weekly Report Intake"
   short_description: "Generate personal weekly report incoming packages"
-  default_prompt: "Use $android-weekly-report-intake to generate, replace, check, or submit a member personal weekly report package through AKBS incoming. Use the shared android-knowledge-intake script in weekly mode; do not generate team weekly summaries."
+  default_prompt: "Use $android-weekly-report-intake to generate, replace, check, or submit a member personal weekly report package through AKBS incoming. Use the shared android-knowledge-intake script in weekly mode; do not generate administrator summaries."
 
 policy:
   allow_implicit_invocation: true

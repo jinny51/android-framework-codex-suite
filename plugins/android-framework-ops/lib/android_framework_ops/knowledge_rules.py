@@ -39,7 +39,7 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
     },
     "report_view_project_ledger_v1": {
         "min_plugin_version": "1.0.71",
-        "description": "weekly report_view contains member-maintained project ledgers for team weekly/monthly aggregation",
+        "description": "weekly report_view contains member-maintained project ledgers for personal weekly report structure and management aggregation",
     },
     "lightweight_supplement_v1": {
         "min_plugin_version": "1.0.65",

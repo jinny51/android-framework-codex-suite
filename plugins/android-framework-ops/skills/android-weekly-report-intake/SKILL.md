@@ -1,6 +1,6 @@
 ---
 name: android-weekly-report-intake
-description: "Use when generating, replacing, checking, or submitting a member personal weekly report package through AKBS incoming. Do not use for daily reports, patch packages, team weekly summaries, or knowledge curation decisions."
+description: "Use when generating, replacing, checking, or submitting a member personal weekly report package through AKBS incoming. Do not use for daily reports, patch packages, administrator summaries, or knowledge curation decisions."
 ---
 
 # Android Weekly Report Intake
@@ -12,7 +12,7 @@ This skill is an entrypoint, not a separate upload implementation. It routes to 
 ## Boundary
 
 - Owns personal weekly generation, `reports/weekly.md`, `materials/display/report_view.json`, weekly period rules, duplicate weekly replacement, and weekly submission.
-- Does not generate daily reports, patch packages, team weekly summaries, curation decisions, database writes, knowledge repository writes, or UI changes.
+- Does not generate daily reports, patch packages, administrator summaries, curation decisions, database writes, knowledge repository writes, or UI changes.
 - Weekly reports are progress archives only. They do not become knowledge repository materialization candidates.
 
 ## Report Model
@@ -45,10 +45,11 @@ Every formal weekly item should preserve both dimensions when available: 需求�
 
 Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `report_type=weekly`, `week_range`, `display_date`, `display_title`, `one_line_summary`, `project_ledgers[]`, `weekly_progress_summary`, `weekly_detail_sections[]`, `project_overview[]`, `source_lists[]`, `source_category_stats[]`, `requirement_origin`, `requirement_list_type`, `item_statistics[]`, `completed_items[]`, `in_progress_items[]`, `remaining_items[]`, `risks[]`, `patch_outputs[]`, `delivery_verifications[]`, and `next_week_plan[]`.
 
-`project_ledgers[]` is the preferred input for administrator team weekly and
-monthly reports. Members may manually correct the Markdown before upload, but
-the generated `report_view.json` must remain the same-source structured view of
-that report content.
+`project_ledgers[]` is the structured view of the member's own weekly project
+ledger. Members may manually correct the Markdown before upload, but the
+generated `report_view.json` must remain the same-source structured view of that
+report content. Any management-side aggregation happens outside the member
+workflow and should not be exposed as a member responsibility.
 
 The weekly display date is the last workday of the period. A late weekly submission still displays the weekly period date, not the upload day.
 

@@ -1,6 +1,6 @@
 ---
 name: android-daily-report-intake
-description: "Use when generating, replacing, checking, or submitting a member personal daily report package through AKBS incoming. Do not use for weekly reports, patch packages, team weekly summaries, or knowledge curation decisions."
+description: "Use when generating, replacing, checking, or submitting a member personal daily report package through AKBS incoming. Do not use for weekly reports, patch packages, administrator summaries, or knowledge curation decisions."
 ---
 
 # Android Daily Report Intake
@@ -12,7 +12,7 @@ This skill is an entrypoint, not a separate upload implementation. It routes to 
 ## Boundary
 
 - Owns personal daily generation, `reports/daily.md`, `materials/display/report_view.json`, daily date rules, duplicate daily replacement, and daily submission.
-- Does not generate weekly reports, patch packages, team weekly summaries, curation decisions, database writes, knowledge repository writes, or UI changes.
+- Does not generate weekly reports, patch packages, administrator summaries, curation decisions, database writes, knowledge repository writes, or UI changes.
 - Daily reports are archive material. They do not become knowledge repository materialization candidates.
 
 ## Report Model

@@ -13,7 +13,7 @@ This skill is an entrypoint, not a separate upload implementation. It routes to 
 
 - Owns member-side `framework_change` incoming generation, original patch package upload, evidence supplement package upload, replacement metadata, `materials/display/patch_view.json`, and `materials/evidence/patch_ai_facts.json`.
 - Uses `android-framework-patch-capture` for real feature capture when there are source changes or patch asset corrections.
-- Does not generate daily reports, weekly reports, team weekly summaries, curation decisions, database writes, knowledge repository writes, or UI changes.
+- Does not generate daily reports, weekly reports, administrator summaries, curation decisions, database writes, knowledge repository writes, or UI changes.
 
 ## Rules
 
