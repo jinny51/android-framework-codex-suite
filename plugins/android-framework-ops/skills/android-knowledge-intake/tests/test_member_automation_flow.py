@@ -13,6 +13,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SUITE_ROOT = Path(__file__).resolve().parents[5]
@@ -547,6 +548,80 @@ class MemberAutomationFlowTests(unittest.TestCase):
             module.submission_method({"submission_method": "git"})
 
         self.assertIn("不支持", str(caught.exception))
+
+    def test_http_submission_posts_tarball_to_new_akbs_upload_api(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package_dir = root / "package"
+            package_dir.mkdir()
+            manifest = {
+                "package_key": "20260705/member01/20260705-090000-daily",
+                "package_kind": "daily_trace",
+                "member_alias": "member01",
+                "member_name": "成员甲",
+                "run_id": "20260705-090000-daily",
+                "date": "2026-07-05",
+                "summary": "日报上传",
+            }
+            (package_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+            (package_dir / "README.md").write_text("# 日报\n", encoding="utf-8")
+            (package_dir / "local-check.json").write_text(json.dumps({"status": "PASS"}), encoding="utf-8")
+            module = load_intake_module()
+            requests = []
+
+            class FakeResponse:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, exc_type, exc, tb):
+                    return False
+
+                def read(self):
+                    return json.dumps({"accepted": True, "submitted": True}, ensure_ascii=False).encode("utf-8")
+
+            def fake_urlopen(request, timeout=0):
+                requests.append((request, timeout))
+                return FakeResponse()
+
+            config = {
+                "member_alias": "member01",
+            }
+
+            endpoint_env = {
+                "CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_METHOD": "http",
+                "CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL": "http://akbs.local/akbs/api",
+                "CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_SESSION_COOKIE": "akbs_session=test-session",
+            }
+            with patch.dict(os.environ, endpoint_env), patch("urllib.request.urlopen", fake_urlopen):
+                result = module.server_submit_package(package_dir, config, "http")
+
+            self.assertTrue(result["submitted"])
+            self.assertEqual(len(requests), 1)
+            request, timeout = requests[0]
+            self.assertEqual(timeout, 30)
+            self.assertEqual(request.full_url, "http://akbs.local/akbs/api/member/me/uploads/daily")
+            self.assertEqual(request.get_header("Content-type"), "application/gzip")
+            self.assertEqual(request.get_header("Cookie"), "akbs_session=test-session")
+            self.assertEqual(request.get_header("X-akbs-user"), "member01")
+            self.assertGreater(len(request.data), 0)
+
+    def test_http_upload_type_uses_four_physical_package_kinds(self) -> None:
+        module = load_intake_module()
+
+        self.assertEqual(module.upload_type_for_manifest({"package_kind": "daily_trace"}), "daily")
+        self.assertEqual(module.upload_type_for_manifest({"package_kind": "weekly_trace"}), "weekly")
+        self.assertEqual(module.upload_type_for_manifest({"package_kind": "framework_change"}), "patch")
+        self.assertEqual(
+            module.upload_type_for_manifest(
+                {
+                    "package_kind": "framework_change",
+                    "supplement_for_package_key": "20260705/wick/20260705-091500-patch",
+                },
+            ),
+            "supplement",
+        )
+        with self.assertRaises(SystemExit):
+            module.upload_type_for_manifest({"package_kind": "unknown"})
 
     def test_plugin_freshness_detects_checkout_behind_origin(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

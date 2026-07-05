@@ -60,7 +60,7 @@ $CODEX_HOME/<skill-name>.toml
 <project>/.codex/report.toml
 ```
 
-普通成员配置只写身份和本地路径。服务器上传入口和只读知识库入口由 AKBS endpoint resolver 提供；管理员/测试 override 不作为普通成员必填项。知识库仓库工作树和产物目录建议使用：
+普通成员配置只写身份和本地路径。服务器上传入口和只读知识库入口由 AKBS endpoint resolver 提供；管理员/测试 override 不作为普通成员必填项。新版 AKBS 可通过 HTTP API 接收上传包，旧系统切换前仍可由 resolver 指向既有入口；成员不需要理解 SSH、服务器路径或 API 地址。知识库仓库工作树和产物目录建议使用：
 
 ```text
 <Codex documents>/worktrees/knowledge

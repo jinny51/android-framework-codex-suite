@@ -67,12 +67,18 @@ PLUGIN_REMOTE_MANIFEST_TIMEOUT = 6
 DEFAULT_SUBMISSION_METHOD = "ssh"
 DEFAULT_SUBMISSION_SSH_HOST = "test35"
 DEFAULT_SUBMISSION_COMMAND = "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit"
+DEFAULT_SUBMISSION_API_BASE_URL = ""
+DEFAULT_SUBMISSION_SESSION_COOKIE = ""
+DEFAULT_SUBMISSION_API_TOKEN = ""
 DEFAULT_KNOWLEDGE_REPO_URL = "test35:/home/test35/work/akbs/knowledge.git"
 AKBS_ENDPOINT_ENV_PREFIXES = ("CODEX_REPORT_AKBS_ENDPOINT_", "CODEX_WORK_REPORT_AKBS_ENDPOINT_")
 AKBS_ENDPOINT_DEFAULTS = {
     "submission_method": DEFAULT_SUBMISSION_METHOD,
     "submission_ssh_host": DEFAULT_SUBMISSION_SSH_HOST,
     "submission_command": DEFAULT_SUBMISSION_COMMAND,
+    "submission_api_base_url": DEFAULT_SUBMISSION_API_BASE_URL,
+    "submission_session_cookie": DEFAULT_SUBMISSION_SESSION_COOKIE,
+    "submission_api_token": DEFAULT_SUBMISSION_API_TOKEN,
     "knowledge_repo_url": DEFAULT_KNOWLEDGE_REPO_URL,
 }
 LEGACY_TEST35_ENDPOINT_VALUES = {
@@ -294,6 +300,9 @@ CONFIG_DEFAULTS = {
     "submission_method": "",
     "submission_ssh_host": "",
     "submission_command": "",
+    "submission_api_base_url": "",
+    "submission_session_cookie": "",
+    "submission_api_token": "",
     "git_user_name": "",
     "git_user_email": "",
     "codex_home": "$CODEX_HOME",
@@ -876,6 +885,12 @@ def flatten_config_payload(payload: dict[str, Any]) -> dict[str, str]:
             normalized = "submission_ssh_host"
         elif section == "submission" and key in {"command", "submit_command", "submission_command"}:
             normalized = "submission_command"
+        elif section == "submission" and key in {"api_base_url", "base_url", "submission_api_base_url"}:
+            normalized = "submission_api_base_url"
+        elif section == "submission" and key in {"session_cookie", "cookie", "submission_session_cookie"}:
+            normalized = "submission_session_cookie"
+        elif section == "submission" and key in {"api_token", "token", "submission_api_token"}:
+            normalized = "submission_api_token"
         elif section == "paths" and key in {"knowledge_repo_worktree", "knowledge_worktree"}:
             normalized = "knowledge_repo_worktree"
         elif section == "paths" and key in {"codex_home", "out_dir"}:
@@ -947,6 +962,9 @@ def apply_env_overrides(config: dict[str, str]) -> None:
         "SUBMISSION_SSH_HOST": "submission_ssh_host",
         "SUBMISSION_HOST": "submission_ssh_host",
         "SUBMISSION_COMMAND": "submission_command",
+        "SUBMISSION_API_BASE_URL": "submission_api_base_url",
+        "SUBMISSION_SESSION_COOKIE": "submission_session_cookie",
+        "SUBMISSION_API_TOKEN": "submission_api_token",
     }
     for env_key, value in os.environ.items():
         for prefix in ENV_PREFIXES:
@@ -973,6 +991,9 @@ def resolve_akbs_endpoint(config: dict[str, str]) -> dict[str, str]:
         "submission_method": "SUBMISSION_METHOD",
         "submission_ssh_host": "SUBMISSION_SSH_HOST",
         "submission_command": "SUBMISSION_COMMAND",
+        "submission_api_base_url": "SUBMISSION_API_BASE_URL",
+        "submission_session_cookie": "SUBMISSION_SESSION_COOKIE",
+        "submission_api_token": "SUBMISSION_API_TOKEN",
         "knowledge_repo_url": "KNOWLEDGE_REPO_URL",
     }
     env_overrides = {key: akbs_endpoint_env_value(env_key) for key, env_key in env_keys.items()}
@@ -985,10 +1006,18 @@ def resolve_akbs_endpoint(config: dict[str, str]) -> dict[str, str]:
     role = str(config.get("role") or "").strip()
     configured = {
         key: str(config.get(key) or "").strip()
-        for key in ("submission_method", "submission_ssh_host", "submission_command", "knowledge_repo_url")
+        for key in (
+            "submission_method",
+            "submission_ssh_host",
+            "submission_command",
+            "submission_api_base_url",
+            "submission_session_cookie",
+            "submission_api_token",
+            "knowledge_repo_url",
+        )
         if str(config.get(key) or "").strip()
     }
-    if "submission_method" in configured and configured["submission_method"].lower() not in {"ssh", "local"}:
+    if "submission_method" in configured and configured["submission_method"].lower() not in {"ssh", "local", "http"}:
         raise SystemExit(f"submission_method 不支持: {configured['submission_method']}")
     if role == "admin" and configured:
         endpoint.update(configured)
@@ -1003,7 +1032,16 @@ def configured_endpoint_fields(loaded: list[Path]) -> dict[str, str]:
             continue
         payload = read_toml(path)
         flattened = flatten_config_payload(payload)
-        for key in ("server_profile", "submission_method", "submission_ssh_host", "submission_command", "knowledge_repo_url"):
+        for key in (
+            "server_profile",
+            "submission_method",
+            "submission_ssh_host",
+            "submission_command",
+            "submission_api_base_url",
+            "submission_session_cookie",
+            "submission_api_token",
+            "knowledge_repo_url",
+        ):
             value = str(flattened.get(key) or "").strip()
             if value:
                 fields[key] = value
@@ -1016,7 +1054,17 @@ def endpoint_migration_report(config: dict[str, str], loaded: list[Path]) -> dic
         key
         for key, value in configured.items()
         if value == LEGACY_TEST35_ENDPOINT_VALUES.get(key, "")
-        or (key in {"submission_ssh_host", "knowledge_repo_url", "submission_command", "server_profile"} and "test35" in value)
+        or (
+            key
+            in {
+                "submission_ssh_host",
+                "knowledge_repo_url",
+                "submission_command",
+                "submission_api_base_url",
+                "server_profile",
+            }
+            and "test35" in value
+        )
     )
     custom_fields = sorted(key for key in configured if key not in legacy_fields)
     role = str(config.get("role") or "").strip()
@@ -1081,6 +1129,8 @@ def require_config(config: dict[str, str]) -> None:
         missing.append("submission_command")
     if method == "ssh" and not submission_ssh_host(config):
         missing.append("submission_ssh_host")
+    if method == "http" and not submission_api_base_url(config):
+        missing.append("submission_api_base_url")
     if missing:
         raise SystemExit("缺少必要配置: " + ", ".join(missing))
 
@@ -1096,7 +1146,7 @@ def knowledge_repo_worktree(config: dict[str, str]) -> Path:
 
 def submission_method(config: dict[str, str]) -> str:
     method = resolve_akbs_endpoint(config)["submission_method"].strip().lower()
-    if method not in {"ssh", "local"}:
+    if method not in {"ssh", "local", "http"}:
         raise SystemExit(f"submission_method 不支持: {method}")
     return method
 
@@ -1107,6 +1157,18 @@ def submission_ssh_host(config: dict[str, str]) -> str:
 
 def submission_command(config: dict[str, str]) -> str:
     return resolve_akbs_endpoint(config)["submission_command"].strip()
+
+
+def submission_api_base_url(config: dict[str, str]) -> str:
+    return resolve_akbs_endpoint(config)["submission_api_base_url"].strip()
+
+
+def submission_session_cookie(config: dict[str, str]) -> str:
+    return resolve_akbs_endpoint(config)["submission_session_cookie"].strip()
+
+
+def submission_api_token(config: dict[str, str]) -> str:
+    return resolve_akbs_endpoint(config)["submission_api_token"].strip()
 
 
 def allowed_modes(config: dict[str, str]) -> set[str]:
@@ -6456,13 +6518,15 @@ def package_tar_gz_bytes(package_dir: Path) -> bytes:
 
 
 def server_submit_package(package_dir: Path, config: dict[str, str], method: str) -> dict[str, Any]:
-    command = shlex.split(submission_command(config))
-    if not command:
-        raise SystemExit("submission_command 不能为空")
     member = config.get("member_alias", "").strip()
     if not member:
         raise SystemExit("member_alias 不能为空")
     payload = package_tar_gz_bytes(package_dir)
+    if method == "http":
+        return http_submit_package(package_dir, config, member, payload)
+    command = shlex.split(submission_command(config))
+    if not command:
+        raise SystemExit("submission_command 不能为空")
     if method == "ssh":
         host = submission_ssh_host(config)
         if not host:
@@ -6489,6 +6553,57 @@ def server_submit_package(package_dir: Path, config: dict[str, str], method: str
     result.setdefault("method", method)
     result.setdefault("package", str(package_dir))
     return result
+
+
+def http_submit_package(package_dir: Path, config: dict[str, str], member: str, payload: bytes) -> dict[str, Any]:
+    base_url = submission_api_base_url(config).rstrip("/")
+    if not base_url:
+        raise SystemExit("submission_api_base_url 不能为空")
+    manifest = read_json_file(package_dir / "manifest.json")
+    upload_type = upload_type_for_manifest(manifest)
+    url = f"{base_url}/member/me/uploads/{upload_type}"
+    request = urllib.request.Request(
+        url,
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/gzip",
+            "X-AKBS-User": member,
+        },
+    )
+    cookie = submission_session_cookie(config)
+    if cookie:
+        request.add_header("Cookie", cookie)
+    token = submission_api_token(config)
+    if token:
+        request.add_header("X-AKBS-Token", token)
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            stdout = response.read().decode("utf-8", errors="replace")
+    except Exception as error:
+        raise SystemExit(f"HTTP 上传入口提交失败: {error}") from error
+    try:
+        result = json.loads(stdout or "{}")
+    except json.JSONDecodeError:
+        result = {"message": stdout.strip()}
+    result.setdefault("submitted", True)
+    result.setdefault("method", "http")
+    result.setdefault("package", str(package_dir))
+    result.setdefault("upload_url", url)
+    return result
+
+
+def upload_type_for_manifest(manifest: dict[str, Any]) -> str:
+    package_kind = str(manifest.get("package_kind") or "").strip()
+    if package_kind == "daily_trace":
+        return "daily"
+    if package_kind == "weekly_trace":
+        return "weekly"
+    if package_kind == "framework_change":
+        if str(manifest.get("supplement_for_package_key") or "").strip():
+            return "supplement"
+        return "patch"
+    raise SystemExit(f"无法根据 package_kind 判断上传类型: {package_kind}")
 
 
 def latest_pending(report_type: str, config: dict[str, str], date: dt.date | None = None) -> Path:
@@ -6590,6 +6705,8 @@ def doctor_strict_checks(
         error("submission_command 不能为空。")
     if submit_method == "ssh" and not submit_host:
         error("submission_ssh_host 不能为空。")
+    if submit_method == "http" and not submission_api_base_url(config):
+        error("submission_api_base_url 不能为空。")
     if ".codex/plugins/cache" in knowledge_repo.as_posix():
         error("knowledge_repo_worktree 不能放在插件缓存目录下。")
     if ".codex/plugins/cache" in out_dir.as_posix():
@@ -6663,6 +6780,9 @@ def doctor(
         "submission_method": submission_method(config),
         "submission_ssh_host": submission_ssh_host(config),
         "submission_command": submission_command(config),
+        "submission_api_base_url": submission_api_base_url(config),
+        "submission_api_token_configured": bool(submission_api_token(config)),
+        "submission_session_cookie_configured": bool(submission_session_cookie(config)),
         "knowledge_repo_url": knowledge_repo_url(config),
         "knowledge_repo_worktree": str(knowledge_repo),
         "knowledge_repo_cloned": (knowledge_repo / ".git").exists(),

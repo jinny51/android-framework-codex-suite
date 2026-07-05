@@ -28,7 +28,7 @@
 
 ## 首次启用
 
-成员首次切到当前双仓库链路时，优先把 [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md) 里的整段提示词交给成员端 Codex。提示词会要求先完成插件更新（plugin update），再直接写入新配置（new configuration）、检查服务器上传入口（server upload endpoint）、克隆或更新唯一的知识库仓库（knowledge repository）工作树并运行健康检查（doctor check），成员只需要确认自己的 `member_alias`、姓名和 Git 作者信息。
+成员首次切到当前链路时，优先把 [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md) 里的整段提示词交给成员端 Codex。提示词会要求先完成插件更新（plugin update），再直接写入新配置（new configuration）、检查服务器上传入口（server upload endpoint）、克隆或更新唯一的知识库仓库（knowledge repository）工作树并运行健康检查（doctor check），成员只需要确认自己的 `member_alias`、姓名和 Git 作者信息。服务器上传入口可由 AKBS endpoint resolver 指向新版 HTTP API 或切换前的旧入口，普通成员不维护地址细节。
 
 普通成员配置只保留身份和本地路径，例如 `member_alias`、`member_name`、`knowledge_repo_worktree` 和 `out_dir`。服务器上传入口和只读知识库远端由 AKBS endpoint resolver 提供；旧配置里的 `server_profile = "test35"`、`submission_ssh_host`、`submission_command` 和 `knowledge_repo_url` 会由 doctor 识别并在本次运行中迁移或给出修复提示。
 

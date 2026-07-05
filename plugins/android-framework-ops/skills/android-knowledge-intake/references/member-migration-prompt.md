@@ -9,7 +9,7 @@
 - 全程用中文说明；遇到英文定义时，先写中文，再把英文放在括号里，例如 数据库仓库（database repository）、知识库仓库（knowledge repository）、上传包（incoming package）、插件更新（plugin update）、新配置（new configuration）。
 - 不要让我手动理解或维护版本、配置字段、仓库路径。只有 member_alias、member_name、Git 用户名/邮箱需要向我确认。
 - 成员端使用 Android Framework Ops 插件套件（plugin suite）生成和上传材料。
-- 成员端通过服务器上传入口（server upload endpoint）发送上传包（incoming package），不要克隆、拉取、搜索或 push 数据库仓库（database repository）。
+- 成员端通过 AKBS endpoint resolver 解析服务器上传入口（server upload endpoint）并发送上传包（incoming package）。新版 AKBS 会使用 HTTP API；旧系统切换前可能仍由 resolver 指向既有入口。不要克隆、拉取、搜索或 push 数据库仓库（database repository）。
 - 成员端用技能搜索（skill search）时只读取知识库仓库（knowledge repository）；只读入口由 AKBS endpoint resolver 提供，成员不要填写服务器远端。
 - 成员查看 UI（member view UI）如果需要看本人提交记录，由服务器读取数据库仓库并按成员身份过滤，这不是成员本机 skill 的搜索入口。
 
