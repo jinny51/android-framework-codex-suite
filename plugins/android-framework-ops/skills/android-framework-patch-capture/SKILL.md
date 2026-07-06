@@ -142,7 +142,7 @@ The generated feature README should contain facts first. Do not overclaim reuse,
 - remote build server, remote source path, artifact path, artifact SHA1, local transfer, local adb serial, and device delivery action when the member workflow spans a remote build server and a local device
 - risk and rollback notes
 
-When `android-wsl-remote-build-deploy/scripts/push-artifacts.sh` has written `.codex/evidence/latest-build-delivery.json` under a source root, `capture_framework_patch.py` reads it automatically and merges it into `verification-result.json`. Manual `--remote-build-*`, `--artifact-transfer`, `--local-artifact`, and `--adb-*` arguments remain available for exceptional cases or historical material.
+When `android-remote-build-deploy/scripts/push-artifacts.sh` has written `.codex/evidence/latest-build-delivery.json` under a source root, `capture_framework_patch.py` reads it automatically and merges it into `verification-result.json`. Manual `--remote-build-*`, `--artifact-transfer`, `--local-artifact`, and `--adb-*` arguments remain available for exceptional cases or historical material.
 
 `validated`, `candidate`, `draft`, `failed`, `blocked`, and platform labels are useful hints, not final truth. Future `android-framework-change-workflow` or knowledge-search skills should dynamically judge applicability from the stored facts.
 

@@ -2,7 +2,7 @@
 
 Read this when handing off to or receiving results from the platform build/deploy executor:
 
-- WSL agents: `android-wsl-remote-build-deploy`.
+- WSL agents: `android-remote-build-deploy`.
 
 ## Responsibility Split
 

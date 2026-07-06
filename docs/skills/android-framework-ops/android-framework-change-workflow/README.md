@@ -22,7 +22,7 @@ Android Framework 开发、问题分析和验证主流程 skill。
 
 ## 典型配合
 
-- WSL 场景：`android-knowledge-search` -> `android-wsl-source-access` -> `android-framework-change-workflow` -> `android-wsl-remote-build-deploy`
+- WSL 场景：`android-knowledge-search` -> `android-source-access` -> `android-framework-change-workflow` -> `android-remote-build-deploy`
 - 材料上传：`android-framework-change-workflow` -> `android-framework-patch-capture` -> `android-framework-patch-intake` -> incoming
 
 ## 材料上传规则

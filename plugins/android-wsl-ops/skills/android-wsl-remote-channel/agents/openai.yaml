@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android WSL Remote Channel"
-  short_description: "Reuse remote sessions from Windows"
-  default_prompt: "Use $android-wsl-remote-channel to check, create, reuse, run commands in, tail logs from, or stop a persistent remote tmux session from Windows."
-
-policy:
-  allow_implicit_invocation: true

@@ -1,10 +1,10 @@
 # Android Framework Ops
 
-Android Framework Ops 是本套件的 WSL 主链路核心工程插件。它负责让成员端 Codex 完成 Android Framework 需求从 WSL 源码接入、知识检索、诊断修改、远程构建、设备推送、验收证据、补丁归档到 incoming 上传材料的闭环。
+Android Framework Ops 是本套件的共享核心插件。它负责 Android Framework 需求分析、知识检索、诊断修改、远程执行、补丁归档和 incoming 上传材料——这些能力在 WSL 和 macOS 两个平台上复用。
 
 这个插件只提供中立工程能力，不内置个人代码风格，不替代项目本地规范，也不强制接管 review workflow。
 
-Windows 主机侧的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力不放在本核心插件中；需要时额外安装 `android-wsl-ops`。macOS 原生 Codex 的 SMB、Keychain 凭据引用和本地 `adb` 兼容能力也不放在本核心插件中；需要时额外安装 `android-mac-ops`。
+源码接入和构建交付属于平台层，不在本核心插件中。WSL 平台能力在 `android-wsl-ops`，macOS 平台能力在 `android-mac-ops`。两个平台插件都依赖本核心插件提供的工作流、远程通道、知识系统和补丁归档能力。
 
 ## 包含的 skill
 
@@ -20,16 +20,14 @@ Windows 主机侧的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力不放
 | 知识系统 | [android-weekly-report-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-weekly-report-intake) | 生成个人周报正文、项目概况 `report_view.json` 和 `weekly_trace` incoming |
 | 知识系统 | [android-knowledge-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-knowledge-intake) | 成员首次启用、插件更新、配置诊断、共享 incoming 内核和旧命令兼容路由 |
 | 远程执行 | [android-remote-channel](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-remote-channel) | 统一管理 Android 构建服务器 SSH/tmux 长会话、命令日志、占用状态和锁 |
-| WSL 源码接入 | [android-wsl-source-access](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-wsl-source-access) | 在 WSL 中挂载或恢复 Android 服务器源码，并记录本地路径、远程路径和 SSH 主机映射 |
-| WSL 构建交付 | [android-wsl-remote-build-deploy](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-wsl-remote-build-deploy) | 在 WSL 源码接入场景下调用服务器完成 Android 编译、产物定位和设备推送 |
 
 ## 推荐工作流
 
-1. `android-wsl-source-access` 先确认源码路径和远程映射。
+1. `android-source-access`（来自 `android-wsl-ops`）或 `android-source-access`（来自 `android-mac-ops`）先确认源码路径和远程映射。
 2. `android-knowledge-search` 在正式分析前检索知识库仓库里的既有方案、补丁和验证证据。
 3. `android-framework-change-workflow` 负责需求分析、源码修改、调试日志、风险判断和验收口径。
 4. `android-remote-channel` 提供稳定远程会话，避免重复 SSH、重复 tmux、重复锁逻辑。
-5. `android-wsl-remote-build-deploy` 负责服务器构建、产物定位、设备推送。
+5. `android-remote-build-deploy`（来自 `android-wsl-ops`）或 `android-remote-build-deploy`（来自 `android-mac-ops`）负责服务器构建、产物定位、设备推送。
 6. `android-framework-change-workflow` 根据需求和设备证据给最终验收结论，并决定 `validated`、`candidate`、`draft`、`failed` 或 `blocked` 包状态（package status）。
 7. `android-framework-patch-capture` 把已完成、阶段性、失败或阻塞但有价值的 Framework 功能整理成一个功能 README、多个源码仓库 patch 和 evidence。
 8. 成员按材料类型选择入口：`android-framework-patch-intake` 生成补丁包和补证包，`android-daily-report-intake` 生成日报包，`android-weekly-report-intake` 生成周报包；三者共用 `android-knowledge-intake` 的上传协议、版本门禁、会话缓存门禁和本地预校验。日报记录当天做了什么、怎么做、结果是什么；周报引用成员可修正的项目概况，汇报本周围绕哪些项目推进、完成多少、还剩多少、预计哪周完成。后续能否进入数据库仓库和知识库仓库，由你本机的本地技能 `akbs-curation-maintainer` 和 AI 知识闭环决定，不由成员端插件直接决定。周报包只做进度归档，固定不进入知识库仓库。
@@ -45,8 +43,8 @@ Windows 主机侧的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力不放
 如果用户或项目同时提供了自己的 skill，应按组合方式使用：
 
 - 个人代码风格、项目本地规范、review 口径由用户提供的 skill 或项目 `AGENTS.md` 负责。
-- 本插件只补 Android Framework 工程证据链和远程构建链路。
-- Windows 和 macOS 原生源码接入、平台挂载、产物本地推送属于可选平台层；不要把平台层实现复制进本核心插件。
+- 本插件只补 Android Framework 工程证据链和知识系统。
+- 平台层（源码接入、构建交付）在 `android-wsl-ops` 和 `android-mac-ops` 中；本插件只提供平台无关的共享能力。
 - 当个人规范和本插件流程都适用时，Codex 应同时满足个人规范，并保留本插件的源码证据、构建证据、设备验证证据和风险说明。
 - 不要把 `jinny-android-practices` 当成本插件的硬依赖；它是可选实践层。
 

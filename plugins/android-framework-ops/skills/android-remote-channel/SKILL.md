@@ -1,6 +1,6 @@
 ---
 name: android-remote-channel
-description: Provide a WSL/Linux remote execution channel for Android build servers using SSH and persistent remote tmux sessions. Use when WSL Android skills need to create/reuse a remote session, run repeated remote source/git/build commands, tail logs, check busy state, keep long builds recoverable, or avoid duplicating remote-session logic.
+description: Provide a remote execution channel for Android build servers using SSH and persistent remote tmux sessions. Use when Android skills need to create/reuse a remote session, run repeated remote source/git/build commands, tail logs, check busy state, keep long builds recoverable, or avoid duplicating remote-session logic.
 ---
 
 # Android Remote Channel
@@ -9,12 +9,12 @@ Use this skill as the shared remote channel layer for Android build-server workf
 
 ## Boundary
 
-Use this skill from `android-wsl-remote-build-deploy` when a WSL agent needs repeated remote Linux commands.
+Use this skill from `android-remote-build-deploy` or `android-remote-build-deploy` when a build agent needs repeated remote Linux commands.
 
 Do not use this skill as a replacement for:
 
-- `android-wsl-source-access`: it owns local source mapping and registry.
-- `android-wsl-remote-build-deploy`: it owns Android build/deploy semantics.
+- `android-source-access`: it owns local source mapping and registry.
+- `android-remote-build-deploy`: it owns Android build/deploy semantics.
 - `android-framework-change-workflow`: it owns diagnosis, implementation discipline, risk, and final behavior verification.
 
 ## Protocol
@@ -84,7 +84,7 @@ If `tmux` is missing, install it only through the explicit action:
   install-tmux
 ```
 
-`install-tmux` first tries passwordless sudo, then `CODEX_REMOTE_SUDO_PASSWORD`, then credentials already saved by `android-wsl-source-access`. It does not save new passwords. If no usable password exists, it prints `REMOTE_SUDO_PASSWORD_REQUIRED env=CODEX_REMOTE_SUDO_PASSWORD action=install_tmux`; stop and ask the user for the remote sudo password, then rerun with the env var set.
+`install-tmux` first tries passwordless sudo, then `CODEX_REMOTE_SUDO_PASSWORD`, then credentials already saved by `android-source-access`. It does not save new passwords. If no usable password exists, it prints `REMOTE_SUDO_PASSWORD_REQUIRED env=CODEX_REMOTE_SUDO_PASSWORD action=install_tmux`; stop and ask the user for the remote sudo password, then rerun with the env var set.
 
 ## Failure Handling
 

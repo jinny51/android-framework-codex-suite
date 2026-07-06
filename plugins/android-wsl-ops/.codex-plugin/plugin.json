@@ -1,7 +1,7 @@
 {
   "name": "android-wsl-ops",
   "version": "1.0.2",
-  "description": "Optional Windows/WSL compatibility workflows for Android Framework engineering with Codex.",
+  "description": "WSL platform layer for Android Framework source access and remote build/deploy.",
   "author": {
     "name": "Jinny Android Framework Team",
     "url": "https://github.com/jinny51"
@@ -12,17 +12,18 @@
   "keywords": [
     "android",
     "framework",
-    "windows",
-    "powershell",
-    "smb",
+    "wsl",
+    "cifs",
+    "samba",
+    "source-access",
     "remote-build",
     "codex"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Android WSL Ops",
-    "shortDescription": "Windows/WSL Android Framework 源码映射、远程会话和构建推送兼容层",
-    "longDescription": "面向 Windows 主机侧 Codex + WSL/远程 Linux Android Framework 链路的可选兼容层，覆盖 SMB/UNC 源码映射、PowerShell/ssh.exe 远程会话、远程构建产物定位和本地 adb.exe 推送。团队主推荐链路仍是 WSL 版 Android Framework Ops。",
+    "shortDescription": "WSL Android Framework 源码接入和远程构建部署",
+    "longDescription": "面向 WSL 环境的 Android Framework 平台层插件，负责 CIFS/Samba 源码挂载恢复和远程构建部署。依赖 android-framework-ops 提供的工作流、远程通道和知识系统。",
     "developerName": "Jinny Android Framework Team",
     "category": "Coding",
     "capabilities": [
@@ -31,11 +32,10 @@
       "Write"
     ],
     "defaultPrompt": [
-      "帮我在 Windows/WSL 场景中识别 Android SMB 源码映射",
-      "用 Windows/WSL 远程通道检查 Android 构建服务器会话",
-      "在 Windows/WSL 场景下远程构建并用 adb.exe 推送产物"
+      "帮我在 WSL 中挂载 Android 服务器源码",
+      "在 WSL 中构建并推送 Framework 修改"
     ],
-    "brandColor": "#1D4ED8",
+    "brandColor": "#059669",
     "screenshots": []
   }
 }

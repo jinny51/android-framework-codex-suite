@@ -1,11 +1,11 @@
 # macOS platform layer skills for Android Framework engineering.
 
 [[skills]]
-name = "android-macos-source-access"
+name = "android-source-access"
 category = "macOS Source Access"
 summary = "在 macOS 上通过 Samba/SMB 挂载或恢复 Android 服务器源码，并记录本地路径、远程路径和 SSH 主机映射"
 
 [[skills]]
-name = "android-macos-remote-build-deploy"
+name = "android-remote-build-deploy"
 category = "macOS Build Deploy"
 summary = "在 macOS Samba 场景下调用服务器完成 Android 编译、产物定位和本地 adb 推送"

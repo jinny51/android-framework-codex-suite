@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android WSL Remote Build Deploy"
-  short_description: "Build remotely and deploy from WSL."
-  default_prompt: "Use $android-wsl-remote-build-deploy as the executor after Android source is mounted in WSL: resolve the remote mapping, build on the remote Linux host, push artifacts with local adb, and return build/deploy evidence."
-
-policy:
-  allow_implicit_invocation: true

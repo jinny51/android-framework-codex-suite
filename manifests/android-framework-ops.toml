@@ -39,13 +39,3 @@ summary = "成员 incoming 共享内核、配置诊断、插件更新检查和�
 name = "android-remote-channel"
 category = "Remote Execution"
 summary = "统一管理 Android 构建服务器 SSH/tmux 长会话、命令日志、占用状态和锁"
-
-[[skills]]
-name = "android-wsl-source-access"
-category = "Source Access"
-summary = "在 WSL 中挂载或恢复 Android 服务器源码，并记录本地路径、远程路径和 SSH 主机映射"
-
-[[skills]]
-name = "android-wsl-remote-build-deploy"
-category = "Build Deploy"
-summary = "在 WSL 源码接入场景下调用服务器完成 Android 编译、产物定位和设备推送"

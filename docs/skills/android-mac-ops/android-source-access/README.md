@@ -1,0 +1,32 @@
+# android-source-access
+
+> GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-mac-ops/skills/android-source-access](../../../../plugins/android-mac-ops/skills/android-source-access)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...` 指向该 runtime skill 目录。
+
+macOS 原生 Android 服务器源码接入 skill。
+
+## 用途
+
+该 skill 用于在 macOS 上通过 SMB/Samba 访问 Android 远程构建服务器源码。它负责发现 Samba 共享、挂载共享、扫描挂载树识别 Android 项目、推断平台，并登记本地路径到远程 Linux 源码路径的映射。
+
+macOS 版和 WSL 版的关键差异是：macOS 通常先挂载 share 级目录，再在挂载树里识别项目；不要直接从目录名推断平台或项目名。
+
+## 常用脚本
+
+```bash
+scripts/discover-samba-share.sh
+scripts/mount-share.sh
+scripts/detect-projects.sh
+scripts/register-project.sh
+scripts/restore-mounts.sh
+scripts/unmount-share.sh
+```
+
+## 凭据存储
+
+密码通过 macOS Keychain 管理。`scripts/_keychain_helpers.sh` 提供统一的 Keychain 读写接口，`scripts/save-credentials.sh` 负责验证后保存凭据。密码不写入插件仓库，也不写入 runtime skill 目录。
+
+## 和其他 skill 的关系
+
+- `android-remote-build-deploy`：消费本 skill 的路径映射，执行远程构建和本地 adb 推送。
+- `android-framework-change-workflow`：负责需求分析、源码修改、风险判断和最终验收。
+- `android-knowledge-search`：负责开发前知识搜索。

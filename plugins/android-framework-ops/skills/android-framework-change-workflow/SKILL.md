@@ -20,7 +20,7 @@ Use it for both direct requirement implementation and bug/regression work. Do no
 It coordinates with adjacent Android skills:
 
 - `android-knowledge-search` searches prior cases, platform variants, archived patches, search anchors, and validation evidence before re-analysis or re-implementation. Use it as the pre-analysis knowledge gate when the team knowledge repository is available.
-- `android-wsl-source-access` proves the source tree is mounted and usable; `android-wsl-remote-build-deploy` proves artifacts were built and delivered.
+- `android-source-access` proves the source tree is mounted and usable; `android-remote-build-deploy` proves artifacts were built and delivered.
 - Build/deploy executors may use `android-remote-channel` internally for reusable SSH/tmux remote sessions; this workflow should still call the platform build/deploy executor rather than the channel directly.
 - `android-framework-patch-capture` turns an implemented or stage-worthy Framework feature into a feature README, repository-level patches, and evidence after this workflow has produced a concrete change. Use it before `android-framework-patch-intake` whenever a Framework change, failed attempt, or stage-worthy draft should be preserved.
 - `android-framework-patch-intake` turns the capture package into the single automatic intake channel: an `incoming` package. `android-knowledge-intake` remains the shared kernel and legacy command route; do not invent a second upload path.
@@ -34,13 +34,13 @@ Follow this ownership boundary:
 android-knowledge-search
   -> search prior cases/variants/patches/search anchors/validation evidence before reimplementing
 
-android-wsl-source-access
+android-source-access
   -> access/recover/identify source tree handoff
 
 android-framework-change-workflow
   -> specify requirement or diagnose issue -> instrument if needed -> change -> define verification
 
-android-wsl-remote-build-deploy
+android-remote-build-deploy
   -> build -> push/deploy -> return delivery evidence
 
 android-framework-change-workflow
@@ -65,7 +65,7 @@ Keep this file as the orchestrator. Load only the reference needed for the curre
 - `references/subsystem-playbooks.md`: read after identifying the likely owner subsystem.
 - `references/verification-matrix.md`: read before build/deploy verification and again before final reporting.
 - `references/failure-signatures.md`: read when build, boot, deploy, logcat, or behavior verification fails.
-- `references/build-deploy-contract.md`: read when coordinating with `android-wsl-remote-build-deploy`.
+- `references/build-deploy-contract.md`: read when coordinating with `android-remote-build-deploy`.
 - `references/capability-capture.md`: read near final reporting only when the task produced reusable process knowledge, exposed a skill gap, or the user asks to remember/summarize a lesson.
 
 Use scripts in `scripts/` as optional helpers. Prefer them for log slicing, health scans, artifact probing, diagnostic log audits, dumpsys capture, and video frame extraction when the matching artifact exists.
@@ -80,7 +80,7 @@ Before editing behavior:
 4. For bugs or regressions, capture visible symptom, reproduction, expected behavior, and evidence source.
 5. Identify likely owner process and subsystem: app, SystemUI, launcher, system_server, WM/ATM, PMS, input, resources/overlays, display/surface/compositor, native service, or build config.
 6. Identify affected artifact: `framework.jar`, `services.jar`, `framework-res.apk`, `SystemUI.apk`, Launcher APK, permission/config XML, overlay APK, native binary, or mixed artifacts.
-7. Check source/build/deploy readiness. Use `android-wsl-source-access` first if source access is broken and `android-wsl-remote-build-deploy` later for build/delivery.
+7. Check source/build/deploy readiness. Use `android-source-access` first if source access is broken and `android-remote-build-deploy` later for build/delivery.
 8. Check dirty files before editing and preserve unrelated user work.
 9. Choose mode: direct requirement, analysis only, diagnostics, behavior change, build/deploy coordination, final verification, or failure recovery.
 10. Decide the expected knowledge outcome early: no code change, `draft`, `candidate`, `validated`, `failed`, or `blocked`. This is a working expectation, not a final claim.
@@ -161,7 +161,7 @@ Change with framework discipline:
 
 Use the platform-appropriate build/deploy executor for remote build and push mechanics:
 
-- WSL: `android-wsl-remote-build-deploy`.
+- WSL: `android-remote-build-deploy`.
 
 Require it to return:
 
@@ -211,7 +211,7 @@ The normal successful chain is:
 ```text
 android-knowledge-search
   -> android-framework-change-workflow
-  -> android-wsl-remote-build-deploy
+  -> android-remote-build-deploy
   -> android-framework-change-workflow final verification
   -> android-framework-patch-capture
   -> android-framework-patch-intake incoming
