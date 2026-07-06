@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import contextlib
+import http.server
 import importlib.util
 import io
 import json
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import textwrap
 import unittest
 from pathlib import Path
@@ -18,6 +20,7 @@ from unittest.mock import patch
 
 SUITE_ROOT = Path(__file__).resolve().parents[5]
 INTAKE_SCRIPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "scripts" / "android_knowledge_intake.py"
+MIGRATE_CONFIG_SCRIPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "scripts" / "migrate_member_config.py"
 CAPTURE_SCRIPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-framework-patch-capture" / "scripts" / "capture_framework_patch.py"
 MIGRATION_PROMPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "references" / "member-migration-prompt.md"
 MEMBER_BOUNDARY_DOCS = (
@@ -161,7 +164,41 @@ def seed_codex_plugin_cache(codex_home: Path, version: str) -> Path:
     return skill_root
 
 
-def write_member_config(root: Path, knowledge_remote: Path, submit_command: str | None = None, synthetic_data: bool = True) -> dict[str, str]:
+@contextlib.contextmanager
+def fake_upload_server():
+    received: list[dict[str, object]] = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("Content-Length") or "0")
+            body = self.rfile.read(length)
+            received.append(
+                {
+                    "path": self.path,
+                    "headers": dict(self.headers),
+                    "body_length": len(body),
+                }
+            )
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"submitted": True, "accepted": True}, ensure_ascii=False).encode("utf-8"))
+
+        def log_message(self, format: str, *args) -> None:  # noqa: A002
+            return
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}/akbs/api", received
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def write_member_config(root: Path, knowledge_remote: Path, synthetic_data: bool = True) -> dict[str, str]:
     codex_home = root / "codex-home"
     config_dir = codex_home / "report"
     config_dir.mkdir(parents=True)
@@ -192,9 +229,6 @@ def write_member_config(root: Path, knowledge_remote: Path, submit_command: str 
     env = os.environ.copy()
     env["CODEX_HOME"] = str(codex_home)
     env["CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"] = "1"
-    env["CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_METHOD"] = "local"
-    env["CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_COMMAND"] = submit_command or "python3 -c 'import sys; sys.exit(0)'"
-    env["CODEX_REPORT_AKBS_ENDPOINT_KNOWLEDGE_REPO_URL"] = knowledge_remote.as_posix()
     return env
 
 
@@ -246,58 +280,6 @@ def clone_member_knowledge_worktree(root: Path, knowledge_remote: Path) -> Path:
     worktree.parent.mkdir(parents=True, exist_ok=True)
     run(["git", "clone", str(knowledge_remote), str(worktree)], root)
     return worktree
-
-
-def write_local_submitter(root: Path, database_root: Path) -> str:
-    script = root / "local-submit.py"
-    script.write_text(
-        textwrap.dedent(
-            """
-            from __future__ import annotations
-
-            import argparse
-            import json
-            import shutil
-            import sys
-            import tarfile
-            import tempfile
-            from pathlib import Path
-
-            parser = argparse.ArgumentParser()
-            parser.add_argument("--root", required=True)
-            parser.add_argument("--member", required=True)
-            parser.add_argument("--stdin-tar-gz", action="store_true")
-            args = parser.parse_args()
-            if not args.stdin_tar_gz:
-                raise SystemExit("--stdin-tar-gz is required")
-            root = Path(args.root)
-            with tempfile.TemporaryDirectory() as tmp:
-                package = Path(tmp) / "package"
-                package.mkdir()
-                archive_path = Path(tmp) / "package.tar.gz"
-                archive_path.write_bytes(sys.stdin.buffer.read())
-                with tarfile.open(archive_path, "r:gz") as archive:
-                    for member in archive.getmembers():
-                        target = (package / member.name).resolve()
-                        if package.resolve() not in target.parents and target != package.resolve():
-                            raise SystemExit("path traversal")
-                    archive.extractall(package)
-                manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-                if manifest["member_alias"] != args.member:
-                    raise SystemExit("member mismatch")
-                date_key = manifest["date"].replace("-", "")
-                target = root / "incoming" / date_key / manifest["member_alias"] / manifest["run_id"]
-                if target.exists():
-                    raise SystemExit("target exists")
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copytree(package, target)
-                print(json.dumps({"submitted": True, "path": str(target)}, ensure_ascii=False))
-            """
-        ).strip()
-        + "\n",
-        encoding="utf-8",
-    )
-    return f"{sys.executable} {script} --root {database_root}"
 
 
 def write_codex_session(
@@ -541,24 +523,16 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertNotIn("remote.git", text)
         self.assertNotIn("config-migrate", text)
 
-    def test_git_submission_mode_is_not_supported(self) -> None:
-        module = load_intake_module()
-
-        with self.assertRaises(SystemExit) as caught:
-            module.submission_method({"submission_method": "git"})
-
-        self.assertIn("不支持", str(caught.exception))
-
     def test_default_endpoint_targets_new_akbs_http_upload_api(self) -> None:
         module = load_intake_module()
 
         endpoint = module.resolve_akbs_endpoint({})
 
         self.assertEqual(endpoint["source"], "default")
-        self.assertEqual(endpoint["submission_method"], "http")
         self.assertEqual(endpoint["submission_api_base_url"], "http://192.168.100.118:8088/akbs/api")
-        self.assertEqual(endpoint["submission_ssh_host"], "")
-        self.assertEqual(endpoint["submission_command"], "")
+        self.assertNotIn("submission_method", endpoint)
+        self.assertNotIn("submission_ssh_host", endpoint)
+        self.assertNotIn("submission_command", endpoint)
         self.assertEqual(endpoint["knowledge_repo_url"], "")
 
     def test_http_submission_posts_tarball_to_new_akbs_upload_api(self) -> None:
@@ -600,7 +574,6 @@ class MemberAutomationFlowTests(unittest.TestCase):
             }
 
             endpoint_env = {
-                "CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_METHOD": "http",
                 "CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL": "http://akbs.local/akbs/api",
                 "CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_SESSION_COOKIE": "akbs_session=test-session",
             }
@@ -617,6 +590,37 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(request.get_header("X-akbs-user"), "member01")
             self.assertEqual(request.get_header("X-akbs-token"), "member01")
             self.assertGreater(len(request.data), 0)
+
+    def test_http_submission_timeout_does_not_fallback_to_ssh(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package_dir = root / "package"
+            package_dir.mkdir()
+            manifest = {
+                "package_key": "20260705/member01/20260705-091500-daily",
+                "package_kind": "daily_trace",
+                "member_alias": "member01",
+                "member_name": "成员甲",
+                "run_id": "20260705-091500-daily",
+                "date": "2026-07-05",
+                "summary": "日报上传",
+            }
+            (package_dir / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+            (package_dir / "README.md").write_text("# 日报\n", encoding="utf-8")
+            module = load_intake_module()
+
+            def fake_urlopen(request, timeout=0):
+                raise TimeoutError("timed out")
+
+            def forbidden_subprocess_run(*args, **kwargs):
+                raise AssertionError("HTTP upload must not fallback to ssh/local subprocess submission")
+
+            with patch("urllib.request.urlopen", fake_urlopen), patch("subprocess.run", forbidden_subprocess_run):
+                with self.assertRaises(SystemExit) as caught:
+                    module.server_submit_package(package_dir, {"member_alias": "member01"}, "http")
+
+            self.assertIn("HTTP 上传入口提交失败", str(caught.exception))
+            self.assertIn("timed out", str(caught.exception))
 
     def test_http_upload_type_uses_four_physical_package_kinds(self) -> None:
         module = load_intake_module()
@@ -938,9 +942,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertNotIn("[submission]", config_text)
             self.assertNotIn("[knowledge]", config_text)
             self.assertNotIn("server_profile", config_text)
-            self.assertEqual(result["submission_method"], "local")
-            self.assertEqual(result["akbs_endpoint"]["source"], "env_override")
-            self.assertIn("submission_command", result)
+            self.assertEqual(result["akbs_endpoint"]["source"], "default")
+            self.assertNotIn("submission_method", result)
+            self.assertNotIn("submission_command", result)
             self.assertNotIn("database_repo_worktree", result)
             self.assertIn("worktrees/knowledge", result["knowledge_repo_worktree"])
             self.assertNotIn("submission_repo_url", result)
@@ -966,6 +970,28 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertIn("submission_command", result["endpoint_migration"]["legacy_fields"])
             self.assertIn("knowledge_repo_url", result["endpoint_migration"]["legacy_fields"])
             self.assertTrue(any("旧 test35" in item for item in result["strict"]["warnings"]))
+
+    def test_migrate_member_config_removes_legacy_endpoint_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env = write_legacy_test35_member_config(root)
+            config_path = Path(env["CODEX_HOME"]) / "report" / "config.toml"
+
+            result = run_json(
+                [sys.executable, str(MIGRATE_CONFIG_SCRIPT), "--config", str(config_path)],
+                SUITE_ROOT,
+                env,
+            )
+
+            self.assertEqual(result["status"], "MIGRATED")
+            self.assertTrue(Path(result["backup_path"]).is_file())
+            migrated = config_path.read_text(encoding="utf-8")
+            self.assertNotIn("server_profile", migrated)
+            self.assertNotIn("[submission]", migrated)
+            self.assertNotIn("[knowledge]", migrated)
+            self.assertNotIn("test35", migrated)
+            self.assertIn("[profiles.member01]", migrated)
+            self.assertIn('member_alias = "member01"', migrated)
 
     def test_daily_uses_remote_project_anchor_and_filters_codex_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1246,136 +1272,137 @@ class MemberAutomationFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             knowledge_remote = seed_knowledge_remote(root)
-            database_root = root / "server-database"
-            submit_command = write_local_submitter(root, database_root)
-            env = write_member_config(root, knowledge_remote, submit_command)
+            env = write_member_config(root, knowledge_remote)
 
-            daily = run_json(
-                [
-                    sys.executable,
-                    str(INTAKE_SCRIPT),
-                    "--profile",
-                    "member01",
-                    "daily",
-                    "--date",
-                    "2026-06-01",
-                    "--run-id",
-                    "20260601-210000-daily",
-                    "--upload",
-                ],
-                SUITE_ROOT,
-                env,
-            )
-            weekly = run_json(
-                [
-                    sys.executable,
-                    str(INTAKE_SCRIPT),
-                    "--profile",
-                    "member01",
-                    "weekly",
-                    "--date",
-                    "2026-06-06",
-                    "--run-id",
-                    "20260606-220000-weekly",
-                    "--upload",
-                ],
-                SUITE_ROOT,
-                env,
-            )
+            with fake_upload_server() as (api_base_url, uploads):
+                env["CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL"] = api_base_url
 
-            source_root = create_framework_repo(root)
-            capture = run_json(
-                [
-                    sys.executable,
-                    str(CAPTURE_SCRIPT),
-                    "--source-root",
-                    str(source_root),
-                    "--out-dir",
-                    "capture-out",
-                    "--run-id",
-                    "20260601-120000-patch",
-                    "--platform",
-                    "mtk15",
-                    "--feature",
-                    "volume-dialog-position",
-                    "--summary",
-                    "通知音量弹窗位置适配",
-                    "--project",
-                    "TVE8402M",
-                    "--status",
-                    "validated",
-                    "--verification",
-                    "SystemUI 编译通过",
-                    "--device",
-                    "TVE8402M",
-                    "--device-verification",
-                    "通知音量弹窗位置符合项目验收要求",
-                    "--search-query",
-                    "通知音量 弹窗 位置 适配",
-                    "--search-result",
-                    "未发现可直接复用补丁",
-                ],
-                source_root,
-                env,
-            )
-            patch = run_json(
-                [
-                    sys.executable,
-                    str(INTAKE_SCRIPT),
-                    "--profile",
-                    "member01",
-                    "patch",
-                    "--date",
-                    "2026-06-01",
-                    "--run-id",
-                    "20260601-230000-patch",
-                    "--patch-package",
-                    capture["package"],
-                    "--summary",
-                    "通知音量弹窗位置适配",
-                    "--status",
-                    "validated",
-                    "--upload",
-                ],
-                SUITE_ROOT,
-                env,
-            )
-            supplement = run_json(
-                [
-                    sys.executable,
-                    str(INTAKE_SCRIPT),
-                    "--profile",
-                    "member01",
-                    "patch",
-                    "--date",
-                    "2026-06-01",
-                    "--run-id",
-                    "20260601-231000-field-supplement",
-                    "--project",
-                    "TVE8402M",
-                    "--platform",
-                    "mtk",
-                    "--android-version",
-                    "15",
-                    "--summary",
-                    "补充项目展示字段",
-                    "--status",
-                    "validated",
-                    "--supplement-for-package-key",
-                    "20260601/member01/20260601-230000-patch",
-                    "--supplement-mode",
-                    "field_correction",
-                    "--corrected-field",
-                    "project=TVE8402M",
-                    "--corrected-field",
-                    "display_title=通知音量弹窗位置适配",
-                    "--correction-reason",
-                    "管理端要求补充展示字段。",
-                    "--upload",
-                ],
-                SUITE_ROOT,
-                env,
-            )
+                daily = run_json(
+                    [
+                        sys.executable,
+                        str(INTAKE_SCRIPT),
+                        "--profile",
+                        "member01",
+                        "daily",
+                        "--date",
+                        "2026-06-01",
+                        "--run-id",
+                        "20260601-210000-daily",
+                        "--upload",
+                    ],
+                    SUITE_ROOT,
+                    env,
+                )
+                weekly = run_json(
+                    [
+                        sys.executable,
+                        str(INTAKE_SCRIPT),
+                        "--profile",
+                        "member01",
+                        "weekly",
+                        "--date",
+                        "2026-06-06",
+                        "--run-id",
+                        "20260606-220000-weekly",
+                        "--upload",
+                    ],
+                    SUITE_ROOT,
+                    env,
+                )
+
+                source_root = create_framework_repo(root)
+                capture = run_json(
+                    [
+                        sys.executable,
+                        str(CAPTURE_SCRIPT),
+                        "--source-root",
+                        str(source_root),
+                        "--out-dir",
+                        "capture-out",
+                        "--run-id",
+                        "20260601-120000-patch",
+                        "--platform",
+                        "mtk15",
+                        "--feature",
+                        "volume-dialog-position",
+                        "--summary",
+                        "通知音量弹窗位置适配",
+                        "--project",
+                        "TVE8402M",
+                        "--status",
+                        "validated",
+                        "--verification",
+                        "SystemUI 编译通过",
+                        "--device",
+                        "TVE8402M",
+                        "--device-verification",
+                        "通知音量弹窗位置符合项目验收要求",
+                        "--search-query",
+                        "通知音量 弹窗 位置 适配",
+                        "--search-result",
+                        "未发现可直接复用补丁",
+                    ],
+                    source_root,
+                    env,
+                )
+                patch = run_json(
+                    [
+                        sys.executable,
+                        str(INTAKE_SCRIPT),
+                        "--profile",
+                        "member01",
+                        "patch",
+                        "--date",
+                        "2026-06-01",
+                        "--run-id",
+                        "20260601-230000-patch",
+                        "--patch-package",
+                        capture["package"],
+                        "--summary",
+                        "通知音量弹窗位置适配",
+                        "--status",
+                        "validated",
+                        "--upload",
+                    ],
+                    SUITE_ROOT,
+                    env,
+                )
+                supplement = run_json(
+                    [
+                        sys.executable,
+                        str(INTAKE_SCRIPT),
+                        "--profile",
+                        "member01",
+                        "patch",
+                        "--date",
+                        "2026-06-01",
+                        "--run-id",
+                        "20260601-231000-field-supplement",
+                        "--project",
+                        "TVE8402M",
+                        "--platform",
+                        "mtk",
+                        "--android-version",
+                        "15",
+                        "--summary",
+                        "补充项目展示字段",
+                        "--status",
+                        "validated",
+                        "--supplement-for-package-key",
+                        "20260601/member01/20260601-230000-patch",
+                        "--supplement-mode",
+                        "field_correction",
+                        "--corrected-field",
+                        "project=TVE8402M",
+                        "--corrected-field",
+                        "display_title=通知音量弹窗位置适配",
+                        "--correction-reason",
+                        "管理端要求补充展示字段。",
+                        "--upload",
+                    ],
+                    SUITE_ROOT,
+                    env,
+                )
 
             daily_package = Path(daily["package"])
             weekly_package = Path(weekly["package"])
@@ -1409,14 +1436,16 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(supplement_manifest["corrected_fields"]["project"], "TVE8402M")
             self.assertIn("TVE8402M", (daily_package / "reports" / "daily.md").read_text(encoding="utf-8"))
 
-            expected = [
-                database_root / "incoming" / "20260601" / "member01" / "20260601-210000-daily" / "manifest.json",
-                database_root / "incoming" / "20260606" / "member01" / "20260606-220000-weekly" / "manifest.json",
-                database_root / "incoming" / "20260601" / "member01" / "20260601-230000-patch" / "manifest.json",
-                database_root / "incoming" / "20260601" / "member01" / "20260601-231000-field-supplement" / "manifest.json",
-            ]
-            for path in expected:
-                self.assertTrue(path.is_file(), path)
+            self.assertEqual(
+                [item["path"] for item in uploads],
+                [
+                    "/akbs/api/member/me/uploads/daily",
+                    "/akbs/api/member/me/uploads/weekly",
+                    "/akbs/api/member/me/uploads/patch",
+                    "/akbs/api/member/me/uploads/supplement",
+                ],
+            )
+            self.assertTrue(all(int(item["body_length"]) > 0 for item in uploads))
             self.assertFalse((Path(env["CODEX_HOME"]) / "worktrees" / "knowledge-database-member01").exists())
 
     def test_daily_and_weekly_reports_include_human_template_and_ui_read_model(self) -> None:
@@ -1703,26 +1732,27 @@ class MemberAutomationFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             knowledge_remote = seed_knowledge_remote(root)
-            database_root = root / "server-database"
-            submit_command = write_local_submitter(root, database_root)
-            env = write_member_config(root, knowledge_remote, submit_command)
+            env = write_member_config(root, knowledge_remote)
 
-            first = run_json(
-                [
-                    sys.executable,
-                    str(INTAKE_SCRIPT),
-                    "--profile",
-                    "member01",
-                    "weekly",
-                    "--date",
-                    "2026-06-18",
-                    "--run-id",
-                    "20260618-090102",
-                    "--upload",
-                ],
-                SUITE_ROOT,
-                env,
-            )
+            with fake_upload_server() as (api_base_url, uploads):
+                env["CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL"] = api_base_url
+                first = run_json(
+                    [
+                        sys.executable,
+                        str(INTAKE_SCRIPT),
+                        "--profile",
+                        "member01",
+                        "weekly",
+                        "--date",
+                        "2026-06-18",
+                        "--run-id",
+                        "20260618-090102",
+                        "--upload",
+                    ],
+                    SUITE_ROOT,
+                    env,
+                )
+                self.assertEqual([item["path"] for item in uploads], ["/akbs/api/member/me/uploads/weekly"])
             first_package = Path(first["package"])
             submitted_manifest = (
                 Path(env["CODEX_HOME"]).parent

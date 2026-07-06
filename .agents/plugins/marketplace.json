@@ -29,10 +29,10 @@
       "category": "Coding"
     },
     {
-      "name": "android-framework-windows-ops",
+      "name": "android-wsl-ops",
       "source": {
         "source": "local",
-        "path": "./plugins/android-framework-windows-ops"
+        "path": "./plugins/android-wsl-ops"
       },
       "policy": {
         "installation": "AVAILABLE",

@@ -10,7 +10,7 @@
 
 共享内核会在成员本机先生成本地 `pending`（待检查包），再通过服务器上传入口（server upload endpoint）提交为上传包（incoming package）。成员端 skill 不克隆、不拉取、不直接搜索、不 push 数据库仓库（database repository）。
 
-成员端 Codex 是材料生成主体。它负责从会话、git、patch 和验证记录里整理上传包；服务器收到上传包后只做轻量接收并写入上传分支（intake branch），不直接入库、不做业务规则判断，也不批准为 AI 知识。后续由管理端本地推广入口决定推广、退回或要求补证。能否进入知识库仓库（knowledge repository）由你本机的本地技能（local skill）`akbs-curation-maintainer` 驱动的 AI 知识闭环（AI knowledge loop）判断。
+成员端 Codex 是材料生成主体。它负责从会话、git、patch 和验证记录里整理上传包；服务器通过 AKBS HTTP API 接收上传包并写入服务端事实库，不由成员端直接写上传分支、数据库仓库或知识库仓库。后续由管理端本地推广入口决定推广、退回或要求补证。能否进入知识库仓库（knowledge repository）由你本机的本地技能（local skill）`akbs-curation-maintainer` 驱动的 AI 知识闭环（AI knowledge loop）判断。
 
 普通成员新任务优先使用拆分入口：日报用 `android-daily-report-intake`，周报用 `android-weekly-report-intake`，补丁包和补证包用 `android-framework-patch-intake`。旧 `android-knowledge-intake daily|weekly|patch` 命令继续可用，只是作为旧命令路由（legacy route）进入同一共享内核。周报包（weekly report package）只做一周进度归档、成员查看和统计，不进入知识库仓库。非成员 profile 只用于协议和服务器链路测试，不能和你本机的 `akbs-curation-maintainer` 混为一谈。
 
@@ -28,11 +28,11 @@
 
 ## 首次启用
 
-成员首次切到当前链路时，优先把 [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md) 里的整段提示词交给成员端 Codex。提示词会要求先完成插件更新（plugin update），再直接写入新配置（new configuration）、检查服务器上传入口（server upload endpoint）、克隆或更新唯一的知识库仓库（knowledge repository）工作树并运行健康检查（doctor check），成员只需要确认自己的 `member_alias`、姓名和 Git 作者信息。服务器上传入口可由 AKBS endpoint resolver 指向新版 HTTP API 或切换前的旧入口，普通成员不维护地址细节。
+成员首次切到当前链路时，优先把 [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md) 里的整段提示词交给成员端 Codex。提示词会要求先完成插件更新（plugin update），必要时运行 `scripts/migrate_member_config.py` 清理旧配置，再直接写入新配置（new configuration）、检查服务器上传入口（server upload endpoint）、可选克隆或更新知识库仓库（knowledge repository）工作树并运行健康检查（doctor check），成员只需要确认自己的 `member_alias`、姓名和 Git 作者信息。服务器上传入口由 AKBS endpoint resolver 指向 HTTP API，普通成员不维护地址细节。
 
-普通成员配置只保留身份和本地路径，例如 `member_alias`、`member_name`、`knowledge_repo_worktree` 和 `out_dir`。服务器上传入口和只读知识库远端由 AKBS endpoint resolver 提供；旧配置里的 `server_profile = "test35"`、`submission_ssh_host`、`submission_command` 和 `knowledge_repo_url` 会由 doctor 识别并在本次运行中迁移或给出修复提示。
+普通成员配置只保留身份和本地路径，例如 `member_alias`、`member_name`、`knowledge_repo_worktree` 和 `out_dir`。服务器上传入口由 AKBS endpoint resolver 提供；旧配置里的 `server_profile = "test35"`、`submission_ssh_host`、`submission_command` 和 `knowledge_repo_url` 会由 doctor 识别，由 `scripts/migrate_member_config.py` 清理。
 
-严格健康检查（doctor strict check）会要求 `knowledge_repo_worktree` 存在且是 Git 仓库（git repository）。成员端只克隆知识库仓库（knowledge repository），不能克隆或直接读取数据库仓库（database repository）。
+严格健康检查（doctor strict check）会检查 `knowledge_repo_worktree` 是否可作为本地离线兜底；缺失只报警告，不阻断 HTTP 上传。成员端不能克隆或直接读取数据库仓库（database repository）。
 
 日报、周报和补丁生成入口会先做插件版本门禁（plugin version gate）。脚本会比较三类版本：当前正在运行脚本的插件版本、Codex 已安装的最新插件缓存版本、可访问时的 GitHub marketplace 远端版本。Git checkout 如果可以安全快进，会自动执行 `git pull --ff-only`，然后用更新后的脚本重新执行当前命令。Codex 插件市场安装的包如果发现 GitHub marketplace 有新版，会自动刷新 marketplace 和本地插件缓存，再用最新缓存里的脚本重新执行当前命令。如果 Codex 已安装新插件，但当前会话仍在旧技能缓存里运行，也会先尝试切到最新缓存脚本；只有找不到新脚本或当前 Codex 会话无法刷新已加载技能说明时，才停止并提示新开或重启 Codex 会话。
 

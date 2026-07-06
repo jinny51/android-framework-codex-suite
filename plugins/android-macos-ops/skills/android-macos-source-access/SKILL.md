@@ -15,7 +15,7 @@ This skill owns:
 - macOS SMB/Samba source access using the platform's native SMB implementation.
 - Post-mount project detection: scan the mounted tree to identify Android source projects.
 - Platform inference from source evidence (not from directory names).
-- Project-level `.codex/android-source-access.json` registry.
+- Local project registry under `~/.servers/projects`.
 - Remount/recovery from saved projects.
 - Samba credential reuse and storage through macOS Keychain.
 
@@ -41,7 +41,7 @@ and Android projects are subdirectories inside it. Therefore:
 1. discover-samba-share.sh  → 列出服务器 Samba 共享
 2. mount-share.sh           → 挂载共享到本地
 3. detect-projects.sh       → 扫描挂载树，识别 Android 项目 + 平台
-4. register-project.sh      → 注册到 .codex/android-source-access.json
+4. register-project.sh      → 注册到 ~/.servers/projects/<server>.json
 ```
 
 恢复流程：
@@ -61,15 +61,21 @@ SAMBA_SOURCE_ROOT default:  /Users/jinny/Work/Samba
 
 ## Credential Storage
 
-在 `~/.codex/android-macos-source-access-info/credentials/` 下保存 Keychain 引用，不保存明文密码。
+在 `~/.servers/credentials/` 下保存 Keychain 引用，不保存明文密码；项目映射写入 `~/.servers/projects/`。
 
 ```text
-~/.codex/android-macos-source-access-info/
+~/.servers/
 ├── credentials/
 │   ├── <sha256(remote-user@server)>.keychain.env    # Keychain 引用（无密码）
 │   └── local.keychain.env                             # 本机 sudo Keychain 引用
 └── projects/
     └── <server>.json                                  # 项目 registry（无密码）
+```
+
+旧目录 `~/.codex/android-macos-source-access-info` 不再作为运行时读取位置。升级后如本机已有旧目录，先显式执行：
+
+```bash
+scripts/migrate-state-dir.sh
 ```
 
 ### Keychain Service 命名
@@ -172,13 +178,14 @@ For test61 with share `[unisoc]`:
 - `scripts/resolve-samba-root.sh`: resolve the SMB/Samba source root (`SAMBA_SOURCE_ROOT` override supported).
 - `scripts/mount-share.sh`: mount a Samba share through macOS SMB support.
 - `scripts/detect-projects.sh`: scan a mounted share tree to identify Android projects and infer platforms.
-- `scripts/register-project.sh`: register project mapping in `.codex/android-source-access.json`.
+- `scripts/register-project.sh`: register project mapping in `~/.servers/projects/<server>.json`.
 - `scripts/unmount-share.sh`: unmount a Samba share.
 - `scripts/restore-mounts.sh`: remount all projects from the local registry (reboot/restart recovery).
+- `scripts/migrate-state-dir.sh`: one-time move from the old `.codex` state directory to `~/.servers`.
 
 ## Registry Format
 
-`~/.codex/android-macos-source-access-info/projects/<server>.json`:
+`~/.servers/projects/<server>.json`:
 
 ```json
 {
@@ -222,7 +229,7 @@ Samba 共享: //192.168.100.23/unisoc
 
 ## Safety Rules
 
-- Store credentials only under `~/.codex/android-macos-source-access-info/credentials/` with mode `600`.
+- Store credentials only under `~/.servers/credentials/` with mode `600`.
 - Never put credentials in skills, repo files, or build scripts.
 - Do not unmount or replace an existing mount unless the user explicitly asks.
 - Do not run authoritative Android `git` or builds through the SMB mount.

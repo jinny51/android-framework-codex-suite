@@ -1,17 +1,17 @@
 ---
 name: android-windows-remote-channel
-description: Provide a Windows-native remote execution channel for Android build servers using PowerShell, ssh.exe, and persistent remote tmux sessions. Use when Windows-native Android Framework skills need to create or reuse a remote session, run repeated remote source/git/build commands, tail logs, check busy state, install tmux, or avoid duplicating remote session logic.
+description: Provide a Windows/WSL remote execution channel for Android build servers using PowerShell, ssh.exe, and persistent remote tmux sessions. Use when Windows-side Android Framework skills need to create or reuse a remote session, run repeated remote source/git/build commands, tail logs, check busy state, install tmux, or avoid duplicating remote session logic.
 ---
 
 # Android Windows Remote Channel
 
-Use this skill as the Windows-native remote channel layer for Android build-server workflows. It owns PowerShell/`ssh.exe` transport, persistent remote `tmux` sessions, command logs, busy state, and coarse locking.
+Use this skill as the Windows/WSL remote channel layer for Android build-server workflows. It owns PowerShell/`ssh.exe` transport, persistent remote `tmux` sessions, command logs, busy state, and coarse locking.
 
 It does not own Windows SMB source mapping, Android build profile inference, build wrapper generation, artifact mapping, local `adb.exe` deployment, or Framework behavior verification.
 
 ## Boundary
 
-Use this skill from `android-windows-remote-build-deploy` when a Windows native agent needs repeated remote Linux commands.
+Use this skill from `android-windows-remote-build-deploy` when a Windows-side agent needs repeated remote Linux commands.
 
 Do not use this skill as a replacement for:
 

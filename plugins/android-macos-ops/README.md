@@ -19,7 +19,7 @@ Android macOS Ops 是可选 macOS 原生兼容插件。它用于 Codex 运行在
 - `/Users/jinny/Work/AKBS` 是 AKBS 系统根目录，`/Users/jinny/Work/Samba` 是 SMB/Samba 源码挂载根目录；不要把源码 share 挂到 AKBS 根目录下面。
 - 本插件是 `android-framework-ops` 的可选补充，不是团队默认主链路。
 - WSL 环境不要使用本插件；使用 `android-wsl-source-access`、`android-remote-channel` 和 `android-wsl-remote-build-deploy`。
-- Windows 原生环境不要使用本插件；使用 `android-framework-windows-ops`。
+- Windows/WSL 环境不要使用本插件；使用 `android-wsl-ops`。
 
 ## 依赖
 

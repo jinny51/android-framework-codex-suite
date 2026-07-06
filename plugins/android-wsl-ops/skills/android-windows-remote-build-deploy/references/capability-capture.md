@@ -1,6 +1,6 @@
 # Capability Capture
 
-Use this reference only while preparing the final report after an `android-windows-remote-build-deploy` task that may have produced reusable Windows-native remote build/deploy executor knowledge.
+Use this reference only while preparing the final report after an `android-windows-remote-build-deploy` task that may have produced reusable Windows/WSL remote build/deploy executor knowledge.
 
 ## Default
 
@@ -29,7 +29,7 @@ Strongly recommend persistence, while still waiting for confirmation, when one a
 
 Internally score before output:
 
-- `Reuse`: Will this apply across future Windows-native Android remote build/deploy tasks?
+- `Reuse`: Will this apply across future Windows/WSL Android remote build/deploy tasks?
 - `Risk`: Would forgetting it create source, build, deploy, device, data, or verification risk?
 - `Novelty`: Is it missing from the current skill or project memory model?
 - `Confidence`: Is there enough evidence from this task?

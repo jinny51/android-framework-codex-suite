@@ -4,7 +4,7 @@ Android Framework Ops 是本套件的 WSL 主链路核心工程插件。它负�
 
 这个插件只提供中立工程能力，不内置个人代码风格，不替代项目本地规范，也不强制接管 review workflow。
 
-Windows 原生 Codex 的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力不放在本核心插件中；需要时额外安装 `android-framework-windows-ops`。macOS 原生 Codex 的 SMB、Keychain 凭据引用和本地 `adb` 兼容能力也不放在本核心插件中；需要时额外安装 `android-macos-ops`。
+Windows 主机侧的 SMB/UNC、PowerShell 和本地 `adb.exe` 兼容能力不放在本核心插件中；需要时额外安装 `android-wsl-ops`。macOS 原生 Codex 的 SMB、Keychain 凭据引用和本地 `adb` 兼容能力也不放在本核心插件中；需要时额外安装 `android-macos-ops`。
 
 ## 包含的 skill
 

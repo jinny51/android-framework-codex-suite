@@ -20,6 +20,7 @@ scripts/mount-share.sh
 scripts/detect-projects.sh
 scripts/register-project.sh
 scripts/restore-mounts.sh
+scripts/migrate-state-dir.sh
 scripts/unmount-share.sh
 ```
 
@@ -32,6 +33,8 @@ scripts/unmount-share.sh
 ## 凭据边界
 
 密码不写入插件仓库，也不写入 runtime skill 目录。macOS 适配层优先复用本机 Keychain 中已有的 SMB/Samba 凭据；只有凭据缺失、失效或权限不足时，才提示用户使用明确修复入口重新保存。只有 SSH、SMB、远端 sudo 或本机 sudo 对应动作验证成功后，才允许保存对应角色的凭据引用。
+
+Keychain 引用和项目 registry 统一放在 `~/.servers/credentials/` 和 `~/.servers/projects/`。旧 `~/.codex/android-macos-source-access-info` 不再作为运行时目录；升级后如本机存在旧目录，先运行 `scripts/migrate-state-dir.sh` 一次性移动。
 
 ## 和其他 skill 的关系
 

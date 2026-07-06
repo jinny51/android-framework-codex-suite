@@ -27,6 +27,9 @@ except ImportError:  # pragma: no cover
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_ROOT = Path(__file__).resolve().parent
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
 OPS_PLUGIN_LIB = Path(__file__).resolve().parents[3] / "lib"
 if OPS_PLUGIN_LIB.is_dir() and str(OPS_PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(OPS_PLUGIN_LIB))
@@ -59,39 +62,10 @@ from android_framework_ops.knowledge_rules import (
 )
 
 
-INCOMING_SCHEMA_VERSION = "1"
-ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
 PLUGIN_UPDATE_SKIP_ENV = "CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"
 PLUGIN_UPDATE_REQUIRE_ENV = "CODEX_REPORT_REQUIRE_PLUGIN_UPDATE_CHECK"
 PLUGIN_REEXEC_ATTEMPT_ENV = "CODEX_REPORT_PLUGIN_REEXEC_ATTEMPTED"
 PLUGIN_REMOTE_MANIFEST_TIMEOUT = 6
-DEFAULT_SUBMISSION_METHOD = "http"
-DEFAULT_SUBMISSION_SSH_HOST = ""
-DEFAULT_SUBMISSION_COMMAND = ""
-DEFAULT_SUBMISSION_API_BASE_URL = "http://192.168.100.118:8088/akbs/api"
-DEFAULT_SUBMISSION_SESSION_COOKIE = ""
-DEFAULT_SUBMISSION_API_TOKEN = ""
-DEFAULT_KNOWLEDGE_REPO_URL = ""
-AKBS_ENDPOINT_ENV_PREFIXES = ("CODEX_REPORT_AKBS_ENDPOINT_", "CODEX_WORK_REPORT_AKBS_ENDPOINT_")
-AKBS_ENDPOINT_DEFAULTS = {
-    "submission_method": DEFAULT_SUBMISSION_METHOD,
-    "submission_ssh_host": DEFAULT_SUBMISSION_SSH_HOST,
-    "submission_command": DEFAULT_SUBMISSION_COMMAND,
-    "submission_api_base_url": DEFAULT_SUBMISSION_API_BASE_URL,
-    "submission_session_cookie": DEFAULT_SUBMISSION_SESSION_COOKIE,
-    "submission_api_token": DEFAULT_SUBMISSION_API_TOKEN,
-    "knowledge_repo_url": DEFAULT_KNOWLEDGE_REPO_URL,
-}
-LEGACY_TEST35_ENDPOINT_VALUES = {
-    "server_profile": "test35",
-    "submission_method": "ssh",
-    "submission_ssh_host": "test35",
-    "submission_command": "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit",
-    "submission_api_base_url": "",
-    "submission_session_cookie": "",
-    "submission_api_token": "",
-    "knowledge_repo_url": "test35:/home/test35/work/akbs/knowledge.git",
-}
 PATCH_FILENAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 USB_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])usb(?![A-Za-z0-9])", re.I)
 USB_CAMEL_PATH_RE = re.compile(r"(?:^|[/_.-])Usb(?=[A-Z0-9])")
@@ -294,34 +268,6 @@ NOISE_TEXT_RE = re.compile(
 )
 
 
-CONFIG_DEFAULTS = {
-    "default_profile": "",
-    "profile": "",
-    "server_profile": "",
-    "role": "",
-    "allowed_modes": "",
-    "member_alias": "",
-    "member_name": "",
-    "knowledge_repo_url": "",
-    "knowledge_repo_worktree": "",
-    "submission_method": "",
-    "submission_ssh_host": "",
-    "submission_command": "",
-    "submission_api_base_url": "",
-    "submission_session_cookie": "",
-    "submission_api_token": "",
-    "git_user_name": "",
-    "git_user_email": "",
-    "codex_home": "$CODEX_HOME",
-    "out_dir": "$CODEX_HOME/artifacts/android-knowledge-intake",
-    "incoming_schema_version": "1",
-    "include_patches": "true",
-    "max_attachment_mb": "5",
-    "timezone": "Asia/Shanghai",
-    "synthetic_data": "false",
-    "synthetic_item_count": "3",
-}
-
 LAST_PLUGIN_VERSION_GATE: dict[str, Any] | None = None
 
 
@@ -341,547 +287,74 @@ class PatchInfo:
     project: str
 
 
-def run(cmd: list[str], check: bool = False, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    cp = subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd else None,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        errors="replace",
-    )
-    if check and cp.returncode != 0:
-        detail = cp.stderr.strip() or cp.stdout.strip()
-        raise SystemExit(f"命令失败: {' '.join(cmd)}\n{detail}")
-    return cp
+from akbs_intake import version_gate as _version_gate  # noqa: E402
+from akbs_intake.version_gate import (  # noqa: E402
+    LAST_PLUGIN_VERSION_GATE,
+    auto_update_packaged_plugin,
+    compare_versions,
+    current_skill_cache_metadata,
+    env_enabled,
+    fetch_remote_plugin_manifest,
+    github_raw_plugin_manifest_url,
+    latest_installed_plugin_cache_metadata,
+    packaged_plugin_freshness,
+    plugin_freshness_check,
+    plugin_install_metadata,
+    plugin_manifest_path,
+    plugin_update_unknown,
+    plugin_version_gate_check,
+    reexec_latest_plugin_script_after_update,
+    run,
+    updated_plugin_intake_script_path,
+    version_parts,
+)
+
+_ORIGINAL_VERSION_GATE_RUN = getattr(_version_gate, "_AKBS_ORIGINAL_RUN", _version_gate.run)
+_ORIGINAL_VERSION_GATE_FETCH_REMOTE_PLUGIN_MANIFEST = getattr(
+    _version_gate,
+    "_AKBS_ORIGINAL_FETCH_REMOTE_PLUGIN_MANIFEST",
+    _version_gate.fetch_remote_plugin_manifest,
+)
+_version_gate._AKBS_ORIGINAL_RUN = _ORIGINAL_VERSION_GATE_RUN
+_version_gate._AKBS_ORIGINAL_FETCH_REMOTE_PLUGIN_MANIFEST = _ORIGINAL_VERSION_GATE_FETCH_REMOTE_PLUGIN_MANIFEST
+run = _ORIGINAL_VERSION_GATE_RUN
+fetch_remote_plugin_manifest = _ORIGINAL_VERSION_GATE_FETCH_REMOTE_PLUGIN_MANIFEST
 
 
-def default_codex_home() -> str:
-    if os.environ.get("CODEX_HOME"):
-        return os.environ["CODEX_HOME"]
-    return str(Path.home() / ".codex")
-
-
-def expanded_path(value: str) -> Path:
-    codex_home = default_codex_home()
-    expanded = str(value).replace("${CODEX_HOME}", codex_home).replace("$CODEX_HOME", codex_home)
-    return Path(os.path.expandvars(expanded)).expanduser()
-
-
-def parse_bool(value: str) -> bool:
-    return str(value).strip().lower() in {"1", "true", "yes", "on", "y"}
-
-
-def env_enabled(name: str) -> bool:
-    return parse_bool(os.environ.get(name, ""))
-
-
-def plugin_update_unknown(message: str, require: bool, git_root: Path | None = None, update_command: str = "") -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "status": "UNKNOWN",
-        "blocking": require,
-        "message": message,
-    }
-    if git_root is not None:
-        payload["git_root"] = str(git_root)
-    if update_command:
-        payload["update_command"] = update_command
-    if require:
-        payload["message"] += " 已按强制策略停止本次生成；请先完成插件更新（plugin update）后重新运行原命令。"
-    return payload
-
-
-def plugin_manifest_path() -> Path | None:
-    for directory in [PLUGIN_ROOT, *PLUGIN_ROOT.parents]:
-        candidate = directory / ".codex-plugin" / "plugin.json"
-        if candidate.is_file():
-            return candidate
-    return None
+def _call_version_gate(callback):
+    original_root = _version_gate.PLUGIN_ROOT
+    original_run = _version_gate.run
+    original_fetch_remote = _version_gate.fetch_remote_plugin_manifest
+    _version_gate.PLUGIN_ROOT = PLUGIN_ROOT
+    _version_gate.run = run
+    _version_gate.fetch_remote_plugin_manifest = fetch_remote_plugin_manifest
+    try:
+        return callback()
+    finally:
+        _version_gate.PLUGIN_ROOT = original_root
+        _version_gate.run = original_run
+        _version_gate.fetch_remote_plugin_manifest = original_fetch_remote
 
 
 def plugin_install_metadata() -> dict[str, str]:
-    manifest_path = plugin_manifest_path()
-    payload: dict[str, Any] = {}
-    if manifest_path:
-        try:
-            loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                payload = loaded
-        except Exception:
-            payload = {}
-    return {
-        "plugin_name": str(payload.get("name") or "android-framework-ops"),
-        "plugin_version": str(payload.get("version") or ""),
-        "repository": str(payload.get("repository") or payload.get("homepage") or ""),
-        "plugin_installation": "packaged" if manifest_path else "unknown",
-    }
-
-
-def read_json_object(path: Path) -> dict[str, Any]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return payload if isinstance(payload, dict) else {}
+    return _call_version_gate(_version_gate.plugin_install_metadata)
 
 
 def current_skill_cache_metadata() -> dict[str, str]:
-    metadata = plugin_install_metadata()
-    return {
-        "skill_cache_version": metadata.get("plugin_version", ""),
-        "skill_cache_path": str(PLUGIN_ROOT),
-        "skill_cache_installation": metadata.get("plugin_installation", "unknown"),
-    }
+    return _call_version_gate(_version_gate.current_skill_cache_metadata)
 
 
 def latest_installed_plugin_cache_metadata(plugin_name: str = "android-framework-ops") -> dict[str, str]:
-    codex_home = Path(default_codex_home())
-    cache_root = codex_home / "plugins" / "cache"
-    best: dict[str, str] = {}
-    if not cache_root.is_dir():
-        return best
-    patterns = [
-        f"*/{plugin_name}/*/.codex-plugin/plugin.json",
-        f"*/{plugin_name}/.codex-plugin/plugin.json",
-        f"{plugin_name}/*/.codex-plugin/plugin.json",
-        f"{plugin_name}/.codex-plugin/plugin.json",
-    ]
-    for pattern in patterns:
-        for manifest_path in cache_root.glob(pattern):
-            payload = read_json_object(manifest_path)
-            if str(payload.get("name") or plugin_name) != plugin_name:
-                continue
-            version = str(payload.get("version") or "")
-            if not version:
-                continue
-            if not best or compare_versions(version, best.get("installed_plugin_version", "")) > 0:
-                best = {
-                    "installed_plugin_version": version,
-                    "installed_plugin_path": str(manifest_path.parents[1] if manifest_path.parent.name == ".codex-plugin" else manifest_path.parent),
-                }
-    return best
-
-
-def version_parts(value: str) -> tuple[int, ...]:
-    parts: list[int] = []
-    for item in str(value or "").split("."):
-        match = re.match(r"^(\d+)", item)
-        if match:
-            parts.append(int(match.group(1)))
-        else:
-            parts.append(0)
-    return tuple(parts)
-
-
-def compare_versions(left: str, right: str) -> int:
-    left_parts = list(version_parts(left))
-    right_parts = list(version_parts(right))
-    size = max(len(left_parts), len(right_parts), 1)
-    left_parts.extend([0] * (size - len(left_parts)))
-    right_parts.extend([0] * (size - len(right_parts)))
-    return (left_parts > right_parts) - (left_parts < right_parts)
-
-
-def github_raw_plugin_manifest_url(metadata: dict[str, str]) -> str:
-    repository = str(metadata.get("repository") or "").strip().removesuffix(".git")
-    match = re.search(r"github\.com[:/](?P<owner>[^/]+)/(?P<repo>[^/#?]+)", repository)
-    plugin_name = str(metadata.get("plugin_name") or "android-framework-ops").strip()
-    if not match or not plugin_name:
-        return ""
-    owner = match.group("owner")
-    repo = match.group("repo")
-    return f"https://raw.githubusercontent.com/{owner}/{repo}/main/plugins/{plugin_name}/.codex-plugin/plugin.json"
-
-
-def fetch_remote_plugin_manifest(metadata: dict[str, str]) -> dict[str, Any]:
-    url = github_raw_plugin_manifest_url(metadata)
-    if not url:
-        raise RuntimeError("插件仓库不是可识别的 GitHub 仓库，不能读取远端插件版本。")
-    with urllib.request.urlopen(url, timeout=PLUGIN_REMOTE_MANIFEST_TIMEOUT) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    if not isinstance(payload, dict):
-        raise RuntimeError("远端插件清单不是 JSON 对象。")
-    return payload
-
-
-def git_remote_plugin_version(git_root: Path, ref: str) -> str:
-    manifest_path = plugin_manifest_path()
-    if not manifest_path:
-        return ""
-    try:
-        rel = manifest_path.resolve().relative_to(git_root.resolve()).as_posix()
-    except ValueError:
-        return ""
-    cp = run(["git", "-C", str(git_root), "show", f"{ref}:{rel}"])
-    if cp.returncode != 0:
-        return ""
-    try:
-        payload = json.loads(cp.stdout)
-    except Exception:
-        return ""
-    return str(payload.get("version") or "") if isinstance(payload, dict) else ""
-
-
-def packaged_plugin_freshness(metadata: dict[str, str], fetch: bool, require: bool) -> dict[str, Any]:
-    local_version = str(metadata.get("plugin_version") or "")
-    cache_metadata = latest_installed_plugin_cache_metadata(metadata.get("plugin_name") or "android-framework-ops")
-    skill_cache = current_skill_cache_metadata()
-    payload: dict[str, Any] = {
-        "status": "PASS" if local_version else "UNKNOWN",
-        "blocking": False,
-        "plugin_name": metadata.get("plugin_name") or "android-framework-ops",
-        "local_version": local_version,
-        "plugin_version": local_version,
-        "skill_cache_version": skill_cache.get("skill_cache_version", ""),
-        "skill_cache_path": skill_cache.get("skill_cache_path", ""),
-        "installed_plugin_version": cache_metadata.get("installed_plugin_version", local_version),
-        "installed_plugin_path": cache_metadata.get("installed_plugin_path", ""),
-        "installation": metadata.get("plugin_installation") or "packaged",
-        "message": "插件缓存版本已记录。",
-    }
-    if not local_version:
-        return plugin_update_unknown("无法读取插件缓存版本，不能确认是否有更新。", require)
-    installed_version = str(payload.get("installed_plugin_version") or "")
-    if installed_version and compare_versions(local_version, installed_version) < 0:
-        payload.update(
-            {
-                "status": "SESSION_CACHE_STALE",
-                "blocking": True,
-                "message": (
-                    f"Codex 已安装 Android Framework Ops {installed_version}，但当前会话仍在使用旧技能缓存 {local_version}。"
-                    "当前会话不能热刷新技能，请新开或重启 Codex 会话后再生成或上传。"
-                ),
-            }
-        )
-        return payload
-    if not fetch:
-        return payload
-    try:
-        remote_manifest = fetch_remote_plugin_manifest(metadata)
-    except Exception as exc:
-        return plugin_update_unknown(f"无法读取插件远端版本，不能确认是否有更新: {exc}", require)
-    remote_version = str(remote_manifest.get("version") or "")
-    payload["remote_version"] = remote_version
-    payload["remote_plugin_version"] = remote_version
-    if remote_version and compare_versions(local_version, remote_version) < 0:
-        auto_update = auto_update_packaged_plugin(str(metadata.get("plugin_name") or "android-framework-ops"))
-        payload["auto_update"] = auto_update
-        if auto_update.get("status") == "PASS":
-            payload.update(
-                {
-                    "status": "UPDATED_RESTART_REQUIRED",
-                    "blocking": True,
-                    "message": (
-                        f"Codex 插件缓存已自动更新到 Android Framework Ops {remote_version}。"
-                        "当前 Python 进程和 Codex 会话已经加载了旧技能缓存，当前会话不能热刷新；"
-                        "请重新运行原命令，并在 Codex 会话仍显示旧技能时新开或重启会话。"
-                    ),
-                }
-            )
-            return payload
-        payload.update(
-            {
-                "status": "STALE",
-                "blocking": True,
-                "message": (
-                    f"GitHub 已发布 Android Framework Ops {remote_version}，当前插件缓存是 {local_version}。"
-                    "自动更新插件缓存失败，请先在 Codex 插件市场更新插件；如果已更新但当前会话仍显示旧版本，请新开或重启会话后再生成或上传。"
-                ),
-            }
-        )
-    elif remote_version:
-        payload["message"] = "插件缓存版本已是当前远端版本。"
-    else:
-        payload.update(
-            {
-                "status": "UNKNOWN",
-                "blocking": require,
-                "message": "远端插件清单缺少版本号，不能确认是否有更新。",
-            }
-        )
-    return payload
-
-
-def auto_update_packaged_plugin(plugin_name: str) -> dict[str, Any]:
-    marketplace = "android-framework-codex-suite"
-    upgrade_cmd = ["codex", "plugin", "marketplace", "upgrade", marketplace, "--json"]
-    add_cmd = ["codex", "plugin", "add", f"{plugin_name}@{marketplace}", "--json"]
-    upgrade_cp = run(upgrade_cmd)
-    if upgrade_cp.returncode != 0:
-        return {
-            "attempted": True,
-            "status": "FAIL",
-            "upgrade_command": shlex.join(upgrade_cmd),
-            "stderr": upgrade_cp.stderr.strip(),
-            "stdout": upgrade_cp.stdout.strip(),
-        }
-    add_cp = run(add_cmd)
-    if add_cp.returncode != 0:
-        return {
-            "attempted": True,
-            "status": "FAIL",
-            "upgrade_command": shlex.join(upgrade_cmd),
-            "install_command": shlex.join(add_cmd),
-            "marketplace_stdout": upgrade_cp.stdout.strip(),
-            "stderr": add_cp.stderr.strip(),
-            "stdout": add_cp.stdout.strip(),
-        }
-    payload = {
-        "attempted": True,
-        "status": "PASS",
-        "upgrade_command": shlex.join(upgrade_cmd),
-        "install_command": shlex.join(add_cmd),
-        "marketplace_stdout": upgrade_cp.stdout.strip(),
-        "install_stdout": add_cp.stdout.strip(),
-    }
-    payload.update(latest_installed_plugin_cache_metadata(plugin_name))
-    return payload
-
-
-def plugin_intake_script_from_root(root: Path) -> Path:
-    if root.name == "android-knowledge-intake" and root.parent.name == "skills":
-        return root / "scripts" / "android_knowledge_intake.py"
-    return root / "skills" / "android-knowledge-intake" / "scripts" / "android_knowledge_intake.py"
-
-
-def updated_plugin_intake_script_path(freshness: dict[str, Any]) -> Path | None:
-    auto_update = freshness.get("auto_update") if isinstance(freshness.get("auto_update"), dict) else {}
-    plugin_name = str(freshness.get("plugin_name") or "android-framework-ops")
-    root_values = [
-        auto_update.get("installed_plugin_path"),
-        freshness.get("installed_plugin_path"),
-    ]
-    cache_metadata = latest_installed_plugin_cache_metadata(plugin_name)
-    if cache_metadata.get("installed_plugin_path"):
-        root_values.append(cache_metadata["installed_plugin_path"])
-
-    for root_value in root_values:
-        if not root_value:
-            continue
-        script_path = plugin_intake_script_from_root(Path(str(root_value))).resolve()
-        if script_path.is_file():
-            return script_path
-
-    if auto_update.get("status") == "PASS" and auto_update.get("command"):
-        return Path(__file__).resolve()
-    return None
-
-
-def reexec_latest_plugin_script_after_update(freshness: dict[str, Any]) -> str:
-    if freshness.get("status") not in {"UPDATED_RESTART_REQUIRED", "SESSION_CACHE_STALE"}:
-        return ""
-    if os.environ.get(PLUGIN_REEXEC_ATTEMPT_ENV):
-        return ""
-    script_path = updated_plugin_intake_script_path(freshness)
-    if not script_path:
-        return "已更新插件缓存，但未找到新缓存里的上传脚本；请新开或重启 Codex 会话后重新运行。"
-    os.environ[PLUGIN_REEXEC_ATTEMPT_ENV] = "1"
-    try:
-        os.execv(sys.executable, [sys.executable, str(script_path), *sys.argv[1:]])
-    except OSError as exc:
-        return f"已更新插件缓存，但无法切换到新脚本继续执行: {exc}。请新开或重启 Codex 会话后重新运行。"
-    return ""
+    return _call_version_gate(lambda: _version_gate.latest_installed_plugin_cache_metadata(plugin_name))
 
 
 def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[str, Any]:
-    require = require or env_enabled(PLUGIN_UPDATE_REQUIRE_ENV)
-    if env_enabled(PLUGIN_UPDATE_SKIP_ENV):
-        return {
-            "status": "SKIPPED",
-            "blocking": False,
-            "message": "已按环境变量跳过插件更新检查（plugin update check）。",
-        }
-
-    root_cp = run(["git", "-C", str(PLUGIN_ROOT), "rev-parse", "--show-toplevel"])
-    if root_cp.returncode != 0:
-        metadata = plugin_install_metadata()
-        if metadata.get("plugin_version"):
-            return packaged_plugin_freshness(metadata, fetch, require)
-        return plugin_update_unknown(
-            "无法确认插件版本：当前插件目录不是 Git 仓库（git repository）。请在 Codex 插件市场更新 Android Framework Ops 插件后重新运行。",
-            require,
-        )
-    git_root = Path(root_cp.stdout.strip()).resolve()
-    update_command = shlex.join(["git", "-C", str(git_root), "pull", "--ff-only"])
-
-    branch_cp = run(["git", "-C", str(git_root), "rev-parse", "--abbrev-ref", "HEAD"])
-    if branch_cp.returncode != 0:
-        return plugin_update_unknown("无法读取插件当前分支，不能确认是否有更新。", require, git_root, update_command)
-    branch = branch_cp.stdout.strip()
-    if branch == "HEAD":
-        return plugin_update_unknown("插件仓库处于 detached HEAD 状态，不能自动判断远端更新。", require, git_root, update_command)
-
-    remote_cp = run(["git", "-C", str(git_root), "config", "--get", f"branch.{branch}.remote"])
-    remote_name = remote_cp.stdout.strip() if remote_cp.returncode == 0 else ""
-    if not remote_name:
-        origin_cp = run(["git", "-C", str(git_root), "config", "--get", "remote.origin.url"])
-        if origin_cp.returncode == 0 and origin_cp.stdout.strip():
-            remote_name = "origin"
-    if not remote_name:
-        return plugin_update_unknown("插件仓库没有配置远端仓库，不能确认是否有更新。", require, git_root, update_command)
-
-    if fetch:
-        fetch_cp = run(["git", "-C", str(git_root), "fetch", "--quiet", remote_name])
-        if fetch_cp.returncode != 0:
-            detail = (fetch_cp.stderr.strip() or fetch_cp.stdout.strip()).splitlines()
-            suffix = f": {detail[0]}" if detail else ""
-            return plugin_update_unknown(f"无法访问插件远端仓库，不能确认是否有更新{suffix}", require, git_root, update_command)
-
-    local_cp = run(["git", "-C", str(git_root), "rev-parse", "HEAD"])
-    if local_cp.returncode != 0:
-        return plugin_update_unknown("无法读取插件本地提交，不能确认是否有更新。", require, git_root, update_command)
-    local_commit = local_cp.stdout.strip()
-
-    upstream_cp = run(["git", "-C", str(git_root), "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
-    upstream_ref = upstream_cp.stdout.strip() if upstream_cp.returncode == 0 else ""
-    if not upstream_ref:
-        for candidate in (f"{remote_name}/{branch}", "origin/main", "origin/master"):
-            candidate_cp = run(["git", "-C", str(git_root), "rev-parse", "--verify", candidate])
-            if candidate_cp.returncode == 0:
-                upstream_ref = candidate
-                break
-    if not upstream_ref:
-        return plugin_update_unknown("插件仓库没有可比较的上游分支，不能确认是否有更新。", require, git_root, update_command)
-
-    remote_commit_cp = run(["git", "-C", str(git_root), "rev-parse", upstream_ref])
-    if remote_commit_cp.returncode != 0:
-        return plugin_update_unknown("无法读取插件远端提交，不能确认是否有更新。", require, git_root, update_command)
-    remote_commit = remote_commit_cp.stdout.strip()
-
-    dirty_cp = run(["git", "-C", str(git_root), "status", "--porcelain"])
-    warnings: list[str] = []
-    if dirty_cp.returncode == 0 and dirty_cp.stdout.strip():
-        warnings.append("插件仓库存在未提交改动，更新前需要先处理本地改动。")
-
-    payload: dict[str, Any] = {
-        "git_root": str(git_root),
-        "local_commit": local_commit[:12],
-        "remote_ref": upstream_ref,
-        "remote_commit": remote_commit[:12],
-        "update_command": update_command,
-    }
-    metadata = plugin_install_metadata()
-    if metadata.get("plugin_version"):
-        payload["local_version"] = metadata["plugin_version"]
-        payload["plugin_version"] = metadata["plugin_version"]
-        payload["skill_cache_version"] = metadata["plugin_version"]
-    remote_version = git_remote_plugin_version(git_root, upstream_ref)
-    if remote_version:
-        payload["remote_version"] = remote_version
-        payload["remote_plugin_version"] = remote_version
-    cache_metadata = latest_installed_plugin_cache_metadata(metadata.get("plugin_name") or "android-framework-ops")
-    if cache_metadata:
-        payload.update(cache_metadata)
-    if warnings:
-        payload["warnings"] = warnings
-
-    if local_commit == remote_commit:
-        local_version = str(payload.get("local_version") or "")
-        installed_version = str(payload.get("installed_plugin_version") or "")
-        if installed_version and local_version and compare_versions(local_version, installed_version) < 0:
-            payload.update(
-                {
-                    "status": "SESSION_CACHE_STALE",
-                    "blocking": True,
-                    "message": (
-                        f"Codex 已安装 Android Framework Ops {installed_version}，但当前会话仍在使用旧技能缓存 {local_version}。"
-                        "当前会话不能热刷新技能，请新开或重启 Codex 会话后再生成或上传。"
-                    ),
-                }
-            )
-            return payload
-        payload.update(
-            {
-                "status": "PASS",
-                "blocking": False,
-                "message": "插件已是当前远端版本。",
-            }
-        )
-        return payload
-
-    local_ancestor = run(["git", "-C", str(git_root), "merge-base", "--is-ancestor", local_commit, remote_commit])
-    if local_ancestor.returncode == 0:
-        if warnings:
-            payload.update(
-                {
-                    "status": "STALE",
-                    "blocking": True,
-                    "message": "插件有更新，但当前插件仓库存在未提交改动，不能自动更新。请先处理本地改动后重新运行。",
-                }
-            )
-            return payload
-        pull_cp = run(["git", "-C", str(git_root), "pull", "--ff-only"])
-        if pull_cp.returncode == 0:
-            payload["auto_update"] = {
-                "attempted": True,
-                "status": "PASS",
-                "command": update_command,
-                "stdout": pull_cp.stdout.strip(),
-            }
-            payload.update(
-                {
-                    "status": "UPDATED_RESTART_REQUIRED",
-                    "blocking": True,
-                    "message": (
-                        "插件已自动快进更新。当前 Python 进程和 Codex 会话已经加载了旧技能缓存，不能热刷新；"
-                        "请重新运行原命令，并在 Codex 会话仍显示旧技能时新开或重启会话。"
-                    ),
-                }
-            )
-            return payload
-        payload["auto_update"] = {
-            "attempted": True,
-            "status": "FAIL",
-            "command": update_command,
-            "stderr": pull_cp.stderr.strip(),
-            "stdout": pull_cp.stdout.strip(),
-        }
-        payload.update(
-            {
-                "status": "STALE",
-                "blocking": True,
-                "message": "插件有更新，但自动快进更新失败，已停止本次生成。请先执行插件更新（plugin update）后重新运行原命令。",
-            }
-        )
-        return payload
-
-    remote_ancestor = run(["git", "-C", str(git_root), "merge-base", "--is-ancestor", remote_commit, local_commit])
-    if remote_ancestor.returncode == 0:
-        payload.update(
-            {
-                "status": "PASS",
-                "blocking": False,
-                "message": "本地插件提交领先远端，未发现必须先拉取的更新。",
-            }
-        )
-        return payload
-
-    payload.update(
-        {
-            "status": "DIVERGED",
-            "blocking": True,
-            "message": "插件本地分支和远端分支已分叉，已停止本次生成。请让管理员处理插件更新（plugin update）后重新运行原命令。",
-        }
-    )
-    return payload
+    return _call_version_gate(lambda: _version_gate.plugin_freshness_check(fetch=fetch, require=require))
 
 
 def plugin_version_gate_check(config: dict[str, str] | None = None, fetch: bool = True, require: bool = True) -> dict[str, Any]:
     global LAST_PLUGIN_VERSION_GATE
-    gate = plugin_freshness_check(fetch=fetch, require=require)
-    metadata = plugin_install_metadata()
-    skill_cache = current_skill_cache_metadata()
-    cache_metadata = latest_installed_plugin_cache_metadata(metadata.get("plugin_name") or "android-framework-ops")
-    gate.setdefault("plugin_name", metadata.get("plugin_name") or "android-framework-ops")
-    gate.setdefault("plugin_version", metadata.get("plugin_version") or "")
-    gate.setdefault("local_version", metadata.get("plugin_version") or "")
-    gate.setdefault("skill_cache_version", skill_cache.get("skill_cache_version", ""))
-    gate.setdefault("skill_cache_path", skill_cache.get("skill_cache_path", ""))
-    if cache_metadata:
-        gate.setdefault("installed_plugin_version", cache_metadata.get("installed_plugin_version", ""))
-        gate.setdefault("installed_plugin_path", cache_metadata.get("installed_plugin_path", ""))
-    gate["checked_at"] = local_now(config or CONFIG_DEFAULTS).isoformat()
-    gate["result"] = gate.get("status", "UNKNOWN")
+    gate = _call_version_gate(lambda: _version_gate.plugin_version_gate_check(config=config, fetch=fetch, require=require))
     LAST_PLUGIN_VERSION_GATE = gate
     return gate
 
@@ -890,419 +363,46 @@ def synthetic_mode(config: dict[str, str]) -> bool:
     return parse_bool(config.get("synthetic_data", "false"))
 
 
-def read_toml(path: Path) -> dict[str, Any]:
-    try:
-        try:
-            import tomllib
 
-            return tomllib.loads(path.read_text(encoding="utf-8"))
-        except ModuleNotFoundError:
-            return parse_simple_toml(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise SystemExit(f"读取配置失败: {path}: {exc}") from exc
-
-
-def parse_toml_scalar(value: str) -> Any:
-    value = value.strip()
-    if value.startswith("[") and value.endswith("]"):
-        body = value[1:-1].strip()
-        if not body:
-            return []
-        items = []
-        current = ""
-        quote = ""
-        for char in body:
-            if quote:
-                current += char
-                if char == quote:
-                    quote = ""
-            elif char in {"'", '"'}:
-                quote = char
-                current += char
-            elif char == ",":
-                items.append(parse_toml_scalar(current))
-                current = ""
-            else:
-                current += char
-        if current.strip():
-            items.append(parse_toml_scalar(current))
-        return items
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-        return value[1:-1]
-    lowered = value.lower()
-    if lowered in {"true", "false"}:
-        return lowered == "true"
-    return value
-
-
-def parse_simple_toml(text: str) -> dict[str, Any]:
-    payload: dict[str, Any] = {}
-    current: dict[str, Any] = payload
-    for raw in text.splitlines():
-        line = raw.split("#", 1)[0].strip()
-        if not line:
-            continue
-        if line.startswith("[") and line.endswith("]"):
-            current = payload
-            for part in line[1:-1].split("."):
-                key = part.strip().strip('"').strip("'")
-                nested = current.setdefault(key, {})
-                if not isinstance(nested, dict):
-                    nested = {}
-                    current[key] = nested
-                current = nested
-            continue
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        current[key.strip()] = parse_toml_scalar(value)
-    return payload
-
-
-def stringify_config_value(value: Any) -> str:
-    if isinstance(value, list):
-        return ",".join(str(item) for item in value)
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
-
-
-def flatten_config_payload(payload: dict[str, Any]) -> dict[str, str]:
-    flattened: dict[str, str] = {}
-
-    def add(key: str, value: Any, section: str = "") -> None:
-        if isinstance(value, dict):
-            return
-        normalized = key
-        if section == "member" and key == "alias":
-            normalized = "member_alias"
-        elif section == "member" and key == "name":
-            normalized = "member_name"
-        elif section == "knowledge" and key in {"repo_url", "url", "knowledge_repo_url"}:
-            normalized = "knowledge_repo_url"
-        elif section == "knowledge" and key in {"repo_worktree", "worktree", "knowledge_repo_worktree"}:
-            normalized = "knowledge_repo_worktree"
-        elif section == "submission" and key in {"method", "submission_method"}:
-            normalized = "submission_method"
-        elif section == "submission" and key in {"ssh_host", "host", "submission_ssh_host"}:
-            normalized = "submission_ssh_host"
-        elif section == "submission" and key in {"command", "submit_command", "submission_command"}:
-            normalized = "submission_command"
-        elif section == "submission" and key in {"api_base_url", "base_url", "submission_api_base_url"}:
-            normalized = "submission_api_base_url"
-        elif section == "submission" and key in {"session_cookie", "cookie", "submission_session_cookie"}:
-            normalized = "submission_session_cookie"
-        elif section == "submission" and key in {"api_token", "token", "submission_api_token"}:
-            normalized = "submission_api_token"
-        elif section == "paths" and key in {"knowledge_repo_worktree", "knowledge_worktree"}:
-            normalized = "knowledge_repo_worktree"
-        elif section == "paths" and key in {"codex_home", "out_dir"}:
-            normalized = key
-        elif section == "git" and key in {"user_name", "name"}:
-            normalized = "git_user_name"
-        elif section == "git" and key in {"user_email", "email"}:
-            normalized = "git_user_email"
-        elif key == "person":
-            normalized = "member_name"
-        elif key == "name":
-            normalized = "member_name"
-        if normalized in CONFIG_DEFAULTS:
-            flattened[normalized] = stringify_config_value(value)
-
-    for key, value in payload.items():
-        if key == "profiles":
-            continue
-        if isinstance(value, dict):
-            for subkey, subvalue in value.items():
-                add(str(subkey), subvalue, str(key))
-        else:
-            add(str(key), value)
-    return flattened
-
-
-def profile_configs(payload: dict[str, Any]) -> dict[str, dict[str, str]]:
-    profiles = payload.get("profiles")
-    if not isinstance(profiles, dict):
-        return {}
-    result: dict[str, dict[str, str]] = {}
-    for name, profile_payload in profiles.items():
-        if isinstance(profile_payload, dict):
-            result[str(name)] = flatten_config_payload(profile_payload)
-    return result
-
-
-def find_project_report_config(start: Path | None = None) -> Path | None:
-    current = (start or Path.cwd()).resolve()
-    if current.is_file():
-        current = current.parent
-    for directory in [current, *current.parents]:
-        candidate = directory / ".codex" / "report.toml"
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def profile_from_env() -> str:
-    for prefix in ENV_PREFIXES:
-        value = os.environ.get(f"{prefix}PROFILE")
-        if value:
-            return value
-    return ""
-
-
-def apply_env_overrides(config: dict[str, str]) -> None:
-    aliases = {
-        "MEMBER": "member_alias",
-        "ALIAS": "member_alias",
-        "PERSON": "member_name",
-        "PERSON_NAME": "member_name",
-        "MEMBER_NAME": "member_name",
-        "KNOWLEDGE_REPO": "knowledge_repo_url",
-        "KNOWLEDGE_REPO_URL": "knowledge_repo_url",
-        "KNOWLEDGE_WORKTREE": "knowledge_repo_worktree",
-        "KNOWLEDGE_REPO_WORKTREE": "knowledge_repo_worktree",
-        "SUBMISSION_METHOD": "submission_method",
-        "SUBMISSION_SSH_HOST": "submission_ssh_host",
-        "SUBMISSION_HOST": "submission_ssh_host",
-        "SUBMISSION_COMMAND": "submission_command",
-        "SUBMISSION_API_BASE_URL": "submission_api_base_url",
-        "SUBMISSION_SESSION_COOKIE": "submission_session_cookie",
-        "SUBMISSION_API_TOKEN": "submission_api_token",
-    }
-    for env_key, value in os.environ.items():
-        for prefix in ENV_PREFIXES:
-            if not env_key.startswith(prefix):
-                continue
-            raw = env_key[len(prefix) :]
-            key = aliases.get(raw, raw.lower())
-            if key in config:
-                config[key] = value
-
-
-def akbs_endpoint_env_value(name: str) -> str:
-    for prefix in AKBS_ENDPOINT_ENV_PREFIXES:
-        value = os.environ.get(f"{prefix}{name.upper()}")
-        if value:
-            return value
-    return ""
-
-
-def resolve_akbs_endpoint(config: dict[str, str]) -> dict[str, str]:
-    endpoint = dict(AKBS_ENDPOINT_DEFAULTS)
-    endpoint["source"] = "default"
-    env_keys = {
-        "submission_method": "SUBMISSION_METHOD",
-        "submission_ssh_host": "SUBMISSION_SSH_HOST",
-        "submission_command": "SUBMISSION_COMMAND",
-        "submission_api_base_url": "SUBMISSION_API_BASE_URL",
-        "submission_session_cookie": "SUBMISSION_SESSION_COOKIE",
-        "submission_api_token": "SUBMISSION_API_TOKEN",
-        "knowledge_repo_url": "KNOWLEDGE_REPO_URL",
-    }
-    env_overrides = {key: akbs_endpoint_env_value(env_key) for key, env_key in env_keys.items()}
-    env_overrides = {key: value for key, value in env_overrides.items() if value}
-    if env_overrides:
-        endpoint.update(env_overrides)
-        endpoint["source"] = "env_override"
-        return endpoint
-
-    role = str(config.get("role") or "").strip()
-    configured = {
-        key: str(config.get(key) or "").strip()
-        for key in (
-            "submission_method",
-            "submission_ssh_host",
-            "submission_command",
-            "submission_api_base_url",
-            "submission_session_cookie",
-            "submission_api_token",
-            "knowledge_repo_url",
-        )
-        if str(config.get(key) or "").strip()
-    }
-    if "submission_method" in configured and configured["submission_method"].lower() not in {"ssh", "local", "http"}:
-        raise SystemExit(f"submission_method 不支持: {configured['submission_method']}")
-    if role == "admin" and configured:
-        endpoint.update(configured)
-        endpoint["source"] = "admin_config_override"
-    return endpoint
-
-
-def configured_endpoint_fields(loaded: list[Path]) -> dict[str, str]:
-    fields: dict[str, str] = {}
-    for path in loaded:
-        if not path.exists():
-            continue
-        payload = read_toml(path)
-        flattened = flatten_config_payload(payload)
-        for key in (
-            "server_profile",
-            "submission_method",
-            "submission_ssh_host",
-            "submission_command",
-            "submission_api_base_url",
-            "submission_session_cookie",
-            "submission_api_token",
-            "knowledge_repo_url",
-        ):
-            value = str(flattened.get(key) or "").strip()
-            if value:
-                fields[key] = value
-    return fields
-
-
-def endpoint_migration_report(config: dict[str, str], loaded: list[Path]) -> dict[str, Any]:
-    configured = configured_endpoint_fields(loaded)
-    legacy_fields = sorted(
-        key
-        for key, value in configured.items()
-        if value == LEGACY_TEST35_ENDPOINT_VALUES.get(key, "")
-        or (
-            key
-            in {
-                "submission_ssh_host",
-                "knowledge_repo_url",
-                "submission_command",
-                "submission_api_base_url",
-                "server_profile",
-            }
-            and "test35" in value
-        )
-    )
-    custom_fields = sorted(key for key in configured if key not in legacy_fields)
-    role = str(config.get("role") or "").strip()
-    if not configured:
-        status = "CURRENT"
-        message = "普通成员配置未包含服务器入口字段，AKBS endpoint resolver 将提供上传入口和只读知识库入口。"
-    elif role == "member" and legacy_fields and not custom_fields:
-        status = "MIGRATED_IN_MEMORY"
-        message = "检测到旧 test35 服务器硬编码；本次运行已在内存中迁移为 AKBS endpoint resolver 默认入口，未改成员身份字段。"
-    elif role == "member":
-        status = "MANUAL_ACTION_REQUIRED"
-        message = "检测到普通成员配置中的自定义服务器字段；请移除这些字段，改由管理员/测试环境 endpoint override 提供。"
-    else:
-        status = "ADMIN_OVERRIDE"
-        message = "检测到管理员/测试 endpoint override 配置；普通成员配置不应复制这些字段。"
-    return {
-        "status": status,
-        "message": message,
-        "legacy_fields": legacy_fields,
-        "custom_fields": custom_fields,
-    }
-
-
-def load_config(profile_override: str | None = None) -> tuple[dict[str, str], list[Path]]:
-    config = CONFIG_DEFAULTS.copy()
-    codex_home = Path(default_codex_home())
-    paths = [
-        PLUGIN_ROOT / "config.toml",
-        codex_home / "android-knowledge-intake.toml",
-        codex_home / "report" / "config.toml",
-    ]
-    project_config = find_project_report_config()
-    if project_config:
-        paths.append(project_config)
-
-    loaded: list[Path] = []
-    profile_overrides: dict[str, dict[str, str]] = {}
-    for path in paths:
-        if not path.exists():
-            continue
-        loaded.append(path)
-        payload = read_toml(path)
-        for key, value in flatten_config_payload(payload).items():
-            config[key] = value
-        for name, values in profile_configs(payload).items():
-            profile_overrides.setdefault(name, {}).update(values)
-
-    selected_profile = (profile_override or profile_from_env() or config.get("default_profile", "")).strip()
-    if selected_profile:
-        if selected_profile not in profile_overrides:
-            raise SystemExit(f"profile 不存在: {selected_profile}")
-        config.update(profile_overrides[selected_profile])
-        config["profile"] = selected_profile
-    apply_env_overrides(config)
-    return config, loaded
-
-
-def require_config(config: dict[str, str]) -> None:
-    missing = [key for key in ("member_alias", "member_name") if not config.get(key, "").strip()]
-    method = submission_method(config)
-    if method in {"ssh", "local"} and not submission_command(config):
-        missing.append("submission_command")
-    if method == "ssh" and not submission_ssh_host(config):
-        missing.append("submission_ssh_host")
-    if method == "http" and not submission_api_base_url(config):
-        missing.append("submission_api_base_url")
-    if missing:
-        raise SystemExit("缺少必要配置: " + ", ".join(missing))
-
-
-def knowledge_repo_url(config: dict[str, str]) -> str:
-    return resolve_akbs_endpoint(config)["knowledge_repo_url"].strip()
-
-
-def knowledge_repo_worktree(config: dict[str, str]) -> Path:
-    value = config.get("knowledge_repo_worktree") or "$CODEX_HOME/worktrees/knowledge"
-    return expanded_path(value)
-
-
-def submission_method(config: dict[str, str]) -> str:
-    method = resolve_akbs_endpoint(config)["submission_method"].strip().lower()
-    if method not in {"ssh", "local", "http"}:
-        raise SystemExit(f"submission_method 不支持: {method}")
-    return method
-
-
-def submission_ssh_host(config: dict[str, str]) -> str:
-    return resolve_akbs_endpoint(config)["submission_ssh_host"].strip()
-
-
-def submission_command(config: dict[str, str]) -> str:
-    return resolve_akbs_endpoint(config)["submission_command"].strip()
-
-
-def submission_api_base_url(config: dict[str, str]) -> str:
-    return resolve_akbs_endpoint(config)["submission_api_base_url"].strip()
-
-
-def submission_session_cookie(config: dict[str, str]) -> str:
-    return resolve_akbs_endpoint(config)["submission_session_cookie"].strip()
-
-
-def submission_api_token(config: dict[str, str]) -> str:
-    return resolve_akbs_endpoint(config)["submission_api_token"].strip()
-
-
-def allowed_modes(config: dict[str, str]) -> set[str]:
-    raw = config.get("allowed_modes", "").strip()
-    if not raw:
-        return set(PACKAGE_TYPES)
-    modes = {item.strip() for item in raw.split(",") if item.strip()}
-    invalid = modes - PACKAGE_TYPES
-    if invalid:
-        raise SystemExit("allowed_modes 包含非法类型: " + ", ".join(sorted(invalid)))
-    return modes
-
-
-def enforce_mode_allowed(config: dict[str, str], report_type: str) -> None:
-    modes = allowed_modes(config)
-    if report_type not in modes:
-        profile = config.get("profile") or config.get("member_alias") or "unknown"
-        raise SystemExit(f"profile {profile} 不允许执行 {report_type}，允许类型: {', '.join(sorted(modes))}")
-
-
-def local_now(config: dict[str, str]) -> dt.datetime:
-    timezone = config.get("timezone", "Asia/Shanghai")
-    if ZoneInfo is not None:
-        return dt.datetime.now(ZoneInfo(timezone))
-    return dt.datetime.now().astimezone()
-
-
-def parse_date_arg(value: str | None, config: dict[str, str]) -> dt.date:
-    if value:
-        return dt.date.fromisoformat(value)
-    return local_now(config).date()
+from akbs_intake.config import (  # noqa: E402
+    AKBS_ENDPOINT_DEFAULTS,
+    AKBS_ENDPOINT_ENV_PREFIXES,
+    CONFIG_DEFAULTS,
+    DEFAULT_KNOWLEDGE_REPO_URL,
+    DEFAULT_SUBMISSION_API_BASE_URL,
+    DEFAULT_SUBMISSION_API_TOKEN,
+    DEFAULT_SUBMISSION_SESSION_COOKIE,
+    ENV_PREFIXES,
+    INCOMING_SCHEMA_VERSION,
+    LEGACY_TEST35_ENDPOINT_VALUES,
+    akbs_endpoint_env_value,
+    allowed_modes,
+    apply_env_overrides,
+    configured_endpoint_fields,
+    default_codex_home,
+    enforce_mode_allowed,
+    endpoint_migration_report,
+    expanded_path,
+    find_project_report_config,
+    flatten_config_payload,
+    knowledge_repo_url,
+    knowledge_repo_worktree,
+    load_config,
+    local_now,
+    parse_bool,
+    parse_date_arg,
+    parse_simple_toml,
+    parse_toml_scalar,
+    profile_configs,
+    profile_from_env,
+    read_toml,
+    require_config,
+    resolve_akbs_endpoint,
+    stringify_config_value,
+    submission_api_base_url,
+    submission_api_token,
+    submission_session_cookie,
+)
 
 
 def ymd(date: dt.date) -> str:
@@ -3163,23 +2263,15 @@ TODO: 说明涉及的源码仓库、回滚顺序、风险点和验证建议。
     return target_rel
 
 
-def validate_package(package_dir: Path) -> dict[str, Any]:
-    errors: list[str] = []
-    warnings: list[str] = []
-    manifest_path = package_dir / "manifest.json"
-    if not manifest_path.is_file():
-        errors.append("缺少 manifest.json")
-        return {"status": "FAIL", "errors": errors, "warnings": warnings}
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        errors.append(f"manifest.json 解析失败: {exc}")
-        return {"status": "FAIL", "errors": errors, "warnings": warnings}
+from akbs_intake import validation as _validation  # noqa: E402
 
-    if manifest.get("schema_version") != INCOMING_SCHEMA_VERSION:
-        errors.append(f"schema_version 必须是 {INCOMING_SCHEMA_VERSION}")
-        return {"status": "FAIL", "errors": errors, "warnings": warnings}
-    return validate_incoming_package(package_dir, manifest)
+
+def validate_package(package_dir: Path) -> dict[str, Any]:
+    return _validation.validate_package(
+        package_dir,
+        incoming_schema_version=INCOMING_SCHEMA_VERSION,
+        validate_incoming_package_fn=validate_incoming_package,
+    )
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -3418,51 +2510,23 @@ def implementation_origins_require_pre_change_search(origins: list[str]) -> bool
     return bool(normalized) and all(shared_implementation_requires_pre_change_search(origin) for origin in normalized)
 
 
-def plugin_commit() -> str:
-    cp = run(["git", "-C", str(PLUGIN_ROOT), "rev-parse", "--short", "HEAD"])
-    if cp.returncode == 0:
-        return cp.stdout.strip()
-    return ""
+from akbs_intake import source_metadata as _source_metadata  # noqa: E402
 
 
 def source_metadata(config: dict[str, str], skill: str) -> dict[str, Any]:
-    metadata = plugin_install_metadata()
-    plugin_version = metadata.get("plugin_version") or ""
-    root_cp = run(["git", "-C", str(PLUGIN_ROOT), "rev-parse", "--show-toplevel"])
-    plugin_installation = "git" if root_cp.returncode == 0 else metadata.get("plugin_installation", "unknown")
-    gate = LAST_PLUGIN_VERSION_GATE or plugin_version_gate_check(config, fetch=False, require=False)
-    skill_cache_version = str(gate.get("skill_cache_version") or plugin_version)
-    remote_plugin_version = str(gate.get("remote_plugin_version") or gate.get("remote_version") or "")
-    installed_plugin_version = str(gate.get("installed_plugin_version") or plugin_version)
-    payload = {
-        "source": "android-framework-ops",
-        "tool": skill,
-        "skill": skill,
-        "skill_version": skill_cache_version or plugin_version,
-        "plugin_name": metadata.get("plugin_name") or "android-framework-ops",
-        "plugin_version": plugin_version,
-        "plugin_installation": plugin_installation,
-        "plugin_commit": plugin_commit(),
-        "installed_plugin_version": installed_plugin_version,
-        "remote_plugin_version": remote_plugin_version,
-        "skill_cache_version": skill_cache_version,
-        "plugin_version_check": {
-            "checked_at": gate.get("checked_at", local_now(config).isoformat()),
-            "result": gate.get("result") or gate.get("status"),
-            "status": gate.get("status"),
-            "blocking": bool(gate.get("blocking")),
-            "message": gate.get("message", ""),
-            "plugin_version": gate.get("plugin_version") or plugin_version,
-            "installed_plugin_version": installed_plugin_version,
-            "remote_plugin_version": remote_plugin_version,
-            "skill_cache_version": skill_cache_version,
-            "skill_cache_path": gate.get("skill_cache_path", ""),
-            "auto_update": gate.get("auto_update", {}),
-        },
-        "member_alias": config["member_alias"],
-        "generated_at": local_now(config).isoformat(),
-    }
-    return payload
+    return _source_metadata.source_metadata(
+        config,
+        skill,
+        plugin_root=PLUGIN_ROOT,
+        run_command=run,
+        plugin_install_metadata_fn=plugin_install_metadata,
+        plugin_version_gate_check_fn=lambda gate_config, fetch, require: plugin_version_gate_check(
+            gate_config,
+            fetch=fetch,
+            require=require,
+        ),
+        last_plugin_version_gate=LAST_PLUGIN_VERSION_GATE,
+    )
 
 
 def write_package_source(package_dir: Path, config: dict[str, str], skill: str) -> dict[str, Any]:
@@ -3530,180 +2594,23 @@ def incoming_report_manifest(
     return manifest
 
 
-def package_key_from_manifest(manifest: dict[str, Any], package_dir: Path | None = None) -> str:
-    date_key = str(manifest.get("date") or "").replace("-", "")
-    member = str(manifest.get("member_alias") or "").strip()
-    run_id = str(manifest.get("run_id") or "").strip()
-    if date_key and member and run_id:
-        return f"{date_key}/{member}/{run_id}"
-    if package_dir is not None:
-        return str(package_dir)
-    return run_id or "unknown"
-
-
-def iter_local_manifests(config: dict[str, str]) -> list[tuple[str, Path, dict[str, Any]]]:
-    out_dir = expanded_path(config["out_dir"])
-    rows: list[tuple[str, Path, dict[str, Any]]] = []
-    for bucket in ("pending", "submitted"):
-        for manifest_path in sorted((out_dir / bucket).glob("*/*/*/manifest.json")):
-            try:
-                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            if not isinstance(manifest, dict):
-                continue
-            rows.append((bucket, manifest_path.parent, manifest))
-    return rows
-
-
-def report_identity(report_type: str, date: dt.date, week_range: str) -> str:
-    return date.isoformat() if report_type == "daily" else week_range
-
-
-def report_identity_from_manifest(manifest: dict[str, Any]) -> str:
-    kind = str(manifest.get("package_kind") or "")
-    if kind == "daily_trace":
-        return str(manifest.get("date") or "")
-    if kind == "weekly_trace":
-        return str(manifest.get("week_range") or "")
-    return ""
-
-
-def report_type_from_manifest(manifest: dict[str, Any]) -> str:
-    kind = str(manifest.get("package_kind") or "")
-    if kind == "daily_trace":
-        return "daily"
-    if kind == "weekly_trace":
-        return "weekly"
-    return ""
-
-
-def replacement_run_id(manifest: dict[str, Any]) -> str:
-    replacement = str(manifest.get("replacement_for_run_id") or "").strip()
-    if replacement:
-        return replacement
-    supersedes = manifest.get("supersedes")
-    if isinstance(supersedes, dict):
-        return str(supersedes.get("run_id") or "").strip()
-    return ""
-
-
-def report_duplicate_label(report_type: str) -> str:
-    return "日报日期" if report_type == "daily" else "周报周期"
-
-
-def report_replace_option(report_type: str) -> str:
-    return "--replace-daily-run-id" if report_type == "daily" else "--replace-weekly-run-id"
-
-
-def local_report_packages(config: dict[str, str], report_type: str, identity: str, exclude_run_id: str = "") -> list[dict[str, str]]:
-    member_alias = config.get("member_alias", "")
-    packages: dict[str, dict[str, str]] = {}
-    for bucket, package_dir, manifest in iter_local_manifests(config):
-        if report_type_from_manifest(manifest) != report_type:
-            continue
-        if manifest.get("member_alias") != member_alias:
-            continue
-        manifest_identity = report_identity_from_manifest(manifest)
-        if manifest_identity != identity:
-            continue
-        run_id = str(manifest.get("run_id") or package_dir.name)
-        if exclude_run_id and run_id == exclude_run_id:
-            continue
-        package_key = package_key_from_manifest(manifest, package_dir)
-        packages.setdefault(
-            package_key,
-            {
-                "bucket": bucket,
-                "run_id": run_id,
-                "date": str(manifest.get("date") or ""),
-                "report_type": report_type,
-                "identity": identity,
-                "week_range": str(manifest.get("week_range") or ""),
-                "package_key": package_key,
-                "path": str(package_dir),
-            },
-        )
-    return sorted(packages.values(), key=lambda item: (item["bucket"], item["package_key"]))
-
-
-def format_report_duplicate_message(report_type: str, identity: str, duplicates: list[dict[str, str]]) -> str:
-    refs = ", ".join(f"{item['bucket']}:{item['package_key']}" for item in duplicates)
-    first = duplicates[0]["run_id"] if duplicates else "<run_id>"
-    option = report_replace_option(report_type)
-    label = report_duplicate_label(report_type)
-    noun = "日报包" if report_type == "daily" else "周报包"
-    return (
-        f"同一成员同一{label}已存在{noun}: {label}={identity}; existing={refs}. "
-        f"已停止生成或上传第二个普通{noun}。请选择："
-        f"如确需替换已有提交，请显式使用 {report_type} {option} {first}；"
-        "如不替换，请取消本次提交。新包会写入 supersedes/replacement 元数据。"
-    )
-
-
-def ensure_report_not_duplicate(
-    config: dict[str, str],
-    report_type: str,
-    identity: str,
-    current_run_id: str,
-    replacement_run_id: str = "",
-) -> list[dict[str, str]]:
-    duplicates = local_report_packages(config, report_type, identity, exclude_run_id=current_run_id)
-    if not duplicates:
-        if replacement_run_id:
-            raise SystemExit(f"{report_replace_option(report_type)} 未找到同{report_duplicate_label(report_type)}已有包: {replacement_run_id}")
-        return []
-    if not replacement_run_id:
-        raise SystemExit(format_report_duplicate_message(report_type, identity, duplicates))
-    if replacement_run_id == current_run_id:
-        raise SystemExit(f"{report_replace_option(report_type)} 不能指向当前新{report_duplicate_label(report_type)} run_id")
-    if not any(item["run_id"] == replacement_run_id for item in duplicates):
-        raise SystemExit(f"{report_replace_option(report_type)} 未匹配同{report_duplicate_label(report_type)}已有包: {replacement_run_id}")
-    return duplicates
-
-
-def ensure_report_date_allowed(report_type: str, date: dt.date, config: dict[str, str]) -> None:
-    today = local_now(config).date()
-    if date > today:
-        if report_type == "daily":
-            raise SystemExit("不能提交未来日期的日报，请重新生成正确日期的日报。")
-        raise SystemExit("不能提交未来周期的周报，请重新生成正确周期的周报。")
-    if report_type == "weekly":
-        _, week_start, _, _ = report_dates("weekly", date)
-        _, current_week_start, _, _ = report_dates("weekly", today)
-        if week_start > current_week_start:
-            raise SystemExit("不能提交未来周期的周报，请重新生成正确周期的周报。")
-
-
-def ensure_report_submit_allowed(package_dir: Path, config: dict[str, str], manifest: dict[str, Any]) -> None:
-    report_type = report_type_from_manifest(manifest)
-    if report_type not in {"daily", "weekly"}:
-        return
-    manifest_date = str(manifest.get("date") or "").strip()
-    try:
-        date = dt.date.fromisoformat(manifest_date)
-    except ValueError:
-        return
-    ensure_report_date_allowed(report_type, date, config)
-    run_id = str(manifest.get("run_id") or package_dir.name)
-    identity = report_identity_from_manifest(manifest)
-    if not identity:
-        return
-    ensure_report_not_duplicate(config, report_type, identity, run_id, replacement_run_id(manifest))
-
-
-def record_submitted_package(package_dir: Path, config: dict[str, str], manifest: dict[str, Any]) -> None:
-    out_dir = expanded_path(config["out_dir"])
-    date_key = str(manifest.get("date") or "").replace("-", "")
-    member = str(manifest.get("member_alias") or config.get("member_alias") or "").strip()
-    run_id = str(manifest.get("run_id") or package_dir.name).strip()
-    if not date_key or not member or not run_id:
-        return
-    target = out_dir / "submitted" / date_key / member / run_id
-    if target.resolve() == package_dir.resolve() or target.exists():
-        return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(package_dir, target)
+from akbs_intake.reports.common import (  # noqa: E402
+    ensure_report_date_allowed,
+    ensure_report_not_duplicate,
+    ensure_report_submit_allowed,
+    format_report_duplicate_message,
+    iter_local_manifests,
+    local_report_packages,
+    package_key_from_manifest,
+    record_submitted_package,
+    replacement_run_id,
+    report_dates,
+    report_duplicate_label,
+    report_identity,
+    report_identity_from_manifest,
+    report_replace_option,
+    report_type_from_manifest,
+)
 
 
 def referenced_paths(manifest: dict[str, Any]) -> list[str]:
@@ -4577,295 +3484,21 @@ def has_pass_verification(package_dir: Path, manifest: dict[str, Any]) -> bool:
     return False
 
 
-def patch_modified_files(path: Path) -> list[str]:
-    files: list[str] = []
-    for line in path.read_text(encoding="utf-8", errors="ignore").splitlines():
-        if not line.startswith("diff --git "):
-            continue
-        parts = line.split()
-        if len(parts) < 4:
-            continue
-        item = parts[3]
-        if item.startswith("b/"):
-            item = item[2:]
-        if item not in files:
-            files.append(item)
-    return files
-
-
-def patch_added_lines(text: str) -> list[str]:
-    return [line[1:] for line in text.splitlines() if line.startswith("+") and not line.startswith("+++")]
-
-
-def patch_changed_lines(text: str) -> list[str]:
-    return [
-        line[1:]
-        for line in text.splitlines()
-        if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
-    ]
-
-
-def resource_keys_from_patch_text(text: str) -> list[str]:
-    keys = {
-        *re.findall(r"R\.string\.([A-Za-z0-9_]+)", text),
-        *re.findall(r"@string/([A-Za-z0-9_]+)", text),
-        *XML_RESOURCE_NAME_RE.findall(text),
-    }
-    return sorted(key for key in keys if key)
-
-
-def patch_modules_from_files(files: list[str]) -> list[str]:
-    modules: list[str] = []
-    for path in files:
-        lower = path.lower()
-        if "/com/android/server/wm/" in lower or "windowstate" in lower:
-            modules.append("WindowManager")
-        if "activitytaskmanager" in lower or "activityrecord" in lower:
-            modules.append("ActivityTaskManager")
-        if "phonewindowmanager" in lower or "/com/android/server/policy/" in lower:
-            modules.append("Policy")
-        if "packagemanager" in lower or "/com/android/server/pm/" in lower:
-            modules.append("PackageManager")
-        if "systemui" in lower or "/com/android/systemui/" in lower:
-            modules.append("SystemUI")
-        if "launcher" in lower or "quickstep" in lower or "recentsview" in lower:
-            modules.append("Launcher")
-        if "/input/" in lower or "inputflinger" in lower:
-            modules.append("Input")
-        if "frameworks/base/core/res/" in lower:
-            modules.append("FrameworkResources")
-        if "/com/android/server/audio/" in lower or "audioservice" in lower or "audioflinger" in lower or "mediafocuscontrol" in lower:
-            modules.append("Audio")
-        if "cameraservice" in lower or "camera2" in lower:
-            modules.append("Camera")
-        if "vold" in lower or "volumemanager" in lower or "publicvolume" in lower or "obbvolume" in lower or "externalstorage" in lower:
-            modules.append("Storage")
-        if "wifiservice" in lower or "/wifi/" in lower:
-            modules.append("Wifi")
-        if has_usb_semantic_anchor(path):
-            modules.append("USB")
-        if any(name in lower for name in ("rockchip_apps.mk", "apps.mk", "boardconfig.mk", "device.mk")):
-            modules.append("ProductConfig")
-    if not modules and files:
-        parts = files[0].split("/")
-        modules.append("-".join(parts[:2]) if len(parts) >= 2 else parts[0])
-    return sorted(set(modules))
-
-
-def patch_semantic_flags(joined: str, modules: list[str]) -> dict[str, bool]:
-    module_set = set(modules)
-    return {
-        "focus": "focus" in joined,
-        "launcher": "Launcher" in module_set or "launcher" in joined or "quickstep" in joined,
-        "power": "power" in joined or "Policy" in module_set,
-        "package": "package" in joined or "PackageManager" in module_set,
-        "input": "input" in joined or "Input" in module_set,
-        "audio": "Audio" in module_set or "audio" in joined or "microphone" in joined or "volume" in joined,
-        "camera": "Camera" in module_set or "camera" in joined or "qrcode" in joined or "preview" in joined,
-        "storage": "Storage" in module_set or "storage" in joined or "vold" in joined or "volume" in joined or "obb" in joined,
-        "wifi": "Wifi" in module_set or "wifi" in joined or "wlan" in joined,
-        "usb": "USB" in module_set or has_usb_semantic_anchor(joined),
-        "product_config": "ProductConfig" in module_set or "boardconfig" in joined or "device.mk" in joined or "apps.mk" in joined,
-    }
-
-
-def has_usb_semantic_anchor(text: str) -> bool:
-    return "ueventd" in text.lower() or bool(USB_TOKEN_RE.search(text) or USB_CAMEL_PATH_RE.search(text))
-
-
-def patch_semantic_keywords(flags: dict[str, bool]) -> list[str]:
-    labels = {
-        "audio": "音频路由/音量",
-        "camera": "相机行为",
-        "storage": "存储/挂载",
-        "wifi": "Wi-Fi",
-        "usb": "USB/设备权限",
-        "product_config": "产品配置/预置应用",
-    }
-    return [label for flag, label in labels.items() if flags.get(flag)]
-
-
-def patch_semantic_problem_solution(modules: list[str], flags: dict[str, bool]) -> tuple[str, str, str]:
-    if flags["focus"] and any(module in modules for module in ("WindowManager", "ActivityTaskManager")):
-        return (
-            "窗口或 Activity 焦点行为需要按产品需求调整。",
-            "修改 WindowManager 或 ActivityTaskManager 相关路径中的焦点处理逻辑。",
-            "medium",
-        )
-    if flags["power"]:
-        return (
-            "按键、策略或电源相关行为需要按产品需求调整。",
-            "修改 Framework policy 路径中的策略处理逻辑。",
-            "medium",
-        )
-    if flags["audio"] and flags["camera"]:
-        return (
-            "音频录制、麦克风或相机链路可能不符合产品权限或回退策略要求。",
-            "调整 Audio/Camera 相关服务或 HAL 路径，并验证录音、拍照、扫码和权限切换场景。",
-            "medium",
-        )
-    if flags["audio"]:
-        return (
-            "音频路由、音量或麦克风行为可能不符合产品要求。",
-            "调整 AudioService、AudioFlinger 或音量策略相关路径，并验证音量、录音和媒体播放场景。",
-            "medium",
-        )
-    if flags["camera"]:
-        return (
-            "相机预览、扫码、拍照或相机权限行为可能不符合产品要求。",
-            "调整 CameraService、Camera2 或相机 HAL 相关路径，并验证目标相机场景。",
-            "medium",
-        )
-    if flags["storage"]:
-        return (
-            "外部存储、挂载或应用访问存储的权限行为可能不符合产品要求。",
-            "调整 vold、VolumeManager 或存储访问相关路径，并验证 U 盘、OBB 和外部存储访问场景。",
-            "medium",
-        )
-    if flags["wifi"]:
-        return (
-            "Wi-Fi 服务、默认配置或连接权限行为可能不符合产品要求。",
-            "调整 Wi-Fi service 或产品配置路径，并验证连接、开关和权限相关场景。",
-            "medium",
-        )
-    if flags["usb"]:
-        return (
-            "USB 设备节点、权限或外设识别行为可能不符合产品要求。",
-            "调整 ueventd、USB 权限或设备配置路径，并验证目标外设识别和访问权限。",
-            "medium",
-        )
-    if flags["product_config"]:
-        return (
-            "产品编译配置、预置应用或板级开关可能不符合项目要求。",
-            "调整 BoardConfig、device makefile 或预置应用清单，并验证编译产物和首次开机状态。",
-            "medium",
-        )
-    if modules:
-        return (
-            f"{'、'.join(modules)} 相关行为需要按产品需求调整。",
-            "结合需求、修改文件和验证记录复核对应逻辑。",
-            "low",
-        )
-    return (
-        "补丁对应的具体问题需要结合原始需求和会话记录确认。",
-        "先阅读补丁 diff、readme 和验证记录，再决定是否复用或适配。",
-        "low",
-    )
-
-
-def patch_semantic_risk_areas(modules: list[str], flags: dict[str, bool]) -> list[str]:
-    risks = sorted(
-        {
-            *("窗口焦点/显示层级" for _ in [0] if flags["focus"] or "WindowManager" in modules),
-            *("Activity 启动/恢复" for _ in [0] if "ActivityTaskManager" in modules),
-            *("按键/电源/策略行为" for _ in [0] if flags["power"]),
-            *("包安装/包状态" for _ in [0] if "PackageManager" in modules),
-            *("资源覆盖/配置优先级" for _ in [0] if "FrameworkResources" in modules),
-            *("音频路由/音量行为" for _ in [0] if flags["audio"]),
-            *("相机行为" for _ in [0] if flags["camera"]),
-            *("存储/挂载管理" for _ in [0] if flags["storage"]),
-            *("Wi-Fi 服务/配置" for _ in [0] if flags["wifi"]),
-            *("USB/设备权限" for _ in [0] if flags["usb"]),
-            *("产品配置/预置应用" for _ in [0] if flags["product_config"]),
-            *("输入分发" for _ in [0] if flags["input"]),
-        }
-    )
-    return risks or ["修改路径需要按当前项目需求重新验证"]
-
-
-def patch_symbols_from_text(text: str) -> list[str]:
-    symbols: list[str] = []
-    current_class = ""
-    for raw in text.splitlines():
-        if raw.startswith("+++ "):
-            path = raw.removeprefix("+++ ").strip()
-            if path.startswith("b/"):
-                path = path[2:]
-            current_class = Path(path).stem if path and path != "/dev/null" else ""
-            continue
-        if not raw.startswith("@@") or not current_class:
-            continue
-        match = re.match(r"^@@ .* @@\s*(.*)$", raw)
-        context = match.group(1).strip() if match else ""
-        methods = re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", context)
-        method = next((item for item in reversed(methods) if item not in {"if", "for", "while", "switch"}), "")
-        if method:
-            symbols.append(f"{current_class}.{method}")
-    return sorted(set(symbols))
-
-
-def patch_facts_from_text(text: str) -> dict[str, Any]:
-    files = []
-    for match in re.finditer(r"^diff --git a/(.+?) b/(.+)$", text, re.M):
-        path = match.group(2)
-        if path != "/dev/null" and path not in files:
-            files.append(path)
-    added = "\n".join(patch_added_lines(text))
-    changed = "\n".join(patch_changed_lines(text))
-    return {
-        "modified_files": files,
-        "symbols": patch_symbols_from_text(text),
-        "system_properties": sorted(set(re.findall(r"\b(?:persist|ro|sys|debug|vendor)\.[A-Za-z0-9_.-]+", changed))),
-        "settings_keys": sorted(set(re.findall(r"Settings\.(?:System|Secure|Global)\.([A-Za-z0-9_.-]+)", changed))),
-        "resource_keys": resource_keys_from_patch_text(changed),
-        "framework_log_keys": sorted(set(re.findall(r"FrameworkLog\.([A-Za-z0-9_]+)", changed))),
-        "modules": patch_modules_from_files(files),
-        "banned_log_hits": sorted(pattern for pattern in BANNED_LOG_PATTERNS if pattern in added),
-        "author_date_marker_present": bool(AUTHOR_DATE_RE.search(text)),
-    }
-
-
-def patch_problem_and_risk_payloads(patch_id: str, source_patch: str, summary: str, facts: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    files = facts.get("modified_files") or []
-    modules = facts.get("modules") or patch_modules_from_files(files)
-    joined = " ".join([summary, " ".join(files), " ".join(modules)]).lower()
-    flags = patch_semantic_flags(joined, modules)
-    keywords = sorted(
-        {
-            *modules,
-            *[Path(path).stem for path in files],
-            *patch_semantic_keywords(flags),
-            *[item for item in ["focus", "launcher", "power", "policy", "package", "input"] if item in joined],
-        }
-    )
-    basis = [f"补丁修改文件: {path}" for path in files]
-    basis.extend(f"根据路径归属到模块: {module}" for module in modules)
-    basis.extend(f"根据 diff hunk 识别符号: {symbol}" for symbol in facts.get("symbols", []))
-    if summary:
-        basis.append("提交时提供了补丁摘要")
-    if not basis:
-        basis = ["补丁文件存在，但缺少可解析的 diff 路径"]
-
-    problem, solution, confidence = patch_semantic_problem_solution(modules, flags)
-    risks = patch_semantic_risk_areas(modules, flags)
-
-    limits = [
-        "补丁内容不能单独证明原始需求文字",
-        "补丁内容不能单独证明设备验证结果",
-        "补丁内容不能单独证明发布状态",
-    ]
-    return (
-        {
-            "kind": "patch_problem_summary",
-            "patch_id": patch_id,
-            "source_patch": source_patch,
-            "confidence": confidence,
-            "problem_summary": problem,
-            "solution_summary": solution,
-            "keywords": keywords,
-            "basis": basis,
-            "limits": limits,
-        },
-        {
-            "kind": "risk_surface",
-            "patch_id": patch_id,
-            "source_patch": source_patch,
-            "confidence": confidence,
-            "risk_areas": risks,
-            "basis": basis,
-            "limits": limits,
-        },
-    )
+from akbs_intake.patch.facts import (  # noqa: E402
+    has_usb_semantic_anchor,
+    patch_added_lines,
+    patch_changed_lines,
+    patch_facts_from_text,
+    patch_modified_files,
+    patch_modules_from_files,
+    patch_problem_and_risk_payloads,
+    patch_semantic_flags,
+    patch_semantic_keywords,
+    patch_semantic_problem_solution,
+    patch_semantic_risk_areas,
+    patch_symbols_from_text,
+    resource_keys_from_patch_text,
+)
 
 
 def existing_explanation_kinds_for_entry(package_dir: Path, evidence_entries: list[dict[str, Any]], entry: dict[str, Any], patch_count: int) -> set[str]:
@@ -6676,107 +5309,19 @@ def submit_package(package_dir: Path, config: dict[str, str]) -> dict[str, Any]:
     if gate_errors:
         raise SystemExit("\n".join(gate_errors))
 
-    method = submission_method(config)
-    result = server_submit_package(package_dir, config, method)
+    result = server_submit_package(package_dir, config)
     if manifest.get("package_kind") in {"daily_trace", "weekly_trace"}:
         record_submitted_package(package_dir, config, manifest)
     return result
 
 
-def package_tar_gz_bytes(package_dir: Path) -> bytes:
-    buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
-        for path in sorted(package_dir.rglob("*")):
-            archive.add(path, arcname=path.relative_to(package_dir).as_posix(), recursive=False)
-    return buffer.getvalue()
 
-
-def server_submit_package(package_dir: Path, config: dict[str, str], method: str) -> dict[str, Any]:
-    member = config.get("member_alias", "").strip()
-    if not member:
-        raise SystemExit("member_alias 不能为空")
-    payload = package_tar_gz_bytes(package_dir)
-    if method == "http":
-        return http_submit_package(package_dir, config, member, payload)
-    command = shlex.split(submission_command(config))
-    if not command:
-        raise SystemExit("submission_command 不能为空")
-    if method == "ssh":
-        host = submission_ssh_host(config)
-        if not host:
-            raise SystemExit("submission_ssh_host 不能为空")
-        full_command = ["ssh", host, *command, "--member", member, "--stdin-tar-gz"]
-    else:
-        full_command = [*command, "--member", member, "--stdin-tar-gz"]
-    cp = subprocess.run(
-        full_command,
-        input=payload,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    stdout = cp.stdout.decode("utf-8", errors="replace")
-    stderr = cp.stderr.decode("utf-8", errors="replace")
-    if cp.returncode != 0:
-        raise SystemExit(f"上传入口提交失败: {stderr.strip() or stdout.strip()}")
-    try:
-        result = json.loads(stdout or "{}")
-    except json.JSONDecodeError:
-        result = {"message": stdout.strip()}
-    result.setdefault("submitted", True)
-    result.setdefault("method", method)
-    result.setdefault("package", str(package_dir))
-    return result
-
-
-def http_submit_package(package_dir: Path, config: dict[str, str], member: str, payload: bytes) -> dict[str, Any]:
-    base_url = submission_api_base_url(config).rstrip("/")
-    if not base_url:
-        raise SystemExit("submission_api_base_url 不能为空")
-    manifest = read_json_file(package_dir / "manifest.json")
-    upload_type = upload_type_for_manifest(manifest)
-    url = f"{base_url}/member/me/uploads/{upload_type}"
-    request = urllib.request.Request(
-        url,
-        data=payload,
-        method="POST",
-        headers={
-            "Content-Type": "application/gzip",
-            "X-AKBS-User": member,
-        },
-    )
-    cookie = submission_session_cookie(config)
-    if cookie:
-        request.add_header("Cookie", cookie)
-    token = submission_api_token(config) or member
-    request.add_header("X-AKBS-Token", token)
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            stdout = response.read().decode("utf-8", errors="replace")
-    except Exception as error:
-        raise SystemExit(f"HTTP 上传入口提交失败: {error}") from error
-    try:
-        result = json.loads(stdout or "{}")
-    except json.JSONDecodeError:
-        result = {"message": stdout.strip()}
-    result.setdefault("submitted", True)
-    result.setdefault("method", "http")
-    result.setdefault("package", str(package_dir))
-    result.setdefault("upload_url", url)
-    return result
-
-
-def upload_type_for_manifest(manifest: dict[str, Any]) -> str:
-    package_kind = str(manifest.get("package_kind") or "").strip()
-    if package_kind == "daily_trace":
-        return "daily"
-    if package_kind == "weekly_trace":
-        return "weekly"
-    if package_kind == "framework_change":
-        if str(manifest.get("supplement_for_package_key") or "").strip():
-            return "supplement"
-        return "patch"
-    raise SystemExit(f"无法根据 package_kind 判断上传类型: {package_kind}")
+from akbs_intake.submit import (  # noqa: E402
+    http_submit_package,
+    package_tar_gz_bytes,
+    server_submit_package,
+    upload_type_for_manifest,
+)
 
 
 def latest_pending(report_type: str, config: dict[str, str], date: dt.date | None = None) -> Path:
@@ -6827,9 +5372,6 @@ def doctor_strict_checks(
     alias = config.get("member_alias", "").strip()
     name = config.get("member_name", "").strip()
     role = config.get("role", "").strip()
-    submit_method = submission_method(config)
-    submit_host = submission_ssh_host(config)
-    submit_command = submission_command(config)
     knowledge_url = knowledge_repo_url(config)
     knowledge_repo = knowledge_repo_worktree(config)
     out_dir = expanded_path(config.get("out_dir", ""))
@@ -6874,11 +5416,7 @@ def doctor_strict_checks(
     elif migration["status"] == "MANUAL_ACTION_REQUIRED":
         error(str(migration["message"]))
 
-    if submit_method in {"ssh", "local"} and not submit_command:
-        error("submission_command 不能为空。")
-    if submit_method == "ssh" and not submit_host:
-        error("submission_ssh_host 不能为空。")
-    if submit_method == "http" and not submission_api_base_url(config):
+    if not submission_api_base_url(config):
         error("submission_api_base_url 不能为空。")
     if ".codex/plugins/cache" in knowledge_repo.as_posix():
         error("knowledge_repo_worktree 不能放在插件缓存目录下。")
@@ -6913,10 +5451,6 @@ def doctor_strict_checks(
     if not os.access(out_parent, os.W_OK):
         error(f"out_dir 父目录不可写，无法生成 pending 包: {out_parent}")
 
-    if check_remote and submit_method == "ssh" and submit_host:
-        remote = run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", submit_host, "true"])
-        if remote.returncode != 0:
-            warn("submission_ssh_host 普通命令检查未通过；如果服务器使用 forced command，需用真实上传包冒烟验证: " + (remote.stderr.strip() or remote.stdout.strip()))
     if check_remote and knowledge_url:
         remote = run(["git", "ls-remote", "--heads", knowledge_url])
         if remote.returncode != 0:
@@ -6950,9 +5484,6 @@ def doctor(
         "member_name": config.get("member_name"),
         "akbs_endpoint": endpoint,
         "endpoint_migration": endpoint_migration_report(config, loaded),
-        "submission_method": submission_method(config),
-        "submission_ssh_host": submission_ssh_host(config),
-        "submission_command": submission_command(config),
         "submission_api_base_url": submission_api_base_url(config),
         "submission_api_token_configured": bool(submission_api_token(config)),
         "submission_session_cookie_configured": bool(submission_session_cookie(config)),
@@ -6976,7 +5507,7 @@ def parse_args() -> argparse.Namespace:
 
     doctor_parser = subparsers.add_parser("doctor")
     doctor_parser.add_argument("--strict", action="store_true", help="fail when the selected profile is unsafe for member-side automation")
-    doctor_parser.add_argument("--check-remote", action="store_true", help="also verify the knowledge repository remote and best-effort SSH host reachability")
+    doctor_parser.add_argument("--check-remote", action="store_true", help="also verify plugin freshness and optional local knowledge fallback reachability")
     doctor_parser.add_argument("--allow-synthetic", action="store_true", help="allow synthetic_data=true for protocol or gray-flow testing")
     doctor_parser.set_defaults(report_type="")
 

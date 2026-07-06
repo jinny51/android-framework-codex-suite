@@ -9,7 +9,7 @@ Use this skill for member-side incoming shared kernel work, setup, doctor checks
 
 The skill does not write final knowledge reports, curated patches, index, or site directories. It creates a local pending incoming package first, then sends that package through the server submission channel. The member-side skill does not clone, pull, directly search, or push the database repository; member viewing UI is a separate server-side database view.
 
-The member-side Codex agent is the material producer. It should collect session context, git activity, patch diff, build results, verification records, failed paths, blocked paths, and optional human notes, then generate incoming. The normal server submission channel is the new AKBS HTTP API; it receives the package, validates it, and stores it in the server-side AKBS facts database. Legacy SSH/intake-branch behavior is rollback compatibility only. Knowledge repository content and curation decisions are produced later by the AKBS server-side curation flow, not by the member-side plugin.
+The member-side Codex agent is the material producer. It should collect session context, git activity, patch diff, build results, verification records, failed paths, blocked paths, and optional human notes, then generate incoming. The only member upload channel is the AKBS HTTP API; it receives the package, validates it, and stores it in the server-side AKBS facts database. Legacy SSH/intake-branch fields are deprecated configuration residue and must be migrated away, not used as fallback. Knowledge repository content and curation decisions are produced later by the AKBS server-side curation flow, not by the member-side plugin.
 
 Ordinary members should use `android-daily-report-intake` for daily reports, `android-weekly-report-intake` for weekly reports, and `android-framework-patch-intake` for original patch packages, evidence supplements, replacement packages, and patch asset corrections. The old `android-knowledge-intake daily|weekly|patch` commands remain valid as 旧命令路由（legacy command routing） into the same 共享内核（shared kernel）. Weekly packages are progress archives only; they do not become knowledge repository materialization candidates. Non-member profiles are only for protocol and server-chain tests; they must not be confused with the user's local `akbs-curation-maintainer` skill.
 
@@ -21,7 +21,7 @@ Daily and weekly report bodies are the primary human-readable product. Generate 
 
 Daily and weekly generation is idempotent by member and report identity: daily uses `date`, weekly uses `week_range`. If a local pending or submitted report package already exists for the same member and identity, `--prepare`, `--upload`, and `--submit-latest` must stop instead of silently creating or uploading a second ordinary report package. The member must either cancel the new run or explicitly replace the old package. Use `daily --replace-daily-run-id <old_run_id>` or `weekly --replace-weekly-run-id <old_run_id>`; the replacement package writes `replacement_for_run_id` and `supersedes` metadata so it is not another silent ordinary report package.
 
-Use configuration profiles for identity. Global config stores the submission channel and knowledge repository defaults; each `[profiles.<name>]` stores one member identity, knowledge worktree, git author, role, allowed modes, and optional test behavior. Prefer explicit `--profile <name>` in automations so a daily incoming run cannot accidentally use an administrator identity.
+Use configuration profiles for identity. Ordinary member config stores identity, optional local knowledge fallback worktree, git author, role, allowed modes, and optional test behavior. It must not store server upload fields such as `server_profile`, `submission_ssh_host`, `submission_command`, or `knowledge_repo_url`. Prefer explicit `--profile <name>` in automations so a daily incoming run cannot accidentally use an administrator identity.
 
 Framework change incoming must carry deterministic merge anchors. Patch content `sha1` is emitted in `patch_diff_facts`; `related_report_run_ids` is used only when the daily or weekly run id is explicitly known. A weekly run id is provenance only and does not make the weekly package a knowledge materialization candidate. Do not create fuzzy report links on the member side.
 
@@ -130,6 +130,13 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor --strict --check-remote
 ```
 
+Migrate old member config that still contains test35/SSH upload fields:
+
+```bash
+python3 "scripts/migrate_member_config.py"
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor --strict --check-remote
+```
+
 ## Automation
 
 Recommended member-side incoming automations:
@@ -141,7 +148,7 @@ Recommended member-side incoming automations:
 
 Before enabling member-side incoming automations, run `doctor --strict --check-remote` for the exact profile used by the automation. Strict doctor must pass before scheduled runs are enabled. It verifies identity, role, allowed modes, submission API, Git availability, plugin freshness, and optional remote reachability. A local knowledge repository worktree is only an optional fallback for offline search; missing local knowledge fallback must warn, not block HTTP upload.
 
-Member profiles submit only through the server submission channel. Search should use the AKBS member knowledge-search API first and may fall back to a configured local knowledge repository worktree only when the API is unavailable. Direct Git submission is removed from member setup and must not be used.
+Member profiles submit only through the AKBS HTTP API. Search should use the AKBS member knowledge-search API first and may fall back to a configured local knowledge repository worktree only when the API is unavailable. SSH/local/Git submission is removed from member setup and must not be used.
 
 Synthetic profiles are only for protocol and gray-flow testing. Use `doctor --strict --allow-synthetic` only in tests; real member incoming automations must keep `synthetic_data = false`.
 
@@ -184,7 +191,7 @@ Configuration is loaded from low to high priority:
 5. The current repository's nearest `.codex/report.toml`.
 6. Environment variables such as `CODEX_REPORT_PROFILE`, `CODEX_REPORT_MEMBER_ALIAS`, `CODEX_REPORT_MEMBER_NAME`, and `CODEX_REPORT_KNOWLEDGE_REPO_WORKTREE`.
 
-Normal member config only stores identity and local paths. Server upload is resolved by the AKBS endpoint resolver and defaults to the new AKBS HTTP API. Admin or test overrides may use `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_METHOD`, `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_SSH_HOST`, `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_COMMAND`, and `CODEX_REPORT_AKBS_ENDPOINT_KNOWLEDGE_REPO_URL`; do not write those values into ordinary member profiles. `knowledge_repo_worktree` is optional local fallback for search, not a required server endpoint.
+Normal member config only stores identity and local paths. Server upload is resolved by the AKBS endpoint resolver and uses the AKBS HTTP API. Admin or test overrides may set `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL`, `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_TOKEN`, or `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_SESSION_COOKIE`; do not write server endpoint values into ordinary member profiles. Legacy fields such as `server_profile`, `submission_ssh_host`, `submission_command`, and `knowledge_repo_url` must be removed with `scripts/migrate_member_config.py`. `knowledge_repo_worktree` is optional local fallback for search, not a required server endpoint.
 
 Recommended profile config:
 

@@ -54,7 +54,13 @@ case "$role" in
     keychain_delete "$service" "${remote_user}@${server}"
 
     env_file=$(keychain_env_path "$hash")
-    keychain_env_set "$env_file" "${role^^}_PASSWORD_STATE" "missing"
+    case "$role" in
+      ssh) state_key="SSH_PASSWORD_STATE" ;;
+      smb) state_key="SMB_PASSWORD_STATE" ;;
+      remote-sudo) state_key="REMOTE_SUDO_PASSWORD_STATE" ;;
+      *) state_key="$(printf '%s' "$role" | tr '[:lower:]-' '[:upper:]_')_PASSWORD_STATE" ;;
+    esac
+    keychain_env_set "$env_file" "$state_key" "missing"
     keychain_env_set "$env_file" "UPDATED_AT" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
     if [ "$remove_all" = true ]; then

@@ -15,7 +15,7 @@ usage() {
 选项:
   --server NAME           仅恢复指定服务器的挂载。
   --smb-user USER         覆盖 registry 中的 SMB/Samba 用户名。
-  --registry-dir PATH     Registry 目录。默认: ~/.codex/android-macos-source-access-info/projects。
+  --registry-dir PATH     Registry 目录。默认: ~/.servers/projects。
   -h, --help              显示此帮助。
 
 输出 (每个共享一行):
@@ -37,7 +37,7 @@ die() {
 
 server_filter=
 smb_user_override=
-registry_dir="${HOME}/.codex/android-macos-source-access-info/projects"
+registry_dir="${HOME}/.servers/projects"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in

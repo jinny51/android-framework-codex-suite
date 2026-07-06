@@ -1,17 +1,17 @@
 ---
 name: android-windows-remote-build-deploy
-description: Use on Windows native Codex agents after Android source has a Windows SMB drive/UNC mapping from android-windows-source-access. Resolves local-to-remote mapping, performs all Android source search/read/write/patch/git/repo/build operations on the remote Linux source tree over SSH, uses the Windows SMB mapping only to pick up build artifacts, deploys with local adb.exe, and returns build/deploy/device health evidence.
+description: Use on Windows-side Codex agents in a Windows/WSL workflow after Android source has a Windows SMB drive/UNC mapping from android-windows-source-access. Resolves local-to-remote mapping, performs all Android source search/read/write/patch/git/repo/build operations on the remote Linux/WSL source tree over SSH, uses the Windows SMB mapping only to pick up build artifacts, deploys with local adb.exe, and returns build/deploy/device health evidence.
 ---
 
 # Android Windows Remote Build Deploy
 
-Use this skill as the Windows-native Android build/deploy executor.
+Use this skill as the Windows/WSL Android build/deploy executor.
 
 It consumes an SMB mapping recorded by `android-windows-source-access`, runs all source-tree operations on the remote Linux path over SSH, then uses the Windows local mapping only to read produced artifacts for `adb.exe` deployment.
 
 ## Hard Boundary
 
-On Windows native agents, do not search, read, edit, patch, run `git`, run `repo`, or build against `X:\...` or `\\server\share\...` source paths.
+On Windows-side agents, do not search, read, edit, patch, run `git`, run `repo`, or build against `X:\...` or `\\server\share\...` source paths.
 
 Use the remote Linux source tree for all source operations. Prefer `android-windows-remote-channel` for repeated work; this skill's session helper is a compatibility wrapper around that channel:
 
@@ -202,5 +202,5 @@ If capability capture is triggered, append the candidate after the executor repo
 ## Related Skills
 
 - `android-windows-source-access`: creates and restores Windows SMB mappings and account-level registry files.
-- `android-windows-remote-channel`: provides the Windows-native remote SSH/tmux channel used by this executor.
+- `android-windows-remote-channel`: provides the Windows/WSL remote SSH/tmux channel used by this executor.
 - `android-framework-change-workflow`: owns Android framework diagnosis, change discipline, risk, final verification, and final reporting.

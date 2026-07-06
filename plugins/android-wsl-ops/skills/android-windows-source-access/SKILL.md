@@ -1,11 +1,11 @@
 ---
 name: android-windows-source-access
-description: Use to create, inspect, restore, or resolve Windows-native SMB drive/UNC mappings for Android remote build server source trees. Use when Codex runs as a Windows native agent and needs to map a local Windows Android source path such as X:\unisoc\rk3576 or \\server\share\project to a remote Linux build path, SMB share, SSH host, platform, and SDK/project name. This is the Windows SMB mapping counterpart to the WSL/CIFS source access workflow.
+description: Use to create, inspect, restore, or resolve Windows-side SMB drive/UNC mappings for Android remote build server source trees. Use when Codex runs from the Windows host side in a Windows/WSL workflow and needs to map a local Windows Android source path such as X:\unisoc\rk3576 or \\server\share\project to a remote Linux/WSL build path, SMB share, SSH host, platform, and SDK/project name. This is the Windows SMB mapping counterpart to the WSL/CIFS source access workflow.
 ---
 
 # Android Windows Source Access
 
-Use this skill for Windows-native access to Android source trees shared from a remote Linux build server over SMB.
+Use this skill for Windows-side access to Android source trees shared from a remote Linux/WSL build server over SMB.
 
 It owns the local mapping registry, optional Samba credential memory, and source access handoff. It does not run Android builds, push artifacts, or diagnose framework behavior.
 
@@ -114,8 +114,8 @@ Use Windows SMB mapping only after remote build output exists, to read artifacts
 - Record SMB usernames and credential targets in the registry when known.
 - Save Samba passwords in `credentials/<account-hash>.cred` only when the user explicitly provides the password.
 - Generate `projects/<account-hash>.env` with account-level arrays, matching the WSL recovery shape.
-- Use Windows-native commands such as PowerShell, `ssh.exe`, and `adb.exe`.
-- Hand build/deploy work to a Windows-native remote build/deploy skill when available.
+- Use Windows-side commands such as PowerShell, `ssh.exe`, and `adb.exe`.
+- Hand build/deploy work to a Windows/WSL remote build/deploy skill when available.
 
 ## Final Report
 

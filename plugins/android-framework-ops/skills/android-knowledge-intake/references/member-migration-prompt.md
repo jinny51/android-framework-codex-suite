@@ -23,8 +23,14 @@
 
 2. 找到成员端上传材料脚本（member-side intake script）：
    plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py
+   同目录还有旧配置迁移脚本（member config migration script）：
+   plugins/android-framework-ops/skills/android-knowledge-intake/scripts/migrate_member_config.py
 
-3. 直接创建或覆盖 $CODEX_HOME/report/config.toml，使用下面的新配置。普通成员配置只写身份和本地路径，不写 server_profile、submission_ssh_host、submission_command 或 knowledge_repo_url；这些服务器入口由 AKBS endpoint resolver 提供。不解析残留配置字段，不把工作树放进 .codex/plugins/cache，不配置成员数据库仓库工作树。
+3. 如果 $CODEX_HOME/report/config.toml 已存在，先运行迁移脚本清理旧 test35 / SSH / local 上传字段：
+   python3 "<migrate_member_config.py>" --config "$CODEX_HOME/report/config.toml"
+   迁移脚本只清理本地成员配置，不上传、不生成包、不修改服务器。
+
+4. 直接创建或覆盖 $CODEX_HOME/report/config.toml，使用下面的新配置。普通成员配置只写身份和本地路径，不写 server_profile、submission_ssh_host、submission_command 或 knowledge_repo_url；成员上传唯一入口是 AKBS HTTP API，由 AKBS endpoint resolver 提供。不解析残留配置字段，不把工作树放进 .codex/plugins/cache，不配置成员数据库仓库工作树。
 
    default_profile = "<member_alias>"
 
@@ -45,18 +51,18 @@
    git_user_email = "<member_alias>@codex.local"
    synthetic_data = false
 
-4. 可选：如果需要离线知识搜索兜底，成员端只克隆并更新知识库仓库（knowledge repository），不要克隆数据库仓库（database repository）。
+5. 可选：如果需要离线知识搜索兜底，成员端只克隆并更新知识库仓库（knowledge repository），不要克隆数据库仓库（database repository）。
    - 如果 $CODEX_HOME/worktrees/knowledge 不存在，可以先跳过；AKBS API 搜索仍可使用。
    - 如果 $CODEX_HOME/worktrees/knowledge 已经是 Git 仓库（git repository），执行：
      git -C "$CODEX_HOME/worktrees/knowledge" pull --ff-only
    - 如果该路径存在但不是 Git 仓库，先告诉我具体路径；这只影响本地兜底搜索，不应阻断 HTTP 上传。
 
-5. 运行健康检查（doctor check）：
+6. 运行健康检查（doctor check）：
    python3 "<android_knowledge_intake.py>" --profile <member_alias> doctor --strict --check-remote
 
-6. 如果健康检查（doctor check）失败，只修复报告里的具体问题，然后重跑第 5 步。不要生成日报（daily report）、周报（weekly report）或补丁包（patch package），直到健康检查通过。
+7. 如果健康检查（doctor check）失败，只修复报告里的具体问题，然后重跑第 6 步。不要生成日报（daily report）、周报（weekly report）或补丁包（patch package），直到健康检查通过。
 
-7. 以后每次生成日报、周报或补丁包前，脚本会先检查 GitHub marketplace、本地插件缓存和当前会话技能缓存。发现新版时让脚本自动更新插件缓存并切到新版脚本继续执行；如果脚本明确提示当前 Codex 会话无法刷新技能缓存，就停止并告诉我需要新开或重启 Codex 会话。不要用过期插件继续生成上传包。
+8. 以后每次生成日报、周报或补丁包前，脚本会先检查 GitHub marketplace、本地插件缓存和当前会话技能缓存。发现新版时让脚本自动更新插件缓存并切到新版脚本继续执行；如果脚本明确提示当前 Codex 会话无法刷新技能缓存，就停止并告诉我需要新开或重启 Codex 会话。不要用过期插件继续生成上传包。
 
 完成后告诉我：
 - 插件更新（plugin update）状态

@@ -87,6 +87,62 @@ def test_mount_share_save_credentials_uses_keychain_store(tmp_path: Path) -> Non
     assert "SMB_PASSWORD_STATE=stored" in env_files[0].read_text(encoding="utf-8")
 
 
+def test_mount_share_default_state_dir_is_home_servers(tmp_path: Path) -> None:
+    fake_bin = make_fake_bin(tmp_path)
+    home = tmp_path / "home"
+    home.mkdir()
+    mount_point = tmp_path / "Samba" / "test61"
+    security_log = tmp_path / "security.log"
+    mount_log = tmp_path / "mount.log"
+
+    result = run_script(
+        "mount-share.sh",
+        "--share",
+        "//192.168.100.23/unisoc",
+        "--mount-point",
+        str(mount_point),
+        "--user",
+        "smb-user",
+        "--remote-user",
+        "smb-user",
+        "--server",
+        "192.168.100.23",
+        "--password-env",
+        "TEST_SAMBA_PASSWORD",
+        "--save-credentials",
+        env={
+            "HOME": str(home),
+            "PATH": f"{fake_bin}:{os.environ['PATH']}",
+            "TEST_SAMBA_PASSWORD": "secret",
+            "FAKE_MOUNT_LOG": str(mount_log),
+            "FAKE_SECURITY_LOG": str(security_log),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    env_files = list((home / ".servers" / "credentials").glob("*.keychain.env"))
+    assert len(env_files) == 1
+    assert not (home / ".codex" / "android-macos-source-access-info").exists()
+
+
+def test_migrate_state_dir_moves_old_codex_state_to_servers(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    old_credentials = home / ".codex" / "android-macos-source-access-info" / "credentials"
+    old_projects = home / ".codex" / "android-macos-source-access-info" / "projects"
+    old_credentials.mkdir(parents=True)
+    old_projects.mkdir(parents=True)
+    (old_credentials / "abc.keychain.env").write_text("SMB_PASSWORD_STATE=stored\n", encoding="utf-8")
+    (old_projects / "test61.json").write_text('{"server":"test61"}\n', encoding="utf-8")
+
+    result = run_script("migrate-state-dir.sh", env={"HOME": str(home)})
+
+    assert result.returncode == 0, result.stderr
+    assert "MIGRATION_STATUS=migrated" in result.stdout
+    assert (home / ".servers" / "credentials" / "abc.keychain.env").is_file()
+    assert (home / ".servers" / "projects" / "test61.json").is_file()
+    assert not (home / ".codex" / "android-macos-source-access-info").exists()
+
+
 def test_register_project_and_restore_mounts_use_same_json_registry(tmp_path: Path) -> None:
     fake_bin = make_fake_bin(tmp_path)
     registry_dir = tmp_path / "projects"

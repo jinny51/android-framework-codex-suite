@@ -9,7 +9,7 @@ usage() {
 
 选项:
   --project PATH       本地项目路径。必需。
-  --registry-dir PATH  Registry 目录。默认: ~/.codex/android-macos-source-access-info/projects。
+  --registry-dir PATH  Registry 目录。默认: ~/.servers/projects。
   -h, --help           显示此帮助。
 
 输出:
@@ -24,7 +24,7 @@ USAGE
 
 die() { local c="$1"; shift; echo "ERROR: $*" >&2; exit "$c"; }
 
-project_path=; registry_dir="${HOME}/.codex/android-macos-source-access-info/projects"
+project_path=; registry_dir="${HOME}/.servers/projects"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
