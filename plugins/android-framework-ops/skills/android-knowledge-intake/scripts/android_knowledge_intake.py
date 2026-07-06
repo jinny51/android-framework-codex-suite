@@ -2038,7 +2038,7 @@ def project_ledger_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[st
         return [
             {
                 "project": "未识别项目",
-                "source_type": "需补项目总盘子",
+                "source_type": "需补项目概况",
                 "source_note": "未发现可归档事项",
                 "start_date": "需成员确认",
                 "duration_label": "需成员确认",
@@ -2228,7 +2228,7 @@ def write_weekly_report(
         "## 一、本周概览",
         "",
         f"- 本周涉及项目：{summary['project_count']}",
-        f"- 项目总盘子事项合计：{summary['total']}",
+        f"- 项目概况事项合计：{summary['total']}",
         f"- 本周完成：{summary['this_week_completed']}",
         f"- 当前剩余：{summary['remaining']}",
         f"- 风险项目：{summary['risk_count']}",
@@ -2252,7 +2252,7 @@ def write_weekly_report(
         lines += [
             f"### 项目名称：{project}",
             "",
-            "### 项目总盘子",
+            "### 项目概况",
             "",
             f"- 来源类型：{ledger['source_type']}",
             f"- 来源说明：{ledger['source_note']}",

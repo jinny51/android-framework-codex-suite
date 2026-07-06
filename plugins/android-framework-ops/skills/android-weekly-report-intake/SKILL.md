@@ -26,7 +26,7 @@ Generate `reports/weekly.md` with this required structure:
 
 - 本周概览
 - 按项目汇报
-  - 项目总盘子
+  - 项目概况
   - 本周进展
   - 本周重点说明
 - 下周重点

@@ -1450,7 +1450,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             for text in (
                 "## 一、本周概览",
                 "## 二、按项目汇报",
-                "### 项目总盘子",
+                "### 项目概况",
                 "来源类型",
                 "启动时间",
                 "已持续时间",
