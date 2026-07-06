@@ -72,7 +72,7 @@ if [[ -z "$PUBLIC_KEY" && "$GENERATE_KEY" == true ]]; then
   else
     mkdir -p "$HOME/.ssh"
     chmod 700 "$HOME/.ssh"
-    ssh-keygen -t ed25519 -N "" -f "$PRIVATE_KEY" -C "codex-android-wsl-source-access@$(hostname)" >/dev/null
+    ssh-keygen -t ed25519 -N "" -f "$PRIVATE_KEY" -C "codex-android-source-access@$(hostname)" >/dev/null
   fi
   PUBLIC_KEY="$PRIVATE_KEY.pub"
 fi

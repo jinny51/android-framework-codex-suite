@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # 将检测到的 Android 项目注册到本地 JSON registry。
-# Registry 路径: ~/.codex/android-macos-source-access-info/projects/<server>.json
+# Registry 路径: ~/.servers/projects/<server>.json
 
 usage() {
   cat <<'USAGE'
@@ -21,7 +21,7 @@ usage() {
   --project-path PATH         本地项目路径。必需。
   --platform NAME             平台: unisoc, mtk, rk。必需。
   --remote-project-path PATH  远端项目路径。必需。
-  --registry-dir PATH         Registry 目录。默认: ~/.codex/android-macos-source-access-info/projects。
+  --registry-dir PATH         Registry 目录。默认: ~/.servers/projects。
   -h, --help                  显示此帮助。
 
 输出:
@@ -47,7 +47,7 @@ die() {
 
 server=; server_ip=; share=; mount_point=; remote_share_path=
 project=; project_path=; platform=; remote_project_path=
-registry_dir="${HOME}/.codex/android-macos-source-access-info/projects"
+registry_dir="${HOME}/.servers/projects"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in

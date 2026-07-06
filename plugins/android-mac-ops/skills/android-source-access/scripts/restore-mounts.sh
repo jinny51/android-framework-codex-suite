@@ -14,8 +14,8 @@ usage() {
 
 选项:
   --server NAME           仅恢复指定服务器的挂载。
-  --registry-dir PATH     Registry 目录。默认: ~/.codex/android-macos-source-access-info/projects。
-  --credentials-dir PATH  凭据引用目录。默认: ~/.codex/android-macos-source-access-info/credentials。
+  --registry-dir PATH     Registry 目录。默认: ~/.servers/projects。
+  --credentials-dir PATH  凭据引用目录。默认: ~/.servers/credentials。
   -h, --help              显示此帮助。
 
 输出 (每个共享一行):
@@ -35,8 +35,8 @@ die() {
 }
 
 server_filter=
-registry_dir="${HOME}/.codex/android-macos-source-access-info/projects"
-credentials_dir="${HOME}/.codex/android-macos-source-access-info/credentials"
+registry_dir="${HOME}/.servers/projects"
+credentials_dir="${HOME}/.servers/credentials"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in

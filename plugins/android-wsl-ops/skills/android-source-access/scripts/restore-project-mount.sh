@@ -9,7 +9,7 @@ restore-project-mount.sh --list [options]
 
 Remember or restore an already-mounted WSL/CIFS Android project path.
 Use this for reboot recovery after the initial project mount has already been
-created by android-wsl-source-access.
+created by android-source-access.
 
 Required:
   --project PATH       Local WSL project path to remember or restore.

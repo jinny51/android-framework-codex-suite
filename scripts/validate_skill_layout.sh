@@ -3,35 +3,41 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-count_skills() {
-  local plugin="$1"
-  find "$repo_root/plugins/$plugin/skills" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l
+validate_manifest_skill_layout() {
+  local failed=0
+  local manifest plugin skill actual missing extra
+
+  for manifest in "$repo_root"/manifests/*.toml; do
+    plugin="$(basename "$manifest" .toml)"
+    if [[ ! -d "$repo_root/plugins/$plugin/skills" ]]; then
+      echo "plugin $plugin has manifest but no skills directory" >&2
+      failed=1
+      continue
+    fi
+
+    while IFS= read -r skill; do
+      [[ -n "$skill" ]] || continue
+      if [[ ! -f "$repo_root/plugins/$plugin/skills/$skill/SKILL.md" ]]; then
+        echo "skill \`$skill\` is missing SKILL.md" >&2
+        failed=1
+      fi
+    done < <(awk -F'"' '/^name = "/ {print $2}' "$manifest")
+
+    while IFS= read -r actual; do
+      [[ -n "$actual" ]] || continue
+      if ! awk -F'"' '/^name = "/ {print $2}' "$manifest" | grep -Fxq "$actual"; then
+        echo "skill \`$actual\` exists in $plugin but is not listed in manifests/$plugin.toml" >&2
+        failed=1
+      fi
+    done < <(find "$repo_root/plugins/$plugin/skills" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+  done
+
+  if [[ "$failed" != "0" ]]; then
+    exit 1
+  fi
 }
 
-android_count="$(count_skills android-framework-ops | tr -d ' ')"
-windows_count="$(count_skills android-wsl-ops | tr -d ' ')"
-macos_count="$(count_skills android-mac-ops | tr -d ' ')"
-workspace_count="$(count_skills codex-workspace-care | tr -d ' ')"
-
-if [[ "$android_count" != "10" ]]; then
-  echo "android-framework-ops should contain 10 skills, found $android_count" >&2
-  exit 1
-fi
-
-if [[ "$windows_count" != "3" ]]; then
-  echo "android-wsl-ops should contain 3 skills, found $windows_count" >&2
-  exit 1
-fi
-
-if [[ "$macos_count" != "2" ]]; then
-  echo "android-mac-ops should contain 2 skills, found $macos_count" >&2
-  exit 1
-fi
-
-if [[ "$workspace_count" != "2" ]]; then
-  echo "codex-workspace-care should contain 2 skills, found $workspace_count" >&2
-  exit 1
-fi
+validate_manifest_skill_layout
 
 if find "$repo_root/plugins/android-framework-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-windows-*' | grep -q .; then
   echo "Windows-side skills must not be inside android-framework-ops" >&2
@@ -45,6 +51,28 @@ fi
 
 if find "$repo_root/plugins/android-framework-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'codex-chat-history-*' | grep -q .; then
   echo "codex chat history skills must not be inside android-framework-ops" >&2
+  exit 1
+fi
+
+if find "$repo_root/plugins/android-wsl-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-wsl-*' | grep -q .; then
+  echo "WSL platform skills should use current names such as android-source-access and android-remote-build-deploy" >&2
+  exit 1
+fi
+
+if find "$repo_root/plugins/android-mac-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-macos-*' | grep -q .; then
+  echo "macOS platform skills should use current android-mac-ops naming, not android-macos-* skill names" >&2
+  exit 1
+fi
+
+if rg -n "android-wsl-source-access|android-wsl-remote-build-deploy|android-wsl-remote-channel|android-macos-source-access|android-macos-ops" "$repo_root/plugins" "$repo_root/docs" "$repo_root/manifests" >/tmp/akbs-plugin-old-skill-names.txt; then
+  cat /tmp/akbs-plugin-old-skill-names.txt >&2
+  echo "old platform skill/plugin names must not appear in current plugin sources" >&2
+  exit 1
+fi
+
+if rg -n "\.codex/android-macos-source-access-info" "$repo_root/plugins/android-mac-ops" "$repo_root/docs" >/tmp/akbs-plugin-old-mac-paths.txt; then
+  cat /tmp/akbs-plugin-old-mac-paths.txt >&2
+  echo "android-mac-ops must store registry and credential references under ~/.servers" >&2
   exit 1
 fi
 

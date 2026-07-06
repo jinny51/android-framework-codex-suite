@@ -5,7 +5,7 @@ usage() {
   cat <<'USAGE'
 resolve-remote-mapping.sh --project /local/repo/path [options]
 
-Resolve SSH_HOST and REMOTE_ROOT from android-wsl-source-access's local
+Resolve SSH_HOST and REMOTE_ROOT from android-source-access's local
 mount registry.
 
 Required:

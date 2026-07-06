@@ -622,6 +622,24 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertIn("HTTP 上传入口提交失败", str(caught.exception))
             self.assertIn("timed out", str(caught.exception))
 
+    def test_ssh_submission_method_is_rejected_before_any_upload_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package_dir = root / "package"
+            package_dir.mkdir()
+            (package_dir / "manifest.json").write_text(
+                json.dumps({"package_kind": "daily_trace"}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            module = load_intake_module()
+
+            with patch("urllib.request.urlopen") as urlopen:
+                with self.assertRaises(SystemExit) as caught:
+                    module.server_submit_package(package_dir, {"member_alias": "member01"}, "ssh")
+
+            self.assertFalse(urlopen.called)
+            self.assertIn("只支持 HTTP API", str(caught.exception))
+
     def test_http_upload_type_uses_four_physical_package_kinds(self) -> None:
         module = load_intake_module()
 

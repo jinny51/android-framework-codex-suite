@@ -18,26 +18,26 @@ account_key() {
 # 构建 Keychain service name
 keychain_service() {
   local role="$1" hash="$2"
-  printf "codex.android-macos-source-access.%s.%s" "$role" "$hash"
+  printf "codex.android-mac-source-access.%s.%s" "$role" "$hash"
 }
 
 # .keychain.env 文件路径
 keychain_env_path() {
   local hash="$1"
-  local dir="${CODEX_CREDENTIALS_DIR:-$HOME/.codex/android-macos-source-access-info/credentials}"
+  local dir="${CODEX_CREDENTIALS_DIR:-$HOME/.servers/credentials}"
   printf "%s/%s.keychain.env" "$dir" "$hash"
 }
 
 # local.keychain.env 文件路径
 local_keychain_env_path() {
-  local dir="${CODEX_CREDENTIALS_DIR:-$HOME/.codex/android-macos-source-access-info/credentials}"
+  local dir="${CODEX_CREDENTIALS_DIR:-$HOME/.servers/credentials}"
   printf "%s/local.keychain.env" "$dir"
 }
 
 # projects registry 文件路径
 project_registry_path() {
   local hash="$1"
-  local dir="${CODEX_PROJECTS_DIR:-$HOME/.codex/android-macos-source-access-info/projects}"
+  local dir="${CODEX_PROJECTS_DIR:-$HOME/.servers/projects}"
   printf "%s/%s.env" "$dir" "$hash"
 }
 
