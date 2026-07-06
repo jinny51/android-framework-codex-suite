@@ -22,7 +22,7 @@ module boundaries.
 - Restore the exact same project path after Windows/WSL/device reboot.
 - Verify that the local WSL path is usable before handing off to project work.
 
-The skill folder is `<path-to-this-skill>/`. Runtime mount memory is a separate local info directory on the WSL Linux filesystem: `$HOME/.codex/android-wsl-source-access-info/`.
+The skill folder is `<path-to-this-skill>/`. Runtime mount memory is a separate local info directory on the WSL Linux filesystem: `$HOME/.servers/`.
 
 The info directory is not a skill:
 
@@ -33,7 +33,7 @@ The info directory is not a skill:
 - SSH keys only affect SSH login; CIFS/Samba remount still needs Samba authentication unless the share allows guest access.
 - Password resolution has five inputs during a run: one bare/default password plus four typed passwords. The four typed roles are SSH bootstrap, Samba, remote sudo, and local WSL sudo. A bare `密码...` value is only a runtime fallback: each role tries explicit typed password, then saved typed password, then the runtime default. If the runtime default succeeds for a role, store it as that role's typed password; do not persist a separate saved default password. Explicit `服务器密码...` or `远端密码...` targets the three remote roles; explicit `WSL密码...`, `本机密码...`, or `本地sudo密码...` targets local WSL sudo.
 - Do not save a password just because it was available. Save it only after the corresponding role was actually verified in this run: SSH after key install succeeds with password auth, Samba after CIFS mount succeeds with password credentials, remote sudo after Samba auto-config succeeds with password sudo, and local sudo after local mount sudo succeeds with password sudo.
-- Stored credentials live under `$HOME/.codex/android-wsl-source-access-info/credentials/` with mode `600`. Samba mount credentials use `.cred`; saved SSH/Samba/remote-sudo fallback passwords use account-level `.passwords.env` files; saved local-sudo fallback uses `local-sudo.env`.
+- Stored credentials live under `$HOME/.servers/credentials/` with mode `600`. Samba mount credentials use `.cred`; saved SSH/Samba/remote-sudo fallback passwords use account-level `.passwords.env` files; saved local-sudo fallback uses `local-sudo.env`.
 - Do not package another user's info directory, registry, or credentials when distributing the skill.
 
 Build/deploy skills consume this skill's `SSH_HOST` and `REMOTE_ROOT` handoff and may then call `android-remote-channel`; this source-access skill should not create long-running remote sessions itself.
@@ -210,7 +210,7 @@ What the one-shot command does:
 - For project-level mounts, refuse to continue if `/home/<wsl-user>/work/<platform>` is already a mount point, because that indicates a previous parent-share mount that would pollute the platform folder.
 - Refuse to mount over a non-empty local target directory that is not already the same mount.
 - Verifies `/home/<wsl-user>/work/<platform>/<sdk>` is an Android source tree.
-- Stores mount info, remote mapping, Samba credentials, account-level SSH/Samba/remote-sudo fallback passwords, and the global local-sudo fallback password under `android-wsl-source-access-info` for reboot recovery and project build/deploy handoff.
+- Stores mount info, remote mapping, Samba credentials, account-level SSH/Samba/remote-sudo fallback passwords, and the global local-sudo fallback password under `.servers` for reboot recovery and project build/deploy handoff.
 
 If the one-shot command fails and a narrower step is needed, read `references/manual-recovery.md`.
 
@@ -321,7 +321,7 @@ Never persist a candidate into this skill automatically. Only update `SKILL.md`,
 
 ## Safety Rules
 
-- Store requested SSH/Samba/remote-sudo/local-sudo passwords only under the WSL Linux `$HOME/.codex/android-wsl-source-access-info/credentials/` directory with file mode `600`, not under `/mnt/c`.
+- Store requested SSH/Samba/remote-sudo/local-sudo passwords only under the WSL Linux `$HOME/.servers/credentials/` directory with file mode `600`, not under `/mnt/c`.
 - Still prefer SSH public-key login after bootstrap; saved SSH password is a fallback for first-time or repaired hosts, not the normal connection method.
 - Never put credentials in skills, repo files, generated project configs, build scripts, or distributable handoff packages.
 - Do not ask the user to inspect Samba config manually; auto-configure it when needed, but stop and report if remote sudo/config validation/service reload fails.

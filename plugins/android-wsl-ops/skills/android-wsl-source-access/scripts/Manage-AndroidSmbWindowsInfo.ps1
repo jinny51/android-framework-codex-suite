@@ -16,7 +16,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$InfoDir = Join-Path $env:USERPROFILE ".codex\android-windows-source-access-info"
+$InfoDir = Join-Path $env:USERPROFILE ".servers"
 $CredentialsDir = Join-Path $InfoDir "credentials"
 $ProjectsDir = Join-Path $InfoDir "projects"
 
@@ -173,7 +173,12 @@ function Write-CredentialFile([string]$User, [string]$Password, [string]$Path) {
         "username=$User"
         "password=$Password"
     ) | Set-Content -LiteralPath $Path -Encoding UTF8
-    icacls.exe $Path /inheritance:r /grant "$($env:USERNAME):(F)" | Out-Null
+    $aclProcess = Start-Process -FilePath "$env:SystemRoot\System32\icacls.exe" `
+        -ArgumentList @($Path, "/inheritance:r", "/grant", "$($env:USERNAME):(F)") `
+        -NoNewWindow -Wait -PassThru
+    if ($aclProcess.ExitCode -ne 0) {
+        throw "Failed to restrict credential file ACL: $Path"
+    }
 }
 
 function Write-AccountEnv([array]$Projects, [string]$User, [string]$Server) {

@@ -4136,7 +4136,7 @@ def path_strings_overlap(left: str, right: str) -> bool:
 
 
 def source_access_registry_clues(source_paths: list[str]) -> list[tuple[str, str]]:
-    registry_dir = Path.home() / ".codex" / "android-wsl-source-access-info" / "projects"
+    registry_dir = Path.home() / ".servers" / "projects"
     if not registry_dir.is_dir():
         return []
     source_paths = [path for path in source_paths if path]

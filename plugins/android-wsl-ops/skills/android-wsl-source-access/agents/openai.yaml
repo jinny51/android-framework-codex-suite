@@ -1,0 +1,7 @@
+interface:
+  display_name: "Android WSL Source Access"
+  short_description: "Manage Windows SMB source mappings."
+  default_prompt: "Use $android-wsl-source-access to create, restore, and resolve Windows/WSL SMB mappings from local Android source paths to remote Linux build roots."
+
+policy:
+  allow_implicit_invocation: true

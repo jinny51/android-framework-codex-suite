@@ -10,9 +10,9 @@ Android WSL Ops 是可选 Windows/WSL 兼容插件。它用于 Codex 运行在 W
 
 | 分类 | Skill | 职责 |
 | --- | --- | --- |
-| Windows/WSL 源码接入 | [android-windows-source-access](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-wsl-ops/android-windows-source-access) | 识别 SMB/UNC 源码映射，记录本地路径、远程 Linux/WSL 源码路径和 SSH 主机 |
-| Windows/WSL 远程执行 | [android-windows-remote-channel](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-wsl-ops/android-windows-remote-channel) | 通过 PowerShell 和 `ssh.exe` 管理远程 `tmux` 会话、命令日志、占用状态和锁 |
-| Windows/WSL 构建交付 | [android-windows-remote-build-deploy](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-wsl-ops/android-windows-remote-build-deploy) | 调用服务器完成 Android 编译，通过 Windows SMB/UNC 取产物并用本地 `adb.exe` 推送 |
+| Windows/WSL 源码接入 | [android-wsl-source-access](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-wsl-ops/android-wsl-source-access) | 识别 SMB/UNC 源码映射，记录本地路径、远程 Linux/WSL 源码路径和 SSH 主机 |
+| Windows/WSL 远程执行 | [android-wsl-remote-channel](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-wsl-ops/android-wsl-remote-channel) | 通过 PowerShell 和 `ssh.exe` 管理远程 `tmux` 会话、命令日志、占用状态和锁 |
+| Windows/WSL 构建交付 | [android-wsl-remote-build-deploy](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-wsl-ops/android-wsl-remote-build-deploy) | 调用服务器完成 Android 编译，通过 Windows SMB/UNC 取产物并用本地 `adb.exe` 推送 |
 
 ## 使用边界
 

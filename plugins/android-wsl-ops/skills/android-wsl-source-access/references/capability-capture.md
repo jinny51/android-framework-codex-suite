@@ -1,6 +1,6 @@
 # Capability Capture
 
-Use this reference only at the end of an `android-windows-source-access` task when deciding whether to surface reusable source-access learning. Default behavior is to say nothing about capability capture.
+Use this reference only at the end of an `android-wsl-source-access` task when deciding whether to surface reusable source-access learning. Default behavior is to say nothing about capability capture.
 
 ## Trigger
 

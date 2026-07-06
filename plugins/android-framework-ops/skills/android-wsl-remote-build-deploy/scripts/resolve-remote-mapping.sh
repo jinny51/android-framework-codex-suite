@@ -12,7 +12,7 @@ Required:
   --project PATH        Local WSL project path.
 
 Optional:
-  --registry-dir PATH   Default: $HOME/.codex/android-wsl-source-access-info/projects.
+  --registry-dir PATH   Default: $HOME/.servers/projects.
 
 Output:
   Shell-style KEY=VALUE lines when a remembered mapping exists.
@@ -25,7 +25,7 @@ die() {
 }
 
 PROJECT_PATH=""
-REGISTRY_DIR="$HOME/.codex/android-wsl-source-access-info/projects"
+REGISTRY_DIR="$HOME/.servers/projects"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

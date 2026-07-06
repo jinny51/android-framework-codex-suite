@@ -1,22 +1,22 @@
 ---
-name: android-windows-source-access
+name: android-wsl-source-access
 description: Use to create, inspect, restore, or resolve Windows-side SMB drive/UNC mappings for Android remote build server source trees. Use when Codex runs from the Windows host side in a Windows/WSL workflow and needs to map a local Windows Android source path such as X:\unisoc\rk3576 or \\server\share\project to a remote Linux/WSL build path, SMB share, SSH host, platform, and SDK/project name. This is the Windows SMB mapping counterpart to the WSL/CIFS source access workflow.
 ---
 
-# Android Windows Source Access
+# Android WSL Source Access
 
 Use this skill for Windows-side access to Android source trees shared from a remote Linux/WSL build server over SMB.
 
 It owns the local mapping registry, optional Samba credential memory, and source access handoff. It does not run Android builds, push artifacts, or diagnose framework behavior.
 
-Build/deploy skills consume this skill's `sshHost` and `remoteRoot` handoff and may then call `android-windows-remote-channel`; this source-access skill should not create long-running remote sessions itself.
+Build/deploy skills consume this skill's `sshHost` and `remoteRoot` handoff and may then call `android-wsl-remote-channel`; this source-access skill should not create long-running remote sessions itself.
 
 ## Runtime Registry
 
 Use this info directory for runtime memory:
 
 ```powershell
-$InfoDir = "$env:USERPROFILE\.codex\android-windows-source-access-info"
+$InfoDir = "$env:USERPROFILE\.servers"
 ```
 
 Use WSL-compatible account-level files under the same info directory:
@@ -37,14 +37,14 @@ The registry and account env files map:
 - `sambaUser`: SMB username, when known.
 - `credentialTarget`: SMB server IP or host used for the account key.
 
-Never store passwords, tokens, or SSH keys in the skill folder or project repo. If the user provides a Samba password and asks to remember it, store it only in `android-windows-source-access-info\credentials\<account-hash>.cred`, mirroring the WSL `android-wsl-source-access-info` layout.
+Never store passwords, tokens, or SSH keys in the skill folder or project repo. If the user provides a Samba password and asks to remember it, store it only in `.servers\credentials\<account-hash>.cred`, mirroring the WSL `.servers` layout.
 
 ## Workflow
 
 1. Initialize or inspect the registry before adding entries:
 
 ```powershell
-$SkillDir = "$env:USERPROFILE\.codex\skills\android-windows-source-access"
+$SkillDir = "$env:USERPROFILE\.codex\skills\android-wsl-source-access"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$SkillDir\scripts\Manage-AndroidSmbWindowsInfo.ps1" init
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$SkillDir\scripts\Manage-AndroidSmbWindowsInfo.ps1" list
 ```
@@ -129,7 +129,7 @@ SMB 映射: <SMB_ROOT>
 SSH 主机: <SSH_HOST>
 项目识别: <platform/sdkName, source if known>
 凭据记录: <registry/credentials 是否已记录，是否可用于后续恢复>
-交接: <是否可交给 android-windows-remote-build-deploy，或还缺什么>
+交接: <是否可交给 android-wsl-remote-build-deploy，或还缺什么>
 ```
 
 Failure reports should state the blocker in Chinese while preserving technical identifiers such as `LOCAL_REPO`, `REMOTE_ROOT`, `SDK_NAME_REQUIRED`, SSH, SMB, registry, and `.codex`.
@@ -159,5 +159,5 @@ Do not modify `SKILL.md`, `references/`, or `scripts/` for capture after ordinar
 
 ## Related Skills
 
-- `android-windows-remote-build-deploy`: performs remote source operations, remote builds, artifact pickup, and local `adb.exe` deploy after a mapping exists.
+- `android-wsl-remote-build-deploy`: performs remote source operations, remote builds, artifact pickup, and local `adb.exe` deploy after a mapping exists.
 - `android-framework-change-workflow`: owns Android framework diagnosis, change discipline, risk, final verification, and final reporting.

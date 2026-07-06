@@ -2,7 +2,7 @@ param(
     [string]$LocalRepo,
     [string]$RemoteRoot,
     [string]$SdkName,
-    [string]$ProjectsDir = "$env:USERPROFILE\.codex\android-windows-source-access-info\projects"
+    [string]$ProjectsDir = "$env:USERPROFILE\.servers\projects"
 )
 
 $ErrorActionPreference = "Stop"

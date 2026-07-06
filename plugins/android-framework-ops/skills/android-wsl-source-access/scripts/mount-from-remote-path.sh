@@ -207,11 +207,11 @@ passwords_file_for_account() {
   local server="$2"
   local key
   key="$(printf "%s@%s" "$user" "$server" | sha256sum | awk '{print $1}')"
-  printf "%s/.codex/android-wsl-source-access-info/credentials/%s.passwords.env" "$HOME" "$key"
+  printf "%s/.servers/credentials/%s.passwords.env" "$HOME" "$key"
 }
 
 local_sudo_password_file() {
-  printf "%s/.codex/android-wsl-source-access-info/credentials/local-sudo.env" "$HOME"
+  printf "%s/.servers/credentials/local-sudo.env" "$HOME"
 }
 
 load_saved_passwords() {
@@ -532,7 +532,7 @@ if [ ! -d "$LOCAL_PROJECT/build" ] && [ ! -d "$LOCAL_PROJECT/frameworks" ] && [ 
 fi
 
 if [ "$save_credentials" -eq 1 ] && [ "$samba_password_verified" -eq 1 ] && [ -n "$samba_password" ]; then
-  echo "NOTICE: storing Samba credentials for reboot recovery under $HOME/.codex/android-wsl-source-access-info/credentials/" >&2
+  echo "NOTICE: storing Samba credentials for reboot recovery under $HOME/.servers/credentials/" >&2
   SAMBA_PASSWORD="$samba_password" "$script_dir/restore-project-mount.sh" \
     --project "$LOCAL_PROJECT" \
     --ssh-host "$SSH_HOST" \

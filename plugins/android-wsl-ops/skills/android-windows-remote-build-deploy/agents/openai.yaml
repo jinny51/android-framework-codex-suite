@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android Windows Remote Build Deploy"
-  short_description: "Build remotely and deploy from Windows."
-  default_prompt: "Use $android-windows-remote-build-deploy after Android source has a Windows SMB mapping. Run all source operations on the remote Linux/WSL tree over SSH, pick up artifacts through the Windows mapping, and deploy with adb.exe."
-
-policy:
-  allow_implicit_invocation: true

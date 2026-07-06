@@ -97,7 +97,7 @@ test -d "$LOCAL_PROJECT/build" -o -d "$LOCAL_PROJECT/frameworks" -o -d "$LOCAL_P
 
 ## Remember For Recovery
 
-Tell the user first that Samba credentials will be saved locally under `$HOME/.codex/android-wsl-source-access-info/credentials/` with mode `600`, then store mount metadata, remote mapping, and credentials:
+Tell the user first that Samba credentials will be saved locally under `$HOME/.servers/credentials/` with mode `600`, then store mount metadata, remote mapping, and credentials:
 
 ```bash
 SAMBA_PASSWORD="$SERVER_PASSWORD" "$SKILL_DIR/scripts/restore-project-mount.sh" \

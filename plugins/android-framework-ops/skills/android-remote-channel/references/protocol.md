@@ -57,9 +57,9 @@ For `install-tmux`, credential priority is:
 
 On WSL, source-access candidates come from:
 
-- `~/.codex/android-wsl-source-access-info/projects/*.env`
-- `~/.codex/android-wsl-source-access-info/credentials/*.passwords.env`
-- `~/.codex/android-wsl-source-access-info/credentials/*.cred`
+- `~/.servers/projects/*.env`
+- `~/.servers/credentials/*.passwords.env`
+- `~/.servers/credentials/*.cred`
 
 The channel prefers `SAVED_REMOTE_SUDO_PASSWORD`, then `SAVED_SSH_PASSWORD`, then `SAVED_SAMBA_PASSWORD`, and finally the Samba `.cred` password for the matched project. These are only tried as candidates; failures do not overwrite local files.
 

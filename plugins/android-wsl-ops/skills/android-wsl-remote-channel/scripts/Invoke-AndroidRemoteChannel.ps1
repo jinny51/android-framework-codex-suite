@@ -233,8 +233,8 @@ function Normalize-RemoteRootValue {
 
 function Find-WindowsSourceAccessManager {
     $candidates = @(
-        (Join-Path $PSScriptRoot "..\..\android-windows-source-access\scripts\Manage-AndroidSmbWindowsInfo.ps1"),
-        (Join-Path $env:USERPROFILE ".codex\skills\android-windows-source-access\scripts\Manage-AndroidSmbWindowsInfo.ps1")
+        (Join-Path $PSScriptRoot "..\..\android-wsl-source-access\scripts\Manage-AndroidSmbWindowsInfo.ps1"),
+        (Join-Path $env:USERPROFILE ".codex\skills\android-wsl-source-access\scripts\Manage-AndroidSmbWindowsInfo.ps1")
     )
     foreach ($candidate in $candidates) {
         $full = [System.IO.Path]::GetFullPath($candidate)

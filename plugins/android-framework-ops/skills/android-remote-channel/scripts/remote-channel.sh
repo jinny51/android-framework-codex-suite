@@ -220,7 +220,7 @@ add_account_credential_candidates() {
   local server="$2"
   [[ -n "$user" && -n "$server" ]] || return 0
   local key credentials_dir
-  credentials_dir="${ANDROID_WSL_SOURCE_ACCESS_CREDENTIALS_DIR:-$HOME/.codex/android-wsl-source-access-info/credentials}"
+  credentials_dir="${ANDROID_WSL_SOURCE_ACCESS_CREDENTIALS_DIR:-$HOME/.servers/credentials}"
   key="$(account_hash "$user" "$server")"
   add_unique_password_file "$credentials_dir/$key.passwords.env"
   add_unique_cred_file "$credentials_dir/$key.cred"
@@ -233,7 +233,7 @@ ssh_host_matches() {
 
 collect_wsl_source_access_credentials() {
   local registry_dir remote_root_norm registry
-  registry_dir="${ANDROID_WSL_SOURCE_ACCESS_PROJECTS_DIR:-$HOME/.codex/android-wsl-source-access-info/projects}"
+  registry_dir="${ANDROID_WSL_SOURCE_ACCESS_PROJECTS_DIR:-$HOME/.servers/projects}"
   remote_root_norm="${REMOTE_ROOT%/}"
   [[ -d "$registry_dir" ]] || return 0
   for registry in "$registry_dir"/*.env; do

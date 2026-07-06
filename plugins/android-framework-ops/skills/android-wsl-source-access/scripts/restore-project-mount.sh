@@ -33,9 +33,9 @@ Optional:
   --local-sudo-password-env NAME
                        Environment variable containing local WSL sudo password
                        for non-interactive restore. Optional.
-  --registry-dir PATH  Local registry dir. Default: $HOME/.codex/android-wsl-source-access-info/projects.
+  --registry-dir PATH  Local registry dir. Default: $HOME/.servers/projects.
   --credentials-dir PATH
-                       Local credentials dir. Default: $HOME/.codex/android-wsl-source-access-info/credentials.
+                       Local credentials dir. Default: $HOME/.servers/credentials.
 
 Environment:
   SAMBA_PASSWORD       Samba password if --password is omitted.
@@ -64,8 +64,8 @@ RESTORE=false
 REMEMBER_CURRENT=false
 LIST=false
 REMEMBER_PASSWORD=false
-REGISTRY_DIR="$HOME/.codex/android-wsl-source-access-info/projects"
-CREDENTIALS_DIR="$HOME/.codex/android-wsl-source-access-info/credentials"
+REGISTRY_DIR="$HOME/.servers/projects"
+CREDENTIALS_DIR="$HOME/.servers/credentials"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

@@ -1,6 +1,6 @@
 {
   "name": "android-wsl-ops",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Optional Windows/WSL compatibility workflows for Android Framework engineering with Codex.",
   "author": {
     "name": "Jinny Android Framework Team",

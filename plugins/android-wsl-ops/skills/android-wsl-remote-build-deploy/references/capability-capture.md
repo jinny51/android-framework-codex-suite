@@ -1,6 +1,6 @@
 # Capability Capture
 
-Use this reference only while preparing the final report after an `android-windows-remote-build-deploy` task that may have produced reusable Windows/WSL remote build/deploy executor knowledge.
+Use this reference only while preparing the final report after an `android-wsl-remote-build-deploy` task that may have produced reusable Windows/WSL remote build/deploy executor knowledge.
 
 ## Default
 
