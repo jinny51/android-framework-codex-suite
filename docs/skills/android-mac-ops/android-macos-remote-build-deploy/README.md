@@ -1,6 +1,6 @@
 # android-macos-remote-build-deploy
 
-> GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-macos-ops/skills/android-macos-remote-build-deploy](../../../../plugins/android-macos-ops/skills/android-macos-remote-build-deploy)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...` 指向该 runtime skill 目录。
+> GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-mac-ops/skills/android-macos-remote-build-deploy](../../../../plugins/android-mac-ops/skills/android-macos-remote-build-deploy)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...` 指向该 runtime skill 目录。
 
 macOS 原生远程构建和本地部署 skill。
 

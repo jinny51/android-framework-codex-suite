@@ -10,7 +10,7 @@ count_skills() {
 
 android_count="$(count_skills android-framework-ops | tr -d ' ')"
 windows_count="$(count_skills android-wsl-ops | tr -d ' ')"
-macos_count="$(count_skills android-macos-ops | tr -d ' ')"
+macos_count="$(count_skills android-mac-ops | tr -d ' ')"
 workspace_count="$(count_skills codex-workspace-care | tr -d ' ')"
 
 if [[ "$android_count" != "10" ]]; then
@@ -24,7 +24,7 @@ if [[ "$windows_count" != "3" ]]; then
 fi
 
 if [[ "$macos_count" != "2" ]]; then
-  echo "android-macos-ops should contain 2 skills, found $macos_count" >&2
+  echo "android-mac-ops should contain 2 skills, found $macos_count" >&2
   exit 1
 fi
 

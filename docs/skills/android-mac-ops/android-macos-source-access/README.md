@@ -1,6 +1,6 @@
 # android-macos-source-access
 
-> GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-macos-ops/skills/android-macos-source-access](../../../../plugins/android-macos-ops/skills/android-macos-source-access)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...` 指向该 runtime skill 目录。
+> GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-mac-ops/skills/android-macos-source-access](../../../../plugins/android-mac-ops/skills/android-macos-source-access)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...` 指向该 runtime skill 目录。
 
 macOS 原生 Android 服务器源码接入 skill。
 

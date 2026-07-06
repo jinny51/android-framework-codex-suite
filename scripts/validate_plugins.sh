@@ -9,7 +9,7 @@ if [[ ! -f "$validator" ]]; then
   exit 1
 fi
 
-for plugin in android-framework-ops jinny-android-practices android-wsl-ops android-macos-ops codex-workspace-care; do
+for plugin in android-framework-ops jinny-android-practices android-wsl-ops android-mac-ops codex-workspace-care; do
   python3 "$validator" "$repo_root/plugins/$plugin"
 done
 

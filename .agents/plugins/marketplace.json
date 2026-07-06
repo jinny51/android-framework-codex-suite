@@ -41,10 +41,10 @@
       "category": "Coding"
     },
     {
-      "name": "android-macos-ops",
+      "name": "android-mac-ops",
       "source": {
         "source": "local",
-        "path": "./plugins/android-macos-ops"
+        "path": "./plugins/android-mac-ops"
       },
       "policy": {
         "installation": "AVAILABLE",

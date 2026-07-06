@@ -1,6 +1,6 @@
 {
-  "name": "android-macos-ops",
-  "version": "1.0.1",
+  "name": "android-mac-ops",
+  "version": "1.0.2",
   "description": "macOS platform layer for Android Framework source access and remote build/deploy.",
   "author": {
     "name": "Jinny Android Framework Team",
@@ -23,7 +23,7 @@
   ],
   "skills": "./skills/",
   "interface": {
-    "displayName": "Android macOS Ops",
+    "displayName": "Android Mac Ops",
     "shortDescription": "Android Framework macOS 平台层：Samba 源码接入和远程构建部署",
     "longDescription": "面向 macOS 环境的 Android Framework 平台层插件，负责 Samba/SMB 源码挂载恢复和远程构建部署。不包含平台无关的工作流编排逻辑；平台无关能力参见 android-framework-ops。",
     "developerName": "Jinny Android Framework Team",

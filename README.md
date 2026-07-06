@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | [android-framework-ops](plugins/android-framework-ops/README.md) | Android Framework WSL 主链路核心插件 | WSL 源码接入、知识检索、需求分析、远程执行、构建推送、验收、补丁归档、incoming 上传材料 | 所有需要 Codex 处理 Android Framework 工程任务的成员 |
 | [android-wsl-ops](plugins/android-wsl-ops/README.md) | 可选 Windows/WSL 兼容插件 | Windows SMB/UNC 源码映射、PowerShell/ssh.exe 远程会话、本地 adb.exe 推送 | 需要 Windows 主机侧入口配合 WSL/远程 Linux 链路的成员 |
-| [android-macos-ops](plugins/android-macos-ops/README.md) | 可选 macOS 原生兼容插件 | macOS SMB 源码挂载、Keychain 凭据引用、远程构建、本地 adb 推送 | 确实需要 macOS 原生 Codex 的成员 |
+| [android-mac-ops](plugins/android-mac-ops/README.md) | 可选 macOS 原生兼容插件 | macOS SMB 源码挂载、Keychain 凭据引用、远程构建、本地 adb 推送 | 确实需要 macOS 原生 Codex 的成员 |
 | [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选团队实践插件 | Jinny 团队代码风格、FrameworkLog 规范、review、项目本地规范等有倾向性的规则入口 | 想沿用 Jinny 团队实践的成员 |
 | [codex-workspace-care](plugins/codex-workspace-care/README.md) | 独立工作区维护插件 | Codex 本地聊天历史清理、修复、隐私残留检查、上下文交接 | 需要维护本地 Codex 状态或迁移会话上下文的成员 |
 
@@ -26,7 +26,7 @@
 2. 个人或团队实践 skill 负责代码风格、review 口径、项目偏好。
 3. `android-framework-ops` 负责 WSL 主链路 Framework 工程闭环：源码接入、知识检索、诊断修改、远程构建、设备推送、验收证据、补丁归档、incoming 上传材料。
 4. `android-wsl-ops` 只在 Windows 主机侧配合 WSL/远程 Linux 链路时作为可选兼容层使用。
-5. `android-macos-ops` 只在 macOS 原生 Codex 场景中作为可选兼容层使用。
+5. `android-mac-ops` 只在 macOS 原生 Codex 场景中作为可选兼容层使用。
 6. `codex-workspace-care` 只在用户明确需要处理本地 Codex 历史或交接上下文时使用。
 
 这样做的目的很直接：核心插件可以给很多人用，但不把某个人的编码习惯绑定进所有人的工作流。
@@ -53,7 +53,7 @@
 
 Framework 需求默认闭环是：开工前查知识库仓库，开发和验证后通过 `patch-capture` 与 `android-framework-patch-intake` 生成 incoming，并通过服务器上传入口进入上传分支；管理端本地推广入口再决定是否入库。普通补丁上传和补证包上传默认必须是 `validated`：功能边界清楚、项目/平台/Android 版本可追溯、补丁资产干净，并且构建与设备或等价验证通过。需要复验的 `candidate`、未完成的 `draft`、失败或阻塞路径按事实保留在本地材料或日报/周报上下文里，不直接进入服务器上传队列。日报使用 `android-daily-report-intake`，周报使用 `android-weekly-report-intake`；两者只归档，不进入知识库沉淀候选。是否进入知识库仓库由你本机的本地技能 `akbs-curation-maintainer` 和 AI 知识闭环决定，不由成员端插件直接决定。
 
-Windows/WSL 和 macOS 原生 Codex 场景不属于团队默认主链路。确实需要 Windows SMB/UNC、PowerShell 和本地 `adb.exe` 交付时，额外安装 `android-wsl-ops`；确实需要 macOS 原生 SMB、Keychain 凭据引用和本地 `adb` 交付时，额外安装 `android-macos-ops`。
+Windows/WSL 和 macOS 原生 Codex 场景不属于团队默认主链路。确实需要 Windows SMB/UNC、PowerShell 和本地 `adb.exe` 交付时，额外安装 `android-wsl-ops`；确实需要 macOS 原生 SMB、Keychain 凭据引用和本地 `adb` 交付时，额外安装 `android-mac-ops`。
 
 ## 服务器源码树命令边界
 
@@ -76,7 +76,7 @@ android-framework-codex-suite/
 ├── plugins/
 │   ├── android-framework-ops/              # Android Framework 核心工程插件
 │   ├── android-wsl-ops/                  # 可选 Windows/WSL 兼容插件
-│   ├── android-macos-ops/                  # 可选 macOS 原生兼容插件
+│   ├── android-mac-ops/                  # 可选 macOS 原生兼容插件
 │   ├── jinny-android-practices/            # 可选团队实践插件
 │   └── codex-workspace-care/               # 独立工作区维护插件
 ├── manifests/                              # 每个插件包含的 skill 白名单
@@ -108,7 +108,7 @@ Git 引用：main
 
 1. 需要 Android Framework 工程能力：安装 `android-framework-ops`。
 2. 确实需要 Windows SMB/UNC + PowerShell + WSL/远程 Linux 工作流：额外安装 `android-wsl-ops`。
-3. 确实需要 macOS 原生 SMB + Keychain + 本地 adb 工作流：额外安装 `android-macos-ops`。
+3. 确实需要 macOS 原生 SMB + Keychain + 本地 adb 工作流：额外安装 `android-mac-ops`。
 4. 需要 Jinny 团队代码风格、补丁开发规范和 FrameworkLog 日志规范：额外安装 `jinny-android-practices`，使用 `jinny-framework-coding-standards`。
 5. 需要处理 Codex 本地历史或交接上下文：额外安装 `codex-workspace-care`。
 

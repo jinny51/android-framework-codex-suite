@@ -64,7 +64,7 @@ function Invoke-PythonScript([string]$ScriptPath, [string[]]$Arguments) {
     throw "Python was not found. Install python3, python, py launcher, or WSL with python3."
 }
 
-foreach ($plugin in @("android-framework-ops", "jinny-android-practices", "android-wsl-ops", "android-macos-ops", "codex-workspace-care")) {
+foreach ($plugin in @("android-framework-ops", "jinny-android-practices", "android-wsl-ops", "android-mac-ops", "codex-workspace-care")) {
     Invoke-PythonScript -ScriptPath $Validator -Arguments @((Join-Path $RepoRoot "plugins/$plugin"))
 }
 
@@ -72,7 +72,7 @@ $androidCount = @(Get-ChildItem -LiteralPath (Join-Path $RepoRoot "plugins/andro
     Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "SKILL.md") }).Count
 $windowsCount = @(Get-ChildItem -LiteralPath (Join-Path $RepoRoot "plugins/android-wsl-ops/skills") -Directory |
     Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "SKILL.md") }).Count
-$macosCount = @(Get-ChildItem -LiteralPath (Join-Path $RepoRoot "plugins/android-macos-ops/skills") -Directory |
+$macosCount = @(Get-ChildItem -LiteralPath (Join-Path $RepoRoot "plugins/android-mac-ops/skills") -Directory |
     Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "SKILL.md") }).Count
 $workspaceCount = @(Get-ChildItem -LiteralPath (Join-Path $RepoRoot "plugins/codex-workspace-care/skills") -Directory |
     Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "SKILL.md") }).Count
@@ -84,7 +84,7 @@ if ($windowsCount -ne 3) {
     throw "android-wsl-ops should contain 3 skills, found $windowsCount"
 }
 if ($macosCount -ne 2) {
-    throw "android-macos-ops should contain 2 skills, found $macosCount"
+    throw "android-mac-ops should contain 2 skills, found $macosCount"
 }
 if ($workspaceCount -ne 2) {
     throw "codex-workspace-care should contain 2 skills, found $workspaceCount"
