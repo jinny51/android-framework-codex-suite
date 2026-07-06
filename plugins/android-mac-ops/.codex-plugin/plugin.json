@@ -1,5 +1,5 @@
 {
-  "name": "android-macos-ops",
+  "name": "android-mac-ops",
   "version": "1.0.0",
   "description": "macOS platform layer for Android Framework source access and remote build/deploy.",
   "author": {
