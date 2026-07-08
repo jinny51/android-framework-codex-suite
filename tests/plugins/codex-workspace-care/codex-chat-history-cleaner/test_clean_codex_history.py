@@ -5,7 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "clean_codex_history.py"
+REPO_ROOT = Path(__file__).resolve().parents[4]
+SCRIPT = REPO_ROOT / "plugins" / "codex-workspace-care" / "skills" / "codex-chat-history-cleaner" / "scripts" / "clean_codex_history.py"
 SPEC = importlib.util.spec_from_file_location("clean_codex_history", SCRIPT)
 clean_codex_history = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

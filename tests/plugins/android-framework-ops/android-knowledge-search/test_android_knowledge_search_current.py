@@ -11,8 +11,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
+REPO_ROOT = Path(__file__).resolve().parents[4]
+SKILL_DIR = REPO_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-search"
+sys.path.insert(0, str(SKILL_DIR / "scripts"))
 
 import android_knowledge_search as search
 
@@ -42,6 +43,13 @@ def write_jsonl(path: Path, rows: list[dict]) -> None:
 
 
 class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
+    def test_search_usage_root_rejects_plugin_skill_source(self) -> None:
+        with patch.object(search, "config_payloads", return_value=[{"out_dir": str(SKILL_DIR)}]):
+            with self.assertRaises(SystemExit) as ctx:
+                search.search_usage_root()
+
+        self.assertIn("不能写入插件 skill 源码目录", str(ctx.exception))
+
     def make_root(self) -> Path:
         root = Path(tempfile.mkdtemp())
         write_jsonl(root / "index" / "case-index.jsonl", [])

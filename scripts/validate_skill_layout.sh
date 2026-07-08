@@ -104,4 +104,45 @@ validate_skill_metadata() {
 
 validate_skill_metadata
 
+validate_runtime_skill_cleanliness() {
+  local failed=0
+  local skill_dir rel top_level_name path
+
+  while IFS= read -r -d '' skill_dir; do
+    for top_level_name in README.md tests fixtures output reports pending submitted logs; do
+      if [[ -e "$skill_dir/$top_level_name" ]]; then
+        echo "runtime skill directory must not contain $top_level_name: $skill_dir/$top_level_name" >&2
+        failed=1
+      fi
+    done
+
+    while IFS= read -r -d '' path; do
+      echo "runtime skill directory contains cache/build output: $path" >&2
+      failed=1
+    done < <(
+      find "$skill_dir" \
+        \( -path '*/__pycache__' -o -path '*/.pytest_cache' -o -name '*.pyc' -o -name '*.pyo' -o -name '*.log' -o -name '*.zip' -o -name '*.tar.gz' \) \
+        -print0
+    )
+
+    while IFS= read -r -d '' path; do
+      rel="${path#"$skill_dir"/}"
+      case "$rel" in
+        SKILL.md|references/*.md)
+          ;;
+        *)
+          echo "runtime skill markdown must be SKILL.md or references/*.md: $path" >&2
+          failed=1
+          ;;
+      esac
+    done < <(find "$skill_dir" -type f -name '*.md' -print0)
+  done < <(find "$repo_root/plugins" -path '*/skills/*/SKILL.md' -print0 | xargs -0 -n1 dirname -z)
+
+  if [[ "$failed" != "0" ]]; then
+    exit 1
+  fi
+}
+
+validate_runtime_skill_cleanliness
+
 echo "Skill layout validation passed"

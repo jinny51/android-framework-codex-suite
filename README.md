@@ -183,10 +183,10 @@ find plugins -path '*/skills/*/README.md' -print
 
 ```bash
 python3 -m pytest --capture=no \
-  plugins/android-framework-ops/skills/android-framework-patch-capture/tests \
-  plugins/android-framework-ops/skills/android-knowledge-intake/tests \
-  plugins/android-framework-ops/skills/android-knowledge-search/tests \
-  plugins/codex-workspace-care/skills/codex-chat-history-cleaner/tests
+  tests/plugins/android-framework-ops/android-framework-patch-capture \
+  tests/plugins/android-framework-ops/android-knowledge-intake \
+  tests/plugins/android-framework-ops/android-knowledge-search \
+  tests/plugins/codex-workspace-care/codex-chat-history-cleaner
 ```
 
 在 `/mnt/c` 文件系统上运行 pytest 时，默认 capture 可能受临时文件行为影响；这里固定使用 `--capture=no`。

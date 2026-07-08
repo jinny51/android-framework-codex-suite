@@ -49,5 +49,5 @@ scripts/validate_plugins.sh
 
 ```bash
 python3 -m pytest --capture=no \
-  plugins/codex-workspace-care/skills/codex-chat-history-cleaner/tests
+  tests/plugins/codex-workspace-care/codex-chat-history-cleaner
 ```

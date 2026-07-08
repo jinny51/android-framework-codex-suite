@@ -8,7 +8,8 @@ import unittest
 from pathlib import Path
 
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[4]
+PLUGIN_ROOT = REPO_ROOT / "plugins" / "android-framework-ops"
 EXPORT_SCRIPT = PLUGIN_ROOT / "scripts" / "export_akbs_validation_rules.py"
 
 

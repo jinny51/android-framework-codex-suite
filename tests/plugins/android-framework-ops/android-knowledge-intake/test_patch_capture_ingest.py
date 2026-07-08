@@ -9,7 +9,9 @@ import unittest
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "android_knowledge_intake.py"
+REPO_ROOT = Path(__file__).resolve().parents[4]
+INTAKE_SKILL_DIR = REPO_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake"
+SCRIPT = INTAKE_SKILL_DIR / "scripts" / "android_knowledge_intake.py"
 SPEC = importlib.util.spec_from_file_location("android_knowledge_intake", SCRIPT)
 assert SPEC and SPEC.loader
 intake = importlib.util.module_from_spec(SPEC)
@@ -429,6 +431,12 @@ def write_member_search_usage(
 
 
 class PatchCaptureIngestTests(unittest.TestCase):
+    def test_rejects_out_dir_under_plugin_skill_source(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            intake.require_safe_artifact_path(INTAKE_SKILL_DIR / "pending", purpose="out_dir")
+
+        self.assertIn("不能写入插件 skill 源码目录", str(ctx.exception))
+
     def config(self, root: Path) -> dict[str, str]:
         return {
             "member_alias": "admin_alias",

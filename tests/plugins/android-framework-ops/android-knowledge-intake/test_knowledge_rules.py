@@ -5,7 +5,8 @@ import unittest
 from pathlib import Path
 
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[3]
+REPO_ROOT = Path(__file__).resolve().parents[4]
+PLUGIN_ROOT = REPO_ROOT / "plugins" / "android-framework-ops"
 PLUGIN_LIB = PLUGIN_ROOT / "lib"
 if str(PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(PLUGIN_LIB))

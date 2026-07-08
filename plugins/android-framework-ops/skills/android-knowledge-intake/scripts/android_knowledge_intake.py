@@ -383,6 +383,7 @@ from akbs_intake.config import (  # noqa: E402
     akbs_endpoint_env_value,
     allowed_modes,
     apply_env_overrides,
+    artifact_path_guard_error,
     configured_endpoint_fields,
     default_codex_home,
     enforce_mode_allowed,
@@ -402,6 +403,7 @@ from akbs_intake.config import (  # noqa: E402
     profile_from_env,
     read_toml,
     require_config,
+    require_safe_artifact_path,
     resolve_akbs_endpoint,
     stringify_config_value,
     submission_api_base_url,
@@ -3987,8 +3989,8 @@ def prepare_package(
     dates, start, end, week_key = report_dates(report_type, date)
     ensure_report_date_allowed(report_type, date, config)
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}"
-    out_dir = expanded_path(config["out_dir"])
-    package_dir = out_dir / "pending" / ymd(date) / config["member_alias"] / run_id
+    out_dir = require_safe_artifact_path(expanded_path(config["out_dir"]), purpose="out_dir")
+    package_dir = require_safe_artifact_path(out_dir / "pending" / ymd(date) / config["member_alias"] / run_id, purpose="incoming package output")
     if package_dir.exists():
         raise SystemExit(f"工作包已存在: {package_dir}")
     report_duplicates: list[dict[str, str]] = []
@@ -4627,8 +4629,8 @@ def prepare_field_correction_package(
 ) -> Path:
     if not supplement_for_package_key:
         raise SystemExit("字段级补证必须提供 --supplement-for-package-key，且必须指向原始包。")
-    out_dir = expanded_path(config["out_dir"])
-    package_dir = out_dir / "pending" / ymd(date) / config["member_alias"] / run_id
+    out_dir = require_safe_artifact_path(expanded_path(config["out_dir"]), purpose="out_dir")
+    package_dir = require_safe_artifact_path(out_dir / "pending" / ymd(date) / config["member_alias"] / run_id, purpose="incoming package output")
     if package_dir.exists():
         raise SystemExit(f"工作包已存在: {package_dir}")
     package_dir.mkdir(parents=True)
@@ -4899,8 +4901,8 @@ def prepare_patch_package(
     scope_errors = patch_capture_package_scope_errors(patch_package_paths, summary, run_id)
     if scope_errors:
         raise SystemExit("\n".join(scope_errors))
-    out_dir = expanded_path(config["out_dir"])
-    package_dir = out_dir / "pending" / ymd(date) / config["member_alias"] / run_id
+    out_dir = require_safe_artifact_path(expanded_path(config["out_dir"]), purpose="out_dir")
+    package_dir = require_safe_artifact_path(out_dir / "pending" / ymd(date) / config["member_alias"] / run_id, purpose="incoming package output")
     if package_dir.exists():
         raise SystemExit(f"工作包已存在: {package_dir}")
     package_dir.mkdir(parents=True)
@@ -5471,6 +5473,9 @@ def doctor_strict_checks(
         error("knowledge_repo_worktree 不能放在插件缓存目录下。")
     if ".codex/plugins/cache" in out_dir.as_posix():
         error("out_dir 不能放在插件缓存目录下。")
+    out_dir_guard_error = artifact_path_guard_error(out_dir, purpose="out_dir")
+    if out_dir_guard_error:
+        error(out_dir_guard_error)
 
     git_version = run(["git", "--version"])
     if git_version.returncode != 0:

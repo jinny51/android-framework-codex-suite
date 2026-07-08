@@ -79,9 +79,9 @@ scripts/validate_plugins.sh
 
 ```bash
 python3 -m pytest --capture=no \
-  plugins/android-framework-ops/skills/android-framework-patch-capture/tests \
-  plugins/android-framework-ops/skills/android-knowledge-intake/tests \
-  plugins/android-framework-ops/skills/android-knowledge-search/tests
+  tests/plugins/android-framework-ops/android-framework-patch-capture \
+  tests/plugins/android-framework-ops/android-knowledge-intake \
+  tests/plugins/android-framework-ops/android-knowledge-search
 ```
 
 维护 legacy/回滚兼容规则副本时，只从插件规则源导出到临时目录，不在成员插件任务中覆盖数据库仓库或上传分支工作树。新 AKBS 正常上传路径不依赖这份副本：

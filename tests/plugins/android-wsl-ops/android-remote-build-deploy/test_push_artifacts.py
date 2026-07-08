@@ -8,7 +8,8 @@ import unittest
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "push-artifacts.sh"
+REPO_ROOT = Path(__file__).resolve().parents[4]
+SCRIPT = REPO_ROOT / "plugins" / "android-wsl-ops" / "skills" / "android-remote-build-deploy" / "scripts" / "push-artifacts.sh"
 
 
 class PushArtifactsEvidenceTests(unittest.TestCase):

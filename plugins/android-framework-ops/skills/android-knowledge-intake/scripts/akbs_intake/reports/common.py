@@ -8,12 +8,12 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from ..config import expanded_path, local_now
+    from ..config import expanded_path, local_now, require_safe_artifact_path
 except ImportError:  # pragma: no cover - direct script import fallback
     scripts_root = Path(__file__).resolve().parents[2]
     if str(scripts_root) not in sys.path:
         sys.path.insert(0, str(scripts_root))
-    from akbs_intake.config import expanded_path, local_now
+    from akbs_intake.config import expanded_path, local_now, require_safe_artifact_path
 
 
 def ymd(date: dt.date) -> str:
@@ -200,13 +200,13 @@ def ensure_report_submit_allowed(package_dir: Path, config: dict[str, str], mani
 
 
 def record_submitted_package(package_dir: Path, config: dict[str, str], manifest: dict[str, Any]) -> None:
-    out_dir = expanded_path(config["out_dir"])
+    out_dir = require_safe_artifact_path(expanded_path(config["out_dir"]), purpose="out_dir")
     date_key = str(manifest.get("date") or "").replace("-", "")
     member = str(manifest.get("member_alias") or config.get("member_alias") or "").strip()
     run_id = str(manifest.get("run_id") or package_dir.name).strip()
     if not date_key or not member or not run_id:
         return
-    target = out_dir / "submitted" / date_key / member / run_id
+    target = require_safe_artifact_path(out_dir / "submitted" / date_key / member / run_id, purpose="submitted package archive")
     if target.resolve() == package_dir.resolve() or target.exists():
         return
     target.parent.mkdir(parents=True, exist_ok=True)

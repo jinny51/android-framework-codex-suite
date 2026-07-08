@@ -8,7 +8,8 @@ import unittest
 from pathlib import Path
 
 
-SKILL_DIR = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[4]
+SKILL_DIR = REPO_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-framework-patch-capture"
 SCRIPT = SKILL_DIR / "scripts" / "capture_framework_patch.py"
 
 
@@ -1459,6 +1460,38 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             payload = json.loads(result.stdout)
             self.assertEqual(payload["local_check"]["status"], "PASS")
+
+    def test_rejects_output_under_plugin_skill_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260708-120000-feature",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "wifi-default-enable",
+                    "--summary",
+                    "今日完成 Wi-Fi 默认开启功能",
+                    "--status",
+                    "candidate",
+                ],
+                SKILL_DIR,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("不能写入插件 skill 源码目录", result.stderr)
+            self.assertFalse((SKILL_DIR / "out" / "20260708-120000-feature").exists())
 
 
 if __name__ == "__main__":

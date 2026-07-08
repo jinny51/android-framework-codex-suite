@@ -18,7 +18,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-SUITE_ROOT = Path(__file__).resolve().parents[5]
+SUITE_ROOT = Path(__file__).resolve().parents[4]
 INTAKE_SCRIPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "scripts" / "android_knowledge_intake.py"
 MIGRATE_CONFIG_SCRIPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "scripts" / "migrate_member_config.py"
 CAPTURE_SCRIPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-framework-patch-capture" / "scripts" / "capture_framework_patch.py"
