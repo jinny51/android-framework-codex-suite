@@ -8,7 +8,7 @@ from typing import Any
 
 
 AKBS_RULES_CONTRACT_VERSION = "2026-07-02.1"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.76"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.77"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -48,6 +48,10 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
     "supplement_material_identity_inheritance_v1": {
         "min_plugin_version": "1.0.76",
         "description": "supplement packages inherit target material_name/material_summary and cannot redefine material identity",
+    },
+    "report_project_identity_v1": {
+        "min_plugin_version": "1.0.77",
+        "description": "daily and weekly reports use company project identity rules instead of source directory or branch names as project conclusions",
     },
 }
 DEFAULT_SOURCE_VERSION_CAPABILITIES = ("source_version_evidence",)

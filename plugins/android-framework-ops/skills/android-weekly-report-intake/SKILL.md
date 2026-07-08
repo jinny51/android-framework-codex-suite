@@ -24,22 +24,26 @@ before uploading.
 
 Generate `reports/weekly.md` with this required structure:
 
-- 本周概览
-- 按项目汇报
-  - 项目概况
+- 本周概况
+- 项目详情
+  - 基本信息
   - 本周进展
   - 本周重点说明
-- 下周重点
+  - 风险与依赖
+- 下周计划
 
-Each project total ledger must preserve:
+Each project section must preserve:
 
 - 项目名称
+- 客户名称；if not proven, write `需成员确认`
 - 来源类型：定制 / Buglist / 混合 / 临时支持
 - 来源说明：需求单、Buglist、客户、测试、项目经理、临时安排等
-- 启动时间 and 已持续时间; if not proven, write `需成员确认`
-- 新增功能、移植适配、Bug、其他、合计
-- 本周完成、累计完成、当前剩余、预计完成周
+- 接到文档时间 and 已持续时间; if not proven, write `需成员确认`
+- 需求结构：定制需求、移植适配、Bug、BSP、其他、合计
+- 上周一剩余、本周完成、当前剩余；混合项目要按定制 / Bug / BSP 等分类说明
+- 本周完成事项、当前剩余事项、本周重点说明
 - 风险或依赖
+- 下周计划
 
 Every formal weekly item should preserve both dimensions when available: 需求来源地（项目经理、上级、客户、测试、禅道） and 需求种类（需求清单、Buglist）. Work without a formal source should stay as 临时工作 / 内部优化 instead of being mixed into formal requirement or Buglist statistics.
 

@@ -1149,6 +1149,26 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertNotIn("### TVE1086U整体项目交接", report)
             self.assertNotIn("### android16", report)
 
+    def test_weekly_project_ledger_rejects_source_directory_as_project_name(self) -> None:
+        module = load_intake_module()
+
+        rows = module.project_ledger_rows(
+            {
+                "b_mt8775_8792_tablet": [
+                    ("完成 HDMI 副屏默认应用策略补充 mirror_display", "已完成"),
+                ],
+                "TVE1086U_MAIN_HANGYAN": [
+                    ("完成锁屏鼠标位置刷新分析", "已完成"),
+                ],
+            }
+        )
+
+        projects = [row["project"] for row in rows]
+        self.assertIn("TVE1086U", projects)
+        self.assertIn("需成员补充项目名", projects)
+        self.assertNotIn("b_mt8775_8792_tablet", projects)
+        self.assertNotIn("TVE1086U_MAIN_HANGYAN", projects)
+
     def test_daily_records_discovered_patch_without_formal_patch_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1493,26 +1513,29 @@ class MemberAutomationFlowTests(unittest.TestCase):
             ):
                 self.assertIn(text, daily_report)
             for text in (
-                "## 一、本周概览",
-                "## 二、按项目汇报",
-                "### 项目概况",
+                "## 一、本周概况",
+                "## 二、项目详情",
+                "#### 1. 基本信息",
                 "来源类型",
-                "启动时间",
+                "来源说明",
+                "接到文档时间",
                 "已持续时间",
+                "需求结构",
+                "上周一剩余",
                 "新增功能",
                 "移植适配",
                 "Bug",
                 "合计",
-                "### 本周进展",
+                "#### 2. 本周进展",
                 "本周完成",
                 "累计完成",
                 "当前剩余",
                 "预计完成周",
-                "### 本周重点说明",
-                "## 三、下周重点",
+                "#### 3. 本周重点说明",
+                "#### 4. 风险与依赖",
+                "## 三、下周计划",
             ):
                 self.assertIn(text, weekly_report)
-
             daily_view = read_report_view(daily)
             weekly_view = read_report_view(weekly)
             self.assertEqual(daily_view["kind"], "report_view")

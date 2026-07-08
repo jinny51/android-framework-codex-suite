@@ -563,16 +563,16 @@ def git_branch_or_name(path: str) -> str:
     return root.name if root else Path(path).name
 
 
+MISSING_REPORT_PROJECT = "需成员补充项目名"
+
+
 def project_name(work: SessionWork) -> str:
     candidates = [work.project, work.cwd, work.thread_name, *work.messages]
     for text in candidates:
-        anchor = project_anchor(text)
-        if anchor:
-            return anchor
-    text = " ".join(candidates).lower()
-    if "/documents/codex/" in text or "/.codex/" in text:
-        return "全局事项"
-    return work.project if work.project and not NOISE_TEXT_RE.search(work.project) else "未识别项目"
+        project = find_company_project(text)
+        if project:
+            return project
+    return MISSING_REPORT_PROJECT
 
 
 def parse_sessions(config: dict[str, str], dates: set[dt.date]) -> list[SessionWork]:
@@ -1121,7 +1121,7 @@ def project_source_note(entries: list[tuple[str, str]]) -> str:
 
 
 def project_ledger_totals(entries: list[tuple[str, str]]) -> dict[str, int]:
-    totals = {"feature_add": 0, "feature_port": 0, "bug": 0, "other": 0, "total": 0}
+    totals = {"feature_add": 0, "feature_port": 0, "bug": 0, "bsp": 0, "other": 0, "total": 0}
     for desc, progress in entries:
         category = report_category(desc, progress)
         if category == "功能添加":
@@ -1130,24 +1130,42 @@ def project_ledger_totals(entries: list[tuple[str, str]]) -> dict[str, int]:
             totals["feature_port"] += 1
         elif category == "Bug处理":
             totals["bug"] += 1
+        elif re.search(r"\bBSP\b|固件|编译|SDK|python版本|驱动|板级", desc, re.IGNORECASE):
+            totals["bsp"] += 1
         else:
             totals["other"] += 1
-    totals["total"] = totals["feature_add"] + totals["feature_port"] + totals["bug"] + totals["other"]
+    totals["total"] = totals["feature_add"] + totals["feature_port"] + totals["bug"] + totals["bsp"] + totals["other"]
     return totals
+
+
+def canonical_report_project_label(value: Any) -> str:
+    project = find_company_project(str(value or ""))
+    return project or MISSING_REPORT_PROJECT
+
+
+def normalized_report_items(items: dict[str, list[tuple[str, str]]]) -> dict[str, list[tuple[str, str]]]:
+    normalized: dict[str, list[tuple[str, str]]] = {}
+    for raw_project, entries in sorted(items.items()):
+        project = canonical_report_project_label(raw_project)
+        normalized.setdefault(project, []).extend(entries)
+    return normalized
 
 
 def project_ledger_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    items = normalized_report_items(items)
     source_rows = weekly_source_rows(items)
     if not items:
         return [
             {
-                "project": "未识别项目",
-                "source_type": "需补项目概况",
+                "project": MISSING_REPORT_PROJECT,
+                "source_type": "需补基本信息",
                 "source_note": "未发现可归档事项",
                 "start_date": "需成员确认",
                 "duration_label": "需成员确认",
-                "totals": {"feature_add": 0, "feature_port": 0, "bug": 0, "other": 0, "total": 0},
+                "customer_name": "需成员确认",
+                "previous_week_remaining": 0,
+                "totals": {"feature_add": 0, "feature_port": 0, "bug": 0, "bsp": 0, "other": 0, "total": 0},
                 "this_week_completed": 0,
                 "cumulative_completed": 0,
                 "remaining": 0,
@@ -1169,8 +1187,10 @@ def project_ledger_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[st
                 "source_note": project_source_note(entries),
                 "start_date": "需成员确认",
                 "duration_label": "需成员确认",
+                "customer_name": "需成员确认",
                 "source_lists": project_sources,
                 "totals": totals,
+                "previous_week_remaining": remaining + stats["completed"],
                 "this_week_completed": stats["completed"],
                 "cumulative_completed": stats["completed"],
                 "remaining": remaining,
@@ -1185,7 +1205,7 @@ def project_ledger_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[st
 def weekly_progress_summary_payload(items: dict[str, list[tuple[str, str]]]) -> dict[str, Any]:
     ledgers = project_ledger_rows(items)
     return {
-        "project_count": len([row for row in ledgers if row["project"] != "未识别项目"]),
+        "project_count": len([row for row in ledgers if row["project"] not in {"未识别项目", MISSING_REPORT_PROJECT}]),
         "total": sum(int(row["totals"]["total"]) for row in ledgers),
         "this_week_completed": sum(int(row["this_week_completed"]) for row in ledgers),
         "cumulative_completed": sum(int(row["cumulative_completed"]) for row in ledgers),
@@ -1196,6 +1216,7 @@ def weekly_progress_summary_payload(items: dict[str, list[tuple[str, str]]]) -> 
 
 def weekly_detail_sections_payload(items: dict[str, list[tuple[str, str]]], patches: list[PatchInfo]) -> list[dict[str, Any]]:
     sections: list[dict[str, Any]] = []
+    items = normalized_report_items(items)
     patch_outputs = render_patch_list(patches, "本周无产出 Patch。")
     for ledger in project_ledger_rows(items):
         project = str(ledger["project"])
@@ -1327,27 +1348,28 @@ def write_weekly_report(
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
 ) -> None:
+    items = normalized_report_items(items)
     ledgers = project_ledger_rows(items)
     summary = weekly_progress_summary_payload(items)
     lines += [
-        "## 一、本周概览",
+        "## 一、本周概况",
         "",
         f"- 本周涉及项目：{summary['project_count']}",
-        f"- 项目概况事项合计：{summary['total']}",
+        f"- 需求事项合计：{summary['total']}",
         f"- 本周完成：{summary['this_week_completed']}",
         f"- 当前剩余：{summary['remaining']}",
         f"- 风险项目：{summary['risk_count']}",
         f"- 一句话总结：本周围绕 {summary['project_count']} 个项目推进，完成 {summary['this_week_completed']} 项，剩余 {summary['remaining']} 项。",
         "",
-        "| 项目 | 来源类型 | 启动时间 | 已持续时间 | 新增功能 | 移植适配 | Bug | 其他 | 合计 | 本周完成 | 累计完成 | 当前剩余 | 预计完成周 | 状态 |",
-        "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+        "| 项目 | 客户 | 来源类型 | 接到文档时间 | 已持续时间 | 新增功能 | 移植适配 | Bug | BSP | 其他 | 合计 | 本周完成 | 累计完成 | 当前剩余 | 预计完成周 | 状态 |",
+        "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for ledger in ledgers:
         totals = ledger["totals"]
         lines.append(
-            f"| {ledger['project']} | {ledger['source_type']} | {ledger['start_date']} | {ledger['duration_label']} | {totals['feature_add']} | {totals['feature_port']} | {totals['bug']} | {totals['other']} | {totals['total']} | {ledger['this_week_completed']} | {ledger['cumulative_completed']} | {ledger['remaining']} | {ledger['expected_completion_week']} | {ledger['status']} |"
+            f"| {ledger['project']} | {ledger['customer_name']} | {ledger['source_type']} | {ledger['start_date']} | {ledger['duration_label']} | {totals['feature_add']} | {totals['feature_port']} | {totals['bug']} | {totals['bsp']} | {totals['other']} | {totals['total']} | {ledger['this_week_completed']} | {ledger['cumulative_completed']} | {ledger['remaining']} | {ledger['expected_completion_week']} | {ledger['status']} |"
         )
-    lines += ["", "## 二、按项目汇报", ""]
+    lines += ["", "## 二、项目详情", ""]
     for ledger in ledgers:
         project = str(ledger["project"])
         entries = items.get(project, [])
@@ -1355,21 +1377,20 @@ def write_weekly_report(
         unfinished = [desc for desc, progress in entries if progress_bucket(progress) != "completed"]
         totals = ledger["totals"]
         lines += [
-            f"### 项目名称：{project}",
+            f"### {project} {ledger['customer_name']}",
             "",
-            "### 项目概况",
+            "#### 1. 基本信息",
             "",
             f"- 来源类型：{ledger['source_type']}",
             f"- 来源说明：{ledger['source_note']}",
-            f"- 启动时间：{ledger['start_date']}",
+            f"- 接到文档时间：{ledger['start_date']}",
             f"- 已持续时间：{ledger['duration_label']}",
-            f"- 新增功能：{totals['feature_add']}",
-            f"- 移植适配：{totals['feature_port']}",
-            f"- Bug：{totals['bug']}",
-            f"- 其他：{totals['other']}",
-            f"- 合计：{totals['total']}",
+            f"- 需求结构：定制需求 {totals['feature_add']} 项、移植适配 {totals['feature_port']} 项、Bug {totals['bug']} 项、BSP {totals['bsp']} 项、其他 {totals['other']} 项，合计 {totals['total']} 项",
+            f"- 上周一剩余：{ledger['previous_week_remaining']} 项",
+            f"- 本周完成：{ledger['this_week_completed']} 项",
+            f"- 当前剩余：{ledger['remaining']} 项",
             "",
-            "### 本周进展",
+            "#### 2. 本周进展",
             "",
             f"- 本周完成：{ledger['this_week_completed']}",
             f"- 累计完成：{ledger['cumulative_completed']}",
@@ -1377,22 +1398,25 @@ def write_weekly_report(
             f"- 预计完成周：{ledger['expected_completion_week']}",
             f"- 当前状态：{ledger['status']}",
             "",
-            "### 本周重点说明",
+            "已完成事项：",
             "",
-            "**本周完成重点：**",
+            *(f"- {compact_text(item, 120)}" for item in (completed or ["暂无明确完成项"])),
             "",
-            *(f"{index}. {compact_text(item, 120)}" for index, item in enumerate(completed or ["暂无明确完成项"], start=1)),
+            "当前剩余事项：",
             "",
-            "**剩余重点：**",
+            *(f"- {compact_text(item, 120)}" for item in (unfinished or ["无明确剩余项"])),
             "",
-            *(f"{index}. {compact_text(item, 120)}" for index, item in enumerate(unfinished or ["无明确剩余项"], start=1)),
+            "#### 3. 本周重点说明",
             "",
-            f"**风险/依赖：** {ledger['risk']}",
+            f"- 本周重点：{next_step_for_entries(entries, 'weekly') if entries else '补充真实工作记录并推进未闭环事项。'}",
+            f"- Patch / 验证 / 交付：{'；'.join(render_patch_list(patches, '本周无产出 Patch。'))}",
             "",
-            f"**Patch / 验证 / 交付：** {'；'.join(render_patch_list(patches, '本周无产出 Patch。'))}",
+            "#### 4. 风险与依赖",
+            "",
+            f"- {ledger['risk']}",
             "",
         ]
-    lines += ["## 三、下周重点", ""]
+    lines += ["## 三、下周计划", ""]
     plans = [f"{project}：{next_step_for_entries(entries, 'weekly')}" for project, entries in sorted(items.items())]
     lines += [f"{index}. {plan}" for index, plan in enumerate(plans, start=1)] or ["1. 继续补充真实工作记录并推进未闭环事项。"]
 
