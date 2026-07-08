@@ -12,7 +12,7 @@
 
 `report_view.json` 是同一份周报正文的 UI 读模型（UI read model），至少包含 `report_type=weekly`、`week_range`、`display_date`、`display_title`、`one_line_summary`、`project_ledgers[]`、`weekly_progress_summary`、`weekly_detail_sections[]`、`project_overview[]`、`source_lists[]`、`source_category_stats[]`、`item_statistics[]`、`remaining_items[]`、`risks[]`、`patch_outputs[]`、`delivery_verifications[]` 和 `next_week_plan[]`。周报包只归档，不进入知识库沉淀候选。
 
-成员周报的核心是项目概况：项目名称、来源类型（定制 / Buglist / 混合 / 临时支持）、来源说明、启动时间、已持续时间、新增功能、移植适配、Bug、其他、合计、本周完成、累计完成、当前剩余、预计完成周和风险。生成结果允许成员在上传前手动修正；`project_ledgers[]` 是成员个人周报的结构化读模型，供管理端后续汇总使用，成员端不暴露团队汇总概念。
+成员周报的核心是项目概况：项目名称、客户名称、来源类型（定制 / Buglist / 混合 / 临时支持）、来源说明、启动时间、已持续时间、新增功能、移植适配、Bug、其他、合计、本周完成、累计完成、当前剩余、预计完成周和风险。成员可以直接说 `TVE1086U 青鸾云，本周主要推进...`；生成阶段会识别为项目 `TVE1086U`、客户 `青鸾云`。如果缺项目或客户，包会保留给成员修正，但提交会被本地校验拦住。生成结果允许成员在上传前手动修正；`project_ledgers[]` 是成员个人周报的结构化读模型，供管理端后续汇总使用，成员端不暴露团队汇总概念。
 
 常用命令：
 

@@ -135,7 +135,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.77")
+        self.assertEqual(current, "1.0.78")
         self.assertEqual(AKBS_RULES_CONTRACT_VERSION, "2026-07-02.1")
         matrix = source_version_compatibility_matrix()
         self.assertEqual(matrix["source_version_evidence"]["min_plugin_version"], "1.0.60")
@@ -145,6 +145,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertEqual(matrix["lightweight_supplement_v1"]["min_plugin_version"], "1.0.65")
         self.assertEqual(matrix["supplement_material_identity_inheritance_v1"]["min_plugin_version"], "1.0.76")
         self.assertEqual(matrix["report_project_identity_v1"]["min_plugin_version"], "1.0.77")
+        self.assertEqual(matrix["report_project_customer_required_v1"]["min_plugin_version"], "1.0.78")
 
         self.assertEqual(
             source_version_errors(

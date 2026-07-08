@@ -35,7 +35,7 @@ Generate `reports/weekly.md` with this required structure:
 Each project section must preserve:
 
 - 项目名称
-- 客户名称；if not proven, write `需成员确认`
+- 客户名称；if not proven, write `需成员补充客户名` and block local submit until corrected
 - 来源类型：定制 / Buglist / 混合 / 临时支持
 - 来源说明：需求单、Buglist、客户、测试、项目经理、临时安排等
 - 接到文档时间 and 已持续时间; if not proven, write `需成员确认`
@@ -50,10 +50,16 @@ Every formal weekly item should preserve both dimensions when available: 需求�
 Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `report_type=weekly`, `week_range`, `display_date`, `display_title`, `one_line_summary`, `project_ledgers[]`, `weekly_progress_summary`, `weekly_detail_sections[]`, `project_overview[]`, `source_lists[]`, `source_category_stats[]`, `requirement_origin`, `requirement_list_type`, `item_statistics[]`, `completed_items[]`, `in_progress_items[]`, `remaining_items[]`, `risks[]`, `patch_outputs[]`, `delivery_verifications[]`, and `next_week_plan[]`.
 
 `project_ledgers[]` is the structured view of the member's own weekly project
-ledger. Members may manually correct the Markdown before upload, but the
-generated `report_view.json` must remain the same-source structured view of that
-report content. Any management-side aggregation happens outside the member
-workflow and should not be exposed as a member responsibility.
+ledger. Each project ledger must include both a recognized company project name
+and a customer name. The member can provide this in natural language as
+`TVE1086U 青鸾云，本周主要推进...`; parse it as project `TVE1086U` and
+customer `青鸾云`. If either value is missing, generate the package with
+`需成员补充项目名` or `需成员补充客户名` so the member can edit it, but local
+submit must stop until both values are present. Members may manually correct the
+Markdown before upload, but the generated `report_view.json` must remain the
+same-source structured view of that report content. Any management-side
+aggregation happens outside the member workflow and should not be exposed as a
+member responsibility.
 
 The weekly display date is the last workday of the period. A late weekly submission still displays the weekly period date, not the upload day.
 

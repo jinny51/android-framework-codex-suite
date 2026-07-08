@@ -566,6 +566,11 @@ def git_branch_or_name(path: str) -> str:
 
 
 MISSING_REPORT_PROJECT = "需成员补充项目名"
+MISSING_REPORT_CUSTOMER = "需成员补充客户名"
+REPORT_MISSING_PROJECT_VALUES = {"", "unknown", "未识别项目", MISSING_REPORT_PROJECT}
+REPORT_MISSING_CUSTOMER_VALUES = {"", "unknown", "未识别客户", "需成员确认", MISSING_REPORT_CUSTOMER}
+REPORT_CUSTOMER_STOP_RE = re.compile(r"\s*(?:[，,。.;；\n\r]|帮我|请|生成|提交|上传|日报|周报)")
+REPORT_CUSTOMER_COMMAND_RE = re.compile(r"(帮我|请|生成|提交|上传|日报|周报|今天|本周|主要工作|围绕|处理|完成|进度)")
 
 
 def project_name(work: SessionWork) -> str:
@@ -575,6 +580,57 @@ def project_name(work: SessionWork) -> str:
         if project:
             return project
     return MISSING_REPORT_PROJECT
+
+
+def clean_report_customer_name(value: Any) -> str:
+    customer = re.sub(r"\s+", " ", str(value or "")).strip(" \t'\"`，,。.;；:：|-_/")
+    if not customer or customer in REPORT_MISSING_CUSTOMER_VALUES:
+        return ""
+    if REPORT_CUSTOMER_COMMAND_RE.search(customer):
+        return ""
+    if len(customer) > 32:
+        return ""
+    if not re.search(r"[\u4e00-\u9fffA-Za-z0-9]", customer):
+        return ""
+    return customer
+
+
+def project_customer_pairs_from_text(text: Any) -> list[tuple[str, str]]:
+    raw_text = str(text or "")
+    pairs: list[tuple[str, str]] = []
+    for match in PROJECT_ANCHOR_RE.finditer(raw_text):
+        project = find_company_project(match.group("base"))
+        if not project:
+            continue
+        tail = raw_text[match.end() :]
+        if not tail or not tail[0].isspace():
+            continue
+        tail = tail.lstrip()
+        customer_part = REPORT_CUSTOMER_STOP_RE.split(tail, 1)[0]
+        customer = clean_report_customer_name(customer_part)
+        if customer:
+            pair = (project, customer)
+            if pair not in pairs:
+                pairs.append(pair)
+    return pairs
+
+
+def report_project_customers_from_clues(clues: list[tuple[str, str]]) -> tuple[dict[str, str], dict[str, list[str]]]:
+    customers: dict[str, str] = {}
+    basis: dict[str, list[str]] = {}
+    for label, value in clues:
+        for project, customer in project_customer_pairs_from_text(value):
+            customers.setdefault(project, customer)
+            basis.setdefault(project, []).append(f"{label}: {project} {customer}")
+    return customers, basis
+
+
+def report_customer_for_project(project: Any, project_customers: dict[str, str] | None = None) -> str:
+    canonical = find_company_project(str(project or ""))
+    if not canonical:
+        return MISSING_REPORT_CUSTOMER
+    customer = (project_customers or {}).get(canonical, "")
+    return customer or MISSING_REPORT_CUSTOMER
 
 
 def parse_sessions(config: dict[str, str], dates: set[dt.date]) -> list[SessionWork]:
@@ -632,6 +688,11 @@ def synthetic_sessions(config: dict[str, str], dates: set[dt.date]) -> list[Sess
     except ValueError:
         count = 3
     projects = ["TVE8402M", "TVA10A2R", "TVI2010M"]
+    project_customers = {
+        "TVE8402M": "合成客户一",
+        "TVA10A2R": "合成客户二",
+        "TVI2010M": "合成客户三",
+    }
     tasks = [
         "模拟设置项开关需求分析",
         "模拟 SystemUI 状态同步问题排查",
@@ -645,7 +706,7 @@ def synthetic_sessions(config: dict[str, str], dates: set[dt.date]) -> list[Sess
     chosen_tasks = rng.sample(tasks, k=min(count, len(tasks)))
     for index, task in enumerate(chosen_tasks, start=1):
         token = uuid.uuid4().hex[:8]
-        project = projects[(index - 1) % len(projects)]
+        project = projects[0]
         status = rng.choice(statuses)
         sessions.append(
             SessionWork(
@@ -654,6 +715,7 @@ def synthetic_sessions(config: dict[str, str], dates: set[dt.date]) -> list[Sess
                 cwd="",
                 project=project,
                 messages=[
+                    f"项目客户：{project} {project_customers[project]}",
                     f"合成测试数据：{task}",
                     f"合成测试进度：{status}",
                     "合成测试说明：该记录不来自真实 Codex 会话或真实源码仓库。",
@@ -864,7 +926,11 @@ def discover_patches(config: dict[str, str], sessions: list[SessionWork], start:
 
 
 def items_by_project(sessions: list[SessionWork], patches: list[PatchInfo]) -> dict[str, list[tuple[str, str]]]:
-    patch_projects = {patch.project for patch in patches}
+    valid_session_projects = sorted(
+        dict.fromkeys(project for session in sessions for project in [find_company_project(session.project)] if project)
+    )
+    fallback_project = valid_session_projects[0] if len(valid_session_projects) == 1 else ""
+    patch_projects = {find_company_project(patch.project) or fallback_project or patch.project for patch in patches}
     items: dict[str, list[tuple[str, str]]] = {}
     for session in sessions:
         desc = summarize_session(session)
@@ -873,8 +939,9 @@ def items_by_project(sessions: list[SessionWork], patches: list[PatchInfo]) -> d
         if entry not in items.setdefault(session.project, []):
             items[session.project].append(entry)
     for patch in patches:
-        if not items.get(patch.project):
-            items.setdefault(patch.project, []).append(("产出功能补丁", "已产出 Patch"))
+        project = find_company_project(patch.project) or fallback_project or patch.project
+        if not items.get(project):
+            items.setdefault(project, []).append(("产出功能补丁", "已产出 Patch"))
     return items
 
 
@@ -1153,7 +1220,10 @@ def normalized_report_items(items: dict[str, list[tuple[str, str]]]) -> dict[str
     return normalized
 
 
-def project_ledger_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[str, Any]]:
+def project_ledger_rows(
+    items: dict[str, list[tuple[str, str]]],
+    project_customers: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     items = normalized_report_items(items)
     source_rows = weekly_source_rows(items)
@@ -1165,7 +1235,7 @@ def project_ledger_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[st
                 "source_note": "未发现可归档事项",
                 "start_date": "需成员确认",
                 "duration_label": "需成员确认",
-                "customer_name": "需成员确认",
+                "customer_name": MISSING_REPORT_CUSTOMER,
                 "previous_week_remaining": 0,
                 "totals": {"feature_add": 0, "feature_port": 0, "bug": 0, "bsp": 0, "other": 0, "total": 0},
                 "this_week_completed": 0,
@@ -1189,7 +1259,7 @@ def project_ledger_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[st
                 "source_note": project_source_note(entries),
                 "start_date": "需成员确认",
                 "duration_label": "需成员确认",
-                "customer_name": "需成员确认",
+                "customer_name": report_customer_for_project(project, project_customers),
                 "source_lists": project_sources,
                 "totals": totals,
                 "previous_week_remaining": remaining + stats["completed"],
@@ -1204,8 +1274,11 @@ def project_ledger_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[st
     return rows
 
 
-def weekly_progress_summary_payload(items: dict[str, list[tuple[str, str]]]) -> dict[str, Any]:
-    ledgers = project_ledger_rows(items)
+def weekly_progress_summary_payload(
+    items: dict[str, list[tuple[str, str]]],
+    project_customers: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    ledgers = project_ledger_rows(items, project_customers)
     return {
         "project_count": len([row for row in ledgers if row["project"] not in {"未识别项目", MISSING_REPORT_PROJECT}]),
         "total": sum(int(row["totals"]["total"]) for row in ledgers),
@@ -1216,11 +1289,15 @@ def weekly_progress_summary_payload(items: dict[str, list[tuple[str, str]]]) -> 
     }
 
 
-def weekly_detail_sections_payload(items: dict[str, list[tuple[str, str]]], patches: list[PatchInfo]) -> list[dict[str, Any]]:
+def weekly_detail_sections_payload(
+    items: dict[str, list[tuple[str, str]]],
+    patches: list[PatchInfo],
+    project_customers: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
     sections: list[dict[str, Any]] = []
     items = normalized_report_items(items)
     patch_outputs = render_patch_list(patches, "本周无产出 Patch。")
-    for ledger in project_ledger_rows(items):
+    for ledger in project_ledger_rows(items, project_customers):
         project = str(ledger["project"])
         entries = items.get(project, [])
         completed = [desc for desc, progress in entries if progress_bucket(progress) == "completed"]
@@ -1244,26 +1321,30 @@ def write_daily_report(
     lines: list[str],
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
+    project_customers: dict[str, str] | None = None,
 ) -> None:
     lines += [
         "## 一、今日工作概览",
         "",
-        "| 项目 | 模块/功能 | 事项类型 | 当前状态 | 是否阻塞 | 今日一句话进展 |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| 项目 | 客户 | 模块/功能 | 事项类型 | 当前状态 | 是否阻塞 | 今日一句话进展 |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ]
     if not items:
-        lines.append("| 未识别项目 | 未发现可归档事项 | 工程事项 | 进行中 | 否 | 未形成有效工作记录 |")
+        lines.append(f"| 未识别项目 | {MISSING_REPORT_CUSTOMER} | 未发现可归档事项 | 工程事项 | 进行中 | 否 | 未形成有效工作记录 |")
     for project, entries in sorted(items.items()):
         stats = project_stats(entries)
         risk = "是" if stats.get("blocked", 0) else "否"
         modules = "；".join(compact_text(desc, 36) for desc, _ in entries[:3])
         types = "、".join(sorted({item_type(desc, progress) for desc, progress in entries}))
         progress = next_step_for_entries(entries, "daily")
-        lines.append(f"| {project} | {modules or '未识别'} | {types or '工程事项'} | {status_label_from_stats(stats)} | {risk} | {compact_text(progress, 80)} |")
+        customer = report_customer_for_project(project, project_customers)
+        lines.append(f"| {project} | {customer} | {modules or '未识别'} | {types or '工程事项'} | {status_label_from_stats(stats)} | {risk} | {compact_text(progress, 80)} |")
     lines += ["", "## 二、今日具体事项", ""]
     if not items:
         lines += [
             "### 1. 项目名称：未识别项目",
+            "",
+            f"**客户名称：** {MISSING_REPORT_CUSTOMER}",
             "",
             "**事项名称：** 未发现可归档事项",
             "",
@@ -1287,7 +1368,8 @@ def write_daily_report(
             "",
         ]
     for project, entries in sorted(items.items()):
-        lines += [f"### {project}", "", f"**项目名称：** {project}", ""]
+        customer = report_customer_for_project(project, project_customers)
+        lines += [f"### {project}", "", f"**项目名称：** {project}", "", f"**客户名称：** {customer}", ""]
         for index, (desc, progress) in enumerate(entries, start=1):
             bucket = progress_bucket(progress)
             leftover = "暂无明确遗留问题" if bucket == "completed" else "仍需继续推进或补齐验证证据"
@@ -1349,10 +1431,11 @@ def write_weekly_report(
     lines: list[str],
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
+    project_customers: dict[str, str] | None = None,
 ) -> None:
     items = normalized_report_items(items)
-    ledgers = project_ledger_rows(items)
-    summary = weekly_progress_summary_payload(items)
+    ledgers = project_ledger_rows(items, project_customers)
+    summary = weekly_progress_summary_payload(items, project_customers)
     lines += [
         "## 一、本周概况",
         "",
@@ -1431,6 +1514,7 @@ def report_view_payload(
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
     summary: str,
+    project_customers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     display_title = f"{ymd(date) if report_type == 'daily' else week_key}_{config['member_name']}_{'日报' if report_type == 'daily' else '周报'}"
     payload: dict[str, Any] = {
@@ -1458,8 +1542,10 @@ def report_view_payload(
         projects: list[dict[str, Any]] = []
         for project, entries in sorted(items.items()):
             stats = project_stats(entries)
+            customer = report_customer_for_project(project, project_customers)
             project_row = {
                 "project": project,
+                "customer_name": customer,
                 "module_or_feature": "；".join(compact_text(desc, 36) for desc, _ in entries[:3]) or "未识别",
                 "item_types": sorted({item_type(desc, progress) for desc, progress in entries}) or ["工程事项"],
                 "status": status_label_from_stats(stats),
@@ -1472,6 +1558,7 @@ def report_view_payload(
                 bucket = progress_bucket(progress)
                 item_payload = {
                     "project": project,
+                    "customer_name": customer,
                     "title": compact_text(desc, 80),
                     "item_name": report_item_name(desc),
                     "source": report_item_source(desc),
@@ -1505,6 +1592,7 @@ def report_view_payload(
                 or [
                     {
                         "project": "未识别项目",
+                        "customer_name": MISSING_REPORT_CUSTOMER,
                         "module_or_feature": "未发现可归档事项",
                         "item_types": ["工程事项"],
                         "status": "进行中",
@@ -1516,6 +1604,7 @@ def report_view_payload(
                 or [
                     {
                         "project": "未识别项目",
+                        "customer_name": MISSING_REPORT_CUSTOMER,
                         "module_or_feature": "未发现可归档事项",
                         "item_types": ["工程事项"],
                         "status": "进行中",
@@ -1541,9 +1630,9 @@ def report_view_payload(
     in_progress_items: list[dict[str, str]] = []
     remaining_items: list[dict[str, str]] = []
     risks = []
-    project_ledgers = project_ledger_rows(items)
-    weekly_progress_summary = weekly_progress_summary_payload(items)
-    weekly_detail_sections = weekly_detail_sections_payload(items, patches)
+    project_ledgers = project_ledger_rows(items, project_customers)
+    weekly_progress_summary = weekly_progress_summary_payload(items, project_customers)
+    weekly_detail_sections = weekly_detail_sections_payload(items, patches, project_customers)
     source_lists = weekly_source_rows(items)
     source_category_stats = weekly_category_rows(items)
     for project, entries in sorted(items.items()):
@@ -1551,6 +1640,7 @@ def report_view_payload(
         ledger = next((row for row in project_ledgers if row["project"] == project), {})
         overview_row = {
             "project": project,
+            "customer_name": ledger.get("customer_name", report_customer_for_project(project, project_customers)),
             "source_type": ledger.get("source_type", project_source_type(entries)),
             "source_note": ledger.get("source_note", project_source_note(entries)),
             "start_date": ledger.get("start_date", "需成员确认"),
@@ -1575,6 +1665,7 @@ def report_view_payload(
         project_summaries.append(
             {
                 "project": project,
+                "customer_name": ledger.get("customer_name", report_customer_for_project(project, project_customers)),
                 "source": "Codex 会话记录 / 本地工程证据",
                 "source_info": compact_text("；".join(desc for desc, _ in entries[:4]), 160),
                 "requirement_origin": sorted({report_item_source(desc) for desc, _ in entries}),
@@ -1598,9 +1689,9 @@ def report_view_payload(
             "weekly_progress_summary": weekly_progress_summary,
             "weekly_detail_sections": weekly_detail_sections,
             "project_overview": project_overview
-            or [{"project": "未识别项目", "source_list_count": 0, "total": 0, "new_this_week": 0, "completed": 0, "in_progress": 0, "not_started": 0, "blocked_or_risk": 0, "stale_over_three_days": 0, "status": "无事项"}],
+            or [{"project": "未识别项目", "customer_name": MISSING_REPORT_CUSTOMER, "source_list_count": 0, "total": 0, "new_this_week": 0, "completed": 0, "in_progress": 0, "not_started": 0, "blocked_or_risk": 0, "stale_over_three_days": 0, "status": "无事项"}],
             "weekly_overview": weekly_overview
-            or [{"project": "未识别项目", "total": 0, "completed": 0, "in_progress": 0, "not_started": 0, "blocked_or_risk": 0, "status": "无事项"}],
+            or [{"project": "未识别项目", "customer_name": MISSING_REPORT_CUSTOMER, "total": 0, "completed": 0, "in_progress": 0, "not_started": 0, "blocked_or_risk": 0, "status": "无事项"}],
             "source_lists": source_lists,
             "source_category_stats": source_category_stats,
             "requirement_origin": sorted({str(row["origin"]) for row in source_lists}),
@@ -1645,15 +1736,16 @@ def write_report(
     config: dict[str, str],
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
+    project_customers: dict[str, str] | None = None,
 ) -> Path:
     report_path = package_dir / f"{report_type}.md"
     title_key = ymd(date) if report_type == "daily" else week_key
     title = "日报" if report_type == "daily" else "周报"
     lines = [f"# {title_key}_{config['member_name']}_{title}", ""]
     if report_type == "daily":
-        write_daily_report(lines, items, patches)
+        write_daily_report(lines, items, patches, project_customers)
     else:
-        write_weekly_report(lines, items, patches)
+        write_weekly_report(lines, items, patches, project_customers)
     report_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return report_path
 
@@ -1667,9 +1759,10 @@ def write_report_view(
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
     summary: str,
+    project_customers: dict[str, str] | None = None,
 ) -> str:
     rel = materials_rel("display", "report_view.json")
-    write_json(package_dir / rel, report_view_payload(report_type, date, week_key, config, items, patches, summary))
+    write_json(package_dir / rel, report_view_payload(report_type, date, week_key, config, items, patches, summary, project_customers))
     return rel
 
 
@@ -2949,6 +3042,27 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             by_kind[str(kind)] = payload
         return by_kind
 
+    def report_project_customer_errors(rel: str, rows: Any, label: str) -> list[str]:
+        row_errors: list[str] = []
+        if not isinstance(rows, list) or not rows:
+            row_errors.append(f"{rel} payload.{label} 必须包含项目和客户信息")
+            return row_errors
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict):
+                row_errors.append(f"{rel} payload.{label}[{index}] 必须是对象")
+                continue
+            project = str(row.get("project") or "").strip()
+            if project in REPORT_MISSING_PROJECT_VALUES or not find_company_project(project):
+                row_errors.append(
+                    f"{rel} payload.{label}[{index}].project 未识别到公司项目名，请按“项目名 客户名”补充，例如：TVE1086U 青鸾云"
+                )
+            customer = str(row.get("customer_name") or "").strip()
+            if customer in REPORT_MISSING_CUSTOMER_VALUES:
+                row_errors.append(
+                    f"{rel} payload.{label}[{index}].customer_name 缺少客户名，请按“项目名 客户名”补充，例如：TVE1086U 青鸾云"
+                )
+        return row_errors
+
     required = {
         "schema",
         "schema_version",
@@ -3014,12 +3128,16 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
                 if not project:
                     errors.append("project_inference.project 必须提供")
                 if project == "unknown":
+                    errors.append("project_inference.project 未识别到公司项目名，请按“项目名 客户名”补充，例如：TVE1086U 青鸾云")
                     if not isinstance(project_payload.get("checked_sources"), list) or not project_payload.get("checked_sources"):
                         errors.append("unknown project_inference 必须记录 checked_sources")
                     if not isinstance(project_payload.get("limits"), list) or not project_payload.get("limits"):
                         errors.append("unknown project_inference 必须记录 limits")
                 elif manifest.get("project") != project:
                     errors.append("daily_trace manifest.project 必须等于 project_inference.project")
+                customer = str(project_payload.get("customer_name") or "").strip()
+                if project and project != "unknown" and customer in REPORT_MISSING_CUSTOMER_VALUES:
+                    errors.append("project_inference.customer_name 缺少客户名，请按“项目名 客户名”补充，例如：TVE1086U 青鸾云")
         work_findings = evidence_by_kind.get("work_findings", {})
         payload = work_findings.get("payload", {}) if isinstance(work_findings, dict) else {}
         if not isinstance(payload.get("scanned_sources"), list) or not payload.get("scanned_sources"):
@@ -3059,10 +3177,12 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
                 for field in ("projects", "work_items", "risks", "outputs", "tomorrow_focus"):
                     if not isinstance(view.get(field), list):
                         errors.append(f"{rel} payload.{field} 必须是数组")
+                errors.extend(report_project_customer_errors(rel, view.get("projects"), "projects"))
                 if view.get("report_date") != manifest.get("date"):
                     errors.append(f"{rel} payload.report_date 必须等于 manifest.date")
             else:
                 for field in (
+                    "project_ledgers",
                     "project_overview",
                     "source_lists",
                     "source_category_stats",
@@ -3083,6 +3203,7 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
                     errors.append(f"{rel} payload.week_range 必须等于 manifest.week_range")
                 if not view.get("display_date"):
                     errors.append(f"{rel} payload.display_date 必须提供")
+                errors.extend(report_project_customer_errors(rel, view.get("project_ledgers"), "project_ledgers"))
 
     if package_kind == "framework_change":
         for field in ("case_id", "variant_id", "package_status", "platform", "android_version", "project"):
@@ -4012,20 +4133,22 @@ def prepare_package(
         sessions = parse_sessions(config, dates)
         patches = discover_patches(config, sessions, start, end)
     items = items_by_project(sessions, patches)
-    write_report(package_dir, report_type, date, week_key, config, items, patches)
     summary = overview_text(report_type, items, patches)
-    report_project = ""
-    project_path = ""
-    if report_type == "daily":
-        report_project, project_payload = infer_report_project(report_type, summary, items, sessions, patches)
-        project_path = write_default_evidence(
-            package_dir,
-            materials_rel("evidence", "project_inference.json"),
-            {
-                "kind": "project_inference",
-                "payload": project_payload,
-            },
-        )
+    report_project, project_payload = infer_report_project(report_type, summary, items, sessions, patches)
+    project_customers = {
+        str(item.get("project")): str(item.get("customer_name"))
+        for item in project_payload.get("project_customers", [])
+        if isinstance(item, dict) and item.get("project") and item.get("customer_name")
+    }
+    write_report(package_dir, report_type, date, week_key, config, items, patches, project_customers)
+    project_path = write_default_evidence(
+        package_dir,
+        materials_rel("evidence", "project_inference.json"),
+        {
+            "kind": "project_inference",
+            "payload": project_payload,
+        },
+    )
 
     evidence = {
         "source": "android-knowledge-intake",
@@ -4056,7 +4179,7 @@ def prepare_package(
     reports_dir.mkdir(parents=True, exist_ok=True)
     shutil.move(str(package_dir / f"{report_type}.md"), reports_dir / f"{report_type}.md")
     source = write_package_source(package_dir, config, "android-knowledge-intake")
-    display_path = write_report_view(package_dir, report_type, date, week_key, config, items, patches, summary)
+    display_path = write_report_view(package_dir, report_type, date, week_key, config, items, patches, summary, project_customers)
     manifest = incoming_report_manifest(
         report_type,
         date,
@@ -4461,6 +4584,9 @@ def infer_report_project(
         ):
             if value:
                 clues.append((f"{label_prefix} {label}", value))
+        for message in session.messages:
+            if message:
+                clues.append((f"{label_prefix} session message", message))
     for patch in patches:
         for label, value in (("patch project", patch.project), ("patch name", patch.name), ("patch path", str(patch.path))):
             if value:
@@ -4468,6 +4594,22 @@ def infer_report_project(
 
     checked_sources = sorted(dict.fromkeys(label for label, value in clues if str(value).strip()))
     raw_inputs = [f"{label}: {value}" for label, value in clues if str(value).strip()]
+    project_customers, customer_basis = report_project_customers_from_clues(clues)
+
+    def attach_customers(payload: dict[str, Any]) -> dict[str, Any]:
+        payload["project_customers"] = [
+            {"project": project, "customer_name": customer}
+            for project, customer in sorted(project_customers.items())
+        ]
+        payload["customer_basis"] = {
+            project: basis[:5]
+            for project, basis in sorted(customer_basis.items())
+        }
+        project = str(payload.get("project") or "")
+        if project and project not in REPORT_MISSING_PROJECT_VALUES:
+            payload["customer_name"] = project_customers.get(project, MISSING_REPORT_CUSTOMER)
+        return payload
+
     matched: list[tuple[str, str, str]] = []
     for label, value in clues:
         project = find_company_project(str(value))
@@ -4477,36 +4619,36 @@ def infer_report_project(
     unique_projects = sorted(dict.fromkeys(project for project, _, _ in matched))
     if len(unique_projects) == 1:
         project, label, value = matched[0]
-        return project, project_inference_payload(project, [f"{label}: {value}"], checked_sources, raw_inputs)
+        return project, attach_customers(project_inference_payload(project, [f"{label}: {value}"], checked_sources, raw_inputs))
     if len(unique_projects) > 1:
         base_models = sorted(dict.fromkeys(parse_company_project(project).get("base_model", "") for project in unique_projects))
         if len(base_models) == 1:
             base_project = base_models[0]
-            payload = project_inference_payload(
+            payload = attach_customers(project_inference_payload(
                 base_project,
                 [f"{label_prefix}候选项目: {', '.join(unique_projects)}"],
                 checked_sources,
                 raw_inputs,
                 [f"多个候选共享基础项目 {base_project}，日报写入基础项目并保留完整候选证据"],
-            )
+            ))
             payload["candidates"] = unique_projects
             return base_project, payload
-        payload = project_inference_payload(
+        payload = attach_customers(project_inference_payload(
             "unknown",
             [],
             checked_sources,
             raw_inputs,
             [f"{label_prefix}包含多个项目型号: {', '.join(unique_projects)}，不能写成单一项目"],
-        )
+        ))
         payload["candidates"] = unique_projects
         return "unknown", payload
-    return "unknown", project_inference_payload(
+    return "unknown", attach_customers(project_inference_payload(
         "unknown",
         [],
         checked_sources,
         raw_inputs,
         [f"{label_prefix}未识别到 TVD/TVE/TVA/TVI 项目型号"],
-    )
+    ))
 
 
 def write_default_evidence(package_dir: Path, rel: str, payload: dict[str, Any]) -> str:
@@ -5679,6 +5821,8 @@ def main() -> int:
             )
         result = json.loads((package_dir / "local-check.json").read_text(encoding="utf-8"))
         print(json.dumps({"package": str(package_dir), "local_check": result}, ensure_ascii=False, indent=2))
+        if args.report_type in {"daily", "weekly"}:
+            return 0
         return 0 if result["status"] == "PASS" else 1
     if args.submit_latest:
         package_dir = latest_pending(args.report_type, config, date if args.date else None)

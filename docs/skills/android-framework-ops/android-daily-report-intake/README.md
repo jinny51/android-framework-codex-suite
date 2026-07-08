@@ -12,6 +12,8 @@
 
 `report_view.json` 是同一份日报正文的 UI 读模型（UI read model），至少包含 `report_type=daily`、`report_date`、`display_title`、`one_line_summary`、`projects[]`、`work_items[]`、`risks[]`、`outputs[]` 和 `tomorrow_focus[]`。它不是 AI 证据层，也不改变日报只归档的性质。
 
+日报项目行必须同时有公司项目名和客户名。成员可以直接说 `TVE1086U 青鸾云，帮我生成日报并提交`；生成阶段会识别为项目 `TVE1086U`、客户 `青鸾云`。如果缺项目或客户，包会保留给成员修正，但提交会被本地校验拦住。
+
 常用命令：
 
 ```bash

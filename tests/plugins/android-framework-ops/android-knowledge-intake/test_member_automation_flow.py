@@ -1149,6 +1149,73 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertNotIn("### TVE1086U整体项目交接", report)
             self.assertNotIn("### android16", report)
 
+    def test_report_project_customer_phrase_allows_daily_and_weekly_local_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            codex_home = Path(env["CODEX_HOME"])
+            source_root = create_framework_repo(root)
+
+            write_codex_session(
+                codex_home,
+                "44444444-3333-3333-4444-555555555555",
+                source_root,
+                dt.date(2026, 6, 3),
+                [
+                    "TVE1086U 青鸾云，帮我生成日报并提交。",
+                    "今天处理 TVE1086U 状态栏策略，进度100%。",
+                ],
+                thread_name="TVE1086U 日报",
+            )
+
+            daily = prepare_daily_package(env, "2026-06-03", "20260603-213000-daily")
+            weekly = prepare_weekly_package(env, "2026-06-03", "20260603-223000-weekly")
+            daily_check = json.loads((daily / "local-check.json").read_text(encoding="utf-8"))
+            weekly_check = json.loads((weekly / "local-check.json").read_text(encoding="utf-8"))
+            daily_view = read_report_view(daily)
+            weekly_view = read_report_view(weekly)
+            project_inference = json.loads((daily / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(daily_check["status"], "PASS")
+            self.assertEqual(weekly_check["status"], "PASS")
+            self.assertEqual(daily_view["payload"]["projects"][0]["project"], "TVE1086U")
+            self.assertEqual(daily_view["payload"]["projects"][0]["customer_name"], "青鸾云")
+            self.assertEqual(weekly_view["payload"]["project_ledgers"][0]["project"], "TVE1086U")
+            self.assertEqual(weekly_view["payload"]["project_ledgers"][0]["customer_name"], "青鸾云")
+            self.assertEqual(project_inference["payload"]["customer_name"], "青鸾云")
+
+    def test_report_local_check_rejects_missing_customer_and_command_text_customer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            codex_home = Path(env["CODEX_HOME"])
+            source_root = create_framework_repo(root)
+
+            write_codex_session(
+                codex_home,
+                "44444444-4444-3333-4444-555555555555",
+                source_root,
+                dt.date(2026, 6, 3),
+                [
+                    "TVE1086U 帮我生成日报并提交。",
+                    "今天处理 TVE1086U 状态栏策略，进度100%。",
+                ],
+                thread_name="TVE1086U 日报",
+            )
+
+            daily = prepare_daily_package(env, "2026-06-03", "20260603-214000-daily")
+            weekly = prepare_weekly_package(env, "2026-06-03", "20260603-224000-weekly")
+            daily_check = json.loads((daily / "local-check.json").read_text(encoding="utf-8"))
+            weekly_check = json.loads((weekly / "local-check.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(daily_check["status"], "FAIL")
+            self.assertEqual(weekly_check["status"], "FAIL")
+            self.assertIn("请按“项目名 客户名”补充", "\n".join(daily_check["errors"]))
+            self.assertIn("请按“项目名 客户名”补充", "\n".join(weekly_check["errors"]))
+            self.assertNotIn("帮我生成日报并提交", read_report_view(daily)["payload"]["projects"][0]["customer_name"])
+
     def test_weekly_project_ledger_rejects_source_directory_as_project_name(self) -> None:
         module = load_intake_module()
 
@@ -1195,7 +1262,10 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "11111111-2222-3333-4444-555555555555",
                 workdir,
                 dt.date(2026, 6, 2),
-                "已完成 SystemUI 状态栏策略修改，后续需要补齐验证和 patch capture。",
+                [
+                    "TVE1086U 青鸾云，帮我生成日报并提交。",
+                    "已完成 TVE1086U SystemUI 状态栏策略修改，后续需要补齐验证和 patch capture。",
+                ],
             )
 
             result = run_json(
@@ -1509,7 +1579,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "验证情况",
                 "遗留问题",
                 "下一步/明日计划",
-                "| 项目 | 模块/功能 | 事项类型 | 当前状态 | 是否阻塞 | 今日一句话进展 |",
+                "| 项目 | 客户 | 模块/功能 | 事项类型 | 当前状态 | 是否阻塞 | 今日一句话进展 |",
             ):
                 self.assertIn(text, daily_report)
             for text in (
