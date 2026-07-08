@@ -298,7 +298,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.75"
+    "plugin_version": "1.0.76"
   }
 }
 ```
@@ -358,11 +358,13 @@ If a previous `framework_change` package is marked 需补证据（needs_evidence
 
 This association only says the new patch package supplements evidence for an earlier package. It is not a curation decision and does not create another allowed `package_kind`.
 
-Supplement packages use `supplement_mode` to distinguish lightweight field/display correction from asset recapture:
+Supplement packages use `supplement_mode` to distinguish lightweight metadata correction from asset recapture:
 
 ```text
 field_correction
-  Corrects project, platform, Android version, material name, feature name, patch_view/report_view display fields, or equivalent structured display metadata.
+  Corrects project, platform, or Android version metadata.
+  Must not change material name, material summary, feature name, patch_view/report_view display title, or equivalent material identity fields.
+  Supplements inherit the target original package material identity. If material identity is wrong, regenerate a replacement original package.
   Must include corrected_fields, correction_reason, evidence_supplement, and field_correction evidence.
   Must not include patch diff, verification_result, search_before_change, patch_ai_facts, build/deploy evidence, or patch assets.
 

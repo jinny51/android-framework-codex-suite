@@ -982,13 +982,12 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 status="validated",
                 schema_version="1",
                 supplement_for_package_key=target,
-                supplement_reason="补充项目名（project）和展示标题字段。",
+                supplement_reason="补充项目名（project）字段。",
                 supplement_mode="field_correction",
                 corrected_fields={
                     "project": "TVI3315A",
                     "platform": "rk",
                     "android_version": "14",
-                    "display_title": "TVI3315A 相机策略补证",
                 },
                 correction_reason="管理端原包项目名识别为 unknown，需要补充可见字段。",
                 platform_override="rk",
@@ -1016,6 +1015,75 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(field_correction["payload"]["corrected_by"]["member_alias"], "admin_alias")
             self.assertEqual(patch_view["payload"]["material_kind_label"], "字段补证包")
             self.assertIn("不包含补丁 diff", patch_view["payload"]["result_summary"])
+
+    def test_field_correction_supplement_rejects_material_identity_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with self.assertRaises(SystemExit) as raised:
+                intake.prepare_patch_package(
+                    dt.date(2026, 7, 2),
+                    self.config(root),
+                    run_id="20260702-204501-field-supplement",
+                    patch_paths=[],
+                    patch_package_paths=[],
+                    project="TVI3315A",
+                    summary="补充 TVI3315A 项目名和展示字段",
+                    status="validated",
+                    schema_version="1",
+                    supplement_for_package_key="20260702/lincong/20260702-193308-patch",
+                    supplement_reason="补充项目名（project）字段。",
+                    supplement_mode="field_correction",
+                    corrected_fields={
+                        "project": "TVI3315A",
+                        "material_name": "new-material-name",
+                    },
+                    correction_reason="材料名不应通过补证包改写。",
+                    platform_override="rk",
+                    android_version_override="14",
+                )
+
+            self.assertIn("不能修正材料身份字段", str(raised.exception))
+
+    def test_field_correction_supplement_declares_material_identity_inheritance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = "20260702/lincong/20260702-193308-patch"
+            package = intake.prepare_patch_package(
+                dt.date(2026, 7, 2),
+                self.config(root),
+                run_id="20260702-204503-field-supplement",
+                patch_paths=[],
+                patch_package_paths=[],
+                project="TVI3315A",
+                summary="补充 TVI3315A 项目名字段",
+                status="validated",
+                schema_version="1",
+                supplement_for_package_key=target,
+                supplement_reason="补充项目名（project）字段。",
+                supplement_mode="field_correction",
+                corrected_fields={
+                    "project": "TVI3315A",
+                    "platform": "rk",
+                    "android_version": "14",
+                },
+                correction_reason="管理端原包项目名识别为 unknown，需要补充可追溯字段。",
+                platform_override="rk",
+                android_version_override="14",
+            )
+
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            patch_view = json.loads((package / "materials" / "display" / "patch_view.json").read_text(encoding="utf-8"))
+
+            self.assertEqual(
+                manifest["material_identity"],
+                {
+                    "mode": "inherit_target_package",
+                    "target_package_key": target,
+                    "editable": False,
+                },
+            )
+            self.assertEqual(patch_view["payload"]["material_identity_mode"], "inherit_target_package")
+            self.assertEqual(patch_view["payload"]["material_identity_target_package_key"], target)
 
     def test_asset_correction_mode_still_requires_patch_capture_package(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

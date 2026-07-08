@@ -184,7 +184,11 @@ FIELD_CORRECTION_ALLOWED_FIELDS = {
     "project",
     "platform",
     "android_version",
+}
+FIELD_CORRECTION_MATERIAL_IDENTITY_FIELDS = {
     "material_name",
+    "material_summary",
+    "feature",
     "feature_name",
     "function_name",
     "display_title",
@@ -208,6 +212,7 @@ FIELD_CORRECTION_FORBIDDEN_FIELDS = {
     "search_before_change",
     "search_usage",
     "code_anchors",
+    *FIELD_CORRECTION_MATERIAL_IDENTITY_FIELDS,
 }
 FIELD_CORRECTION_FORBIDDEN_EVIDENCE_KINDS = {
     "patch_diff_facts",
@@ -3784,6 +3789,7 @@ def patch_view_payload(
 ) -> dict[str, Any]:
     summary = str(manifest_like.get("summary") or "").strip() or "Framework 补丁包"
     material_kind_label = "字段补证包" if supplement_mode == "field_correction" else ("补证包" if supplement_for_package_key else "原始包")
+    material_identity_mode = "inherit_target_package" if supplement_for_package_key else "self"
     result_summary = str(verification_payload.get("summary") or verification_payload.get("result") or "验证结果未提供")
     if supplement_mode == "field_correction":
         result_summary = "字段级补证，不包含补丁 diff、验证结论或代码证据。"
@@ -3816,6 +3822,8 @@ def patch_view_payload(
         "kind": "patch_view",
         "payload": {
             "material_kind_label": material_kind_label,
+            "material_identity_mode": material_identity_mode,
+            "material_identity_target_package_key": supplement_for_package_key,
             "display_title": compact_text(summary, 80),
             "problem_summary": case_problem or summary,
             "solution_summary": case_solution or summary,
@@ -4509,6 +4517,13 @@ def normalize_corrected_fields(
         for key, value in (corrected_fields or {}).items()
         if str(key or "").strip() and str(value or "").strip()
     }
+    identity_fields = sorted(set(normalized) & FIELD_CORRECTION_MATERIAL_IDENTITY_FIELDS)
+    if identity_fields:
+        raise SystemExit(
+            "字段级补证不能修正材料身份字段: "
+            + ", ".join(identity_fields)
+            + "；材料名或材料摘要错误时，请重新生成替换原始包。"
+        )
     if project and project != "unknown":
         normalized.setdefault("project", project)
     if platform and platform != "unknown":
@@ -4772,6 +4787,11 @@ def prepare_field_correction_package(
         "supplement_for_package_key": supplement_for_package_key,
         "supplement_reason": supplement_reason or correction_reason,
         "supplement_mode": "field_correction",
+        "material_identity": {
+            "mode": "inherit_target_package",
+            "target_package_key": supplement_for_package_key,
+            "editable": False,
+        },
         "corrected_fields": corrected_fields,
         "correction_reason": correction_reason or supplement_reason,
         "files": {
@@ -5280,6 +5300,11 @@ def prepare_patch_package(
     if supplement_for_package_key:
         manifest["supplement_for_package_key"] = supplement_for_package_key
         manifest["supplement_reason"] = supplement_reason
+        manifest["material_identity"] = {
+            "mode": "inherit_target_package",
+            "target_package_key": supplement_for_package_key,
+            "editable": False,
+        }
         if inferred_mode:
             manifest["supplement_mode"] = inferred_mode
     for evidence_rel in manifest["files"]["evidence"]:
@@ -5527,7 +5552,7 @@ def parse_args() -> argparse.Namespace:
             sub.add_argument("--related-report-run-id", dest="related_report_run_ids", action="append", default=[], help="daily/weekly incoming run_id related to this framework_change; repeatable")
             sub.add_argument("--supplement-for-package-key", default="", help="original incoming package key that this framework_change package supplements")
             sub.add_argument("--supplement-reason", default="", help="why this package supplements the original incoming package")
-            sub.add_argument("--supplement-mode", choices=["field_correction", "asset_correction"], default="", help="field_correction for lightweight metadata/display supplements, asset_correction for full patch asset recapture")
+            sub.add_argument("--supplement-mode", choices=["field_correction", "asset_correction"], default="", help="field_correction for project/platform/Android version metadata supplements, asset_correction for full patch asset recapture")
             sub.add_argument("--corrected-field", dest="corrected_fields", action="append", default=[], help="field=value correction for field_correction supplements; repeatable")
             sub.add_argument("--correction-reason", default="", help="audit reason for field_correction supplements")
             sub.add_argument(

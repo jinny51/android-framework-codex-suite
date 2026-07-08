@@ -21,7 +21,7 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
 
 实际源码变更应先用 `android-framework-patch-capture` 生成一个功能级 capture package。补丁资产修正也必须重新 capture，不能复制旧 patch 或手写说明伪装为修正。
 
-轻量补证只适用于字段级 / 展示级缺口，例如 `project`、`platform`、Android 版本、材料名、功能名、`patch_view` 或 `report_view` 展示字段：
+轻量补证只适用于字段级元数据缺口，例如 `project`、`platform`、Android 版本。补证包继承目标原始包的材料名和材料摘要；如果材料名或材料摘要错误，必须重新生成替换原始包，不能用补证包改写。
 
 ```bash
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare \
@@ -31,7 +31,7 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
   --corrected-field platform=rk \
   --corrected-field android_version=14 \
   --correction-reason "管理端提示项目名缺失，按成员可追溯字段补证" \
-  --summary "补充 TVI3315A 项目和展示字段" \
+  --summary "补充 TVI3315A 项目字段" \
   --status validated
 ```
 
