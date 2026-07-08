@@ -61,6 +61,15 @@ same-source structured view of that report content. Any management-side
 aggregation happens outside the member workflow and should not be exposed as a
 member responsibility.
 
+Before running `--prepare`, `--upload`, or `--submit-latest`, check the current
+member request and visible conversation context for a recognized project +
+customer pair. If Codex cannot find both values, do not run the command yet.
+Reply in the conversation:
+
+```text
+缺少项目名和客户名，请补充，例如：TVE1086U 青鸾云。
+```
+
 The weekly display date is the last workday of the period. A late weekly submission still displays the weekly period date, not the upload day.
 
 ## Commands

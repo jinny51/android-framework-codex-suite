@@ -29,6 +29,12 @@ Generate the same-source UI read model at `materials/display/report_view.json`. 
 
 Daily project rows must include both a recognized company project name and a customer name. The member can provide this in natural language as `TVE1086U 青鸾云，帮我生成日报并提交`; parse it as project `TVE1086U` and customer `青鸾云`. If either value is missing, generate the package with `需成员补充项目名` or `需成员补充客户名` so the member can edit it, but local submit must stop until both values are present.
 
+Before running `--prepare`, `--upload`, or `--submit-latest`, check the current member request and visible conversation context for a recognized project + customer pair. If Codex cannot find both values, do not run the command yet. Reply in the conversation:
+
+```text
+缺少项目名和客户名，请补充，例如：TVE1086U 青鸾云。
+```
+
 Do not put raw commands, plugin cache paths, Codex session names, JSON fragments, shell output, package keys, case ids, or source paths into UI display fields. If evidence is missing, write clear human text such as `需补充`, not fabricated facts.
 
 ## Commands
