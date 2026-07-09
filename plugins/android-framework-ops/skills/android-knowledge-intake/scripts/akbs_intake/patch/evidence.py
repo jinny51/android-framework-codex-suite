@@ -259,6 +259,43 @@ def ensure_required_patch_explanation_evidence(
     return updated
 
 
+def verification_payload_or_missing(verification_payload: dict[str, Any]) -> dict[str, Any]:
+    result = str(verification_payload.get("result", "")).upper()
+    if result in {"PASS", "FAIL"}:
+        return verification_payload
+    return {
+        "result": "MISSING",
+        "method": "not_provided",
+        "summary": "未携带设备或等价验证证据，按非 validated 包状态上传。",
+    }
+
+
+def default_search_before_change_payload() -> dict[str, Any]:
+    return {
+        "result": "INFO",
+        "method": "knowledge_search",
+        "searched": False,
+        "queries": [],
+        "results": [],
+        "summary": "未提供开发前知识库检索记录。",
+    }
+
+
+def select_search_before_change_payload(
+    *,
+    capture_search_payload: dict[str, Any],
+    member_search_payload: dict[str, Any],
+    capture_has_member_decision: bool,
+) -> dict[str, Any]:
+    if capture_has_member_decision:
+        return capture_search_payload
+    if member_search_payload:
+        return member_search_payload
+    if capture_search_payload:
+        return capture_search_payload
+    return default_search_before_change_payload()
+
+
 def concrete_module_from_files(modified_files: list[str], repo_paths: list[str]) -> str:
     for path in modified_files:
         parts = [part for part in Path(path).parts if part not in {"", "."}]

@@ -280,6 +280,8 @@ from akbs_intake.patch.evidence import (  # noqa: E402
     incoming_patch_item,
     patch_ai_facts_payload,
     patch_view_payload,
+    select_search_before_change_payload,
+    verification_payload_or_missing,
 )
 from akbs_intake.patch.facts import patch_facts_from_text, patch_modules_from_files, patch_problem_and_risk_payloads  # noqa: E402
 from akbs_intake.patch.metadata import (  # noqa: E402
@@ -1131,14 +1133,9 @@ def prepare_patch_package(
         },
     )
 
-    verification_payload = first_evidence_payload(package_dir, capture_evidence_entries, "verification_result")
-    verification_result_value = str(verification_payload.get("result", "")).upper()
-    if verification_result_value not in {"PASS", "FAIL"}:
-        verification_payload = {
-            "result": "MISSING",
-            "method": "not_provided",
-            "summary": "未携带设备或等价验证证据，按非 validated 包状态上传。",
-        }
+    verification_payload = verification_payload_or_missing(
+        first_evidence_payload(package_dir, capture_evidence_entries, "verification_result")
+    )
     verification_path = write_default_evidence(
         package_dir,
         materials_rel("evidence", "verification_result.json"),
@@ -1154,21 +1151,11 @@ def prepare_patch_package(
 
     capture_search_payload = first_evidence_payload(package_dir, capture_evidence_entries, "search_before_change")
     member_search_payload = search_usage_payload(config, date, feature_tokens=patch_search_feature_tokens(summary, all_patch_items, modified_files))
-    if search_payload_has_member_decision(capture_search_payload):
-        search_payload = capture_search_payload
-    elif member_search_payload:
-        search_payload = member_search_payload
-    else:
-        search_payload = capture_search_payload
-    if not search_payload:
-        search_payload = {
-            "result": "INFO",
-            "method": "knowledge_search",
-            "searched": False,
-            "queries": [],
-            "results": [],
-            "summary": "未提供开发前知识库检索记录。",
-        }
+    search_payload = select_search_before_change_payload(
+        capture_search_payload=capture_search_payload,
+        member_search_payload=member_search_payload,
+        capture_has_member_decision=search_payload_has_member_decision(capture_search_payload),
+    )
     search_path = write_default_evidence(
         package_dir,
         materials_rel("evidence", "search_before_change.json"),

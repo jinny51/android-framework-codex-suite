@@ -1431,6 +1431,48 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(check["status"], "FAIL")
             self.assertTrue(any("app15" in item and "补丁资产" in item for item in check["errors"]))
 
+    def test_patch_search_payload_selection_stays_in_evidence_helper(self) -> None:
+        capture_payload = {
+            "searched": True,
+            "queries": ["capture query"],
+            "reuse_decision": "reuse",
+        }
+        member_payload = {
+            "searched": True,
+            "queries": ["member query"],
+            "reuse_decision": "adapt",
+        }
+
+        self.assertIs(
+            intake.select_search_before_change_payload(
+                capture_search_payload=capture_payload,
+                member_search_payload=member_payload,
+                capture_has_member_decision=True,
+            ),
+            capture_payload,
+        )
+        self.assertIs(
+            intake.select_search_before_change_payload(
+                capture_search_payload={"searched": True, "reuse_decision": "unknown"},
+                member_search_payload=member_payload,
+                capture_has_member_decision=False,
+            ),
+            member_payload,
+        )
+        self.assertEqual(
+            intake.select_search_before_change_payload(
+                capture_search_payload={},
+                member_search_payload={},
+                capture_has_member_decision=False,
+            )["searched"],
+            False,
+        )
+        self.assertEqual(
+            intake.verification_payload_or_missing({"result": "PASS", "method": "device"})["result"],
+            "PASS",
+        )
+        self.assertEqual(intake.verification_payload_or_missing({})["result"], "MISSING")
+
     def test_patch_package_carries_recent_member_search_usage_when_capture_lacks_it(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
