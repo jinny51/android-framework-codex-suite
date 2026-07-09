@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,11 @@ except ImportError:  # pragma: no cover
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+OPS_PLUGIN_LIB = Path(__file__).resolve().parents[4] / "lib"
+if OPS_PLUGIN_LIB.is_dir() and str(OPS_PLUGIN_LIB) not in sys.path:
+    sys.path.insert(0, str(OPS_PLUGIN_LIB))
+
+from android_framework_ops.artifact_paths import artifact_path_guard_error, require_safe_artifact_path
 
 INCOMING_SCHEMA_VERSION = "1"
 ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
@@ -73,35 +79,6 @@ def default_codex_home() -> str:
 def expanded_path(value: str) -> Path:
     value = value.replace("$CODEX_HOME", default_codex_home())
     return Path(os.path.expandvars(os.path.expanduser(value)))
-
-
-def artifact_path_guard_error(path: Path, *, purpose: str = "output") -> str:
-    resolved = path.expanduser().resolve()
-    posix = resolved.as_posix()
-    parts = resolved.parts
-    forbidden_parts = {".git", "__pycache__", ".pytest_cache"}
-    for part in parts:
-        if part in forbidden_parts:
-            return f"{purpose} 不能写入源码或缓存目录: {resolved}"
-    if "/.codex/skills/" in posix:
-        return f"{purpose} 不能写入 Codex skill 安装目录: {resolved}"
-    if "/.codex/plugins/cache/" in posix and "/skills/" in posix:
-        return f"{purpose} 不能写入 Codex 插件缓存 skill 目录: {resolved}"
-    for index in range(0, max(0, len(parts) - 2)):
-        if parts[index] == "plugins" and parts[index + 2] == "skills":
-            return f"{purpose} 不能写入插件 skill 源码目录: {resolved}"
-    for index, part in enumerate(parts[:-1]):
-        if part == "skills" and parts[index + 1].startswith("akbs-"):
-            return f"{purpose} 不能写入 AKBS 管理 skill 源码目录: {resolved}"
-    return ""
-
-
-def require_safe_artifact_path(path: Path, *, purpose: str = "output") -> Path:
-    resolved = path.expanduser().resolve()
-    error = artifact_path_guard_error(resolved, purpose=purpose)
-    if error:
-        raise SystemExit(error)
-    return resolved
 
 
 def parse_bool(value: str) -> bool:
