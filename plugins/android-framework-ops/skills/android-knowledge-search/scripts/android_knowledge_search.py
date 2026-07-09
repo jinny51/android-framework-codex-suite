@@ -509,8 +509,8 @@ def candidate_roots(explicit_root: str | None) -> list[Path]:
     candidates.extend(
         [
             home / "worktrees" / "knowledge",
-            Path("/mnt/z/knowledge/knowledge-worktree"),
             Path("/mnt/z/knowledge/knowledge"),
+            Path("/mnt/z/knowledge/knowledge-worktree"),
         ]
     )
 

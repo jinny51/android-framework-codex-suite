@@ -5605,7 +5605,7 @@ def doctor_strict_checks(
         warn(str(freshness.get("message") or "无法确认插件是否为最新版本。"))
 
     if not knowledge_url:
-        warn("未配置 knowledge_repo_url；成员端知识检索将优先使用新 AKBS API，本地知识库只作为可选兜底。")
+        warn("未配置 knowledge_repo_url；成员端知识检索将优先使用 AKBS API，本地知识库只作为可选兜底。")
     if not knowledge_repo.exists():
         clone_hint = f"git clone {knowledge_url} {shlex.quote(str(knowledge_repo))}" if knowledge_url else ""
         suffix = f" 可选兜底克隆命令: {clone_hint}" if clone_hint else ""
@@ -5625,7 +5625,7 @@ def doctor_strict_checks(
     if check_remote and knowledge_url:
         remote = run(["git", "ls-remote", "--heads", knowledge_url])
         if remote.returncode != 0:
-            warn("knowledge_repo_url 无法访问；新 AKBS API 上传不受影响，本地兜底搜索不可用: " + (remote.stderr.strip() or remote.stdout.strip()))
+            warn("knowledge_repo_url 无法访问；AKBS API 上传不受影响，本地兜底搜索不可用: " + (remote.stderr.strip() or remote.stdout.strip()))
 
     return {
         "status": "FAIL" if errors else "PASS",

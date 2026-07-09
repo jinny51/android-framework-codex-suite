@@ -9,7 +9,7 @@
 - 全程用中文说明；遇到英文定义时，先写中文，再把英文放在括号里，例如 数据库仓库（database repository）、知识库仓库（knowledge repository）、上传包（incoming package）、插件更新（plugin update）、新配置（new configuration）。
 - 不要让我手动理解或维护版本、配置字段、仓库路径。只有 member_alias、member_name、Git 用户名/邮箱需要向我确认。
 - 成员端使用 Android Framework Ops 插件套件（plugin suite）生成和上传材料。
-- 成员端通过 AKBS endpoint resolver 解析服务器上传入口（server upload endpoint）并发送上传包（incoming package）。当前新版 AKBS 默认使用 HTTP API。不要克隆、拉取、搜索或 push 数据库仓库（database repository）。
+- 成员端通过 AKBS endpoint resolver 解析服务器上传入口（server upload endpoint）并发送上传包（incoming package）。当前 AKBS 默认使用 HTTP API。不要克隆、拉取、搜索或 push 数据库仓库（database repository）。
 - 成员端用技能搜索（skill search）时优先调用 AKBS API；本地知识库仓库（knowledge repository）只作为离线兜底，可不配置。
 - 成员查看 UI（member view UI）如果需要看本人提交记录，由服务器读取数据库仓库并按成员身份过滤，这不是成员本机 skill 的搜索入口。
 
@@ -23,7 +23,7 @@
 
 2. 找到成员端上传材料脚本（member-side intake script）：
    plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py
-   同目录还有旧配置迁移脚本（member config migration script）：
+   同目录还有 legacy 配置迁移脚本（member config migration script）：
    plugins/android-framework-ops/skills/android-knowledge-intake/scripts/migrate_member_config.py
 
 3. 如果 $CODEX_HOME/report/config.toml 已存在，先运行迁移脚本清理旧 test35 / SSH / local 上传字段：

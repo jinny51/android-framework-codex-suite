@@ -72,7 +72,7 @@ python3 "scripts/android_knowledge_search.py" \
 ```bash
 python3 "scripts/android_knowledge_search.py" \
   "WindowManager display" \
-  --root /path/to/knowledge-worktree
+  --root /path/to/knowledge
 ```
 
 离线强制本地 JSONL 搜索：
@@ -81,7 +81,7 @@ python3 "scripts/android_knowledge_search.py" \
 python3 "scripts/android_knowledge_search.py" \
   "WindowManager display" \
   --source local \
-  --root /path/to/knowledge-worktree
+  --root /path/to/knowledge
 ```
 
 本地 fallback 或显式 `--source local` 时，脚本会优先使用 `--root`、`CODEX_KNOWLEDGE_ROOT`、`CODEX_KNOWLEDGE_REPO_WORKTREE`、报告配置里的当前 profile `knowledge_repo_worktree`，再尝试当前目录父级和通用 `worktrees/knowledge` 路径。成员端应通过自己的 `config.toml` 或环境变量指向知识库仓库副本，不依赖维护者本机路径。

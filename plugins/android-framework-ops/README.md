@@ -34,7 +34,7 @@ Android Framework Ops 是本套件的共享核心插件。它负责 Android Fram
 
 默认原则：成员端能自动保存材料就先保存材料，再按包状态（package status）排序和作为复用提示（reuse hint）。缺少显式确认不等于丢弃证据；只有敏感信息、混杂无关 diff、高风险误导或身份/配置不可用时才停止上传，并在最终报告中说明。是否沉淀进知识库仓库由管理端本地技能决定。
 
-成员端补丁采集和成员上传共用插件规则模块（plugin rules module）：项目（project）规范化和校验、平台（platform）和 Android 版本（Android version）解析、无共同目标聚合包（aggregate package）判断、开发前知识搜索（pre-change knowledge search）状态分类、搜索使用决策（search usage decision）闭合、补丁资产污染（patch asset pollution）基础判断和补证包（evidence supplement package）关系判断都从同一份规则进入。新 AKBS 服务端有自己的 HTTP API、SQLite 事实库和写侧校验入口；服务器运行态不得加载成员 Codex 插件或插件缓存。由插件规则源导出的自包含服务端规则副本只作为旧 AKBS/回滚兼容工具。新建知识、合并知识、仅归档、不沉淀和知识有效度（knowledge validity）仍只属于管理端 AI 知识闭环。
+成员端补丁采集和成员上传共用插件规则模块（plugin rules module）：项目（project）规范化和校验、平台（platform）和 Android 版本（Android version）解析、无共同目标聚合包（aggregate package）判断、开发前知识搜索（pre-change knowledge search）状态分类、搜索使用决策（search usage decision）闭合、补丁资产污染（patch asset pollution）基础判断和补证包（evidence supplement package）关系判断都从同一份规则进入。AKBS 服务端有自己的 HTTP API、SQLite 事实库和写侧校验入口；服务器运行态不得加载成员 Codex 插件或插件缓存。由插件规则源导出的自包含服务端规则副本只作为 legacy/回滚兼容工具。新建知识、合并知识、仅归档、不沉淀和知识有效度（knowledge validity）仍只属于管理端 AI 知识闭环。
 
 公司项目型号必须写入规范项目名，例如 `TVE1213M` 或 `TVI3315A`。如果来源材料只写 7 位短型号，例如 `TVE1213`，插件规则模块（plugin rules module）只有在同一推断流程已经拿到可信平台证据时才会补齐第八位平台字母：`mtk -> M`、`rk -> R`、`unisoc -> U`。没有可信平台证据时，短型号不能自动写入结构化项目字段；补齐后的候选值仍必须通过公司项目型号规则。`TVI` 使用工控产品专门命名规则，需要从通用平台位补齐规则里单独处理：已有第八位时保持原样，`A` 和 `X` 都是合法 TVI 字段；缺第八位时优先按 TVI 芯片字段补 `A/X`，不能按 AKBS 平台（platform）补成 `R/M/U`。平台仍单独记录为 `rk`、`mtk` 或 `unisoc`。
 
@@ -58,7 +58,7 @@ $CODEX_HOME/<skill-name>.toml
 <project>/.codex/report.toml
 ```
 
-普通成员配置只写身份和本地路径。服务器上传入口由 AKBS endpoint resolver 提供并默认指向新版 AKBS HTTP API；管理员/测试 override 不作为普通成员必填项。成员不需要理解 SSH、服务器路径或 API 地址。知识库仓库工作树只作为可选离线搜索兜底，产物目录建议使用：
+普通成员配置只写身份和本地路径。服务器上传入口由 AKBS endpoint resolver 提供并默认指向 AKBS HTTP API；管理员/测试 override 不作为普通成员必填项。成员不需要理解 SSH、服务器路径或 API 地址。知识库仓库工作树只作为可选离线搜索兜底，产物目录建议使用：
 
 ```text
 <Codex documents>/worktrees/knowledge
@@ -84,7 +84,7 @@ python3 -m pytest --capture=no \
   tests/plugins/android-framework-ops/android-knowledge-search
 ```
 
-维护 legacy/回滚兼容规则副本时，只从插件规则源导出到临时目录，不在成员插件任务中覆盖数据库仓库或上传分支工作树。新 AKBS 正常上传路径不依赖这份副本：
+维护 legacy/回滚兼容规则副本时，只从插件规则源导出到临时目录，不在成员插件任务中覆盖数据库仓库或上传分支工作树。AKBS 正常上传路径不依赖这份副本：
 
 ```bash
 python3 plugins/android-framework-ops/scripts/export_akbs_validation_rules.py \

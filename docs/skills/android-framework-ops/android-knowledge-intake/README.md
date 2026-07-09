@@ -28,9 +28,9 @@
 
 ## 首次启用
 
-成员首次切到当前链路时，优先把 [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md) 里的整段提示词交给成员端 Codex。提示词会要求先完成插件更新（plugin update），必要时运行 `scripts/migrate_member_config.py` 清理旧配置，再直接写入新配置（new configuration）、检查服务器上传入口（server upload endpoint）、可选克隆或更新知识库仓库（knowledge repository）工作树并运行健康检查（doctor check），成员只需要确认自己的 `member_alias`、姓名和 Git 作者信息。服务器上传入口由 AKBS endpoint resolver 指向 HTTP API，普通成员不维护地址细节。
+成员首次接入当前链路时，优先把 [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md) 里的整段提示词交给成员端 Codex。提示词会要求先完成插件更新（plugin update），必要时运行 `scripts/migrate_member_config.py` 清理 legacy 配置，再直接写入当前配置（current configuration）、检查服务器上传入口（server upload endpoint）、可选克隆或更新知识库仓库（knowledge repository）工作树并运行健康检查（doctor check），成员只需要确认自己的 `member_alias`、姓名和 Git 作者信息。服务器上传入口由 AKBS endpoint resolver 指向 HTTP API，普通成员不维护地址细节。
 
-普通成员配置只保留身份和本地路径，例如 `member_alias`、`member_name`、`knowledge_repo_worktree` 和 `out_dir`。服务器上传入口由 AKBS endpoint resolver 提供；旧配置里的 `server_profile = "test35"`、`submission_ssh_host`、`submission_command` 和 `knowledge_repo_url` 会由 doctor 识别，由 `scripts/migrate_member_config.py` 清理。
+普通成员配置只保留身份和本地路径，例如 `member_alias`、`member_name`、`knowledge_repo_worktree` 和 `out_dir`。服务器上传入口由 AKBS endpoint resolver 提供；legacy 配置里的 `server_profile = "test35"`、`submission_ssh_host`、`submission_command` 和 `knowledge_repo_url` 会由 doctor 识别，由 `scripts/migrate_member_config.py` 清理。
 
 严格健康检查（doctor strict check）会检查 `knowledge_repo_worktree` 是否可作为本地离线兜底；缺失只报警告，不阻断 HTTP 上传。成员端不能克隆或直接读取数据库仓库（database repository）。
 

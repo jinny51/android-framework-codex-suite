@@ -54,4 +54,4 @@ The generated `/tmp/akbs-rules-export/akbs_validation_rules.py` must be importab
 - source commit
 - a do-not-edit-by-hand notice
 
-Phase 1-2 only proves generation into a temporary directory. In the new AKBS path, server validation lives in the AKBS server system and should not be mechanically copied from the member plugin during ordinary uploads. Replacing database repository and intake branch copies is legacy/rollback compatibility work only.
+Phase 1-2 only proves generation into a temporary directory. In the AKBS path, server validation lives in the AKBS server system and should not be mechanically copied from the member plugin during ordinary uploads. Replacing database repository and intake branch copies is legacy/rollback compatibility work only.
