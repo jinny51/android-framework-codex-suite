@@ -1236,6 +1236,13 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertNotIn("b_mt8775_8792_tablet", projects)
         self.assertNotIn("TVE1086U_MAIN_HANGYAN", projects)
 
+    def test_report_render_helpers_remain_available_from_intake_entrypoint(self) -> None:
+        module = load_intake_module()
+
+        self.assertTrue(callable(module.project_ledger_rows))
+        self.assertTrue(callable(module.write_report))
+        self.assertTrue(callable(module.write_report_view))
+
     def test_daily_records_discovered_patch_without_formal_patch_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
