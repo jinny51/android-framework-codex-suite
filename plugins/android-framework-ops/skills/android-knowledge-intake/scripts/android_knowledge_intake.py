@@ -3129,7 +3129,7 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
                 "delivery_verifications",
             }
             for field in sorted(forbidden_report_fields & set(view)):
-                errors.append(f"{rel} payload.{field} 是旧 report_view 字段，新包不得提供")
+                errors.append(f"{rel} payload.{field} 是已废弃的 report_view 字段，新包不得提供")
             if report_type == "daily":
                 errors.extend(report_project_customer_errors(rel, view.get("projects"), "projects"))
                 if not isinstance(view.get("projects"), list):
@@ -5580,7 +5580,7 @@ def doctor_strict_checks(
 
     migration = endpoint_migration_report(config, loaded)
     if migration["status"] == "MIGRATED_IN_MEMORY":
-        warn("检测到旧 test35 服务器硬编码；已由 AKBS endpoint resolver 在内存中迁移，普通成员无需继续维护服务器字段。")
+        warn("检测到已废弃的 test35 服务器硬编码；已由 AKBS endpoint resolver 在内存中迁移，普通成员无需继续维护服务器字段。")
     elif migration["status"] == "MANUAL_ACTION_REQUIRED":
         error(str(migration["message"]))
 

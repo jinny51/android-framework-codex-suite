@@ -234,7 +234,7 @@ def packaged_plugin_freshness(metadata: dict[str, str], fetch: bool, require: bo
                 "status": "SESSION_CACHE_STALE",
                 "blocking": True,
                 "message": (
-                    f"Codex 已安装 Android Framework Ops {installed_version}，但当前会话仍在使用旧技能缓存 {local_version}。"
+                    f"Codex 已安装 Android Framework Ops {installed_version}，但当前会话仍在使用过期技能缓存 {local_version}。"
                     "当前会话不能热刷新技能，请新开或重启 Codex 会话后再生成或上传。"
                 ),
             }
@@ -259,7 +259,7 @@ def packaged_plugin_freshness(metadata: dict[str, str], fetch: bool, require: bo
                     "blocking": True,
                     "message": (
                         f"Codex 插件缓存已自动更新到 Android Framework Ops {remote_version}。"
-                        "当前 Python 进程和 Codex 会话已经加载了旧技能缓存，当前会话不能热刷新；"
+                        "当前 Python 进程和 Codex 会话已经加载了过期技能缓存，当前会话不能热刷新；"
                         "请重新运行原命令，并在 Codex 会话仍显示旧技能时新开或重启会话。"
                     ),
                 }
@@ -470,7 +470,7 @@ def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[st
                     "status": "SESSION_CACHE_STALE",
                     "blocking": True,
                     "message": (
-                        f"Codex 已安装 Android Framework Ops {installed_version}，但当前会话仍在使用旧技能缓存 {local_version}。"
+                        f"Codex 已安装 Android Framework Ops {installed_version}，但当前会话仍在使用过期技能缓存 {local_version}。"
                         "当前会话不能热刷新技能，请新开或重启 Codex 会话后再生成或上传。"
                     ),
                 }
@@ -509,7 +509,7 @@ def plugin_freshness_check(fetch: bool = True, require: bool = False) -> dict[st
                     "status": "UPDATED_RESTART_REQUIRED",
                     "blocking": True,
                     "message": (
-                        "插件已自动快进更新。当前 Python 进程和 Codex 会话已经加载了旧技能缓存，不能热刷新；"
+                        "插件已自动快进更新。当前 Python 进程和 Codex 会话已经加载了过期技能缓存，不能热刷新；"
                         "请重新运行原命令，并在 Codex 会话仍显示旧技能时新开或重启会话。"
                     ),
                 }

@@ -18,7 +18,7 @@
 
 日报和周报没有“未来提交”模式。日报日期晚于当前本机日期时会停止；周报锚定日期晚于当前本机日期，或 `week_range` 晚于当前本机所属周时也会停止。过去日期日报和过去周期周报属于补交，允许生成。
 
-日报正文和周报正文就是成员与管理员直接阅读的主产物。新包会按 Codex 办公版工作报告模板生成 `reports/daily.md` / `reports/weekly.md`，并同时写入 `materials/display/report_view.json` 作为 UI 读模型（UI read model），服务卡片、列表和详情展示；这个读模型只是同一份报告的结构化索引，不是另一套证据或 AI 层。日报重点回答“今天干了什么、怎么干的、结果是什么”。周报以范文为基线，重点回答“本周完成多少、还剩多少、风险和依赖是什么、下周怎么收敛”，不复述每天流水；周报 `本周概况` 使用项目块，包含项目名称、客户名称、接到文档时间、来源说明、需求类型、需求结构、本周完成、当前剩余、预计完成，不使用大表格。`report_view.json` 使用 `schema=akbs-report-view-human-v1`，必须提供 `material_name` 和 `material_summary`：前者是项目 + 客户，后者是日报主题或周报完成/剩余/风险摘要。日报/周报项目明细统一放在 `projects[]`，新包不得再写旧 `report_view` 字段，例如 `display_title`、`ui_card`、`one_line_summary`、`project_ledgers`、`weekly_progress_summary` 或 `weekly_detail_sections`。`work_findings.json` 仍保留为审计、归档和后续分析证据。
+日报正文和周报正文就是成员与管理员直接阅读的主产物。新包会按 Codex 办公版工作报告模板生成 `reports/daily.md` / `reports/weekly.md`，并同时写入 `materials/display/report_view.json` 作为 UI 读模型（UI read model），服务卡片、列表和详情展示；这个读模型只是同一份报告的结构化索引，不是另一套证据或 AI 层。日报重点回答“今天干了什么、怎么干的、结果是什么”。周报以范文为基线，重点回答“本周完成多少、还剩多少、风险和依赖是什么、下周怎么收敛”，不复述每天流水；周报 `本周概况` 使用项目块，包含项目名称、客户名称、接到文档时间、来源说明、需求类型、需求结构、本周完成、当前剩余、预计完成，不使用大表格。`report_view.json` 使用 `schema=akbs-report-view-human-v1`，必须提供 `material_name` 和 `material_summary`：前者是项目 + 客户，后者是日报主题或周报完成/剩余/风险摘要。日报/周报项目明细统一放在 `projects[]`，新包不得再写已废弃的 `report_view` 字段，例如 `display_title`、`ui_card`、`one_line_summary`、`project_ledgers`、`weekly_progress_summary` 或 `weekly_detail_sections`。`work_findings.json` 仍保留为审计、归档和后续分析证据。
 
 补丁包和补证包会同时写入两份稳定读模型：`materials/display/patch_view.json` 是成员端和管理端页面直接消费的人类可见材料视图，包含原始包/补证包身份、功能标题、问题、方案、验证结果、项目、平台、Android 版本、卡片和详情分区；`materials/evidence/patch_ai_facts.json` 是管理端本地校验、沉淀判断、复审和搜索索引使用的证据视图，包含模块、细分领域、代码锚点、补丁行为目标、验证目标、搜索使用和合并硬门禁输入。两者都来自同一份补丁事实，但 `patch_view` 不承担 AI 判断，`patch_ai_facts` 不作为 UI 主展示文案。
 
@@ -28,17 +28,17 @@
 
 ## 首次启用
 
-成员首次接入当前链路时，优先把 [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md) 里的整段提示词交给成员端 Codex。提示词会要求先完成插件更新（plugin update），必要时运行 `scripts/migrate_member_config.py` 清理 legacy 配置，再直接写入当前配置（current configuration）、检查服务器上传入口（server upload endpoint）、可选克隆或更新知识库仓库（knowledge repository）工作树并运行健康检查（doctor check），成员只需要确认自己的 `member_alias`、姓名和 Git 作者信息。服务器上传入口由 AKBS endpoint resolver 指向 HTTP API，普通成员不维护地址细节。
+成员首次接入当前链路时，优先把 [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md) 里的整段提示词交给成员端 Codex。提示词会要求先完成插件更新（plugin update），必要时运行 `scripts/migrate_member_config.py` 清理已废弃配置，再直接写入当前配置（current configuration）、检查服务器上传入口（server upload endpoint）、可选克隆或更新知识库仓库（knowledge repository）工作树并运行健康检查（doctor check），成员只需要确认自己的 `member_alias`、姓名和 Git 作者信息。服务器上传入口由 AKBS endpoint resolver 指向 HTTP API，普通成员不维护地址细节。
 
-普通成员配置只保留身份和本地路径，例如 `member_alias`、`member_name`、`knowledge_repo_worktree` 和 `out_dir`。服务器上传入口由 AKBS endpoint resolver 提供；legacy 配置里的 `server_profile = "test35"`、`submission_ssh_host`、`submission_command` 和 `knowledge_repo_url` 会由 doctor 识别，由 `scripts/migrate_member_config.py` 清理。
+普通成员配置只保留身份和本地路径，例如 `member_alias`、`member_name`、`knowledge_repo_worktree` 和 `out_dir`。服务器上传入口由 AKBS endpoint resolver 提供；已废弃配置字段里的 `server_profile = "test35"`、`submission_ssh_host`、`submission_command` 和 `knowledge_repo_url` 会由 doctor 识别，由 `scripts/migrate_member_config.py` 清理。
 
 严格健康检查（doctor strict check）会检查 `knowledge_repo_worktree` 是否可作为本地离线兜底；缺失只报警告，不阻断 HTTP 上传。成员端不能克隆或直接读取数据库仓库（database repository）。
 
-日报、周报和补丁生成入口会先做插件版本门禁（plugin version gate）。脚本会比较三类版本：当前正在运行脚本的插件版本、Codex 已安装的最新插件缓存版本、可访问时的 GitHub marketplace 远端版本。Git checkout 如果可以安全快进，会自动执行 `git pull --ff-only`，然后用更新后的脚本重新执行当前命令。Codex 插件市场安装的包如果发现 GitHub marketplace 有新版，会自动刷新 marketplace 和本地插件缓存，再用最新缓存里的脚本重新执行当前命令。如果 Codex 已安装新插件，但当前会话仍在旧技能缓存里运行，也会先尝试切到最新缓存脚本；只有找不到新脚本或当前 Codex 会话无法刷新已加载技能说明时，才停止并提示新开或重启 Codex 会话。
+日报、周报和补丁生成入口会先做插件版本门禁（plugin version gate）。脚本会比较三类版本：当前正在运行脚本的插件版本、Codex 已安装的最新插件缓存版本、可访问时的 GitHub marketplace 远端版本。Git checkout 如果可以安全快进，会自动执行 `git pull --ff-only`，然后用更新后的脚本重新执行当前命令。Codex 插件市场安装的包如果发现 GitHub marketplace 有新版本，会自动刷新 marketplace 和本地插件缓存，再用最新缓存里的脚本重新执行当前命令。如果 Codex 已安装新插件，但当前会话仍在过期技能缓存里运行，也会先尝试切到最新缓存脚本；只有找不到新脚本或当前 Codex 会话无法刷新已加载技能说明时，才停止并提示新开或重启 Codex 会话。
 
-生成日报包、周报包、补丁包或补证包之前，技能会先确认运行插件、已安装插件缓存、会话技能缓存和远端插件版本兼容；无法确认最新时停止生成，避免旧规则继续产出材料。生成出的上传包会在 `materials/evidence/source.json` 写入 `plugin_name`、当前 `plugin_version`、当前 `skill_version`、`plugin_installation`、可用的 `plugin_commit`、`installed_plugin_version`、`remote_plugin_version`、`skill_cache_version` 和 `plugin_version_check` 检查结果；补丁包还会同步写入实现来源（implementation origin），例如 `codex`、`manual`、`external` 或 `mixed`。服务器上传入口只做轻量接收并写入上传分支（intake branch）；管理端本地推广入口用这些字段区分插件未更新、会话缓存未刷新、旧包不再兼容或版本证据缺失。
+生成日报包、周报包、补丁包或补证包之前，技能会先确认运行插件、已安装插件缓存、会话技能缓存和远端插件版本兼容；无法确认最新时停止生成，避免过期规则继续产出材料。生成出的上传包会在 `materials/evidence/source.json` 写入 `plugin_name`、当前 `plugin_version`、当前 `skill_version`、`plugin_installation`、可用的 `plugin_commit`、`installed_plugin_version`、`remote_plugin_version`、`skill_cache_version` 和 `plugin_version_check` 检查结果；补丁包还会同步写入实现来源（implementation origin），例如 `codex`、`manual`、`external` 或 `mixed`。服务器上传入口只做轻量接收并写入上传分支（intake branch）；管理端本地推广入口用这些字段区分插件未更新、会话缓存未刷新、历史包不再兼容或版本证据缺失。
 
-生成前门禁仍按最新插件和当前会话缓存判断；处理历史上传包时按共享规则层的 source version compatibility matrix 判断生成时能力，不要求旧包的 `plugin_version` / `skill_version` 等于处理时最新插件版本。显式 `SESSION_CACHE_STALE` 或 `plugin_version_check.blocking=true` 会先尝试自动切到最新脚本；自动切换失败时，当次生成/上传必须被阻止。
+生成前门禁仍按最新插件和当前会话缓存判断；处理历史上传包时按共享规则层的 source version compatibility matrix 判断生成时能力，不要求历史包的 `plugin_version` / `skill_version` 等于处理时最新插件版本。显式 `SESSION_CACHE_STALE` 或 `plugin_version_check.blocking=true` 会先尝试自动切到最新脚本；自动切换失败时，当次生成/上传必须被阻止。
 
 成员端看到“缺项目名、平台、Android 版本、材料名、功能名或展示字段”时，可生成 `supplement_mode=field_correction` 的轻量补证包；它只写 `corrected_fields`、`correction_reason`、`field_correction` 和补证关系，不携带补丁 diff、验证结论、搜索证据或 `patch_ai_facts`。看到“缺验证、缺补丁资产、缺 `patch_ai_facts`、local-check 失败或补丁资产污染”时，仍必须重新运行 `android-framework-patch-capture` 完整采集同一功能补丁包，再作为资产级补证提交。
 
@@ -123,7 +123,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 
 如果缺口是补丁资产修正（patch asset correction），成员端 Codex 必须从干净工作树重新运行补丁采集技能（android-framework-patch-capture），再通过成员补丁入口（android-framework-patch-intake）关联原始包上传补证包。README 里的“关键符号”“字符串资源”等清单不能用来证明污染项属于当前功能；本地校验只把功能目标和修改说明作为范围依据。如果补证包仍包含大量与功能目标无关的资源、设置、属性或日志锚点，会在上传前失败。
 
-补丁资产修正补证必须使用 `--patch-package <capture package dir>`。直接 `--patch`、复制旧 patch 或手写说明不能证明已经从干净源码工作树重新采集；本地校验会停止上传。
+补丁资产修正补证必须使用 `--patch-package <capture package dir>`。直接 `--patch`、复制既有 patch 或手写说明不能证明已经从干净源码工作树重新采集；本地校验会停止上传。
 
 结构化证据不能残留无关模板文本。比如补丁摘要、补丁文件名和修改文件都指向 E-Ink/显示模式时，`case.json` 或 `patch_problem_summary` 里不能出现 CameraService、Camera2、相机预览、拍照、扫码等相机模板内容。出现这种情况必须重新生成补丁说明和问题/方案证据，不能上传。
 
@@ -147,7 +147,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --p
 
 - [SKILL.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/SKILL.md)：给 Codex 自动加载的执行说明。
 - [config.example.toml](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/config.example.toml)：成员本机配置示例，使用服务器上传入口和知识库仓库字段。
-- [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md)：成员首次启用提示词，覆盖插件更新、新配置、服务器上传入口和知识库仓库健康检查。
+- [references/member-migration-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-migration-prompt.md)：成员首次启用提示词，覆盖插件更新、当前配置、服务器上传入口和知识库仓库健康检查。
 - [references/incoming-package-protocol.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/incoming-package-protocol.md)：`incoming` 提交目录规则。
 - [references/patch-package-status-rules.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/patch-package-status-rules.md)：补丁包状态和上传策略。
 - [references/android-framework-patch-rules.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/android-framework-patch-rules.md)：Android Framework patch 规范。

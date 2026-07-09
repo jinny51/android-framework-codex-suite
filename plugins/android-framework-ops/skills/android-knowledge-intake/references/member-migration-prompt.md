@@ -1,12 +1,12 @@
 # 成员首次启用提示词
 
-把下面整段交给成员端 Codex 使用。成员只需要提供自己的成员标识和姓名；插件更新、新配置写入、仓库检查和健康检查都由 Codex 执行。
+把下面整段交给成员端 Codex 使用。成员只需要提供自己的成员标识和姓名；插件更新、当前配置写入、仓库检查和健康检查都由 Codex 执行。
 
 ```text
 你现在要帮我完成 Android Framework Ops incoming 上传材料的首次启用。
 
 强制要求：
-- 全程用中文说明；遇到英文定义时，先写中文，再把英文放在括号里，例如 数据库仓库（database repository）、知识库仓库（knowledge repository）、上传包（incoming package）、插件更新（plugin update）、新配置（new configuration）。
+- 全程用中文说明；遇到英文定义时，先写中文，再把英文放在括号里，例如 数据库仓库（database repository）、知识库仓库（knowledge repository）、上传包（incoming package）、插件更新（plugin update）、当前配置（current configuration）。
 - 不要让我手动理解或维护版本、配置字段、仓库路径。只有 member_alias、member_name、Git 用户名/邮箱需要向我确认。
 - 成员端使用 Android Framework Ops 插件套件（plugin suite）生成和上传材料。
 - 成员端通过 AKBS endpoint resolver 解析服务器上传入口（server upload endpoint）并发送上传包（incoming package）。当前 AKBS 默认使用 HTTP API。不要克隆、拉取、搜索或 push 数据库仓库（database repository）。
@@ -23,14 +23,14 @@
 
 2. 找到成员端上传材料脚本（member-side intake script）：
    plugins/android-framework-ops/skills/android-knowledge-intake/scripts/android_knowledge_intake.py
-   同目录还有 legacy 配置迁移脚本（member config migration script）：
+   同目录还有配置迁移脚本（member config migration script）：
    plugins/android-framework-ops/skills/android-knowledge-intake/scripts/migrate_member_config.py
 
-3. 如果 $CODEX_HOME/report/config.toml 已存在，先运行迁移脚本清理旧 test35 / SSH / local 上传字段：
+3. 如果 $CODEX_HOME/report/config.toml 已存在，先运行迁移脚本清理已废弃的 test35 / SSH / local 上传字段：
    python3 "<migrate_member_config.py>" --config "$CODEX_HOME/report/config.toml"
    迁移脚本只清理本地成员配置，不上传、不生成包、不修改服务器。
 
-4. 直接创建或覆盖 $CODEX_HOME/report/config.toml，使用下面的新配置。普通成员配置只写身份和本地路径，不写 server_profile、submission_ssh_host、submission_command 或 knowledge_repo_url；成员上传唯一入口是 AKBS HTTP API，由 AKBS endpoint resolver 提供。不解析残留配置字段，不把工作树放进 .codex/plugins/cache，不配置成员数据库仓库工作树。
+4. 直接创建或覆盖 $CODEX_HOME/report/config.toml，使用下面的当前配置。普通成员配置只写身份和本地路径，不写 server_profile、submission_ssh_host、submission_command 或 knowledge_repo_url；成员上传唯一入口是 AKBS HTTP API，由 AKBS endpoint resolver 提供。不解析残留配置字段，不把工作树放进 .codex/plugins/cache，不配置成员数据库仓库工作树。
 
    default_profile = "<member_alias>"
 
@@ -66,7 +66,7 @@
 
 完成后告诉我：
 - 插件更新（plugin update）状态
-- 新配置（new configuration）写入状态
+- 当前配置（current configuration）写入状态
 - 服务器上传入口（server upload endpoint）状态
 - 知识库仓库（knowledge repository）工作树路径
 - 健康检查（doctor check）结果

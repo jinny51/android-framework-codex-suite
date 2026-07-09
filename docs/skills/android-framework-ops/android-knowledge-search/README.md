@@ -65,7 +65,7 @@ python3 "scripts/android_knowledge_search.py" \
   --type evidence
 ```
 
-默认 `--type all` 是 AI 复用视图，不返回 report/event，也不返回 `source`、`work_findings`、`report_context`、`package_check` 这类人看归档证据。默认搜索还会过滤已撤销（retracted）的案例、变体、补丁、符号和证据，并清理普通搜索证据负载里残留的已撤销对象引用，例如旧 `search_before_change.results`。需要追溯来源或撤销证据时必须显式指定类型。
+默认 `--type all` 是 AI 复用视图，不返回 report/event，也不返回 `source`、`work_findings`、`report_context`、`package_check` 这类人看归档证据。默认搜索还会过滤已撤销（retracted）的案例、变体、补丁、符号和证据，并清理普通搜索证据负载里残留的已撤销对象引用，例如已废弃的 `search_before_change.results`。需要追溯来源或撤销证据时必须显式指定类型。
 
 指定知识库仓库路径：
 

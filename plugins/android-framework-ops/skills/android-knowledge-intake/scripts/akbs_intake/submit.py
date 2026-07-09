@@ -48,7 +48,7 @@ def server_submit_package(package_dir: Path, config: dict[str, str], method: str
     if not member:
         raise SystemExit("member_alias 不能为空")
     if method != "http":
-        raise SystemExit("AKBS 成员上传只支持 HTTP API；旧 SSH/local 上传字段已废弃，请先更新插件并执行配置迁移。")
+        raise SystemExit("AKBS 成员上传只支持 HTTP API；SSH/local 上传字段已废弃，请先更新插件并执行配置迁移。")
     payload = package_tar_gz_bytes(package_dir)
     return http_submit_package(package_dir, config, member, payload)
 

@@ -355,7 +355,7 @@ def endpoint_migration_report(config: dict[str, str], loaded: list[Path]) -> dic
         message = "普通成员配置未包含服务器入口字段，AKBS endpoint resolver 将提供上传入口和只读知识库入口。"
     elif role == "member" and legacy_fields and not custom_fields:
         status = "MIGRATED_IN_MEMORY"
-        message = "检测到旧 test35 服务器硬编码；本次运行已在内存中迁移为 AKBS endpoint resolver 默认入口，未改成员身份字段。"
+        message = "检测到已废弃的 test35 服务器硬编码；本次运行已在内存中迁移为 AKBS endpoint resolver 默认入口，未改成员身份字段。"
     elif role == "member":
         status = "MANUAL_ACTION_REQUIRED"
         message = "检测到普通成员配置中的自定义服务器字段；请移除这些字段，改由管理员/测试环境 endpoint override 提供。"

@@ -206,7 +206,7 @@ adapt            适配：同类问题成立，但平台、Android 版本、项�
 reference_only   仅参考：机制、风险或排查方向有用，但不能作为实现依据。
 not_applicable   不适用：命中知识与当前需求或源码条件冲突。
 not_found        未命中：搜索后没有找到可用知识。
-unknown          未记录：旧包或异常场景没有形成明确决策。
+unknown          未记录：历史包或异常场景没有形成明确决策。
 ```
 
 Codex normal development should record pre-change knowledge search before source edits. If the search did not find reusable knowledge, set `reuse_decision=not_found` instead of leaving the package without search evidence. If pre-change search did not really happen, do not fabricate it for `validated`; record `searched=false`, keep real verification evidence, and let admin-side curation run post-change overlap check without search-loop score. Manual, external, historical, mixed, or unknown implementation origin follows the same no-fabrication rule.

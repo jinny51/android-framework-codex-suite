@@ -1,6 +1,6 @@
 # Incoming Package Protocol
 
-Member-side Codex creates only `incoming` packages and sends them through the AKBS HTTP API. It does not clone, pull, directly search, or push the database repository, and it does not write final knowledge views such as reports, patches, index, or site. The HTTP API receives packages into the server-side AKBS facts database and exposes them to the curation flow. Legacy SSH/intake-branch submission fields are configuration residue only and must be migrated away, not used as fallback.
+Member-side Codex creates only `incoming` packages and sends them through the AKBS HTTP API. It does not clone, pull, directly search, or push the database repository, and it does not write final knowledge views such as reports, patches, index, or site. The HTTP API receives packages into the server-side AKBS facts database and exposes them to the curation flow. Deprecated SSH/intake-branch submission fields are configuration residue only and must be migrated away, not used as fallback.
 
 Only the user's local `akbs-curation-maintainer` skill and the AI knowledge loop can decide whether and how an uploaded package enters the knowledge repository.
 
@@ -297,7 +297,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.81"
+    "plugin_version": "1.0.82"
   }
 }
 ```

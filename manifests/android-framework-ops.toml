@@ -33,7 +33,7 @@ summary = "默认搜索团队知识库中的可复用案例、平台实现、补
 [[skills]]
 name = "android-knowledge-intake"
 category = "Knowledge System"
-summary = "成员 incoming 共享内核、配置诊断、插件更新检查和旧命令兼容路由"
+summary = "成员 incoming 共享内核、配置诊断、插件更新检查和兼容路由"
 
 [[skills]]
 name = "android-remote-channel"

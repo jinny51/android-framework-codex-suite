@@ -57,7 +57,7 @@ Generate the same-source UI read model at `materials/display/report_view.json`. 
 Weekly card identity is not the week range. `material_name` must be project +
 customer, such as `TVE1086U（青鸾云）`; multiple projects must keep each project
 paired with its own customer. `material_summary` must summarize each project's
-weekly completed count, remaining count, and risk/dependency state. Do not emit legacy `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.
+weekly completed count, remaining count, and risk/dependency state. Do not emit deprecated `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.
 
 Each project row must include both a recognized company project name
 and a customer name. The member can provide this in natural language as

@@ -25,7 +25,7 @@ Generate `reports/daily.md` with the Codex office daily template:
 
 Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, `customer`, `today_topic`, `current_result`, `work_items[]`, and `tomorrow_focus[]`.
 
-Daily card identity is not the date. `material_name` must be project + customer, such as `TVE1086U（青鸾云）`; multiple projects use `、` and keep each project paired with its own customer. `material_summary` must be a short daily topic summary, such as `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`. Do not emit legacy `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
+Daily card identity is not the date. `material_name` must be project + customer, such as `TVE1086U（青鸾云）`; multiple projects use `、` and keep each project paired with its own customer. `material_summary` must be a short daily topic summary, such as `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`. Do not emit deprecated `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
 
 Daily project rows must include both a recognized company project name and a customer name. The member can provide this in natural language as `TVE1086U 青鸾云，帮我生成日报并提交`; parse it as project `TVE1086U` and customer `青鸾云`. If either value is missing, generate the package with `需成员补充项目名` or `需成员补充客户名` so the member can edit it, but local submit must stop until both values are present.
 

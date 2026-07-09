@@ -135,7 +135,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.81")
+        self.assertEqual(current, "1.0.82")
         self.assertEqual(AKBS_RULES_CONTRACT_VERSION, "2026-07-02.1")
         matrix = source_version_compatibility_matrix()
         self.assertEqual(matrix["source_version_evidence"]["min_plugin_version"], "1.0.60")
@@ -233,7 +233,7 @@ class KnowledgeRulesTest(unittest.TestCase):
                 "plugin_version_check": {
                     "status": "SESSION_CACHE_STALE",
                     "blocking": True,
-                    "message": "当前会话仍在使用旧技能缓存。",
+                    "message": "当前会话仍在使用过期技能缓存。",
                 },
             }
         )

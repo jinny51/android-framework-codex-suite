@@ -54,7 +54,7 @@ python3 "scripts/capture_framework_patch.py" \
 
 功能边界说明由补丁采集技能自动生成，不由成员手写结论。生成的 README 会记录功能目标、模块范围、关键锚点，以及每个仓库级 patch 如何共同服务同一个功能目标；如果这些事实不足，成员端 Codex 应提示成员补充真实需求、目标功能或验证范围后再重新生成。
 
-补丁资产修正（patch asset correction）必须从干净源码工作树重新采集同一功能补丁包。不要用旧 patch、直接 `--patch` 或手写说明伪装为修正结果；后续成员上传技能会要求通过 `--patch-package <capture package dir>` 关联原始包键。若源工作树仍混有无关 diff，先拆分或清理，再采集。
+补丁资产修正（patch asset correction）必须从干净源码工作树重新采集同一功能补丁包。不要复制既有 patch、直接 `--patch` 或手写说明伪装为修正结果；后续成员上传技能会要求通过 `--patch-package <capture package dir>` 关联原始包键。若源工作树仍混有无关 diff，先拆分或清理，再采集。
 
 结构化问题/方案证据不能残留无关模板文本。比如功能摘要和修改文件都指向 E-Ink、显示模式或资源配置时，生成的 `case.json`、`patch_problem_summary`、`risk_surface` 不应出现 CameraService、Camera2、相机预览、拍照或扫码等相机模板内容；出现这类不一致时必须停止并重新生成。
 

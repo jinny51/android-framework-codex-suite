@@ -510,7 +510,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
 
         self.assertIn("首次启用提示词", text)
         self.assertIn("插件更新（plugin update）", text)
-        self.assertIn("新配置（new configuration）", text)
+        self.assertIn("当前配置（current configuration）", text)
         self.assertIn("服务器上传入口（server upload endpoint）", text)
         self.assertIn("AKBS endpoint resolver", text)
         self.assertNotIn("/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit", text)
@@ -987,7 +987,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertIn("server_profile", result["endpoint_migration"]["legacy_fields"])
             self.assertIn("submission_command", result["endpoint_migration"]["legacy_fields"])
             self.assertIn("knowledge_repo_url", result["endpoint_migration"]["legacy_fields"])
-            self.assertTrue(any("旧 test35" in item for item in result["strict"]["warnings"]))
+            self.assertTrue(any("已废弃的 test35" in item for item in result["strict"]["warnings"]))
 
     def test_migrate_member_config_removes_legacy_endpoint_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

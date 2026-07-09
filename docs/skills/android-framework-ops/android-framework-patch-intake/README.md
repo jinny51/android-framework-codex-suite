@@ -19,7 +19,7 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch --submit-latest
 ```
 
-实际源码变更应先用 `android-framework-patch-capture` 生成一个功能级 capture package。补丁资产修正也必须重新 capture，不能复制旧 patch 或手写说明伪装为修正。
+实际源码变更应先用 `android-framework-patch-capture` 生成一个功能级 capture package。补丁资产修正也必须重新 capture，不能复制既有 patch 或手写说明伪装为修正。
 
 轻量补证只适用于字段级元数据缺口，例如 `project`、`platform`、Android 版本。补证包继承目标原始包的材料名和材料摘要；如果材料名或材料摘要错误，必须重新生成替换原始包，不能用补证包改写。
 

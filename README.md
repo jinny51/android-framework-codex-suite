@@ -33,7 +33,7 @@
 
 ## Android Framework 工作流
 
-一句话：`android-source-access` 负责连接服务器源码，`android-knowledge-search` 负责开工前先查知识库仓库，`android-framework-change-workflow` 负责分析和改代码并给验收结论，`android-remote-channel` 负责稳定执行服务器命令，`android-remote-build-deploy` 负责编译和推送设备，`android-framework-patch-capture` 负责整理功能级补丁资料，`android-framework-patch-intake`、`android-daily-report-intake`、`android-weekly-report-intake` 负责按材料类型生成 incoming，`android-knowledge-intake` 保留共享内核和旧命令兼容。
+一句话：`android-source-access` 负责连接服务器源码，`android-knowledge-search` 负责开工前先查知识库仓库，`android-framework-change-workflow` 负责分析和改代码并给验收结论，`android-remote-channel` 负责稳定执行服务器命令，`android-remote-build-deploy` 负责编译和推送设备，`android-framework-patch-capture` 负责整理功能级补丁资料，`android-framework-patch-intake`、`android-daily-report-intake`、`android-weekly-report-intake` 负责按材料类型生成 incoming，`android-knowledge-intake` 承载共享内核、doctor、版本门禁和兼容路由。
 
 | 阶段 | 负责 skill | 职责 |
 | --- | --- | --- |
@@ -47,7 +47,7 @@
 | 补丁包上传材料 | `android-framework-patch-intake` | 生成原始补丁包、补证包、替换包和补丁资产修正 `framework_change` incoming |
 | 日报上传材料 | `android-daily-report-intake` | 生成个人日报正文、同源 UI 读模型和 `daily_trace` incoming |
 | 周报上传材料 | `android-weekly-report-intake` | 生成个人周报正文、同源 UI 读模型和 `weekly_trace` incoming |
-| 共享内核 / 旧命令 | `android-knowledge-intake` | 提供成员配置、doctor、插件更新、版本门禁、会话缓存门禁、manifest 协议和旧命令兼容路由 |
+| 共享内核 / 配置诊断 | `android-knowledge-intake` | 提供成员配置、doctor、插件更新、版本门禁、会话缓存门禁、manifest 协议和兼容路由 |
 
 `android-remote-build-deploy` 只证明产物是否编出、是否推上设备；最终能不能算需求完成，由 `android-framework-change-workflow` 结合需求和验证证据判断。
 
