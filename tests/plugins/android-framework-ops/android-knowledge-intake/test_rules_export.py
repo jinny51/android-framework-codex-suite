@@ -36,7 +36,7 @@ class RulesExportTest(unittest.TestCase):
             self.assertIn(str(generated), result.stdout)
             text = generated.read_text(encoding="utf-8")
             self.assertIn("GENERATED FROM android_framework_ops.knowledge_rules", text)
-            self.assertIn("android-framework-ops 1.0.106", text)
+            self.assertIn("android-framework-ops 1.0.107", text)
             self.assertIn("AKBS_RULES_CONTRACT_VERSION", text)
             self.assertIn("test-source-commit", text)
             self.assertNotIn("/home/jinny", text)
@@ -49,7 +49,7 @@ class RulesExportTest(unittest.TestCase):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 
-            self.assertEqual(module.current_plugin_version(), "1.0.106")
+            self.assertEqual(module.current_plugin_version(), "1.0.107")
             self.assertEqual(module.AKBS_RULES_CONTRACT_VERSION, "2026-07-02.1")
             self.assertEqual(module.find_company_project("project: TVE1213", platform="mtk"), "TVE1213M")
             self.assertEqual(module.find_company_project("project: TVI3315", platform="rk"), "TVI3315A")
