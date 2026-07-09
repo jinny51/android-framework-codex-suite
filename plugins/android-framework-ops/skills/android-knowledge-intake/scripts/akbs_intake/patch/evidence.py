@@ -1,0 +1,435 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from akbs_intake.io_utils import (
+    MATERIALS_DIR,
+    list_string_values,
+    materials_rel,
+    read_referenced_json,
+    safe_id,
+    sha1_file,
+    unique_strings,
+    write_json,
+)
+from akbs_intake.patch.facts import patch_facts_from_text, patch_modified_files, patch_problem_and_risk_payloads
+from akbs_intake.report_sessions import compact_text
+
+
+REQUIRED_PATCH_EXPLANATION_KINDS = {"patch_problem_summary", "risk_surface"}
+
+
+def evidence_covers_patch(item: dict[str, Any], payload: dict[str, Any] | None, patch: dict[str, Any], patch_count: int) -> bool:
+    if patch_count == 1:
+        return True
+    patch_id = str(patch.get("id") or "")
+    patch_path = str(patch.get("path") or "")
+    values = [item.get("patch_id"), item.get("patch"), item.get("source_patch")]
+    if isinstance(payload, dict):
+        values.extend([payload.get("patch_id"), payload.get("patch"), payload.get("source_patch"), payload.get("patch_path")])
+    normalized = {str(value) for value in values if value}
+    return bool((patch_id and patch_id in normalized) or (patch_path and patch_path in normalized))
+
+
+def existing_explanation_kinds_for_entry(package_dir: Path, evidence_entries: list[dict[str, Any]], entry: dict[str, Any], patch_count: int) -> set[str]:
+    patch = {"id": Path(str(entry.get("path", ""))).stem, "path": entry.get("path", "")}
+    kinds: set[str] = set()
+    for item in evidence_entries:
+        if item.get("kind") not in REQUIRED_PATCH_EXPLANATION_KINDS:
+            continue
+        rel = item.get("path")
+        payload = read_referenced_json(package_dir, rel) if isinstance(rel, str) else None
+        if evidence_covers_patch(item, payload, patch, patch_count):
+            kinds.add(str(item.get("kind")))
+    return kinds
+
+
+def ensure_patch_analysis_evidence(package_dir: Path, patch_entries: list[dict[str, Any]], evidence_entries: list[dict[str, Any]], summary: str) -> None:
+    evidence_dir = package_dir / MATERIALS_DIR / "evidence"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    patch_count = len(patch_entries)
+    for entry in patch_entries:
+        rel = str(entry.get("path") or "")
+        if not rel:
+            continue
+        patch_path = package_dir / rel
+        if not patch_path.is_file():
+            continue
+        text = patch_path.read_text(encoding="utf-8", errors="ignore")
+        facts = patch_facts_from_text(text)
+        captured_facts = entry.get("facts") if isinstance(entry.get("facts"), dict) else {}
+        merged_facts = {**facts, **{key: value for key, value in captured_facts.items() if value}}
+        entry["facts"] = merged_facts
+
+        existing = existing_explanation_kinds_for_entry(package_dir, evidence_entries, entry, patch_count)
+        patch_id = Path(rel).stem
+        safe_patch_id = safe_id(patch_id)
+        source_patch = rel
+
+        diff_facts_payload = {
+            "kind": "patch_diff_facts",
+            "patch_id": patch_id,
+            "source_patch": source_patch,
+            "content_sha1": merged_facts.get("content_sha1") or sha1_file(patch_path),
+            "modified_files": merged_facts.get("modified_files", []),
+            "modules": merged_facts.get("modules", []),
+            "symbols": merged_facts.get("symbols", []),
+            "system_properties": merged_facts.get("system_properties", []),
+            "settings_keys": merged_facts.get("settings_keys", []),
+            "resource_keys": merged_facts.get("resource_keys", []),
+            "framework_log_keys": merged_facts.get("framework_log_keys", []),
+        }
+        diff_facts_path = evidence_dir / f"{safe_patch_id}-patch-diff-facts.json"
+        if not diff_facts_path.exists():
+            write_json(diff_facts_path, diff_facts_payload)
+            evidence_entries.append(
+                {
+                    "id": f"{safe_patch_id}-patch-diff-facts",
+                    "kind": "patch_diff_facts",
+                    "patch_id": patch_id,
+                    "path": materials_rel("evidence", diff_facts_path.name),
+                    "result": "INFO",
+                    "summary": "patch facts from member-side package generation",
+                }
+            )
+
+        problem_payload, risk_payload = patch_problem_and_risk_payloads(patch_id, source_patch, summary, merged_facts)
+        if "patch_problem_summary" not in existing:
+            problem_path = evidence_dir / f"{safe_patch_id}-patch-problem.json"
+            write_json(problem_path, problem_payload)
+            evidence_entries.append(
+                {
+                    "id": f"{safe_patch_id}-patch-problem",
+                    "kind": "patch_problem_summary",
+                    "patch_id": patch_id,
+                    "path": materials_rel("evidence", problem_path.name),
+                    "result": "INFO",
+                    "summary": "member-side patch problem explanation",
+                }
+            )
+        if "risk_surface" not in existing:
+            risk_path = evidence_dir / f"{safe_patch_id}-risk-surface.json"
+            write_json(risk_path, risk_payload)
+            evidence_entries.append(
+                {
+                    "id": f"{safe_patch_id}-risk-surface",
+                    "kind": "risk_surface",
+                    "patch_id": patch_id,
+                    "path": materials_rel("evidence", risk_path.name),
+                    "result": "INFO",
+                    "summary": "member-side patch risk surface",
+                }
+            )
+
+
+def incoming_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[str, Any]:
+    patch_path = package_dir / str(patch_entry["path"])
+    captured_facts = patch_entry.get("facts") if isinstance(patch_entry.get("facts"), dict) else {}
+    content_sha1 = str(patch_entry.get("content_sha1") or sha1_file(patch_path))
+    repo_path = str(patch_entry.get("repo_path") or captured_facts.get("repo_path") or "").strip("/")
+    implementation_origin = str(patch_entry.get("implementation_origin") or captured_facts.get("implementation_origin") or "unknown")
+    captured_by = str(patch_entry.get("captured_by") or captured_facts.get("captured_by") or "")
+    coding_standard_check = patch_entry.get("coding_standard_check") if isinstance(patch_entry.get("coding_standard_check"), dict) else {}
+    modified_files = captured_facts.get("modified_files") or patch_modified_files(patch_path)
+    if repo_path:
+        prefix = repo_path + "/"
+        modified_files = [path if str(path).startswith(prefix) else prefix + str(path) for path in list_string_values(modified_files)]
+    facts = {
+        "content_sha1": content_sha1,
+        "repo_path": repo_path,
+        "platform_token": str(patch_entry.get("platform_token") or ""),
+        "platform": str(patch_entry.get("platform") or ""),
+        "android_version": str(patch_entry.get("android_version") or ""),
+        "implementation_origin": implementation_origin,
+        "captured_by": captured_by,
+        "modified_files": modified_files,
+        "modules": captured_facts.get("modules") or [],
+        "symbols": captured_facts.get("symbols") or [],
+        "system_properties": captured_facts.get("system_properties") or [],
+        "settings_keys": captured_facts.get("settings_keys") or [],
+        "resource_keys": captured_facts.get("resource_keys") or [],
+        "framework_log_keys": captured_facts.get("framework_log_keys") or [],
+    }
+    reuse_hint = patch_entry.get("reuse_hint", False)
+    return {
+        "id": Path(str(patch_entry["path"])).stem,
+        "path": patch_entry["path"],
+        "readme": patch_entry.get("readme", ""),
+        "content_sha1": content_sha1,
+        "status": patch_entry.get("status", "candidate"),
+        "reuse_hint": reuse_hint if isinstance(reuse_hint, bool) else reuse_hint,
+        "note": str(patch_entry.get("note") or ""),
+        "repo_path": repo_path,
+        "implementation_origin": implementation_origin,
+        "captured_by": captured_by,
+        "coding_standard_check": coding_standard_check,
+        "artifact": "",
+        "facts": facts,
+    }
+
+
+def aggregate_patch_diff_facts(patch_items: list[dict[str, Any]]) -> dict[str, Any]:
+    aggregate: dict[str, list[str]] = {
+        "modified_files": [],
+        "modules": [],
+        "symbols": [],
+        "system_properties": [],
+        "settings_keys": [],
+        "resource_keys": [],
+        "framework_log_keys": [],
+    }
+    patches: list[dict[str, Any]] = []
+    content_hashes: list[str] = []
+    implementation_origins: list[str] = []
+    capture_tools: list[str] = []
+    for item in patch_items:
+        facts = item.get("facts", {}) if isinstance(item.get("facts"), dict) else {}
+        content_sha1 = str(item.get("content_sha1") or facts.get("content_sha1") or "")
+        if content_sha1:
+            content_hashes.append(content_sha1)
+        implementation_origin = str(item.get("implementation_origin") or facts.get("implementation_origin") or "").strip()
+        captured_by = str(item.get("captured_by") or facts.get("captured_by") or "").strip()
+        if implementation_origin:
+            implementation_origins.append(implementation_origin)
+        if captured_by:
+            capture_tools.append(captured_by)
+        for key in aggregate:
+            aggregate[key].extend(list_string_values(facts.get(key)))
+        patches.append(
+            {
+                "id": item.get("id", ""),
+                "path": item.get("path", ""),
+                "repo_path": item.get("repo_path", ""),
+                "content_sha1": content_sha1,
+                "status": item.get("status", "candidate"),
+                "reuse_hint": bool(item.get("reuse_hint")),
+                "note": str(item.get("note") or ""),
+                "implementation_origin": implementation_origin,
+                "captured_by": captured_by,
+                "modified_files": list_string_values(facts.get("modified_files")),
+                "modules": list_string_values(facts.get("modules")),
+            }
+        )
+    payload: dict[str, Any] = {
+        "patch_count": len(patch_items),
+        "patches": patches,
+        "content_sha1": content_hashes[0] if len(content_hashes) == 1 else "",
+        "implementation_origins": unique_strings(implementation_origins),
+        "capture_tools": unique_strings(capture_tools),
+    }
+    payload.update({key: unique_strings(values) for key, values in aggregate.items()})
+    return payload
+
+
+def concrete_module_from_files(modified_files: list[str], repo_paths: list[str]) -> str:
+    for path in modified_files:
+        parts = [part for part in Path(path).parts if part not in {"", "."}]
+        if len(parts) >= 4:
+            return "/".join(parts[:4])
+        if len(parts) >= 2:
+            return "/".join(parts[:2])
+    for repo_path in repo_paths:
+        if repo_path:
+            return repo_path
+    return "unknown"
+
+
+def feature_domain_from_text(summary: str, problem: str, modified_files: list[str]) -> str:
+    text = " ".join([summary, problem, *modified_files]).lower()
+    domains = [
+        ("lockscreen", "锁屏"),
+        ("launcher", "Launcher"),
+        ("settings", "Settings"),
+        ("systemui", "SystemUI"),
+        ("display", "显示策略"),
+        ("navigation", "导航策略"),
+        ("audio", "音频策略"),
+        ("camera", "相机"),
+        ("usb", "USB 权限"),
+        ("hdmi", "HDMI"),
+        ("permission", "权限"),
+    ]
+    for token, label in domains:
+        if token in text or label.lower() in text:
+            return label
+    if modified_files:
+        stem = Path(modified_files[0]).stem
+        return stem or "Framework 功能"
+    return "Framework 功能"
+
+
+def search_decision_value(search_payload: dict[str, Any]) -> str:
+    payload = search_payload.get("payload", search_payload) if isinstance(search_payload, dict) else {}
+    if not isinstance(payload, dict):
+        return "unknown"
+    decision = str(payload.get("reuse_decision") or payload.get("decision") or "").strip()
+    if decision in {"reuse", "adapt", "reference_only", "not_found", "not_applicable", "unknown"}:
+        return decision
+    if payload.get("searched") is False:
+        return "unknown"
+    return "unknown"
+
+
+def search_match_class_payload(search_payload: dict[str, Any]) -> dict[str, Any]:
+    decision = search_decision_value(search_payload)
+    if decision == "reuse":
+        merge_hint = "candidate_only"
+        explanation = "成员声明直接复用已有知识，但仍必须通过模块、细分领域、代码锚点、补丁行为和验证目标硬门禁。"
+    elif decision in {"adapt", "reference_only"}:
+        merge_hint = "reference_only"
+        explanation = f"{decision} 只能作为参考证据，不能直接触发合并。"
+    elif decision == "not_found":
+        merge_hint = "not_found"
+        explanation = "成员搜索未命中可复用知识，管理端仍需执行沉淀前重叠检索。"
+    elif decision == "not_applicable":
+        merge_hint = "not_applicable"
+        explanation = "成员判断搜索结果不适用，不能触发合并。"
+    else:
+        merge_hint = "insufficient_evidence"
+        explanation = "搜索使用决策缺失或未知，不能让管理端用标题猜合并。"
+    payload = search_payload.get("payload", search_payload) if isinstance(search_payload, dict) else {}
+    if not isinstance(payload, dict):
+        payload = {}
+    return {
+        "decision": decision,
+        "merge_hint": merge_hint,
+        "targets": list_string_values(payload.get("targets")),
+        "queries": list_string_values(payload.get("queries")),
+        "explanation": explanation,
+    }
+
+
+def patch_view_payload(
+    manifest_like: dict[str, Any],
+    *,
+    case_problem: str,
+    case_solution: str,
+    verification_payload: dict[str, Any],
+    risk_payload: dict[str, Any],
+    patch_rel_paths: list[str],
+    supplement_for_package_key: str,
+    supplement_reason: str,
+    supplement_mode: str = "",
+    corrected_fields: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    summary = str(manifest_like.get("summary") or "").strip() or "Framework 补丁包"
+    material_kind_label = "字段补证包" if supplement_mode == "field_correction" else ("补证包" if supplement_for_package_key else "原始包")
+    material_identity_mode = "inherit_target_package" if supplement_for_package_key else "self"
+    result_summary = str(verification_payload.get("summary") or verification_payload.get("result") or "验证结果未提供")
+    if supplement_mode == "field_correction":
+        result_summary = "字段级补证，不包含补丁 diff、验证结论或代码证据。"
+    risks = list_string_values(risk_payload.get("risk_areas")) or list_string_values(risk_payload.get("limits"))
+    risk_or_gap = "；".join(risks[:2]) if risks else "暂无明确遗留风险"
+    if supplement_for_package_key:
+        risk_or_gap = f"补证目标：{supplement_for_package_key}；{supplement_reason or risk_or_gap}"
+    corrected_items = [f"{key}: {value}" for key, value in sorted((corrected_fields or {}).items())]
+    detail_sections = [
+        {"title": "问题", "items": [case_problem or summary]},
+        {"title": "修改内容", "items": [case_solution or summary, *patch_rel_paths]},
+        {"title": "验证结果", "items": [result_summary]},
+        {"title": "遗留风险", "items": risks or ["暂无明确遗留风险"]},
+        {"title": "下一步", "items": ["按管理端入库校验和沉淀判断继续处理。"]},
+    ]
+    if supplement_mode == "field_correction":
+        detail_sections[1] = {
+            "title": "字段修正",
+            "items": corrected_items or ["未列出字段修正内容。"],
+        }
+    if supplement_for_package_key:
+        detail_sections.insert(
+            1,
+            {
+                "title": "补证关系",
+                "items": [f"补证包补充原始包：{supplement_for_package_key}", supplement_reason or "补充原始包证据。"],
+            },
+        )
+    return {
+        "kind": "patch_view",
+        "payload": {
+            "material_kind_label": material_kind_label,
+            "material_identity_mode": material_identity_mode,
+            "material_identity_target_package_key": supplement_for_package_key,
+            "display_title": compact_text(summary, 80),
+            "problem_summary": case_problem or summary,
+            "solution_summary": case_solution or summary,
+            "result_summary": result_summary,
+            "project": manifest_like.get("project", "unknown"),
+            "platform": manifest_like.get("platform", "unknown"),
+            "android_version": manifest_like.get("android_version", "unknown"),
+            "member_alias": manifest_like.get("member_alias", ""),
+            "member_name": manifest_like.get("member_name", ""),
+            "supplement_for_package_key": supplement_for_package_key,
+            "ui_card": {
+                "title": compact_text(summary, 48),
+                "subtitle": f"{manifest_like.get('project', 'unknown')} / {manifest_like.get('platform', 'unknown')} / Android {manifest_like.get('android_version', 'unknown')}",
+                "summary": compact_text(case_problem or summary, 120),
+                "risk_or_gap": compact_text(risk_or_gap, 160),
+            },
+            "detail_sections": detail_sections,
+        },
+    }
+
+
+def patch_ai_facts_payload(
+    *,
+    manifest_like: dict[str, Any],
+    patch_diff_payload: dict[str, Any],
+    search_payload: dict[str, Any],
+    verification_payload: dict[str, Any],
+    case_problem: str,
+    case_solution: str,
+    plugin_version: str,
+) -> dict[str, Any]:
+    modified_files = list_string_values(patch_diff_payload.get("modified_files"))
+    repo_paths = unique_strings(str(item.get("repo_path") or "").strip("/") for item in patch_diff_payload.get("patches", []) if isinstance(item, dict))
+    module = concrete_module_from_files(modified_files, repo_paths)
+    feature_domain = feature_domain_from_text(str(manifest_like.get("summary") or ""), case_problem, modified_files)
+    code_anchors = {
+        "files": modified_files,
+        "symbols": list_string_values(patch_diff_payload.get("symbols")),
+        "resource_keys": list_string_values(patch_diff_payload.get("resource_keys")),
+        "settings_keys": list_string_values(patch_diff_payload.get("settings_keys")),
+        "system_properties": list_string_values(patch_diff_payload.get("system_properties")),
+        "framework_log_keys": list_string_values(patch_diff_payload.get("framework_log_keys")),
+    }
+    patch_assets = [
+        {
+            "path": item.get("path", ""),
+            "content_sha1": item.get("content_sha1", ""),
+            "repo_path": item.get("repo_path", ""),
+            "modified_files": list_string_values(item.get("modified_files")),
+        }
+        for item in patch_diff_payload.get("patches", [])
+        if isinstance(item, dict)
+    ]
+    search_class = search_match_class_payload(search_payload)
+    verification_targets = {
+        "result": verification_payload.get("result", "MISSING"),
+        "method": verification_payload.get("method", "not_provided"),
+        "summary": verification_payload.get("summary", ""),
+    }
+    return {
+        "module": module,
+        "feature_domain": feature_domain,
+        "patch_behavior_goal": case_problem or str(manifest_like.get("summary") or ""),
+        "solution_summary": case_solution,
+        "code_anchors": code_anchors,
+        "patch_assets": patch_assets,
+        "verification_targets": verification_targets,
+        "search_usage": search_payload.get("payload", search_payload),
+        "search_match_class": search_class,
+        "merge_gate_inputs": {
+            "module": module,
+            "feature_domain": feature_domain,
+            "code_anchors": code_anchors,
+            "patch_behavior_goal": case_problem or str(manifest_like.get("summary") or ""),
+            "verification_targets": verification_targets,
+            "project": manifest_like.get("project", "unknown"),
+            "platform": manifest_like.get("platform", "unknown"),
+            "android_version": manifest_like.get("android_version", "unknown"),
+            "search_match_class": search_class,
+        },
+        "protocol_version": "patch-human-ai-evidence-v1",
+        "plugin_version": plugin_version,
+    }

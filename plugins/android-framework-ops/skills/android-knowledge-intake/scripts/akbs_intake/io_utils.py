@@ -69,6 +69,28 @@ def read_optional_json_object(path: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def reference_path(package_dir: Path, rel: str) -> Path:
+    path = (package_dir / rel).resolve()
+    root = package_dir.resolve()
+    if path != root and root not in path.parents:
+        raise ValueError(f"引用路径越界: {rel}")
+    return path
+
+
+def read_referenced_json(package_dir: Path, rel: str) -> dict[str, Any] | None:
+    try:
+        path = reference_path(package_dir, rel)
+    except ValueError:
+        return None
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def read_text_sample(path: Path, limit: int = 12000) -> str:
     if not path.is_file():
         return ""
