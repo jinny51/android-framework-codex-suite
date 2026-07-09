@@ -2044,27 +2044,6 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             by_kind[str(kind)] = payload
         return by_kind
 
-    def report_project_customer_errors(rel: str, rows: Any, label: str) -> list[str]:
-        row_errors: list[str] = []
-        if not isinstance(rows, list) or not rows:
-            row_errors.append(f"{rel} payload.{label} 必须包含项目和客户信息")
-            return row_errors
-        for index, row in enumerate(rows):
-            if not isinstance(row, dict):
-                row_errors.append(f"{rel} payload.{label}[{index}] 必须是对象")
-                continue
-            project = str(row.get("project") or "").strip()
-            if project in REPORT_MISSING_PROJECT_VALUES or not find_company_project(project):
-                row_errors.append(
-                    f"{rel} payload.{label}[{index}].project 未识别到公司项目名，请按“项目名 客户名”补充，例如：TVE1086U 青鸾云"
-                )
-            customer = str(row.get("customer_name") or row.get("customer") or "").strip()
-            if customer in REPORT_MISSING_CUSTOMER_VALUES:
-                row_errors.append(
-                    f"{rel} payload.{label}[{index}].customer 缺少客户名，请按“项目名 客户名”补充，例如：TVE1086U 青鸾云"
-                )
-        return row_errors
-
     required = {
         "schema",
         "schema_version",
