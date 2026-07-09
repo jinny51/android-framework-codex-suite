@@ -6,7 +6,6 @@ import datetime as dt
 import json
 import os
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -29,7 +28,6 @@ from android_framework_ops.knowledge_rules import (
     aggregate_package_scope_errors,
     apply_platform_overrides,
     find_company_project,
-    find_company_projects,
     find_platform_tokens,
     has_uncontrolled_patch_asset_prefix,
     is_valid_android_version_value,
@@ -289,14 +287,16 @@ from akbs_intake.io_utils import (  # noqa: E402
     materials_rel,
     read_json_file,
     read_optional_json_object,
-    read_text_sample,
     safe_id,
     sha1_file,
     stable_slug_id,
     unique_strings,
     write_json,
 )
-from akbs_intake.project_identity import project_inference_payload  # noqa: E402
+from akbs_intake.project_identity import (  # noqa: E402
+    infer_project as _infer_project,
+    project_inference_payload,
+)
 from akbs_intake.patch.capture_import import (  # noqa: E402
     copy_patch_capture_packages,
     patch_capture_package_scope_errors,
@@ -1611,86 +1611,6 @@ def first_evidence_payload(package_dir: Path, entries: list[dict[str, Any]], kin
     return read_json_file(package_dir / rel)
 
 
-def parse_shell_array(text: str, name: str) -> list[str]:
-    match = re.search(rf"^{re.escape(name)}=\((.*)\)$", text, re.M)
-    if not match:
-        return []
-    try:
-        return [item for item in shlex.split(match.group(1)) if item]
-    except ValueError:
-        return []
-
-
-def path_strings_overlap(left: str, right: str) -> bool:
-    left = left.replace("\\", "/").rstrip("/")
-    right = right.replace("\\", "/").rstrip("/")
-    if not left or not right:
-        return False
-    return left == right or left.startswith(right + "/") or right.startswith(left + "/")
-
-
-def source_access_registry_clues(source_paths: list[str]) -> list[tuple[str, str]]:
-    registry_dir = Path.home() / ".servers" / "projects"
-    if not registry_dir.is_dir():
-        return []
-    source_paths = [path for path in source_paths if path]
-    if not source_paths:
-        return []
-    clues: list[tuple[str, str]] = []
-    for registry_file in sorted(registry_dir.glob("*.env")):
-        try:
-            text = registry_file.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        paths = parse_shell_array(text, "PROJECT_PATHS")
-        if not paths:
-            continue
-        ssh_hosts = parse_shell_array(text, "REMOTE_SSH_HOSTS")
-        remote_roots = parse_shell_array(text, "REMOTE_ROOTS")
-        platforms = parse_shell_array(text, "PLATFORMS")
-        sdk_names = parse_shell_array(text, "SDK_NAMES")
-        shares = parse_shell_array(text, "SAMBA_PROJECT_SHARES")
-        for index, project_path in enumerate(paths):
-            if not any(path_strings_overlap(source_path, project_path) for source_path in source_paths):
-                continue
-            if index < len(sdk_names):
-                clues.append(("source-access registry sdk_name", sdk_names[index]))
-            if index < len(remote_roots):
-                clues.append(("source-access registry remote_root", remote_roots[index]))
-            if index < len(shares):
-                clues.append(("source-access registry share", shares[index]))
-            if index < len(platforms):
-                clues.append(("source-access registry platform", platforms[index]))
-            if index < len(ssh_hosts):
-                clues.append(("source-access registry ssh_host", ssh_hosts[index]))
-    return clues
-
-
-def source_context_clues(source_contexts: list[dict[str, Any]]) -> list[tuple[str, str]]:
-    clues: list[tuple[str, str]] = []
-    registry_paths: list[str] = []
-    fields = (
-        ("source_root", "capture source_root"),
-        ("repo_path", "capture repo_path"),
-        ("local_mount_path", "capture local_mount_path"),
-        ("git_branch", "capture git branch"),
-        ("git_remote", "capture git remote"),
-        ("git_remotes", "capture git remotes"),
-        ("remote_root", "capture remote_root"),
-        ("ssh_host", "capture ssh_host"),
-        ("sdk_name", "capture sdk_name"),
-    )
-    for context in source_contexts:
-        for key, label in fields:
-            value = context.get(key)
-            if isinstance(value, str) and value.strip():
-                clues.append((label, value))
-                if key in {"source_root", "local_mount_path", "remote_root"}:
-                    registry_paths.append(value)
-    clues.extend(source_access_registry_clues(registry_paths))
-    return clues
-
-
 def infer_project(
     explicit_project: str,
     patch_entries: list[dict[str, Any]],
@@ -1701,86 +1621,17 @@ def infer_project(
     related_report_clues: list[tuple[str, str]] | None = None,
     trusted_platform: str = "",
 ) -> tuple[str, dict[str, Any]]:
-    explicit_clues: list[tuple[str, str]] = []
-    if explicit_project and explicit_project.strip() != "unknown":
-        explicit_clues.append(("命令参数 project", explicit_project.strip()))
-
-    capture_project_clues: list[tuple[str, str]] = []
-    for item in patch_entries:
-        for key, label in (("project", "capture package project"),):
-            value = item.get(key)
-            if isinstance(value, str) and value:
-                capture_project_clues.append((label, value))
-
-    context_clues = source_context_clues(source_contexts or [])
-
-    patch_clues: list[tuple[str, str]] = []
-    for item in patch_entries:
-        for key, label in (("path", "补丁路径"), ("readme", "补丁说明路径")):
-            value = item.get(key)
-            if isinstance(value, str) and value:
-                patch_clues.append((label, value))
-            if package_dir and key in {"path", "readme"} and isinstance(value, str) and value:
-                source = package_dir / value
-                if key == "readme" and not patch_readme_usable_for_inference(source):
-                    continue
-                sample = read_text_sample(source)
-                if sample:
-                    patch_clues.append((label.replace("路径", "内容"), sample))
-    for item in patch_sources:
-        for key, label in (("project", "补丁来源 project"), ("name", "补丁名称"), ("source", "补丁来源路径")):
-            value = item.get(key)
-            if isinstance(value, str) and value:
-                if key == "project":
-                    capture_project_clues.append((label, value))
-                else:
-                    patch_clues.append((label, value))
-    if summary:
-        patch_clues.append(("补丁摘要", summary))
-
-    groups = [
-        ("explicit", explicit_clues),
-        ("capture_package_project", capture_project_clues),
-        ("source_context", context_clues),
-        ("patch_context", patch_clues),
-        ("related_report", related_report_clues or []),
-    ]
-    clues = [(label, value) for _, values in groups for label, value in values if str(value).strip()]
-    checked_sources = sorted(dict.fromkeys(label for label, _ in clues))
-    raw_inputs = [f"{label}: {value}" for label, value in clues]
-    matched: list[tuple[str, str, str]] = []
-    for _, values in groups:
-        for label, value in values:
-            matched.extend((candidate, label, value) for candidate in find_company_projects(value, platform=trusted_platform))
-    unique_projects = sorted(dict.fromkeys(project for project, _, _ in matched))
-    if len(unique_projects) == 1:
-        project = unique_projects[0]
-        basis = [f"{label}: {value}" for matched_project, label, value in matched if matched_project == project]
-        if trusted_platform and not any(project in str(value).upper() for matched_project, _, value in matched if matched_project == project):
-            if project.startswith("TVI"):
-                basis.append(f"可信平台证据 platform={trusted_platform} 用于按 TVI 芯片字段补齐，候选规范项目 {project}")
-            else:
-                basis.append(f"可信平台证据 platform={trusted_platform} 用于补齐缺失项目平台位，候选规范项目 {project}")
-        return project, project_inference_payload(project, basis[:5], checked_sources, raw_inputs)
-    if len(unique_projects) > 1:
-        limits = [f"识别到多个项目型号: {', '.join(unique_projects)}，不能写成单一项目"]
-        if explicit_project and explicit_project.strip() not in {"", "unknown"}:
-            limits.append("命令参数 project 与其他项目线索不一致，未作为项目名写入上传包")
-        payload = project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
-        payload["candidates"] = unique_projects
-        return "unknown", payload
-
-    limits = ["未从命令参数、capture package、source_root/git/registry、补丁内容或关联报告中识别到 TVD/TVE/TVA/TVI 项目型号"]
-    if explicit_project and explicit_project.strip() not in {"", "unknown"}:
-        limits.append("命令参数 project 未匹配公司项目型号规范，未作为项目名写入上传包")
-    weak_capture_projects = [
-        value
-        for label, value in capture_project_clues
-        if value.strip() and value.strip() != "unknown" and not find_company_project(value, platform=trusted_platform)
-    ]
-    if weak_capture_projects:
-        limits.append("capture package project 未匹配公司项目型号规范，未作为项目名写入上传包")
-    return "unknown", project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
+    return _infer_project(
+        explicit_project,
+        patch_entries,
+        patch_sources,
+        summary,
+        package_dir=package_dir,
+        source_contexts=source_contexts,
+        related_report_clues=related_report_clues,
+        trusted_platform=trusted_platform,
+        readme_usable_for_inference=patch_readme_usable_for_inference,
+    )
 
 
 def write_default_evidence(package_dir: Path, rel: str, payload: dict[str, Any]) -> str:
