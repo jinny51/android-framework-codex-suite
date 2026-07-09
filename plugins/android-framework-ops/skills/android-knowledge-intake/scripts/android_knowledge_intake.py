@@ -278,10 +278,9 @@ from akbs_intake.patch.evidence import (  # noqa: E402
     ensure_patch_analysis_evidence,
     ensure_required_patch_explanation_evidence,
     incoming_patch_item,
-    patch_ai_facts_payload,
-    patch_view_payload,
     select_search_before_change_payload,
     verification_payload_or_missing,
+    write_patch_view_and_ai_facts,
 )
 from akbs_intake.patch.facts import patch_facts_from_text, patch_modules_from_files, patch_problem_and_risk_payloads  # noqa: E402
 from akbs_intake.patch.metadata import (  # noqa: E402
@@ -1230,40 +1229,21 @@ def prepare_patch_package(
         "member_alias": config["member_alias"],
         "member_name": config["member_name"],
     }
-    risk_payload = first_evidence_payload(package_dir, capture_evidence_entries, "risk_surface")
-    if not risk_payload:
-        risk_payload = {"risk_areas": ["修改路径需按需求验证"], "limits": ["缺少可解析风险证据"]}
-    patch_view_path = materials_rel("display", "patch_view.json")
-    write_json(
-        package_dir / patch_view_path,
-        patch_view_payload(
-            manifest_context,
-            case_problem=case_problem,
-            case_solution=case_solution,
-            verification_payload=verification_payload,
-            risk_payload=risk_payload,
-            patch_rel_paths=patch_rel_paths,
-            supplement_for_package_key=supplement_for_package_key,
-            supplement_reason=supplement_reason,
-        ),
-    )
-    patch_ai_facts_path = write_default_evidence(
+    patch_view_path, patch_ai_facts_path = write_patch_view_and_ai_facts(
         package_dir,
-        materials_rel("evidence", "patch_ai_facts.json"),
-        {
-            "kind": "patch_ai_facts",
-            "case_id": case_id,
-            "variant_id": variant_id,
-            "payload": patch_ai_facts_payload(
-                manifest_like=manifest_context,
-                patch_diff_payload=patch_diff_payload,
-                search_payload=search_payload,
-                verification_payload=verification_payload,
-                case_problem=case_problem,
-                case_solution=case_solution,
-                plugin_version=plugin_install_metadata().get("plugin_version", ""),
-            ),
-        },
+        manifest_context=manifest_context,
+        case_id=case_id,
+        variant_id=variant_id,
+        case_problem=case_problem,
+        case_solution=case_solution,
+        verification_payload=verification_payload,
+        risk_payload=first_evidence_payload(package_dir, capture_evidence_entries, "risk_surface"),
+        patch_rel_paths=patch_rel_paths,
+        supplement_for_package_key=supplement_for_package_key,
+        supplement_reason=supplement_reason,
+        patch_diff_payload=patch_diff_payload,
+        search_payload=search_payload,
+        plugin_version=plugin_install_metadata().get("plugin_version", ""),
     )
 
     write_variant_file(

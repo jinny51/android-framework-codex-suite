@@ -507,3 +507,62 @@ def patch_ai_facts_payload(
         "protocol_version": "patch-human-ai-evidence-v1",
         "plugin_version": plugin_version,
     }
+
+
+def risk_payload_or_default(risk_payload: dict[str, Any]) -> dict[str, Any]:
+    if risk_payload:
+        return risk_payload
+    return {"risk_areas": ["修改路径需按需求验证"], "limits": ["缺少可解析风险证据"]}
+
+
+def write_patch_view_and_ai_facts(
+    package_dir: Path,
+    *,
+    manifest_context: dict[str, Any],
+    case_id: str,
+    variant_id: str,
+    case_problem: str,
+    case_solution: str,
+    verification_payload: dict[str, Any],
+    risk_payload: dict[str, Any],
+    patch_rel_paths: list[str],
+    supplement_for_package_key: str,
+    supplement_reason: str,
+    patch_diff_payload: dict[str, Any],
+    search_payload: dict[str, Any],
+    plugin_version: str,
+) -> tuple[str, str]:
+    normalized_risk_payload = risk_payload_or_default(risk_payload)
+    patch_view_path = materials_rel("display", "patch_view.json")
+    write_json(
+        package_dir / patch_view_path,
+        patch_view_payload(
+            manifest_context,
+            case_problem=case_problem,
+            case_solution=case_solution,
+            verification_payload=verification_payload,
+            risk_payload=normalized_risk_payload,
+            patch_rel_paths=patch_rel_paths,
+            supplement_for_package_key=supplement_for_package_key,
+            supplement_reason=supplement_reason,
+        ),
+    )
+    patch_ai_facts_path = materials_rel("evidence", "patch_ai_facts.json")
+    write_json(
+        package_dir / patch_ai_facts_path,
+        {
+            "kind": "patch_ai_facts",
+            "case_id": case_id,
+            "variant_id": variant_id,
+            "payload": patch_ai_facts_payload(
+                manifest_like=manifest_context,
+                patch_diff_payload=patch_diff_payload,
+                search_payload=search_payload,
+                verification_payload=verification_payload,
+                case_problem=case_problem,
+                case_solution=case_solution,
+                plugin_version=plugin_version,
+            ),
+        },
+    )
+    return patch_view_path, patch_ai_facts_path
