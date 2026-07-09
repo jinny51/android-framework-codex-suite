@@ -48,36 +48,32 @@
 
 日报目的：讲清楚今天干了什么、怎么干的、结果是什么。日报不是周总结，不要写成项目总账。
 
-## 一、今日工作概览
+## 一、今日概况
 
-| 项目 | 客户 | 模块/功能 | 事项类型 | 当前状态 | 是否阻塞 | 今日一句话进展 |
-| --- | --- | --- | --- | --- | --- | --- |
+### 项目名 客户名
 
-## 二、今日具体事项
+- 今日主题：今天主要处理了什么。
+- 当前结果：今天处理到什么程度。
 
-### 项目编号
+## 二、今日工作
 
-#### 事项 1: 具体事项名称
-- 事项来源：Codex 会话记录 / 本地工程证据
-- 事项描述：具体事项描述
-- 今日处理内容：今天实际处理了什么
-- 处理方式/简要流程：如何排查、修改、验证或推进
-- 今日结果：已完成 / 待验证 / 处理中 / 阻塞，或明确百分比
-- 验证情况：是否编译、上机、回归、提测或仍缺验证条件
-- 遗留问题：仍缺什么
-- 下一步/明日计划：明日继续做什么
+### 项目名 客户名
 
-## 三、今日阻塞 / 风险
+#### 1. 事项名称
 
-项目、阻塞事项、阻塞原因、需要谁支持、预计恢复时间。
+做了什么：
+- 具体做了哪些工作。
 
-## 四、今日产出
+怎么做的：
+- 通过什么方式排查、修改、验证或推进。
 
-Patch、文档、验证结果、对外同步。
+结果：
+- 当前结果是什么，是否还要继续。
 
-## 五、明日重点
+## 三、明日重点
 
-明日优先事项。
+### 项目名 客户名
+- 明天优先处理什么。
 ```
 
 ## Weekly Template
@@ -89,13 +85,17 @@ Patch、文档、验证结果、对外同步。
 
 ## 一、本周概况
 
-单项目直接写：
+### 项目名 客户名
 
-- 项目名称：TVE1086U
-- 客户名称：青鸾云
+本周围绕 项目名 客户名 项目推进：简短说明本周主要处理的方向。
+
 - 接到文档时间：2026-06-18
-- 需求类型：混合，包含定制需求、Bug / Debug 处理及 BSP 配合事项
-- 当周完成情况：本周从上周剩余 8 项中完成 5 项，当前剩余 3 项，预计下周完成整体收敛。
+- 来源说明：客户需求文档 / TL指派 / Buglist / 测试反馈 / BSP配合 中选择一个
+- 需求类型：纯定制 / Buglist / 混合 中选择一个
+- 需求结构：18 项（定制 8、Bug 8、BSP 2）
+- 本周完成：5 项（定制 4、Bug 1）
+- 当前剩余：3 项（定制 3、Bug 0）
+- 预计完成：预计完成时间或收敛说明
 
 多项目时，在“本周概况”下按项目重复上述块；不要使用“总盘子”这类说法，也不要用大表格堆字段。
 
@@ -103,28 +103,18 @@ Patch、文档、验证结果、对外同步。
 
 ### 项目编号 客户名称
 
-#### 1. 基本信息
+#### 1. 本周完成
 
-- 来源类型：定制 / Buglist / 混合 / 临时支持。
-- 来源说明：需求单、Buglist、客户、测试、项目经理、临时安排等。
-- 接到文档时间：能证明时写日期，不能证明时写 `需成员确认`。
-- 已持续时间：能证明时写持续时长，不能证明时写 `需成员确认`。
-- 需求结构：定制需求、移植适配、Bug、BSP、其他、合计。
-- 上周一剩余：从上周或本周初延续下来的事项；混合项目要按定制 / Bug / BSP 等分类说明。
-- 本周完成：本周闭环事项；混合项目要按定制 / Bug / BSP 等分类说明。
-- 当前剩余：仍未闭环事项；混合项目要按定制 / Bug / BSP 等分类说明。
+列出本周已完成事项。
 
-#### 2. 本周进展
+#### 2. 当前剩余
 
-已完成事项和当前剩余事项分开列出。
+列出当前剩余事项。
 
-#### 3. 本周重点说明
+#### 3. 风险 / 依赖
 
-重要定制、移植、Bug、Patch、验证、交付、风险和依赖。
-
-#### 4. 风险与依赖
-
-列出客户确认、BSP、设备、测试、第三方 App、编译环境等风险或依赖。
+风险：超过 3 天无进展的事项；没有则写“无超过 3 天无进展事项。”
+依赖：依赖外部推进的事项；没有则写“无外部依赖事项。”
 
 ## 三、下周计划
 
@@ -139,21 +129,22 @@ Daily and weekly reports are the primary human-readable product. The package als
 {
   "kind": "report_view",
   "payload": {
+    "schema": "akbs-report-view-human-v1",
     "report_type": "daily",
-    "display_title": "20260701_成员_日报",
     "material_name": "TVE1086U（青鸾云）",
     "material_summary": "TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。",
-    "one_line_summary": "TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。",
-    "projects": [],
-    "work_items": [],
-    "risks": [],
-    "outputs": [],
-    "tomorrow_focus": [],
-    "ui_card": {
-      "title": "TVE1086U（青鸾云）",
-      "subtitle": "TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。",
-      "status": "正常推进"
-    }
+    "projects": [
+      {
+        "project": "TVE1086U",
+        "customer": "青鸾云",
+        "today_topic": "锁屏鼠标位置刷新",
+        "current_result": "已完成基础验证",
+        "work_items": [
+          {"name": "锁屏鼠标位置刷新", "did": ["完成属性映射处理"], "how": ["按输入链路排查"], "result": "已完成"}
+        ],
+        "tomorrow_focus": ["继续回归验证"]
+      }
+    ]
   }
 }
 ```
@@ -162,14 +153,6 @@ Report card fields are authoritative:
 
 - `material_name`：项目 + 客户。多项目写 `TVE1086U（青鸾云）、TVE8801M（未标注客户）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
 - `material_summary`：日报写各项目“今日主题”；周报写各项目“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
-- `ui_card.title` 必须等于 `material_name`，`ui_card.subtitle` 必须等于 `material_summary`。
-
-Weekly `report_view.json` must preserve the same report facts in structured
-form. Required weekly payload fields include `project_ledgers[]`,
-`weekly_progress_summary`, and `weekly_detail_sections[]`; legacy fields such
-as `project_overview[]`, `source_lists[]`, `source_category_stats[]`,
-`item_statistics[]`, `remaining_items[]`, `patch_outputs[]`,
-`delivery_verifications[]`, and `next_week_plan[]` remain for UI compatibility.
-Management-side aggregation should prefer `project_ledgers[]` over re-counting
-daily records. Member-side weekly report generation should still present this
-only as a personal weekly report structure.
+- Daily project rows contain `project/customer/today_topic/current_result/work_items/tomorrow_focus`.
+- Weekly project rows contain `project/customer/week_summary/received_date/source/requirement_type/requirement_structure/completed_this_week/remaining/expected_finish/completed_items/remaining_items/risks/dependencies/next_week_plan`.
+- Do not emit legacy `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.

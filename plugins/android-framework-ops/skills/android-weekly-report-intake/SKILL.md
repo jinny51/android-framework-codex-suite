@@ -26,10 +26,9 @@ Generate `reports/weekly.md` with this required structure:
 
 - 本周概况
 - 项目详情
-  - 基本信息
-  - 本周进展
-  - 本周重点说明
-  - 风险与依赖
+  - 本周完成
+  - 当前剩余
+  - 风险 / 依赖
 - 下周计划
 
 The weekly Markdown baseline is the project block format:
@@ -37,41 +36,30 @@ The weekly Markdown baseline is the project block format:
 ```markdown
 ## 一、本周概况
 
-- 项目名称：TVE1086U
-- 客户名称：青鸾云
+### TVE1086U 青鸾云
+
+本周围绕 TVE1086U 青鸾云 项目推进：完成系统接口联调。
+
 - 接到文档时间：2026-06-18
-- 需求类型：混合，包含定制需求、Bug / Debug 处理及 BSP 配合事项
-- 当周完成情况：本周从上周剩余 8 项中完成 5 项，当前剩余 3 项，预计下周完成整体收敛。
+- 来源说明：客户需求文档
+- 需求类型：混合
+- 需求结构：18 项（定制 8、Bug 8、BSP 2）
+- 本周完成：5 项（定制 4、Bug 1）
+- 当前剩余：3 项（定制 3、Bug 0）
+- 预计完成：下周完成整体收敛
 ```
 
 For multiple projects, repeat the same block per project. Do not use a large
 overview table in `本周概况`.
 
-Each project section must preserve:
-
-- 项目名称
-- 客户名称；if not proven, write `需成员补充客户名` and block local submit until corrected
-- 来源类型：定制 / Buglist / 混合 / 临时支持
-- 来源说明：需求单、Buglist、客户、测试、项目经理、临时安排等
-- 接到文档时间 and 已持续时间; if not proven, write `需成员确认`
-- 需求结构：定制需求、移植适配、Bug、BSP、其他、合计
-- 上周一剩余、本周完成、当前剩余；混合项目要按定制 / Bug / BSP 等分类说明
-- 本周完成事项、当前剩余事项、本周重点说明
-- 风险或依赖
-- 下周计划
-
-Every formal weekly item should preserve both dimensions when available: 需求来源地（项目经理、上级、客户、测试、禅道） and 需求种类（需求清单、Buglist）. Work without a formal source should stay as 临时工作 / 内部优化 instead of being mixed into formal requirement or Buglist statistics.
-
-Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `report_type=weekly`, `week_range`, `display_date`, `display_title`, `material_name`, `material_summary`, `one_line_summary`, `project_ledgers[]`, `weekly_progress_summary`, `weekly_detail_sections[]`, `project_overview[]`, `source_lists[]`, `source_category_stats[]`, `requirement_origin`, `requirement_list_type`, `item_statistics[]`, `completed_items[]`, `in_progress_items[]`, `remaining_items[]`, `risks[]`, `patch_outputs[]`, `delivery_verifications[]`, and `next_week_plan[]`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, `customer`, `week_summary`, `received_date`, `source`, `requirement_type`, `requirement_structure`, `completed_this_week`, `remaining`, `expected_finish`, `completed_items[]`, `remaining_items[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`.
 
 Weekly card identity is not the week range. `material_name` must be project +
 customer, such as `TVE1086U（青鸾云）`; multiple projects must keep each project
 paired with its own customer. `material_summary` must summarize each project's
-weekly completed count, remaining count, and risk/dependency state. `ui_card.title`
-must equal `material_name`; `ui_card.subtitle` must equal `material_summary`.
+weekly completed count, remaining count, and risk/dependency state. Do not emit legacy `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.
 
-`project_ledgers[]` is the structured view of the member's own weekly project
-ledger. Each project ledger must include both a recognized company project name
+Each project row must include both a recognized company project name
 and a customer name. The member can provide this in natural language as
 `TVE1086U 青鸾云，本周主要推进...`; parse it as project `TVE1086U` and
 customer `青鸾云`. If either value is missing, generate the package with

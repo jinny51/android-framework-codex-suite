@@ -1180,9 +1180,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(daily_check["status"], "PASS")
             self.assertEqual(weekly_check["status"], "PASS")
             self.assertEqual(daily_view["payload"]["projects"][0]["project"], "TVE1086U")
-            self.assertEqual(daily_view["payload"]["projects"][0]["customer_name"], "青鸾云")
-            self.assertEqual(weekly_view["payload"]["project_ledgers"][0]["project"], "TVE1086U")
-            self.assertEqual(weekly_view["payload"]["project_ledgers"][0]["customer_name"], "青鸾云")
+            self.assertEqual(daily_view["payload"]["projects"][0]["customer"], "青鸾云")
+            self.assertEqual(weekly_view["payload"]["projects"][0]["project"], "TVE1086U")
+            self.assertEqual(weekly_view["payload"]["projects"][0]["customer"], "青鸾云")
             self.assertEqual(project_inference["payload"]["customer_name"], "青鸾云")
 
     def test_report_local_check_rejects_missing_customer_and_command_text_customer(self) -> None:
@@ -1566,116 +1566,107 @@ class MemberAutomationFlowTests(unittest.TestCase):
             daily_report = read_package_report(daily, "daily")
             weekly_report = read_package_report(weekly, "weekly")
             for text in (
-                "## 一、今日工作概览",
-                "## 二、今日具体事项",
-                "## 三、今日阻塞 / 风险",
-                "## 四、今日产出",
-                "## 五、明日重点",
-                "事项来源",
-                "事项描述",
-                "今日处理内容",
-                "处理方式/简要流程",
-                "今日结果",
-                "验证情况",
-                "遗留问题",
-                "下一步/明日计划",
-                "| 项目 | 客户 | 模块/功能 | 事项类型 | 当前状态 | 是否阻塞 | 今日一句话进展 |",
+                "## 一、今日概况",
+                "## 二、今日工作",
+                "## 三、明日重点",
+                "### TVE8402M 合成客户一",
+                "- 今日主题：",
+                "- 当前结果：",
+                "做了什么：",
+                "怎么做的：",
+                "结果：",
             ):
                 self.assertIn(text, daily_report)
+            for old_text in (
+                "今日工作概览",
+                "今日具体事项",
+                "今日阻塞 / 风险",
+                "今日产出",
+                "事项来源",
+                "处理方式/简要流程",
+                "| 项目 | 客户 | 模块/功能 |",
+            ):
+                self.assertNotIn(old_text, daily_report)
             for text in (
                 "## 一、本周概况",
                 "## 二、项目详情",
-                "#### 1. 基本信息",
-                "- 项目名称：",
-                "- 客户名称：",
-                "- 当周完成情况：",
-                "来源类型",
+                "## 三、下周计划",
+                "### TVE8402M 合成客户一",
                 "来源说明",
-                "接到文档时间",
-                "已持续时间",
+                "需求类型",
                 "需求结构",
-                "上周一剩余",
-                "定制需求",
-                "移植适配",
-                "Bug",
                 "BSP",
-                "合计",
-                "#### 2. 本周进展",
                 "本周完成",
                 "当前剩余",
-                "#### 3. 本周重点说明",
-                "#### 4. 风险与依赖",
-                "## 三、下周计划",
+                "预计完成",
+                "#### 1. 本周完成",
+                "#### 2. 当前剩余",
+                "#### 3. 风险 / 依赖",
             ):
                 self.assertIn(text, weekly_report)
-            self.assertNotIn("| 项目 | 客户 | 来源类型 | 接到文档时间 | 已持续时间 |", weekly_report)
+            for old_text in ("#### 1. 基本信息", "来源类型", "上周一剩余", "当周完成情况", "移植适配"):
+                self.assertNotIn(old_text, weekly_report)
             daily_view = read_report_view(daily)
             weekly_view = read_report_view(weekly)
             self.assertEqual(daily_view["kind"], "report_view")
+            self.assertEqual(daily_view["payload"]["schema"], "akbs-report-view-human-v1")
             self.assertEqual(daily_view["payload"]["report_type"], "daily")
             self.assertEqual(daily_view["payload"]["report_date"], "2026-06-30")
             self.assertEqual(daily_view["payload"]["material_name"], "TVE8402M（合成客户一）")
             self.assertIn("TVE8402M：", daily_view["payload"]["material_summary"])
-            self.assertEqual(daily_view["payload"]["ui_card"]["title"], daily_view["payload"]["material_name"])
-            self.assertEqual(daily_view["payload"]["ui_card"]["subtitle"], daily_view["payload"]["material_summary"])
-            self.assertIn("ui_card", daily_view["payload"])
-            self.assertTrue(daily_view["payload"]["one_line_summary"])
             self.assertGreaterEqual(len(daily_view["payload"]["projects"]), 1)
-            self.assertGreaterEqual(len(daily_view["payload"]["work_items"]), 1)
-            self.assertIn("outputs", daily_view["payload"])
-            self.assertIn("tomorrow_focus", daily_view["payload"])
-            daily_item = daily_view["payload"]["work_items"][0]
-            for field in (
-                "project",
-                "item_name",
-                "item_source",
-                "item_description",
-                "today_work",
-                "method",
-                "today_result",
-                "verification",
-                "remaining_issue",
-                "next_step",
-                "outputs",
-            ):
+            for old_field in ("ui_card", "one_line_summary", "display_title", "daily_overview", "work_items", "items", "outputs", "next_steps"):
+                self.assertNotIn(old_field, daily_view["payload"])
+            daily_project = daily_view["payload"]["projects"][0]
+            self.assertEqual(daily_project["project"], "TVE8402M")
+            self.assertEqual(daily_project["customer"], "合成客户一")
+            for field in ("today_topic", "current_result", "work_items", "tomorrow_focus"):
+                self.assertIn(field, daily_project)
+            daily_item = daily_project["work_items"][0]
+            for field in ("name", "did", "how", "result"):
                 self.assertIn(field, daily_item)
             self.assertEqual(weekly_view["kind"], "report_view")
+            self.assertEqual(weekly_view["payload"]["schema"], "akbs-report-view-human-v1")
             self.assertEqual(weekly_view["payload"]["report_type"], "weekly")
             self.assertEqual(weekly_view["payload"]["display_date"], "2026-07-03")
             self.assertEqual(weekly_view["payload"]["material_name"], "TVE8402M（合成客户一）")
             self.assertIn("TVE8402M：本周完成", weekly_view["payload"]["material_summary"])
-            self.assertEqual(weekly_view["payload"]["ui_card"]["title"], weekly_view["payload"]["material_name"])
-            self.assertEqual(weekly_view["payload"]["ui_card"]["subtitle"], weekly_view["payload"]["material_summary"])
-            self.assertTrue(weekly_view["payload"]["one_line_summary"])
-            self.assertGreaterEqual(len(weekly_view["payload"]["project_overview"]), 1)
-            self.assertGreaterEqual(len(weekly_view["payload"]["source_lists"]), 1)
-            self.assertGreaterEqual(len(weekly_view["payload"]["source_category_stats"]), 1)
-            self.assertIn("requirement_origin", weekly_view["payload"])
-            self.assertIn("requirement_list_type", weekly_view["payload"])
-            self.assertGreaterEqual(len(weekly_view["payload"]["item_statistics"]), 7)
-            self.assertIn("delivery_verifications", weekly_view["payload"])
-            self.assertIn("next_week_plan", weekly_view["payload"])
-            self.assertIn("patch_outputs", weekly_view["payload"])
-            self.assertIn("project_ledgers", weekly_view["payload"])
-            self.assertGreaterEqual(len(weekly_view["payload"]["project_ledgers"]), 1)
-            ledger = weekly_view["payload"]["project_ledgers"][0]
+            for old_field in (
+                "ui_card",
+                "one_line_summary",
+                "display_title",
+                "project_overview",
+                "source_lists",
+                "source_category_stats",
+                "project_ledgers",
+                "weekly_detail_sections",
+                "weekly_progress_summary",
+                "patch_outputs",
+                "delivery_verifications",
+            ):
+                self.assertNotIn(old_field, weekly_view["payload"])
+            self.assertGreaterEqual(len(weekly_view["payload"]["projects"]), 1)
+            ledger = weekly_view["payload"]["projects"][0]
             for field in (
                 "project",
-                "source_type",
-                "source_note",
-                "start_date",
-                "duration_label",
-                "totals",
-                "this_week_completed",
-                "cumulative_completed",
+                "customer",
+                "week_summary",
+                "received_date",
+                "source",
+                "requirement_type",
+                "requirement_structure",
+                "completed_this_week",
                 "remaining",
-                "expected_completion_week",
+                "expected_finish",
+                "completed_items",
+                "remaining_items",
+                "risks",
+                "dependencies",
+                "next_week_plan",
             ):
                 self.assertIn(field, ledger)
-            for field in ("feature_add", "feature_port", "bug", "other", "total"):
-                self.assertIn(field, ledger["totals"])
-            self.assertIn("weekly_progress_summary", weekly_view["payload"])
-            self.assertIn("weekly_detail_sections", weekly_view["payload"])
+            self.assertIn(ledger["source"], {"客户需求文档", "TL指派", "Buglist", "测试反馈", "BSP配合", "需成员确认"})
+            self.assertIn(ledger["requirement_type"], {"纯定制", "Buglist", "混合", "需成员确认"})
 
             daily_manifest = json.loads((daily / "manifest.json").read_text(encoding="utf-8"))
             weekly_manifest = json.loads((weekly / "manifest.json").read_text(encoding="utf-8"))
