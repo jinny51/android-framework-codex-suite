@@ -16,6 +16,8 @@ TextFieldQualityErrors = Callable[[dict[str, Any]], list[str]]
 EvidencePayload = Callable[[dict[str, Any]], dict[str, Any]]
 ListStringValues = Callable[[Any], list[str]]
 UniqueStrings = Callable[[list[str]], list[str]]
+ImplementationOriginsRequirePreChangeSearch = Callable[[list[str]], bool]
+SearchPayloadPredicate = Callable[[dict[str, Any]], bool]
 
 
 @dataclass
@@ -403,6 +405,60 @@ def validate_patch_verification_result(
         errors.append("validated 必须提供 PASS 验证")
     if not is_field_correction and package_status == "failed" and result != "FAIL":
         errors.append("failed 必须提供 FAIL 验证")
+
+
+def validate_patch_pre_change_search(
+    *,
+    manifest: dict[str, Any],
+    evidence_by_kind: dict[str, dict[str, Any]],
+    package_status: str,
+    is_field_correction: bool,
+    list_string_values: ListStringValues,
+    implementation_origins_require_pre_change_search: ImplementationOriginsRequirePreChangeSearch,
+    search_payload_missing_required_pre_change_search: SearchPayloadPredicate,
+    search_payload_needs_closed_decision: SearchPayloadPredicate,
+    errors: list[str],
+    warnings: list[str],
+) -> None:
+    search_evidence = evidence_by_kind.get("search_before_change", {})
+    search_payload = search_evidence.get("payload", search_evidence) if isinstance(search_evidence, dict) else {}
+    implementation_origins = list_string_values(manifest.get("implementation_origins"))
+    if not implementation_origins:
+        patch_diff = evidence_by_kind.get("patch_diff_facts", {})
+        patch_diff_payload = patch_diff.get("payload", patch_diff) if isinstance(patch_diff, dict) else {}
+        if isinstance(patch_diff_payload, dict):
+            implementation_origins = list_string_values(patch_diff_payload.get("implementation_origins"))
+    search_payload_body = search_payload.get("payload", search_payload) if isinstance(search_payload, dict) else {}
+    if not isinstance(search_payload_body, dict):
+        search_payload_body = {}
+    missing_pre_change_search = not bool(search_payload_body.get("searched"))
+    requires_pre_change_search = implementation_origins_require_pre_change_search(implementation_origins)
+    if (
+        not is_field_correction
+        and package_status == "validated"
+        and requires_pre_change_search
+        and search_payload_missing_required_pre_change_search(search_payload)
+    ):
+        errors.append(
+            "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造。"
+            "请改用手动实现（manual implementation）事实记录，或重新走开发前知识搜索后再开发。"
+            "管理端后续会执行沉淀前重叠检索（post-change overlap check）。"
+        )
+    elif not is_field_correction and package_status == "validated" and missing_pre_change_search:
+        warnings.append(
+            "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造；"
+            "本包按手动实现（manual implementation）等事实保留，"
+            "管理端后续会执行沉淀前重叠检索（post-change overlap check），且不获得搜索闭环加分。"
+        )
+    if (
+        not is_field_correction
+        and package_status == "validated"
+        and search_payload_needs_closed_decision(search_payload)
+    ):
+        errors.append(
+            "已验证（validated）补丁包命中知识搜索结果时必须闭合搜索使用决策（search usage decision），"
+            "请使用 reuse/adapt/reference_only/not_applicable/not_found"
+        )
 
 
 PATCH_VIEW_REQUIRED_FIELDS = (
