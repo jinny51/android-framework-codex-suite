@@ -2389,33 +2389,15 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         case_problem = structure_context.case_problem
         case_solution = structure_context.case_solution
         evidence_by_kind = structure_context.evidence_by_kind
-        ai_facts = evidence_by_kind.get("patch_ai_facts", {})
-        ai_payload = ai_facts.get("payload", {}) if isinstance(ai_facts, dict) else {}
-        if not is_field_correction and isinstance(ai_payload, dict):
-            for field in ("module", "feature_domain", "patch_behavior_goal", "code_anchors", "patch_assets", "verification_targets", "search_usage", "search_match_class", "merge_gate_inputs", "protocol_version", "plugin_version"):
-                if not ai_payload.get(field):
-                    errors.append(f"patch_ai_facts.{field} 必须提供")
-            anchors = ai_payload.get("code_anchors", {})
-            if isinstance(anchors, dict):
-                if not any(list_string_values(anchors.get(key)) for key in ("files", "symbols", "resource_keys", "settings_keys", "system_properties", "framework_log_keys")):
-                    errors.append("patch_ai_facts.code_anchors 必须包含至少一种代码锚点")
-            else:
-                errors.append("patch_ai_facts.code_anchors 必须是对象")
-            merge_inputs = ai_payload.get("merge_gate_inputs", {})
-            if isinstance(merge_inputs, dict):
-                for field in ("module", "feature_domain", "code_anchors", "patch_behavior_goal", "verification_targets", "project", "platform", "android_version"):
-                    if not merge_inputs.get(field):
-                        errors.append(f"patch_ai_facts.merge_gate_inputs.{field} 必须提供")
-            else:
-                errors.append("patch_ai_facts.merge_gate_inputs 必须是对象")
-        patch_diff_payload = evidence_payload(evidence_by_kind.get("patch_diff_facts", {}))
-        modified_files = list_string_values(patch_diff_payload.get("modified_files"))
-        patch_items = patch_diff_payload.get("patches")
-        if isinstance(patch_items, list):
-            for item in patch_items:
-                if isinstance(item, dict):
-                    modified_files.extend(list_string_values(item.get("modified_files")))
-        modified_files = unique_strings(modified_files)
+        ai_context = validate_patch_ai_facts_and_diff(
+            evidence_by_kind=evidence_by_kind,
+            is_field_correction=is_field_correction,
+            evidence_payload=evidence_payload,
+            list_string_values=list_string_values,
+            unique_strings=unique_strings,
+            errors=errors,
+        )
+        modified_files = ai_context.modified_files
         if not is_field_correction:
             errors.extend(
                 template_leak_errors(
@@ -2615,6 +2597,7 @@ from akbs_intake.patch.validation import (  # noqa: E402
     validate_framework_change_manifest_and_files,
     validate_framework_change_structure,
     validate_patch_display_files,
+    validate_patch_ai_facts_and_diff,
 )
 
 

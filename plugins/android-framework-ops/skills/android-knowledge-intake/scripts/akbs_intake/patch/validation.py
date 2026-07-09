@@ -13,6 +13,9 @@ ValidatePatchReadme = Callable[[Path], list[str]]
 HasUncontrolledPatchAssetPrefix = Callable[[Any], bool]
 ValueValidator = Callable[[str], bool]
 TextFieldQualityErrors = Callable[[dict[str, Any]], list[str]]
+EvidencePayload = Callable[[dict[str, Any]], dict[str, Any]]
+ListStringValues = Callable[[Any], list[str]]
+UniqueStrings = Callable[[list[str]], list[str]]
 
 
 @dataclass
@@ -38,6 +41,11 @@ class FrameworkChangeStructureContext:
     case_problem: str
     case_solution: str
     evidence_by_kind: dict[str, dict[str, Any]]
+
+
+@dataclass
+class PatchAIFactsValidationContext:
+    modified_files: list[str]
 
 
 def validate_framework_change_manifest_and_files(
@@ -305,6 +313,76 @@ def validate_framework_change_structure(
         case_solution=case_solution,
         evidence_by_kind=evidence_by_kind,
     )
+
+
+def validate_patch_ai_facts_and_diff(
+    *,
+    evidence_by_kind: dict[str, dict[str, Any]],
+    is_field_correction: bool,
+    evidence_payload: EvidencePayload,
+    list_string_values: ListStringValues,
+    unique_strings: UniqueStrings,
+    errors: list[str],
+) -> PatchAIFactsValidationContext:
+    ai_facts = evidence_by_kind.get("patch_ai_facts", {})
+    ai_payload = ai_facts.get("payload", {}) if isinstance(ai_facts, dict) else {}
+    if not is_field_correction and isinstance(ai_payload, dict):
+        for field in (
+            "module",
+            "feature_domain",
+            "patch_behavior_goal",
+            "code_anchors",
+            "patch_assets",
+            "verification_targets",
+            "search_usage",
+            "search_match_class",
+            "merge_gate_inputs",
+            "protocol_version",
+            "plugin_version",
+        ):
+            if not ai_payload.get(field):
+                errors.append(f"patch_ai_facts.{field} 必须提供")
+        anchors = ai_payload.get("code_anchors", {})
+        if isinstance(anchors, dict):
+            if not any(
+                list_string_values(anchors.get(key))
+                for key in (
+                    "files",
+                    "symbols",
+                    "resource_keys",
+                    "settings_keys",
+                    "system_properties",
+                    "framework_log_keys",
+                )
+            ):
+                errors.append("patch_ai_facts.code_anchors 必须包含至少一种代码锚点")
+        else:
+            errors.append("patch_ai_facts.code_anchors 必须是对象")
+        merge_inputs = ai_payload.get("merge_gate_inputs", {})
+        if isinstance(merge_inputs, dict):
+            for field in (
+                "module",
+                "feature_domain",
+                "code_anchors",
+                "patch_behavior_goal",
+                "verification_targets",
+                "project",
+                "platform",
+                "android_version",
+            ):
+                if not merge_inputs.get(field):
+                    errors.append(f"patch_ai_facts.merge_gate_inputs.{field} 必须提供")
+        else:
+            errors.append("patch_ai_facts.merge_gate_inputs 必须是对象")
+
+    patch_diff_payload = evidence_payload(evidence_by_kind.get("patch_diff_facts", {}))
+    modified_files = list_string_values(patch_diff_payload.get("modified_files"))
+    patch_items = patch_diff_payload.get("patches")
+    if isinstance(patch_items, list):
+        for item in patch_items:
+            if isinstance(item, dict):
+                modified_files.extend(list_string_values(item.get("modified_files")))
+    return PatchAIFactsValidationContext(modified_files=unique_strings(modified_files))
 
 
 PATCH_VIEW_REQUIRED_FIELDS = (
