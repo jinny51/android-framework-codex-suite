@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import re
 from typing import Any, Callable, Pattern
@@ -736,6 +737,57 @@ def validate_patch_pre_change_search(
         errors.append(
             "已验证（validated）补丁包命中知识搜索结果时必须闭合搜索使用决策（search usage decision），"
             "请使用 reuse/adapt/reference_only/not_applicable/not_found"
+        )
+
+
+def has_pass_verification(package_dir: Path, manifest: dict[str, Any]) -> bool:
+    evidence = manifest.get("evidence", [])
+    if not isinstance(evidence, list):
+        return False
+    for item in evidence:
+        if not isinstance(item, dict):
+            continue
+        if item.get("kind") not in {"verification_result", "device_verification", "equivalent_verification"}:
+            continue
+        if item.get("result") != "PASS":
+            continue
+        rel = item.get("path")
+        if not isinstance(rel, str) or not rel:
+            continue
+        path = (package_dir / rel).resolve()
+        root = package_dir.resolve()
+        if path != root and root not in path.parents:
+            continue
+        if not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(payload, dict) or payload.get("result") != "PASS":
+            continue
+        if payload.get("method") == "device":
+            return True
+        if payload.get("method") == "equivalent" and payload.get("reason") and payload.get("coverage") and "remaining_risk" in payload:
+            return True
+    return False
+
+
+def validate_patch_supplement_verification_closure(
+    *,
+    package_dir: Path,
+    manifest: dict[str, Any],
+    supplement_target: str,
+    is_field_correction: bool,
+    errors: list[str],
+) -> None:
+    if not supplement_target or is_field_correction:
+        return
+    supplement_text = " ".join([str(manifest.get("supplement_reason") or ""), str(manifest.get("summary") or "")]).lower()
+    if any(token in supplement_text for token in ("验证", "verification")) and not has_pass_verification(package_dir, manifest):
+        errors.append(
+            "补验证（verification）证据时，补证包必须携带 PASS verification_result，"
+            "且必须是设备验证或可接受的等价验证，不能只提供静态审查。"
         )
 
 
