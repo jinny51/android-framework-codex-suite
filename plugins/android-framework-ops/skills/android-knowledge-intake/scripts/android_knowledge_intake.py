@@ -178,29 +178,8 @@ FIELD_CORRECTION_FORBIDDEN_EVIDENCE_KINDS = {
     "search_before_change",
 }
 FRAMEWORK_OPTIONAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
-EXPLANATION_EVIDENCE_KINDS = {"patch_problem_summary", "risk_surface"}
 REQUIRED_PATCH_EXPLANATION_KINDS = {"patch_problem_summary", "risk_surface"}
-REPORT_KINDS = {"daily", "weekly", "summary", "session"}
 LEGACY_PATCH_PROBLEM_KIND = "patch_" + "problem_" + "inference"
-EVIDENCE_KINDS = {
-    "source",
-    "codex_sessions",
-    "changed_files",
-    "patch_diff_facts",
-    "patch_ai_facts",
-    "patch_problem_summary",
-    "risk_surface",
-    "build_result",
-    "verification_result",
-    "device_verification",
-    "equivalent_verification",
-    "search_before_change",
-    "evidence_supplement",
-    "field_correction",
-    "package_check",
-    "summary",
-}
-PATCH_STATUSES = PACKAGE_STATUS_VALUES
 DATE_KEY_RE = re.compile(r"^\d{8}$")
 DATE_DISPLAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RUN_ID_RE = re.compile(r"^\d{8}-\d{6}(-[A-Za-z0-9_.-]+)?$")
