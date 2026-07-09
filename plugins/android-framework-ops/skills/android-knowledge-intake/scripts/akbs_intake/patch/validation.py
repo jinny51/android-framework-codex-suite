@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Any, Callable, Pattern
+
+from .facts import patch_changed_lines, resource_keys_from_patch_text
 
 
 RequireFile = Callable[[Any, str], Path | None]
@@ -17,11 +20,59 @@ EvidencePayload = Callable[[dict[str, Any]], dict[str, Any]]
 ListStringValues = Callable[[Any], list[str]]
 UniqueStrings = Callable[[list[str]], list[str]]
 TemplateLeakErrors = Callable[..., list[str]]
+AggregatePackageScopeErrors = Callable[[str, int], list[str]]
 ImplementationOriginsRequirePreChangeSearch = Callable[[list[str]], bool]
 SearchPayloadPredicate = Callable[[dict[str, Any]], bool]
 SupplementTargetRelationErrors = Callable[[str], list[str]]
 PatchAssetCorrectionSourceErrors = Callable[[dict[str, Any], Any], list[str]]
 SplitCompanyProject = Callable[[str], tuple[str, str]]
+
+
+SCOPE_POLLUTION_UNRELATED_ANCHOR_THRESHOLD = 4
+SCOPE_POLLUTION_REPORT_LIMIT = 8
+PATCH_SCOPE_README_HEADINGS = {"功能描述", "修改点"}
+SCOPE_TEXT_ALIASES = {
+    "电池": ["battery"],
+    "性能": ["performance"],
+    "模式": ["mode"],
+    "三档": ["level"],
+    "刷新率": ["refresh", "rate"],
+    "刷新": ["refresh"],
+    "节能": ["power", "save", "eco"],
+    "省电": ["power", "save"],
+    "中文": ["chinese", "zh"],
+    "韩文": ["korean", "ko"],
+    "文案": ["string", "text"],
+    "颜色": ["color"],
+    "色域": ["color", "gamut"],
+    "代理": ["proxy"],
+    "以太网": ["ethernet"],
+    "手势": ["gesture"],
+    "截图": ["screenshot"],
+    "内存": ["ram", "memory"],
+    "时区": ["zone", "timezone"],
+    "蓝牙": ["bluetooth"],
+    "重置": ["reset"],
+}
+SCOPE_ANCHOR_GENERIC_TOKENS = {
+    "action",
+    "array",
+    "auto",
+    "color",
+    "config",
+    "device",
+    "mode",
+    "name",
+    "off",
+    "on",
+    "settings",
+    "status",
+    "string",
+    "summary",
+    "system",
+    "text",
+    "title",
+}
 
 
 @dataclass
@@ -428,6 +479,190 @@ def validate_patch_template_leaks(
                 modified_files=modified_files,
             )
         )
+
+
+def _evidence_payload(evidence: dict[str, Any]) -> dict[str, Any]:
+    payload = evidence.get("payload")
+    return payload if isinstance(payload, dict) else evidence
+
+
+def patch_count_from_framework_package(patch_paths: list[Any], evidence_by_kind: dict[str, dict[str, Any]]) -> int:
+    counts = [len(patch_paths)]
+    patch_diff = evidence_by_kind.get("patch_diff_facts", {})
+    payload = _evidence_payload(patch_diff) if isinstance(patch_diff, dict) else {}
+    try:
+        counts.append(int(payload.get("patch_count") or 0))
+    except (TypeError, ValueError):
+        pass
+    patches = payload.get("patches")
+    if isinstance(patches, list):
+        counts.append(len(patches))
+    return max(counts or [0])
+
+
+def scope_words(value: Any) -> set[str]:
+    text = str(value or "")
+    text = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", text)
+    text = text.replace("_", " ").replace("-", " ").replace("/", " ").replace(".", " ")
+    words = {
+        token.lower()
+        for token in re.findall(r"[a-zA-Z][a-zA-Z0-9]{1,}|[0-9]+|[\u4e00-\u9fff]{2,}", text)
+        if len(token.strip()) >= 2
+    }
+    for marker, aliases in SCOPE_TEXT_ALIASES.items():
+        if marker in str(value or ""):
+            words.update(aliases)
+    return words
+
+
+def scope_semantic_tokens(*values: Any) -> set[str]:
+    tokens: set[str] = set()
+    for value in values:
+        tokens.update(scope_words(value))
+    return {token for token in tokens if token not in SCOPE_ANCHOR_GENERIC_TOKENS}
+
+
+def patch_scope_readme_text(readme_text: str) -> str:
+    sections: list[str] = []
+    current_heading = ""
+    current_lines: list[str] = []
+    for line in readme_text.splitlines():
+        match = re.match(r"^##\s+(.+?)\s*$", line)
+        if match:
+            if current_heading in PATCH_SCOPE_README_HEADINGS:
+                sections.append("\n".join(current_lines).strip())
+            current_heading = match.group(1).strip()
+            current_lines = []
+            continue
+        current_lines.append(line)
+    if current_heading in PATCH_SCOPE_README_HEADINGS:
+        sections.append("\n".join(current_lines).strip())
+    return "\n\n".join(section for section in sections if section)
+
+
+def supplement_requests_patch_asset_correction(manifest: dict[str, Any]) -> bool:
+    text = " ".join([str(manifest.get("supplement_reason") or ""), str(manifest.get("summary") or "")]).lower()
+    return "补丁资产修正" in text or "patch asset correction" in text
+
+
+def scope_anchor_tokens(value: str) -> set[str]:
+    return {token for token in scope_words(value) if token not in SCOPE_ANCHOR_GENERIC_TOKENS}
+
+
+def scope_anchor_related(value: str, semantic_tokens: set[str]) -> bool:
+    anchor_tokens = scope_anchor_tokens(value)
+    if not anchor_tokens:
+        return False
+    if anchor_tokens & semantic_tokens:
+        return True
+    anchor_text = re.sub(r"[^a-z0-9]+", "", value.lower())
+    return any(len(token) >= 4 and token in anchor_text for token in semantic_tokens)
+
+
+def patch_resource_keys_from_evidence(
+    evidence_by_kind: dict[str, dict[str, Any]],
+    list_string_values: ListStringValues,
+) -> list[str]:
+    keys: list[str] = []
+    patch_diff = evidence_by_kind.get("patch_diff_facts", {})
+    payload = _evidence_payload(patch_diff) if isinstance(patch_diff, dict) else {}
+    keys.extend(list_string_values(payload.get("resource_keys")))
+    patches = payload.get("patches")
+    if isinstance(patches, list):
+        for patch in patches:
+            if isinstance(patch, dict):
+                keys.extend(list_string_values(patch.get("resource_keys")))
+    return sorted(set(keys))
+
+
+def patch_resource_keys_from_files(package_dir: Path, patch_paths: list[Any]) -> list[str]:
+    keys: list[str] = []
+    package_root = package_dir.resolve()
+    for rel in patch_paths:
+        if not isinstance(rel, str):
+            continue
+        path = (package_dir / rel).resolve()
+        try:
+            path.relative_to(package_root)
+        except ValueError:
+            continue
+        if not path.is_file():
+            continue
+        patch_text = path.read_text(encoding="utf-8", errors="replace")
+        keys.extend(resource_keys_from_patch_text("\n".join(patch_changed_lines(patch_text))))
+    return sorted(set(keys))
+
+
+def validate_framework_scope_pollution(
+    package_dir: Path,
+    manifest: dict[str, Any],
+    readme_text: str,
+    patch_paths: list[Any],
+    evidence_by_kind: dict[str, dict[str, Any]],
+    list_string_values: ListStringValues,
+    strict_patch_asset_correction: bool = False,
+) -> list[str]:
+    semantic_tokens = scope_semantic_tokens(manifest.get("summary"), readme_text)
+    if not semantic_tokens:
+        return []
+    file_resource_keys = patch_resource_keys_from_files(package_dir, patch_paths)
+    evidence_resource_keys = [] if file_resource_keys else patch_resource_keys_from_evidence(evidence_by_kind, list_string_values)
+    resource_keys = sorted(set([*file_resource_keys, *evidence_resource_keys]))
+    anchors = [key for key in resource_keys if scope_anchor_tokens(key)]
+    related = [key for key in anchors if scope_anchor_related(key, semantic_tokens)]
+    if not related and not strict_patch_asset_correction:
+        return []
+    unrelated = [key for key in anchors if not scope_anchor_related(key, semantic_tokens)]
+    if len(unrelated) < SCOPE_POLLUTION_UNRELATED_ANCHOR_THRESHOLD:
+        return []
+    sample = "、".join(unrelated[:SCOPE_POLLUTION_REPORT_LIMIT])
+    if strict_patch_asset_correction:
+        return [
+            (
+                "补丁资产修正（patch asset correction）补证包仍包含与功能目标不一致的补丁资源锚点，"
+                f"无关资源键示例：{sample}。"
+                "请回到干净工作树重新采集同一功能补丁包；"
+                "如果实际是多个独立功能，请按功能拆分（function split）为多个新的原始包（original package）。"
+            )
+        ]
+    return [
+        (
+            "补丁包功能范围与补丁资源锚点不一致，疑似补丁资产污染。"
+            f"无关资源键示例：{sample}。"
+            "请执行补丁资产修正（patch asset correction）：在干净工作树重新采集同一功能补丁包；"
+            "如果实际是多个独立功能，请按功能拆分（function split）为多个新的原始包（original package）。"
+        )
+    ]
+
+
+def validate_framework_function_scope(
+    *,
+    package_dir: Path,
+    manifest: dict[str, Any],
+    readme_path: Path | None,
+    patch_paths: list[Any],
+    evidence_by_kind: dict[str, dict[str, Any]],
+    list_string_values: ListStringValues,
+    aggregate_package_scope_errors: AggregatePackageScopeErrors,
+) -> list[str]:
+    patch_count = patch_count_from_framework_package(patch_paths, evidence_by_kind)
+    readme_text = readme_path.read_text(encoding="utf-8", errors="ignore") if readme_path and readme_path.is_file() else ""
+    errors: list[str] = []
+    scope_readme_text = patch_scope_readme_text(readme_text) or readme_text
+    errors.extend(
+        validate_framework_scope_pollution(
+            package_dir,
+            manifest,
+            scope_readme_text,
+            patch_paths,
+            evidence_by_kind,
+            list_string_values,
+            strict_patch_asset_correction=supplement_requests_patch_asset_correction(manifest),
+        )
+    )
+    text = "\n".join([str(manifest.get("summary") or ""), readme_text])
+    errors.extend(aggregate_package_scope_errors(text, patch_count))
+    return errors
 
 
 def validate_patch_verification_result(
