@@ -180,7 +180,6 @@ FIELD_CORRECTION_FORBIDDEN_EVIDENCE_KINDS = {
 FRAMEWORK_OPTIONAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
 EXPLANATION_EVIDENCE_KINDS = {"patch_problem_summary", "risk_surface"}
 REQUIRED_PATCH_EXPLANATION_KINDS = {"patch_problem_summary", "risk_surface"}
-EVIDENCE_CONFIDENCE_VALUES = {"low", "medium", "high"}
 REPORT_KINDS = {"daily", "weekly", "summary", "session"}
 LEGACY_PATCH_PROBLEM_KIND = "patch_" + "problem_" + "inference"
 EVIDENCE_KINDS = {
@@ -201,10 +200,7 @@ EVIDENCE_KINDS = {
     "package_check",
     "summary",
 }
-EVIDENCE_RESULTS = {"PASS", "WARN", "FAIL", "INFO", "SKIPPED"}
 PATCH_STATUSES = PACKAGE_STATUS_VALUES
-RELATION_TYPES = {"described_by", "verified_by", "reported_in", "originated_from", "generated_from"}
-VERIFICATION_EVIDENCE_KINDS = {"verification_result", "device_verification", "equivalent_verification"}
 DATE_KEY_RE = re.compile(r"^\d{8}$")
 DATE_DISPLAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RUN_ID_RE = re.compile(r"^\d{8}-\d{6}(-[A-Za-z0-9_.-]+)?$")
@@ -1739,24 +1735,6 @@ from akbs_intake.reports.render import (  # noqa: E402
 from akbs_intake.reports.validation import validate_report_trace_package  # noqa: E402
 
 
-def referenced_paths(manifest: dict[str, Any]) -> list[str]:
-    paths: list[str] = []
-    for section in ("reports", "evidence", "patches"):
-        rows = manifest.get(section, [])
-        if not isinstance(rows, list):
-            continue
-        for item in rows:
-            if not isinstance(item, dict):
-                continue
-            path = item.get("path")
-            if isinstance(path, str) and path:
-                paths.append(path)
-            readme = item.get("readme")
-            if isinstance(readme, str) and readme:
-                paths.append(readme)
-    return paths
-
-
 def reference_path(package_dir: Path, rel: str) -> Path:
     path = (package_dir / rel).resolve()
     root = package_dir.resolve()
@@ -1779,81 +1757,6 @@ def read_referenced_json(package_dir: Path, rel: str) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
-def validate_source(manifest: dict[str, Any], errors: list[str]) -> None:
-    source = manifest.get("source")
-    if not isinstance(source, dict):
-        errors.append("manifest.source 必须是对象")
-        return
-    tool = source.get("tool")
-    if not isinstance(tool, str) or not tool.strip():
-        errors.append("manifest.source.tool 必须提供生成工具名")
-
-
-def validate_asset_identity(manifest: dict[str, Any], errors: list[str]) -> None:
-    for section in ("reports", "evidence", "patches"):
-        rows = manifest.get(section, [])
-        if not isinstance(rows, list):
-            continue
-        seen_ids: dict[str, int] = {}
-        seen_paths: dict[str, int] = {}
-        for index, item in enumerate(rows):
-            if not isinstance(item, dict):
-                continue
-            asset_id = str(item.get("id") or "").strip()
-            if not asset_id:
-                errors.append(f"{section}[{index}].id 不能为空")
-            elif asset_id in seen_ids:
-                errors.append(f"{section}[{index}].id 与 {section}[{seen_ids[asset_id]}] 重复: {asset_id}")
-            else:
-                seen_ids[asset_id] = index
-
-            path = str(item.get("path") or "").strip()
-            if path and path in seen_paths:
-                errors.append(f"{section}[{index}].path 与 {section}[{seen_paths[path]}] 重复: {path}")
-            elif path:
-                seen_paths[path] = index
-
-
-def validate_evidence_result(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
-    result = item.get("result")
-    if result not in EVIDENCE_RESULTS:
-        errors.append("evidence.result 必须是 PASS、WARN、FAIL、INFO 或 SKIPPED")
-        return
-
-    rel = item.get("path")
-    if not isinstance(rel, str) or not rel:
-        return
-    payload = read_referenced_json(package_dir, rel)
-    if payload is None or payload.get("result") is None:
-        return
-    payload_result = payload.get("result")
-    if payload_result not in EVIDENCE_RESULTS:
-        errors.append(f"{rel} result 必须是 PASS、WARN、FAIL、INFO 或 SKIPPED")
-    elif payload_result != result:
-        errors.append(f"{rel} result 必须与 manifest.evidence.result 一致")
-
-
-def validate_verification_evidence(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
-    if item.get("kind") not in VERIFICATION_EVIDENCE_KINDS or item.get("result") != "PASS":
-        return
-    rel = item.get("path")
-    if not isinstance(rel, str) or not rel:
-        return
-    payload = read_referenced_json(package_dir, rel)
-    if payload is None or payload.get("result") != "PASS":
-        return
-    method = payload.get("method")
-    if method not in {"device", "equivalent"}:
-        errors.append(f"{rel} method 必须是 device 或 equivalent")
-        return
-    if item.get("kind") == "device_verification" and method != "device":
-        errors.append(f"{rel} device_verification 必须使用 method=device")
-    if item.get("kind") == "equivalent_verification" and method != "equivalent":
-        errors.append(f"{rel} equivalent_verification 必须使用 method=equivalent")
-    if method == "equivalent" and not (payload.get("reason") and payload.get("coverage") and "remaining_risk" in payload):
-        errors.append(f"{rel} 等价验证必须包含 reason、coverage 和 remaining_risk")
-
-
 def evidence_covers_patch(item: dict[str, Any], payload: dict[str, Any] | None, patch: dict[str, Any], patch_count: int) -> bool:
     if patch_count == 1:
         return True
@@ -1864,145 +1767,6 @@ def evidence_covers_patch(item: dict[str, Any], payload: dict[str, Any] | None, 
         values.extend([payload.get("patch_id"), payload.get("patch"), payload.get("source_patch"), payload.get("patch_path")])
     normalized = {str(value) for value in values if value}
     return bool((patch_id and patch_id in normalized) or (patch_path and patch_path in normalized))
-
-
-def explanation_kinds_for_patch(package_dir: Path, manifest: dict[str, Any], patch: dict[str, Any], patch_count: int) -> set[str]:
-    kinds: set[str] = set()
-    rows = manifest.get("evidence", [])
-    if not isinstance(rows, list):
-        return kinds
-    for item in rows:
-        if not isinstance(item, dict):
-            continue
-        kind = item.get("kind")
-        if kind not in REQUIRED_PATCH_EXPLANATION_KINDS:
-            continue
-        rel = item.get("path")
-        payload = read_referenced_json(package_dir, rel) if isinstance(rel, str) else None
-        if evidence_covers_patch(item, payload, patch, patch_count):
-            kinds.add(str(kind))
-    return kinds
-
-
-def relation_value(item: dict[str, Any], keys: tuple[str, ...]) -> str:
-    for key in keys:
-        if key not in item:
-            continue
-        value = item.get(key)
-        if value is None:
-            continue
-        text = str(value).strip()
-        if text:
-            return text
-    return ""
-
-
-def relation_endpoint_index(manifest: dict[str, Any], errors: list[str]) -> dict[str, str]:
-    endpoints: dict[str, tuple[str, str]] = {}
-    duplicate_refs: set[str] = set()
-
-    def add_ref(raw: Any, item_type: str, asset_key: str) -> None:
-        text = str(raw or "").strip()
-        if not text:
-            return
-        existing = endpoints.get(text)
-        if existing and existing != (item_type, asset_key):
-            duplicate_refs.add(text)
-            return
-        endpoints[text] = (item_type, asset_key)
-
-    for section, item_type in (("reports", "report"), ("evidence", "evidence"), ("patches", "patch")):
-        rows = manifest.get(section, [])
-        if not isinstance(rows, list):
-            continue
-        for item in rows:
-            if not isinstance(item, dict):
-                continue
-            asset_key = str(item.get("path") or item.get("id") or "")
-            add_ref(item.get("id"), item_type, asset_key)
-            add_ref(item.get("path"), item_type, asset_key)
-
-    for ref in sorted(duplicate_refs):
-        errors.append(f"relation endpoint 存在歧义: {ref}")
-        endpoints.pop(ref, None)
-    return {key: value[0] for key, value in endpoints.items()}
-
-
-def validate_relations(manifest: dict[str, Any], errors: list[str]) -> None:
-    rows = manifest.get("relations", [])
-    if not isinstance(rows, list):
-        errors.append("relations 必须是数组")
-        return
-
-    endpoints = relation_endpoint_index(manifest, errors)
-    for index, item in enumerate(rows):
-        if not isinstance(item, dict):
-            errors.append(f"relations[{index}] 必须是对象")
-            continue
-        source = relation_value(item, ("from", "source", "source_id"))
-        target = relation_value(item, ("to", "target", "target_id"))
-        relation = relation_value(item, ("type", "relation"))
-        if not source or not target or not relation:
-            errors.append(f"relations[{index}] 必须提供 from、to 和 type")
-            continue
-        if relation not in RELATION_TYPES:
-            errors.append(f"relations[{index}].type 非法: {relation}")
-        if source not in endpoints:
-            errors.append(f"relations[{index}].from 找不到对应资产: {source}")
-        if target not in endpoints:
-            errors.append(f"relations[{index}].to 找不到对应资产: {target}")
-        if "confidence" in item:
-            confidence = relation_value(item, ("confidence",))
-            if not confidence or confidence not in EVIDENCE_CONFIDENCE_VALUES:
-                errors.append(f"relations[{index}].confidence 必须是 low、medium 或 high")
-
-
-def patch_diff_modified_files(package_dir: Path, rel: str) -> list[str]:
-    try:
-        path = reference_path(package_dir, rel)
-    except ValueError:
-        return []
-    if not path.is_file():
-        return []
-    text = path.read_text(encoding="utf-8", errors="ignore")
-    files: list[str] = []
-    seen: set[str] = set()
-    for match in re.finditer(r"^\+\+\+\s+(.+)$", text, re.M):
-        value = match.group(1).strip()
-        if value == "/dev/null":
-            continue
-        if value.startswith("b/"):
-            value = value[2:]
-        if value and value not in seen:
-            seen.add(value)
-            files.append(value)
-    return files
-
-
-def validate_explanation_evidence(package_dir: Path, item: dict[str, Any], errors: list[str]) -> None:
-    rel = item.get("path")
-    if not isinstance(rel, str) or not rel:
-        errors.append("补丁解释 evidence 必须引用 JSON 文件")
-        return
-    payload = read_referenced_json(package_dir, rel)
-    if payload is None:
-        return
-    confidence = payload.get("confidence")
-    basis = payload.get("basis")
-    limits = payload.get("limits")
-    if confidence not in EVIDENCE_CONFIDENCE_VALUES:
-        errors.append(f"{rel} confidence 必须是 low、medium 或 high")
-    if not isinstance(basis, list) or not basis:
-        errors.append(f"{rel} basis 必须是非空数组")
-    if not isinstance(limits, list) or not limits:
-        errors.append(f"{rel} limits 必须是非空数组")
-    if item.get("kind") == "patch_problem_summary":
-        if not payload.get("problem_summary") or not payload.get("solution_summary"):
-            errors.append(f"{rel} 必须包含 problem_summary 和 solution_summary")
-    if item.get("kind") == "risk_surface":
-        risk_areas = payload.get("risk_areas")
-        if not isinstance(risk_areas, list) or not risk_areas:
-            errors.append(f"{rel} risk_areas 必须是非空数组")
 
 
 def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> dict[str, Any]:
