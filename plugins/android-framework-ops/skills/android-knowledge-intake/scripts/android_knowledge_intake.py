@@ -275,6 +275,8 @@ from akbs_intake.patch.capture_import import (  # noqa: E402
 )
 from akbs_intake.patch.evidence import (  # noqa: E402
     aggregate_patch_diff_facts,
+    bind_framework_evidence,
+    bind_framework_evidence_paths,
     ensure_patch_analysis_evidence,
     ensure_required_patch_explanation_evidence,
     incoming_patch_item,
@@ -292,6 +294,7 @@ from akbs_intake.patch.metadata import (  # noqa: E402
 )
 from akbs_intake.patch.manifest import (  # noqa: E402
     framework_case_variant_ids,
+    framework_change_evidence_paths,
     framework_change_manifest,
     write_case_file,
     write_variant_file,
@@ -397,21 +400,6 @@ def write_package_source(package_dir: Path, config: dict[str, str], skill: str) 
     source = source_metadata(config, skill)
     write_json(package_dir / materials_rel("evidence", "source.json"), {"kind": "source", "payload": source})
     return source
-
-
-def bind_framework_evidence(package_dir: Path, rel: str, case_id: str, variant_id: str) -> None:
-    path = package_dir / rel
-    if not path.is_file():
-        return
-    payload = read_json_file(path)
-    payload["case_id"] = case_id
-    payload["variant_id"] = variant_id
-    if payload.get("kind") == "source":
-        source_payload = payload.get("payload")
-        if not isinstance(source_payload, dict):
-            source_payload = {}
-        payload["payload"] = source_payload
-    write_json(path, payload)
 
 
 def incoming_report_manifest(
@@ -1278,25 +1266,24 @@ def prepare_patch_package(
         feature_readme_rel=feature_readme_rel,
         patch_rel_paths=patch_rel_paths,
         patch_view_path=patch_view_path,
-        evidence_paths=[
-            source_path,
-            required_generated["patch_diff_facts"],
-            patch_ai_facts_path,
-            project_path,
-            required_generated["patch_problem_summary"],
-            required_generated["risk_surface"],
-            verification_path,
-            search_path,
-            *([supplement_path] if supplement_path else []),
-            *optional_evidence_paths,
-        ],
+        evidence_paths=framework_change_evidence_paths(
+            source_path=source_path,
+            patch_diff_path=required_generated["patch_diff_facts"],
+            patch_ai_facts_path=patch_ai_facts_path,
+            project_path=project_path,
+            patch_problem_path=required_generated["patch_problem_summary"],
+            risk_path=required_generated["risk_surface"],
+            verification_path=verification_path,
+            search_path=search_path,
+            supplement_path=supplement_path,
+            optional_evidence_paths=optional_evidence_paths,
+        ),
         related_report_run_ids=all_related_report_run_ids,
         supplement_for_package_key=supplement_for_package_key,
         supplement_reason=supplement_reason,
         supplement_mode=inferred_mode,
     )
-    for evidence_rel in manifest["files"]["evidence"]:
-        bind_framework_evidence(package_dir, evidence_rel, case_id, variant_id)
+    bind_framework_evidence_paths(package_dir, manifest["files"]["evidence"], case_id, variant_id)
     write_json(package_dir / "manifest.json", manifest)
     check = validate_package(package_dir)
     write_json(package_dir / "local-check.json", check)

@@ -7,6 +7,7 @@ from akbs_intake.io_utils import (
     MATERIALS_DIR,
     list_string_values,
     materials_rel,
+    read_json_file,
     read_referenced_json,
     safe_id,
     sha1_file,
@@ -18,6 +19,26 @@ from akbs_intake.report_sessions import compact_text
 
 
 REQUIRED_PATCH_EXPLANATION_KINDS = {"patch_problem_summary", "risk_surface"}
+
+
+def bind_framework_evidence(package_dir: Path, rel: str, case_id: str, variant_id: str) -> None:
+    path = package_dir / rel
+    if not path.is_file():
+        return
+    payload = read_json_file(path)
+    payload["case_id"] = case_id
+    payload["variant_id"] = variant_id
+    if payload.get("kind") == "source":
+        source_payload = payload.get("payload")
+        if not isinstance(source_payload, dict):
+            source_payload = {}
+        payload["payload"] = source_payload
+    write_json(path, payload)
+
+
+def bind_framework_evidence_paths(package_dir: Path, evidence_paths: list[str], case_id: str, variant_id: str) -> None:
+    for rel in evidence_paths:
+        bind_framework_evidence(package_dir, rel, case_id, variant_id)
 
 
 def evidence_covers_patch(item: dict[str, Any], payload: dict[str, Any] | None, patch: dict[str, Any], patch_count: int) -> bool:

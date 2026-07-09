@@ -118,6 +118,35 @@ def write_variant_file(
     return variant_path
 
 
+def framework_change_evidence_paths(
+    *,
+    source_path: str,
+    patch_diff_path: str,
+    patch_ai_facts_path: str,
+    project_path: str,
+    patch_problem_path: str,
+    risk_path: str,
+    verification_path: str,
+    search_path: str,
+    supplement_path: str = "",
+    optional_evidence_paths: list[str] | None = None,
+) -> list[str]:
+    paths = [
+        source_path,
+        patch_diff_path,
+        patch_ai_facts_path,
+        project_path,
+        patch_problem_path,
+        risk_path,
+        verification_path,
+        search_path,
+    ]
+    if supplement_path:
+        paths.append(supplement_path)
+    paths.extend(optional_evidence_paths or [])
+    return paths
+
+
 def framework_change_manifest(
     *,
     schema_version: str,
