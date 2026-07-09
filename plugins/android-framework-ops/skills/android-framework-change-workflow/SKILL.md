@@ -23,7 +23,7 @@ It coordinates with adjacent Android skills:
 - `android-source-access` proves the source tree is mounted and usable; `android-remote-build-deploy` proves artifacts were built and delivered.
 - Build/deploy executors may use `android-remote-channel` internally for reusable SSH/tmux remote sessions; this workflow should still call the platform build/deploy executor rather than the channel directly.
 - `android-framework-patch-capture` turns an implemented or stage-worthy Framework feature into a feature README, repository-level patches, and evidence after this workflow has produced a concrete change. Use it before `android-framework-patch-intake` whenever a Framework change, failed attempt, or stage-worthy draft should be preserved.
-- `android-framework-patch-intake` turns the capture package into the single automatic intake channel: an `incoming` package. `android-knowledge-intake` remains the shared kernel and legacy command route; do not invent a second upload path.
+- `android-framework-patch-intake` turns the capture package into the single automatic intake channel: an `incoming` package. `android-knowledge-intake` remains the shared kernel and compatibility command entry; do not invent a second upload path.
 - This skill proves the framework change satisfies the requirement or diagnosis outcome on device.
 
 ## Core Contract

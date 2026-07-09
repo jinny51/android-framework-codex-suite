@@ -33,7 +33,8 @@ class ReportSkillSplitMetadataTests(unittest.TestCase):
             self.assertIn(business_label, skill_text)
 
         intake_text = (REPO_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("旧命令路由", intake_text)
+        self.assertIn("兼容命令入口", intake_text)
+        self.assertNotIn("legacy command", intake_text)
         self.assertIn("共享内核", intake_text)
         self.assertIn("android-daily-report-intake", intake_text)
         self.assertIn("android-weekly-report-intake", intake_text)

@@ -27,7 +27,7 @@ Patch capture uses the plugin rules module (`android_framework_ops.knowledge_rul
 - `android-framework-patch-capture`: owns feature README, repository-level patch, and evidence packaging for existing changes.
 - `android-framework-patch-intake`: owns framework_change incoming package submission through the server submission channel.
 - `android-daily-report-intake` and `android-weekly-report-intake`: own daily and weekly report incoming packages.
-- `android-knowledge-intake`: owns shared kernel, setup, doctor, plugin update checks, and legacy command routing.
+- `android-knowledge-intake`: owns shared kernel, setup, doctor, plugin update checks, and compatibility command entry.
 
 ## Quick Command
 

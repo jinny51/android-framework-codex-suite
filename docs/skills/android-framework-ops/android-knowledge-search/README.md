@@ -145,7 +145,7 @@ android-framework-patch-capture
   负责把 Framework 修改整理成标准补丁资料
 
 android-knowledge-intake
-  提供共享脚本、配置诊断、插件更新检查和旧命令兼容路由
+  提供共享脚本、配置诊断、插件更新检查和兼容命令入口
 
 android-knowledge-search
   负责把知识库仓库里已有经验、补丁和验证结果搜出来

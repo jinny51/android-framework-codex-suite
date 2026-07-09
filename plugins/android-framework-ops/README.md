@@ -18,7 +18,7 @@ Android Framework Ops 是本套件的共享核心插件。它负责 Android Fram
 | 知识系统 | [android-framework-patch-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-framework-patch-intake) | 生成原始补丁包、补证包、替换包和补丁资产修正 `framework_change` incoming |
 | 知识系统 | [android-daily-report-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-daily-report-intake) | 生成个人日报正文、同源 `report_view.json` 和 `daily_trace` incoming |
 | 知识系统 | [android-weekly-report-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-weekly-report-intake) | 生成个人周报正文、项目概况 `report_view.json` 和 `weekly_trace` incoming |
-| 知识系统 | [android-knowledge-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-knowledge-intake) | 成员首次启用、插件更新、配置诊断、共享 incoming 内核和旧命令兼容路由 |
+| 知识系统 | [android-knowledge-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-knowledge-intake) | 成员首次启用、插件更新、配置诊断、共享 incoming 内核和兼容命令入口 |
 | 远程执行 | [android-remote-channel](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-remote-channel) | 统一管理 Android 构建服务器 SSH/tmux 长会话、命令日志、占用状态和锁 |
 
 ## 推荐工作流

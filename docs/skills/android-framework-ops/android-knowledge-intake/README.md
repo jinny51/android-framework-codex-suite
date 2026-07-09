@@ -2,17 +2,17 @@
 
 > GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-framework-ops/skills/android-knowledge-intake](../../../../plugins/android-framework-ops/skills/android-knowledge-intake)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...`、`references/...` 指向该 runtime skill 目录。
 
-成员端 incoming 共享内核、配置诊断和旧命令兼容 skill。
+成员端 incoming 共享内核、配置诊断和兼容命令入口 skill。
 
 ## 用途
 
-该 skill 用于成员首次启用、插件更新、配置迁移、doctor 检查、共享上传协议和旧命令兼容路由。新的成员业务入口已经拆成三个 skill：`android-daily-report-intake` 负责个人日报，`android-weekly-report-intake` 负责个人周报，`android-framework-patch-intake` 负责原始补丁包、补证包、替换包和补丁资产修正。三者都复用本 skill 的 `scripts/android_knowledge_intake.py`，不复制三套上传实现。
+该 skill 用于成员首次启用、插件更新、配置迁移、doctor 检查、共享上传协议和兼容命令入口。新的成员业务入口已经拆成三个 skill：`android-daily-report-intake` 负责个人日报，`android-weekly-report-intake` 负责个人周报，`android-framework-patch-intake` 负责原始补丁包、补证包、替换包和补丁资产修正。三者都复用本 skill 的 `scripts/android_knowledge_intake.py`，不复制三套上传实现。
 
 共享内核会在成员本机先生成本地 `pending`（待检查包），再通过服务器上传入口（server upload endpoint）提交为上传包（incoming package）。成员端 skill 不克隆、不拉取、不直接搜索、不 push 数据库仓库（database repository）。
 
 成员端 Codex 是材料生成主体。它负责从会话、git、patch 和验证记录里整理上传包；服务器通过 AKBS HTTP API 接收上传包并写入服务端事实库，不由成员端直接写上传分支、数据库仓库或知识库仓库。后续由管理端本地推广入口决定推广、退回或要求补证。能否进入知识库仓库（knowledge repository）由你本机的本地技能（local skill）`akbs-curation-maintainer` 驱动的 AI 知识闭环（AI knowledge loop）判断。
 
-普通成员新任务优先使用拆分入口：日报用 `android-daily-report-intake`，周报用 `android-weekly-report-intake`，补丁包和补证包用 `android-framework-patch-intake`。旧 `android-knowledge-intake daily|weekly|patch` 命令继续可用，只是作为旧命令路由（legacy route）进入同一共享内核。周报包（weekly report package）只做一周进度归档、成员查看和统计，不进入知识库仓库。非成员 profile 只用于协议和服务器链路测试，不能和你本机的 `akbs-curation-maintainer` 混为一谈。
+普通成员新任务优先使用拆分入口：日报用 `android-daily-report-intake`，周报用 `android-weekly-report-intake`，补丁包和补证包用 `android-framework-patch-intake`。`android-knowledge-intake daily|weekly|patch` 命令继续可用，只是作为兼容命令入口（compatibility command entry）进入同一共享内核。周报包（weekly report package）只做一周进度归档、成员查看和统计，不进入知识库仓库。非成员 profile 只用于协议和服务器链路测试，不能和你本机的 `akbs-curation-maintainer` 混为一谈。
 
 默认策略是先在成员本机保存材料，再只把达到普通上传门禁的包送到服务器。普通补丁包和补证包上传默认必须是 `validated`：功能边界清楚、项目（project）、平台（platform）、Android 版本（Android version）可追溯、补丁资产干净，并且构建与设备或等价验证通过。`candidate`、`draft`、`failed` 或 `blocked` 可以作为本地材料或日报/周报上下文保留，但不直接进入服务器上传队列。包状态不是沉淀结论（curation decision）。
 
@@ -64,7 +64,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor --strict --check-remote
 ```
 
-旧命令路由生成当天 pending 包：
+兼容命令入口生成当天 pending 包：
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --prepare
@@ -76,7 +76,7 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --p
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --submit-latest
 ```
 
-旧命令路由生成周报 pending 包：
+兼容命令入口生成周报 pending 包：
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --prepare
