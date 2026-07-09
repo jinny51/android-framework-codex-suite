@@ -250,7 +250,6 @@ from akbs_intake.io_utils import (  # noqa: E402
     read_json_file,
     read_optional_json_object,
     safe_id,
-    stable_slug_id,
     unique_strings,
     write_json,
 )
@@ -288,6 +287,12 @@ from akbs_intake.patch.metadata import (  # noqa: E402
     first_evidence_payload,
     infer_platform_metadata,
     repo_paths_from_files,
+)
+from akbs_intake.patch.manifest import (  # noqa: E402
+    framework_case_variant_ids,
+    framework_change_manifest,
+    write_case_file,
+    write_variant_file,
 )
 from akbs_intake.patch.supplement import (  # noqa: E402
     downgrade_validated_patch_entries,
@@ -1082,48 +1087,35 @@ def prepare_patch_package(
     ) or repo_paths_from_files(modified_files)
     patch_rel_paths = [str(item["path"]) for item in all_patch_items]
     all_related_report_run_ids = unique_strings(all_related_report_run_ids)
-    case_id = "case-" + stable_slug_id(summary, "framework-change", 80)
-    variant_seed = json.dumps(
-        {
-            "android_version": android_version,
-            "case_id": case_id,
-            "platform": platform,
-            "project": project,
-            "repo_paths": repo_paths,
-            "summary": summary,
-        },
-        ensure_ascii=False,
-        sort_keys=True,
+    case_id, variant_id = framework_case_variant_ids(
+        summary=summary,
+        platform=platform,
+        android_version=android_version,
+        project=project,
+        repo_paths=repo_paths,
     )
-    variant_id = "variant-" + stable_slug_id("-".join([platform, android_version, project, summary]), "framework-change", 100, variant_seed)
     patch_problem_payload = first_evidence_payload(package_dir, capture_evidence_entries, "patch_problem_summary")
     case_problem = str(patch_problem_payload.get("problem_summary") or summary)
     case_solution = str(patch_problem_payload.get("solution_summary") or summary)
 
-    case_path = materials_rel("case.json")
-    variant_path = materials_rel("variant.json")
-    write_json(
-        package_dir / case_path,
-        {
-            "case_id": case_id,
-            "title": summary,
-            "problem": case_problem,
-            "solution_summary": case_solution,
-        },
+    case_path = write_case_file(
+        package_dir,
+        case_id=case_id,
+        summary=summary,
+        case_problem=case_problem,
+        case_solution=case_solution,
     )
-    write_json(
-        package_dir / variant_path,
-        {
-            "variant_id": variant_id,
-            "case_id": case_id,
-            "platform": platform,
-            "android_version": android_version,
-            "project": project,
-            "repo_paths": repo_paths,
-            "implementation_origins": implementation_origins,
-            "capture_tools": capture_tools,
-            "package_status": package_status,
-        },
+    variant_path = write_variant_file(
+        package_dir,
+        variant_id=variant_id,
+        case_id=case_id,
+        platform=platform,
+        android_version=android_version,
+        project=project,
+        repo_paths=repo_paths,
+        implementation_origins=implementation_origins,
+        capture_tools=capture_tools,
+        package_status=package_status,
     )
 
     project_path = write_default_evidence(
@@ -1307,71 +1299,55 @@ def prepare_patch_package(
         },
     )
 
-    write_json(
-        package_dir / variant_path,
-        {
-            "variant_id": variant_id,
-            "case_id": case_id,
-            "platform": platform,
-            "android_version": android_version,
-            "project": project,
-            "repo_paths": repo_paths,
-            "related_report_run_ids": all_related_report_run_ids,
-            "implementation_origins": implementation_origins,
-            "capture_tools": capture_tools,
-            "package_status": package_status,
-        },
+    write_variant_file(
+        package_dir,
+        variant_id=variant_id,
+        case_id=case_id,
+        platform=platform,
+        android_version=android_version,
+        project=project,
+        repo_paths=repo_paths,
+        implementation_origins=implementation_origins,
+        capture_tools=capture_tools,
+        package_status=package_status,
+        related_report_run_ids=all_related_report_run_ids,
     )
-    manifest = {
-        "schema": "knowledge-incoming-package",
-        "schema_version": INCOMING_SCHEMA_VERSION,
-        "package_kind": "framework_change",
-        "member_alias": config["member_alias"],
-        "member_name": config["member_name"],
-        "date": date.isoformat(),
-        "run_id": run_id,
-        "tool": "android-knowledge-intake",
-        "case_id": case_id,
-        "variant_id": variant_id,
-        "package_status": package_status,
-        "platform": platform,
-        "android_version": android_version,
-        "project": project,
-        "summary": summary,
-        "implementation_origins": implementation_origins,
-        "capture_tools": capture_tools,
-        "files": {
-            "case": case_path,
-            "variant": variant_path,
-            "readme": feature_readme_rel,
-            "patches": patch_rel_paths,
-            "display": [patch_view_path],
-            "evidence": [
-                source_path,
-                required_generated["patch_diff_facts"],
-                patch_ai_facts_path,
-                project_path,
-                required_generated["patch_problem_summary"],
-                required_generated["risk_surface"],
-                verification_path,
-                search_path,
-                *([supplement_path] if supplement_path else []),
-                *optional_evidence_paths,
-            ],
-        },
-    }
-    if all_related_report_run_ids:
-        manifest["related_report_run_ids"] = all_related_report_run_ids
-    if supplement_for_package_key:
-        manifest["supplement_for_package_key"] = supplement_for_package_key
-        manifest["supplement_reason"] = supplement_reason
-        manifest["material_identity"] = {
-            "mode": "inherit_target_package",
-            "target_package_key": supplement_for_package_key,
-            "editable": False,
-        }
-        if inferred_mode:
-            manifest["supplement_mode"] = inferred_mode
+    manifest = framework_change_manifest(
+        schema_version=INCOMING_SCHEMA_VERSION,
+        config=config,
+        date=date,
+        run_id=run_id,
+        case_id=case_id,
+        variant_id=variant_id,
+        package_status=package_status,
+        platform=platform,
+        android_version=android_version,
+        project=project,
+        summary=summary,
+        implementation_origins=implementation_origins,
+        capture_tools=capture_tools,
+        case_path=case_path,
+        variant_path=variant_path,
+        feature_readme_rel=feature_readme_rel,
+        patch_rel_paths=patch_rel_paths,
+        patch_view_path=patch_view_path,
+        evidence_paths=[
+            source_path,
+            required_generated["patch_diff_facts"],
+            patch_ai_facts_path,
+            project_path,
+            required_generated["patch_problem_summary"],
+            required_generated["risk_surface"],
+            verification_path,
+            search_path,
+            *([supplement_path] if supplement_path else []),
+            *optional_evidence_paths,
+        ],
+        related_report_run_ids=all_related_report_run_ids,
+        supplement_for_package_key=supplement_for_package_key,
+        supplement_reason=supplement_reason,
+        supplement_mode=inferred_mode,
+    )
     for evidence_rel in manifest["files"]["evidence"]:
         bind_framework_evidence(package_dir, evidence_rel, case_id, variant_id)
     write_json(package_dir / "manifest.json", manifest)
