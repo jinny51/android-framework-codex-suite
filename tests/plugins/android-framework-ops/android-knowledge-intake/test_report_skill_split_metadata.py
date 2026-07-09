@@ -18,7 +18,7 @@ class ReportSkillSplitMetadataTests(unittest.TestCase):
         plugin_json = json.loads((REPO_ROOT / "plugins" / "android-framework-ops" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
         plugin_readme = (REPO_ROOT / "plugins" / "android-framework-ops" / "README.md").read_text(encoding="utf-8")
 
-        self.assertEqual(plugin_json["version"], "1.0.115")
+        self.assertEqual(plugin_json["version"], "1.0.116")
         for skill_name, business_label in expected.items():
             skill_dir = REPO_ROOT / "plugins" / "android-framework-ops" / "skills" / skill_name
             self.assertTrue((skill_dir / "SKILL.md").is_file(), skill_name)
