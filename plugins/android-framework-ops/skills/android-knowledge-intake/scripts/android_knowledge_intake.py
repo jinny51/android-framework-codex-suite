@@ -2329,74 +2329,31 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         )
 
     if package_kind == "framework_change":
-        for field in ("case_id", "variant_id", "package_status", "platform", "android_version", "project"):
-            if not manifest.get(field):
-                errors.append(f"framework_change 缺少 {field}")
-        manifest_platform = str(manifest.get("platform") or "").strip().lower()
-        manifest_android_version = str(manifest.get("android_version") or "").strip().lower()
-        if manifest_platform and not is_valid_platform_value(manifest_platform):
-            errors.append(f"framework_change platform 非法: {manifest_platform}；只能使用 mtk/rk/unisoc/unknown")
-        if manifest_android_version and not is_valid_android_version_value(manifest_android_version):
-            errors.append(f"framework_change android_version 非法: {manifest_android_version}")
-        if "maturity" in manifest:
-            errors.append("framework_change manifest 不允许使用 maturity；请使用 package_status")
-        package_status = str(manifest.get("package_status", ""))
-        if package_status not in PACKAGE_STATUS_VALUES:
-            errors.append(f"package_status 非法: {package_status}")
-        supplement_target = str(manifest.get("supplement_for_package_key") or "").strip()
-        supplement_mode = str(manifest.get("supplement_mode") or "").strip()
-        if supplement_mode and supplement_mode not in SUPPLEMENT_MODES:
-            errors.append(f"supplement_mode 非法: {supplement_mode}")
-        is_field_correction = supplement_mode == "field_correction"
-        is_asset_correction = supplement_mode == "asset_correction"
-        if is_field_correction and not supplement_target:
-            errors.append("字段级补证（field_correction）必须提供 supplement_for_package_key")
-        if "related_report_run_ids" in manifest:
-            related = manifest.get("related_report_run_ids")
-            if not isinstance(related, list):
-                errors.append("related_report_run_ids 必须是数组")
-            else:
-                for item in related:
-                    if not RUN_ID_RE.fullmatch(str(item or "")):
-                        errors.append(f"related_report_run_ids 包含非法 run_id: {item}")
-        files = manifest.get("files")
-        if not isinstance(files, dict):
-            errors.append("framework_change files 必须是对象")
-            files = {}
-        case_path = require_file(files.get("case"), "files.case")
-        variant_path = require_file(files.get("variant"), "files.variant")
-        readme_path = require_file(files.get("readme"), "files.readme")
-        patch_paths = files.get("patches", [])
-        display_paths = files.get("display", [])
-        evidence_paths = files.get("evidence", [])
-        if not isinstance(patch_paths, list):
-            errors.append("files.patches 必须是数组")
-            patch_paths = []
-        elif is_field_correction and patch_paths:
-            errors.append("字段级补证（field_correction）不能携带 patch/diff 补丁资产")
-        elif not is_field_correction and not patch_paths:
-            errors.append("files.patches 必须是非空数组")
-            patch_paths = []
-        if not isinstance(display_paths, list) or not display_paths:
-            errors.append("framework_change files.display 必须包含 materials/display/patch_view.json")
-            display_paths = []
-        if not isinstance(evidence_paths, list) or not evidence_paths:
-            errors.append("files.evidence 必须是非空数组")
-            evidence_paths = []
-        for patch_path in patch_paths:
-            path = require_file(patch_path, "patch")
-            if path and path.suffix not in {".patch", ".diff"}:
-                errors.append(f"patch 文件必须是 .patch 或 .diff: {patch_path}")
-            if has_uncontrolled_patch_asset_prefix(patch_path):
-                errors.append(
-                    f"补丁资产（patch asset）不能使用非受控前缀: {patch_path}；"
-                    "前缀必须是合法项目名（project）或 mtk/rk/unisoc 受控平台 Android 版本前缀。"
-                )
-        if readme_path and not is_field_correction:
-            errors.extend(validate_patch_readme(readme_path))
-        if not is_field_correction:
-            for patch_readme_path in sorted((package_dir / "patches").glob("*.readme.md")):
-                errors.extend(validate_patch_readme(patch_readme_path))
+        patch_context = validate_framework_change_manifest_and_files(
+            package_dir=package_dir,
+            manifest=manifest,
+            package_status_values=PACKAGE_STATUS_VALUES,
+            supplement_modes=SUPPLEMENT_MODES,
+            run_id_re=RUN_ID_RE,
+            require_file=require_file,
+            validate_patch_readme=validate_patch_readme,
+            has_uncontrolled_patch_asset_prefix=has_uncontrolled_patch_asset_prefix,
+            is_valid_platform_value=is_valid_platform_value,
+            is_valid_android_version_value=is_valid_android_version_value,
+            errors=errors,
+        )
+        manifest_platform = patch_context.manifest_platform
+        manifest_android_version = patch_context.manifest_android_version
+        package_status = patch_context.package_status
+        supplement_target = patch_context.supplement_target
+        is_field_correction = patch_context.is_field_correction
+        is_asset_correction = patch_context.is_asset_correction
+        case_path = patch_context.case_path
+        variant_path = patch_context.variant_path
+        readme_path = patch_context.readme_path
+        patch_paths = patch_context.patch_paths
+        display_paths = patch_context.display_paths
+        evidence_paths = patch_context.evidence_paths
         validate_patch_display_files(
             package_dir=package_dir,
             display_paths=display_paths,
@@ -2736,7 +2693,10 @@ from akbs_intake.patch.facts import (  # noqa: E402
     patch_symbols_from_text,
     resource_keys_from_patch_text,
 )
-from akbs_intake.patch.validation import validate_patch_display_files  # noqa: E402
+from akbs_intake.patch.validation import (  # noqa: E402
+    validate_framework_change_manifest_and_files,
+    validate_patch_display_files,
+)
 
 
 def existing_explanation_kinds_for_entry(package_dir: Path, evidence_entries: list[dict[str, Any]], entry: dict[str, Any], patch_count: int) -> set[str]:
