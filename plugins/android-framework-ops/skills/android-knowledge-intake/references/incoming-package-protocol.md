@@ -297,7 +297,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.100"
+    "plugin_version": "1.0.101"
   }
 }
 ```
