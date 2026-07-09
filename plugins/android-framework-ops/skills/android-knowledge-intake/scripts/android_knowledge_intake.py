@@ -258,56 +258,24 @@ from akbs_intake.project_identity import (  # noqa: E402
 )
 from akbs_intake.patch.assets import (  # noqa: E402
     PatchInfo,
-    copy_patch_assets,
-    discover_patches_from_cwd,
-    paired_readme,
-    patch_infos_from_paths,
     patch_readme_template,
     patch_readme_usable_for_inference,
-    synthetic_patch_info,
     validate_patch_file,
     validate_patch_readme,
-    write_feature_readme_from_patch_entries,
 )
-from akbs_intake.patch.capture_import import (  # noqa: E402
-    copy_patch_capture_packages,
-    patch_capture_package_scope_errors,
-)
+from akbs_intake.patch.builder import build_patch_package  # noqa: E402
 from akbs_intake.patch.evidence import (  # noqa: E402
-    aggregate_patch_diff_facts,
-    bind_framework_evidence,
-    bind_framework_evidence_paths,
-    ensure_patch_analysis_evidence,
-    ensure_required_patch_explanation_evidence,
-    incoming_patch_item,
     select_search_before_change_payload,
     verification_payload_or_missing,
-    write_patch_view_and_ai_facts,
 )
 from akbs_intake.patch.facts import patch_facts_from_text, patch_modules_from_files, patch_problem_and_risk_payloads  # noqa: E402
 from akbs_intake.patch.metadata import (  # noqa: E402
     evidence_text_values,
-    first_evidence_path,
-    first_evidence_payload,
     infer_platform_metadata,
-    repo_paths_from_files,
-)
-from akbs_intake.patch.manifest import (  # noqa: E402
-    framework_case_variant_ids,
-    framework_change_evidence_paths,
-    framework_change_manifest,
-    write_case_file,
-    write_variant_file,
 )
 from akbs_intake.patch.supplement import (  # noqa: E402
-    downgrade_validated_patch_entries,
-    framework_metadata_is_traceable,
-    framework_package_status_from_patch_statuses,
-    infer_supplement_mode,
     normalize_corrected_fields as _normalize_corrected_fields,
     parse_corrected_field_args,
-    prepare_field_correction_package,
-    write_evidence_supplement,
     write_default_evidence,
 )
 from akbs_intake.doctor import (  # noqa: E402
@@ -888,407 +856,32 @@ def prepare_patch_package(
     corrected_fields: dict[str, Any] | None = None,
     correction_reason: str = "",
 ) -> Path:
-    require_config(config)
-    if schema_version != INCOMING_SCHEMA_VERSION:
-        raise SystemExit(f"incoming 只支持 schema_version={INCOMING_SCHEMA_VERSION}")
-    supplement_for_package_key = str(supplement_for_package_key or "").strip()
-    supplement_reason = str(supplement_reason or "").strip()
-    inferred_mode = infer_supplement_mode(supplement_mode, supplement_for_package_key, supplement_reason, corrected_fields)
-    if inferred_mode and inferred_mode not in SUPPLEMENT_MODES:
-        raise SystemExit(f"supplement_mode 非法: {inferred_mode}")
-    if inferred_mode == "field_correction":
-        run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}-field-supplement"
-        platform, android_version = apply_platform_overrides(
-            "unknown",
-            "unknown",
-            platform_override=platform_override or str((corrected_fields or {}).get("platform") or ""),
-            android_version_override=android_version_override or str((corrected_fields or {}).get("android_version") or ""),
-        )
-        normalized_fields = normalize_corrected_fields(
-            corrected_fields,
-            project=project,
-            platform=platform,
-            android_version=android_version,
-        )
-        return prepare_field_correction_package(
-            date,
-            config,
-            run_id,
-            project=project if project else normalized_fields.get("project", "unknown"),
-            platform=platform,
-            android_version=android_version,
-            summary=summary,
-            schema_version=schema_version,
-            supplement_for_package_key=supplement_for_package_key,
-            supplement_reason=supplement_reason,
-            corrected_fields=normalized_fields,
-            correction_reason=correction_reason,
-            validate_package_fn=validate_package,
-            bind_framework_evidence_fn=bind_framework_evidence,
-            write_package_source_fn=write_package_source,
-        )
-    if patch_paths and len(patch_paths) > 1:
-        raise SystemExit(
-            "直接 --patch 只允许单个独立补丁。多个补丁必须先用补丁采集技能（android-framework-patch-capture）"
-            "按功能生成补丁包（patch package）；一个补丁包只能对应一个功能。"
-        )
-    run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}-patch"
-    scope_errors = patch_capture_package_scope_errors(patch_package_paths, summary, run_id)
-    if scope_errors:
-        raise SystemExit("\n".join(scope_errors))
-    out_dir = require_safe_artifact_path(expanded_path(config["out_dir"]), purpose="out_dir")
-    package_dir = require_safe_artifact_path(out_dir / "pending" / ymd(date) / config["member_alias"] / run_id, purpose="incoming package output")
-    if package_dir.exists():
-        raise SystemExit(f"工作包已存在: {package_dir}")
-    package_dir.mkdir(parents=True)
-
-    patch_entries: list[dict[str, Any]] = []
-    capture_evidence_entries: list[dict[str, Any]] = []
-    patch_sources: list[dict[str, Any]] = []
-    source_contexts: list[dict[str, Any]] = []
-    has_pass_verification = False
-    all_related_report_run_ids = list_string_values(related_report_run_ids)
-    feature_readme_rel = ""
-
-    if patch_package_paths:
-        (
-            capture_entries,
-            evidence_entries,
-            source_entries,
-            capture_has_pass,
-            capture_related_report_run_ids,
-            capture_source_contexts,
-            capture_feature_readme_rel,
-        ) = copy_patch_capture_packages(
-            package_dir,
-            patch_package_paths,
-            project,
-            status,
-        )
-        patch_entries.extend(capture_entries)
-        capture_evidence_entries.extend(evidence_entries)
-        patch_sources.extend(source_entries)
-        source_contexts.extend(capture_source_contexts)
-        has_pass_verification = has_pass_verification or capture_has_pass
-        all_related_report_run_ids.extend(capture_related_report_run_ids)
-        feature_readme_rel = capture_feature_readme_rel
-
-    if patch_paths:
-        patches = patch_infos_from_paths(patch_paths, project)
-    elif synthetic_mode(config):
-        patches = [synthetic_patch_info(package_dir, date, project, config)]
-        summary = summary if summary != "管理员手动归档补丁" else "合成测试补丁包"
-        status = "candidate" if status == "validated" else status
-    elif not patch_entries:
-        patches = discover_patches_from_cwd(project, date)
-    else:
-        patches = []
-    if not patches:
-        if not patch_entries:
-            raise SystemExit("patch 模式未找到补丁，请使用 --patch/--patch-package 指定，或在当前目录/patches 下放置当天修改的 .patch 文件。")
-    else:
-        patch_entries.extend(copy_patch_assets(package_dir, patches, config, status=status, reuse_hint=status == "validated", note="管理员手动归档补丁"))
-        patch_sources.extend([{"name": item.name, "source": str(item.path), "project": item.project} for item in patches])
-    if not feature_readme_rel:
-        feature_readme_rel = write_feature_readme_from_patch_entries(package_dir, summary, patch_entries)
-    write_json(
-        package_dir / materials_rel("evidence", "framework_change_summary.json"),
-        {
-            "source": "android-knowledge-intake",
-            "mode": "patch",
-            "synthetic_data": synthetic_mode(config),
-            "patch_count": len(patch_entries),
-            "patches": patch_sources,
-            "capture_package_count": len(patch_package_paths or []),
-            "supplement_mode": inferred_mode,
-            "implementation_origins": unique_strings(
-                str(item.get("implementation_origin") or "")
-                for item in patch_entries
-                if str(item.get("implementation_origin") or "").strip()
-            ),
-            "capture_tools": unique_strings(str(item.get("captured_by") or "") for item in patch_entries if str(item.get("captured_by") or "").strip()),
-        },
-    )
-    ensure_patch_analysis_evidence(package_dir, patch_entries, capture_evidence_entries, summary)
-    if not has_pass_verification:
-        downgrade_validated_patch_entries(patch_entries, "未携带 PASS 设备验证或合格等价验证，已按 candidate 提交")
-    for item in patch_entries:
-        if item.get("status") in {"failed", "blocked"}:
-            item["reuse_hint"] = False
-
-    platform, android_version = apply_platform_overrides(
-        *infer_platform_metadata(patch_entries, capture_evidence_entries, package_dir),
+    return build_patch_package(
+        date,
+        config,
+        run_id=run_id,
+        patch_paths=patch_paths,
+        patch_package_paths=patch_package_paths,
+        project=project,
+        summary=summary,
+        status=status,
+        schema_version=schema_version,
+        related_report_run_ids=related_report_run_ids,
+        supplement_for_package_key=supplement_for_package_key,
+        supplement_reason=supplement_reason,
         platform_override=platform_override,
         android_version_override=android_version_override,
+        supplement_mode=supplement_mode,
+        corrected_fields=corrected_fields,
+        correction_reason=correction_reason,
+        incoming_schema_version=INCOMING_SCHEMA_VERSION,
+        supplement_modes=SUPPLEMENT_MODES,
+        field_correction_material_identity_fields=FIELD_CORRECTION_MATERIAL_IDENTITY_FIELDS,
+        framework_optional_evidence_kinds=FRAMEWORK_OPTIONAL_EVIDENCE_KINDS,
+        validate_package_fn=validate_package,
+        write_package_source_fn=write_package_source,
+        plugin_install_metadata_fn=plugin_install_metadata,
     )
-    auto_related_report_run_ids: list[str] = []
-    if not all_related_report_run_ids:
-        auto_related_report_run_ids = same_day_daily_report_run_ids(config, date)
-        all_related_report_run_ids.extend(auto_related_report_run_ids)
-    related_project_clues = related_report_project_clues(
-        config,
-        all_related_report_run_ids,
-        daily_label_prefix="自动关联同日日报" if auto_related_report_run_ids else "关联日报",
-    )
-    project, project_payload = infer_project(
-        project,
-        patch_entries,
-        patch_sources,
-        summary,
-        package_dir,
-        source_contexts,
-        related_project_clues,
-        trusted_platform=platform,
-    )
-    if not framework_metadata_is_traceable(project, platform, android_version):
-        downgrade_validated_patch_entries(
-            patch_entries,
-            "项目（project）、平台（platform）或 Android 版本（Android version）缺少可追溯元数据，已按 candidate 提交",
-        )
-    statuses = {str(item.get("status", "")) for item in patch_entries}
-    source_path = materials_rel("evidence", "source.json")
-    source = write_package_source(package_dir, config, "android-knowledge-intake")
-    package_status = framework_package_status_from_patch_statuses(statuses, has_pass_verification)
-    all_patch_items = [incoming_patch_item(package_dir, item) for item in patch_entries]
-    implementation_origins = unique_strings(
-        str(item.get("implementation_origin") or "")
-        for item in all_patch_items
-        if str(item.get("implementation_origin") or "").strip()
-    )
-    if implementation_origins:
-        source["implementation_origins"] = implementation_origins
-        if len(implementation_origins) == 1:
-            source["implementation_origin"] = implementation_origins[0]
-        write_json(package_dir / source_path, {"kind": "source", "payload": source})
-    capture_tools = unique_strings(str(item.get("captured_by") or "") for item in all_patch_items if str(item.get("captured_by") or "").strip())
-    modified_files = sorted(
-        {
-            file
-            for item in all_patch_items
-            for file in item.get("facts", {}).get("modified_files", [])
-            if isinstance(file, str) and file
-        }
-    )
-    repo_paths = sorted(
-        {
-            str(item.get("repo_path") or "").strip("/")
-            for item in all_patch_items
-            if str(item.get("repo_path") or "").strip("/")
-        }
-    ) or repo_paths_from_files(modified_files)
-    patch_rel_paths = [str(item["path"]) for item in all_patch_items]
-    all_related_report_run_ids = unique_strings(all_related_report_run_ids)
-    case_id, variant_id = framework_case_variant_ids(
-        summary=summary,
-        platform=platform,
-        android_version=android_version,
-        project=project,
-        repo_paths=repo_paths,
-    )
-    patch_problem_payload = first_evidence_payload(package_dir, capture_evidence_entries, "patch_problem_summary")
-    case_problem = str(patch_problem_payload.get("problem_summary") or summary)
-    case_solution = str(patch_problem_payload.get("solution_summary") or summary)
-
-    case_path = write_case_file(
-        package_dir,
-        case_id=case_id,
-        summary=summary,
-        case_problem=case_problem,
-        case_solution=case_solution,
-    )
-    variant_path = write_variant_file(
-        package_dir,
-        variant_id=variant_id,
-        case_id=case_id,
-        platform=platform,
-        android_version=android_version,
-        project=project,
-        repo_paths=repo_paths,
-        implementation_origins=implementation_origins,
-        capture_tools=capture_tools,
-        package_status=package_status,
-    )
-
-    project_path = write_default_evidence(
-        package_dir,
-        materials_rel("evidence", "project_inference.json"),
-        {
-            "kind": "project_inference",
-            "case_id": case_id,
-            "variant_id": variant_id,
-            "payload": project_payload,
-        },
-    )
-
-    verification_payload = verification_payload_or_missing(
-        first_evidence_payload(package_dir, capture_evidence_entries, "verification_result")
-    )
-    verification_path = write_default_evidence(
-        package_dir,
-        materials_rel("evidence", "verification_result.json"),
-        {
-            "kind": "verification_result",
-            "case_id": case_id,
-            "variant_id": variant_id,
-            "payload": verification_payload,
-        },
-    )
-    if package_status == "validated" and str(verification_payload.get("result", "")).upper() != "PASS":
-        package_status = "candidate"
-
-    capture_search_payload = first_evidence_payload(package_dir, capture_evidence_entries, "search_before_change")
-    member_search_payload = search_usage_payload(config, date, feature_tokens=patch_search_feature_tokens(summary, all_patch_items, modified_files))
-    search_payload = select_search_before_change_payload(
-        capture_search_payload=capture_search_payload,
-        member_search_payload=member_search_payload,
-        capture_has_member_decision=search_payload_has_member_decision(capture_search_payload),
-    )
-    search_path = write_default_evidence(
-        package_dir,
-        materials_rel("evidence", "search_before_change.json"),
-        {
-            "kind": "search_before_change",
-            "case_id": case_id,
-            "variant_id": variant_id,
-            "payload": search_payload,
-        },
-    )
-    optional_evidence_paths = [
-        rel
-        for kind in sorted(FRAMEWORK_OPTIONAL_EVIDENCE_KINDS)
-        for rel in [first_evidence_path(capture_evidence_entries, kind)]
-        if rel
-    ]
-
-    patch_diff_payload = aggregate_patch_diff_facts(all_patch_items)
-    patch_diff_path = write_default_evidence(
-        package_dir,
-        materials_rel("evidence", "patch_diff_facts.json"),
-        {
-            "kind": "patch_diff_facts",
-            "case_id": case_id,
-            "variant_id": variant_id,
-            "payload": patch_diff_payload,
-        },
-    )
-    patch_problem_path = first_evidence_path(capture_evidence_entries, "patch_problem_summary")
-    risk_path = first_evidence_path(capture_evidence_entries, "risk_surface")
-    required_generated = {
-        "patch_diff_facts": patch_diff_path,
-        "patch_problem_summary": patch_problem_path,
-        "risk_surface": risk_path,
-    }
-    required_generated = ensure_required_patch_explanation_evidence(
-        package_dir,
-        required_generated=required_generated,
-        case_id=case_id,
-        variant_id=variant_id,
-        summary=summary,
-    )
-
-    supplement_for_package_key = str(supplement_for_package_key or "").strip()
-    supplement_reason = str(supplement_reason or "").strip()
-    supplement_path = ""
-    if supplement_for_package_key:
-        if not supplement_reason:
-            supplement_reason = "补充原始上传包的沉淀证据。"
-        supplement_path = write_evidence_supplement(
-            package_dir,
-            date=date,
-            config=config,
-            run_id=run_id,
-            case_id=case_id,
-            variant_id=variant_id,
-            target_package_key=supplement_for_package_key,
-            reason=supplement_reason,
-            project=project,
-            platform=platform,
-            android_version=android_version,
-            package_status=package_status,
-            summary=summary,
-            supplement_mode=inferred_mode,
-        )
-
-    manifest_context = {
-        "summary": summary,
-        "project": project,
-        "platform": platform,
-        "android_version": android_version,
-        "member_alias": config["member_alias"],
-        "member_name": config["member_name"],
-    }
-    patch_view_path, patch_ai_facts_path = write_patch_view_and_ai_facts(
-        package_dir,
-        manifest_context=manifest_context,
-        case_id=case_id,
-        variant_id=variant_id,
-        case_problem=case_problem,
-        case_solution=case_solution,
-        verification_payload=verification_payload,
-        risk_payload=first_evidence_payload(package_dir, capture_evidence_entries, "risk_surface"),
-        patch_rel_paths=patch_rel_paths,
-        supplement_for_package_key=supplement_for_package_key,
-        supplement_reason=supplement_reason,
-        patch_diff_payload=patch_diff_payload,
-        search_payload=search_payload,
-        plugin_version=plugin_install_metadata().get("plugin_version", ""),
-    )
-
-    write_variant_file(
-        package_dir,
-        variant_id=variant_id,
-        case_id=case_id,
-        platform=platform,
-        android_version=android_version,
-        project=project,
-        repo_paths=repo_paths,
-        implementation_origins=implementation_origins,
-        capture_tools=capture_tools,
-        package_status=package_status,
-        related_report_run_ids=all_related_report_run_ids,
-    )
-    manifest = framework_change_manifest(
-        schema_version=INCOMING_SCHEMA_VERSION,
-        config=config,
-        date=date,
-        run_id=run_id,
-        case_id=case_id,
-        variant_id=variant_id,
-        package_status=package_status,
-        platform=platform,
-        android_version=android_version,
-        project=project,
-        summary=summary,
-        implementation_origins=implementation_origins,
-        capture_tools=capture_tools,
-        case_path=case_path,
-        variant_path=variant_path,
-        feature_readme_rel=feature_readme_rel,
-        patch_rel_paths=patch_rel_paths,
-        patch_view_path=patch_view_path,
-        evidence_paths=framework_change_evidence_paths(
-            source_path=source_path,
-            patch_diff_path=required_generated["patch_diff_facts"],
-            patch_ai_facts_path=patch_ai_facts_path,
-            project_path=project_path,
-            patch_problem_path=required_generated["patch_problem_summary"],
-            risk_path=required_generated["risk_surface"],
-            verification_path=verification_path,
-            search_path=search_path,
-            supplement_path=supplement_path,
-            optional_evidence_paths=optional_evidence_paths,
-        ),
-        related_report_run_ids=all_related_report_run_ids,
-        supplement_for_package_key=supplement_for_package_key,
-        supplement_reason=supplement_reason,
-        supplement_mode=inferred_mode,
-    )
-    bind_framework_evidence_paths(package_dir, manifest["files"]["evidence"], case_id, variant_id)
-    write_json(package_dir / "manifest.json", manifest)
-    check = validate_package(package_dir)
-    write_json(package_dir / "local-check.json", check)
-    return package_dir
-
 
 
 def git_run(repo: Path, args: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
