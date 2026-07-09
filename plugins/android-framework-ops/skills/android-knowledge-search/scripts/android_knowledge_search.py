@@ -510,7 +510,6 @@ def candidate_roots(explicit_root: str | None) -> list[Path]:
         [
             home / "worktrees" / "knowledge",
             Path("/mnt/z/knowledge/knowledge"),
-            Path("/mnt/z/knowledge/knowledge-worktree"),
         ]
     )
 

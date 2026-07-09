@@ -84,7 +84,7 @@ python3 -m pytest --capture=no \
   tests/plugins/android-framework-ops/android-knowledge-search
 ```
 
-维护 legacy/回滚兼容规则副本时，只从插件规则源导出到临时目录，不在成员插件任务中覆盖数据库仓库或上传分支工作树。AKBS 正常上传路径不依赖这份副本：
+维护回滚兼容规则副本时，只从插件规则源导出到临时目录，不在成员插件任务中覆盖数据库仓库或上传分支工作树。AKBS 正常上传路径不依赖这份副本：
 
 ```bash
 python3 plugins/android-framework-ops/scripts/export_akbs_validation_rules.py \

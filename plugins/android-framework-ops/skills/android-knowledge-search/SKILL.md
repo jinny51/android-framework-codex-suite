@@ -88,7 +88,7 @@ In `--source auto`, the script first tries the server hybrid endpoint. Local JSO
 4. `knowledge_repo_worktree` or `knowledge_worktree` from the selected profile in `$CODEX_HOME/report/config.toml`, `$CODEX_HOME/android-knowledge-search.toml`, or the nearest `.codex/report.toml`
 5. current directory or its parents, when they contain current `index/*.jsonl` knowledge indexes
 6. generic Codex worktrees such as `$CODEX_HOME/worktrees/knowledge` or detected Windows `Documents/Codex/worktrees/knowledge`
-7. common mapped server locations such as `/mnt/z/knowledge/knowledge`, with legacy `knowledge-worktree` paths used only as compatibility fallback
+7. common mapped server locations such as `/mnt/z/knowledge/knowledge`
 
 The search skill must not automatically read the database repository. If a local maintainer needs to inspect database internals, pass that path explicitly with `--root` and understand that it is not the normal member reuse path.
 

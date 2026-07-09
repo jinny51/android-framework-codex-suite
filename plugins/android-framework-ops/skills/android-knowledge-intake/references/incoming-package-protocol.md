@@ -297,7 +297,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.99"
+    "plugin_version": "1.0.100"
   }
 }
 ```
@@ -424,7 +424,7 @@ patch/feature README/diff/summary text
 explicit related daily or weekly report context
 ```
 
-Daily reports are not just prose. When a daily package context contains exactly one traceable TVD/TVE/TVA/TVI project model, `manifest.project` and `materials/evidence/project_inference.json` must carry it so the database repository can show accurate member work context and later curation can use it as evidence. If the daily context contains multiple projects, keep the single `project` field unknown and preserve the checked candidates and limits in project inference evidence.
+Daily reports are not just prose. When a daily package context contains exactly one traceable TVD/TVE/TVA/TVI project model, `manifest.project` and `materials/evidence/project_inference.json` must carry it so AKBS active SQLite and member/admin views can show accurate member work context, and later curation can use it as evidence. If the daily context contains multiple projects, keep the single `project` field unknown and preserve the checked candidates and limits in project inference evidence.
 
 If the daily context contains multiple traceable candidates that share one canonical project, such as `TVE1067M1` and `TVE1067M1_H031`, write the canonical project `TVE1067M1` to `manifest.project` and keep the full raw candidates in `project_inference`. Do not truncate it to `TVE1067M`, because `TVE1067M` and `TVE1067M1` are distinct projects.
 
