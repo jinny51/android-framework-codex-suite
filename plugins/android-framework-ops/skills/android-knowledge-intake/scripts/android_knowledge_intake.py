@@ -2488,17 +2488,12 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
                 errors.append("补平台（platform）证据时，补证包 platform 不能为 unknown")
             if any(token in supplement_text for token in ("android 版本", "android version", "android_version")) and manifest_android_version == "unknown":
                 errors.append("补 Android 版本（Android version）证据时，补证包 android_version 不能为 unknown")
-        verification = evidence_by_kind.get("verification_result", {})
-        verification_payload = verification.get("payload", verification) if isinstance(verification, dict) else {}
-        result = str(verification_payload.get("result", "")).upper()
-        if not is_field_correction and result not in {"PASS", "FAIL", "MISSING"}:
-            errors.append("verification_result.result 必须是 PASS、FAIL 或 MISSING")
-        if not is_field_correction and not verification_payload.get("method"):
-            errors.append("verification_result.method 必须提供")
-        if not is_field_correction and package_status == "validated" and result != "PASS":
-            errors.append("validated 必须提供 PASS 验证")
-        if not is_field_correction and package_status == "failed" and result != "FAIL":
-            errors.append("failed 必须提供 FAIL 验证")
+        validate_patch_verification_result(
+            evidence_by_kind=evidence_by_kind,
+            package_status=package_status,
+            is_field_correction=is_field_correction,
+            errors=errors,
+        )
         search_evidence = evidence_by_kind.get("search_before_change", {})
         search_payload = search_evidence.get("payload", search_evidence) if isinstance(search_evidence, dict) else {}
         implementation_origins = list_string_values(manifest.get("implementation_origins"))
@@ -2598,6 +2593,7 @@ from akbs_intake.patch.validation import (  # noqa: E402
     validate_framework_change_structure,
     validate_patch_display_files,
     validate_patch_ai_facts_and_diff,
+    validate_patch_verification_result,
 )
 
 

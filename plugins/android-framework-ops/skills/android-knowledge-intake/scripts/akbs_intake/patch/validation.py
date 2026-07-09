@@ -385,6 +385,26 @@ def validate_patch_ai_facts_and_diff(
     return PatchAIFactsValidationContext(modified_files=unique_strings(modified_files))
 
 
+def validate_patch_verification_result(
+    *,
+    evidence_by_kind: dict[str, dict[str, Any]],
+    package_status: str,
+    is_field_correction: bool,
+    errors: list[str],
+) -> None:
+    verification = evidence_by_kind.get("verification_result", {})
+    verification_payload = verification.get("payload", verification) if isinstance(verification, dict) else {}
+    result = str(verification_payload.get("result", "")).upper()
+    if not is_field_correction and result not in {"PASS", "FAIL", "MISSING"}:
+        errors.append("verification_result.result 必须是 PASS、FAIL 或 MISSING")
+    if not is_field_correction and not verification_payload.get("method"):
+        errors.append("verification_result.method 必须提供")
+    if not is_field_correction and package_status == "validated" and result != "PASS":
+        errors.append("validated 必须提供 PASS 验证")
+    if not is_field_correction and package_status == "failed" and result != "FAIL":
+        errors.append("failed 必须提供 FAIL 验证")
+
+
 PATCH_VIEW_REQUIRED_FIELDS = (
     "material_kind_label",
     "display_title",
