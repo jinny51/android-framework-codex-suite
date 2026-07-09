@@ -222,6 +222,43 @@ def aggregate_patch_diff_facts(patch_items: list[dict[str, Any]]) -> dict[str, A
     return payload
 
 
+def ensure_required_patch_explanation_evidence(
+    package_dir: Path,
+    *,
+    required_generated: dict[str, str],
+    case_id: str,
+    variant_id: str,
+    summary: str,
+) -> dict[str, str]:
+    updated = dict(required_generated)
+    for kind, rel in list(updated.items()):
+        if rel:
+            continue
+        fallback = materials_rel("evidence", f"{kind}.json")
+        payload: dict[str, Any] = {"basis": ["自动生成兜底证据"], "limits": ["缺少可解析补丁证据"]}
+        if kind == "patch_problem_summary":
+            payload.update(
+                {
+                    "problem_summary": summary,
+                    "solution_summary": "成员端 Codex 未取得更完整的补丁说明，需结合 diff 和验证证据复核。",
+                    "keywords": [],
+                }
+            )
+        if kind == "risk_surface":
+            payload["risk_areas"] = ["修改路径需按需求验证"]
+        write_json(
+            package_dir / fallback,
+            {
+                "kind": kind,
+                "case_id": case_id,
+                "variant_id": variant_id,
+                **payload,
+            },
+        )
+        updated[kind] = fallback
+    return updated
+
+
 def concrete_module_from_files(modified_files: list[str], repo_paths: list[str]) -> str:
     for path in modified_files:
         parts = [part for part in Path(path).parts if part not in {"", "."}]

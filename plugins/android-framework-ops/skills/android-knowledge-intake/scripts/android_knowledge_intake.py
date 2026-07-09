@@ -276,6 +276,7 @@ from akbs_intake.patch.capture_import import (  # noqa: E402
 from akbs_intake.patch.evidence import (  # noqa: E402
     aggregate_patch_diff_facts,
     ensure_patch_analysis_evidence,
+    ensure_required_patch_explanation_evidence,
     incoming_patch_item,
     patch_ai_facts_payload,
     patch_view_payload,
@@ -1203,31 +1204,13 @@ def prepare_patch_package(
         "patch_problem_summary": patch_problem_path,
         "risk_surface": risk_path,
     }
-    for kind, rel in list(required_generated.items()):
-        if not rel:
-            fallback = materials_rel("evidence", f"{kind}.json")
-            payload: dict[str, Any] = {"basis": ["自动生成兜底证据"], "limits": ["缺少可解析补丁证据"]}
-            if kind == "patch_problem_summary":
-                payload.update(
-                    {
-                        "problem_summary": summary,
-                        "solution_summary": "成员端 Codex 未取得更完整的补丁说明，需结合 diff 和验证证据复核。",
-                        "keywords": [],
-                    }
-                )
-            if kind == "risk_surface":
-                payload["risk_areas"] = ["修改路径需按需求验证"]
-            write_default_evidence(
-                package_dir,
-                fallback,
-                {
-                    "kind": kind,
-                    "case_id": case_id,
-                    "variant_id": variant_id,
-                    **payload,
-                },
-            )
-            required_generated[kind] = fallback
+    required_generated = ensure_required_patch_explanation_evidence(
+        package_dir,
+        required_generated=required_generated,
+        case_id=case_id,
+        variant_id=variant_id,
+        summary=summary,
+    )
 
     supplement_for_package_key = str(supplement_for_package_key or "").strip()
     supplement_reason = str(supplement_reason or "").strip()
