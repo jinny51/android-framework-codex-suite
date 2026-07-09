@@ -6,7 +6,7 @@ import sys
 import tarfile
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 try:
     from .config import (
@@ -14,6 +14,7 @@ try:
         submission_api_token,
         submission_session_cookie,
     )
+    from .reports.common import ensure_report_submit_allowed, record_submitted_package
 except ImportError:  # pragma: no cover - direct script import fallback
     scripts_root = Path(__file__).resolve().parents[1]
     if str(scripts_root) not in sys.path:
@@ -23,6 +24,12 @@ except ImportError:  # pragma: no cover - direct script import fallback
         submission_api_token,
         submission_session_cookie,
     )
+    from akbs_intake.reports.common import ensure_report_submit_allowed, record_submitted_package
+
+
+PackageValidator = Callable[[Path], dict[str, Any]]
+JsonWriter = Callable[[Path, dict[str, Any]], None]
+PatchGate = Callable[[dict[str, Any]], list[str]]
 
 
 def read_json_file(path: Path) -> dict[str, Any]:
@@ -51,6 +58,30 @@ def server_submit_package(package_dir: Path, config: dict[str, str], method: str
         raise SystemExit("AKBS 成员上传只支持 HTTP API；SSH/local 上传字段已废弃，请先更新插件并执行配置迁移。")
     payload = package_tar_gz_bytes(package_dir)
     return http_submit_package(package_dir, config, member, payload)
+
+
+def submit_package(
+    package_dir: Path,
+    config: dict[str, str],
+    *,
+    validate_package_fn: PackageValidator,
+    write_json_fn: JsonWriter,
+    patch_upload_gate_errors_fn: PatchGate,
+) -> dict[str, Any]:
+    check = validate_package_fn(package_dir)
+    write_json_fn(package_dir / "local-check.json", check)
+    if check["status"] != "PASS":
+        raise SystemExit("本地工作包校验失败，已停止提交。请查看 local-check.json。")
+    manifest = read_json_file(package_dir / "manifest.json")
+    ensure_report_submit_allowed(package_dir, config, manifest)
+    gate_errors = patch_upload_gate_errors_fn(manifest)
+    if gate_errors:
+        raise SystemExit("\n".join(gate_errors))
+
+    result = server_submit_package(package_dir, config)
+    if manifest.get("package_kind") in {"daily_trace", "weekly_trace"}:
+        record_submitted_package(package_dir, config, manifest)
+    return result
 
 
 def http_submit_package(package_dir: Path, config: dict[str, str], member: str, payload: bytes) -> dict[str, Any]:

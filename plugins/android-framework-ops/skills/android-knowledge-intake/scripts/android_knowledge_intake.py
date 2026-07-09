@@ -1130,12 +1130,10 @@ def incoming_report_manifest(
 from akbs_intake.reports.common import (  # noqa: E402
     ensure_report_date_allowed,
     ensure_report_not_duplicate,
-    ensure_report_submit_allowed,
     format_report_duplicate_message,
     iter_local_manifests,
     local_report_packages,
     package_key_from_manifest,
-    record_submitted_package,
     replacement_run_id,
     report_dates,
     report_duplicate_label,
@@ -3269,26 +3267,20 @@ def git_run(repo: Path, args: list[str], check: bool = True) -> subprocess.Compl
 
 
 def submit_package(package_dir: Path, config: dict[str, str]) -> dict[str, Any]:
-    check = validate_package(package_dir)
-    write_json(package_dir / "local-check.json", check)
-    if check["status"] != "PASS":
-        raise SystemExit("本地工作包校验失败，已停止提交。请查看 local-check.json。")
-    manifest = read_json_file(package_dir / "manifest.json")
-    ensure_report_submit_allowed(package_dir, config, manifest)
-    gate_errors = patch_upload_gate_errors(manifest)
-    if gate_errors:
-        raise SystemExit("\n".join(gate_errors))
-
-    result = server_submit_package(package_dir, config)
-    if manifest.get("package_kind") in {"daily_trace", "weekly_trace"}:
-        record_submitted_package(package_dir, config, manifest)
-    return result
+    return _submit_package(
+        package_dir,
+        config,
+        validate_package_fn=validate_package,
+        write_json_fn=write_json,
+        patch_upload_gate_errors_fn=patch_upload_gate_errors,
+    )
 
 
 from akbs_intake.submit import (  # noqa: E402
     http_submit_package,
     package_tar_gz_bytes,
     server_submit_package,
+    submit_package as _submit_package,
     upload_type_for_manifest,
 )
 
