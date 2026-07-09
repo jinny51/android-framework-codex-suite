@@ -7,9 +7,12 @@ from typing import Any, Callable, Pattern
 
 RequireFile = Callable[[Any, str], Path | None]
 ReadReferencedJson = Callable[[Path, str], dict[str, Any] | None]
+ReadJsonFile = Callable[[Path], dict[str, Any]]
+LoadEvidence = Callable[[list[Any]], dict[str, dict[str, Any]]]
 ValidatePatchReadme = Callable[[Path], list[str]]
 HasUncontrolledPatchAssetPrefix = Callable[[Any], bool]
 ValueValidator = Callable[[str], bool]
+TextFieldQualityErrors = Callable[[dict[str, Any]], list[str]]
 
 
 @dataclass
@@ -28,6 +31,13 @@ class FrameworkChangeValidationContext:
     patch_paths: list[Any]
     display_paths: list[Any]
     evidence_paths: list[Any]
+
+
+@dataclass
+class FrameworkChangeStructureContext:
+    case_problem: str
+    case_solution: str
+    evidence_by_kind: dict[str, dict[str, Any]]
 
 
 def validate_framework_change_manifest_and_files(
@@ -139,6 +149,163 @@ def validate_framework_change_manifest_and_files(
         display_paths=display_paths,
         evidence_paths=evidence_paths,
     )
+
+
+def validate_framework_change_structure(
+    *,
+    package_dir: Path,
+    manifest: dict[str, Any],
+    package_status: str,
+    is_field_correction: bool,
+    supplement_target: str,
+    case_path: Path | None,
+    variant_path: Path | None,
+    evidence_paths: list[Any],
+    load_evidence: LoadEvidence,
+    read_json_file: ReadJsonFile,
+    read_referenced_json: ReadReferencedJson,
+    text_field_quality_errors: TextFieldQualityErrors,
+    is_valid_platform_value: ValueValidator,
+    is_valid_android_version_value: ValueValidator,
+    legacy_patch_problem_kind: str,
+    framework_required_evidence_kinds: set[str],
+    field_correction_required_evidence_kinds: set[str],
+    field_correction_forbidden_evidence_kinds: set[str],
+    field_correction_allowed_fields: set[str],
+    field_correction_forbidden_fields: set[str],
+    errors: list[str],
+) -> FrameworkChangeStructureContext:
+    case_problem = ""
+    case_solution = ""
+    if case_path:
+        case = read_json_file(case_path)
+        if case.get("case_id") != manifest.get("case_id"):
+            errors.append("case_id 不一致")
+        for field in ("title", "problem", "solution_summary"):
+            if not case.get(field):
+                errors.append(f"case 缺少 {field}")
+        errors.extend(
+            text_field_quality_errors(
+                {
+                    "case.title": case.get("title"),
+                    "case.problem": case.get("problem"),
+                    "case.solution_summary": case.get("solution_summary"),
+                }
+            )
+        )
+        case_problem = str(case.get("problem") or "")
+        case_solution = str(case.get("solution_summary") or "")
+
+    if variant_path:
+        variant = read_json_file(variant_path)
+        if variant.get("variant_id") != manifest.get("variant_id"):
+            errors.append("variant_id 不一致")
+        if "status" in variant:
+            errors.append("variant 不允许使用 status；请使用 package_status")
+        if variant.get("package_status") != package_status:
+            errors.append("variant.package_status 必须等于 manifest.package_status")
+        required_variant_fields = (
+            ("platform", "android_version", "project", "package_status")
+            if is_field_correction
+            else ("platform", "android_version", "project", "repo_paths", "package_status")
+        )
+        for field in required_variant_fields:
+            if not variant.get(field):
+                errors.append(f"variant 缺少 {field}")
+        variant_platform = str(variant.get("platform") or "").strip().lower()
+        variant_android_version = str(variant.get("android_version") or "").strip().lower()
+        if variant_platform and not is_valid_platform_value(variant_platform):
+            errors.append(f"variant.platform 非法: {variant_platform}；只能使用 mtk/rk/unisoc/unknown")
+        if variant_android_version and not is_valid_android_version_value(variant_android_version):
+            errors.append(f"variant.android_version 非法: {variant_android_version}")
+        if variant.get("platform") != manifest.get("platform"):
+            errors.append("variant.platform 必须等于 manifest.platform")
+        if variant.get("android_version") != manifest.get("android_version"):
+            errors.append("variant.android_version 必须等于 manifest.android_version")
+        if variant.get("project") != manifest.get("project"):
+            errors.append("variant.project 必须等于 manifest.project")
+
+    evidence_by_kind = load_evidence(evidence_paths)
+    for rel in evidence_paths:
+        if not isinstance(rel, str):
+            continue
+        evidence = read_referenced_json(package_dir, rel)
+        if not isinstance(evidence, dict):
+            continue
+        if evidence.get("kind") == legacy_patch_problem_kind:
+            errors.append(f"{rel} 使用了残留补丁问题证据类型；请改用 patch_problem_summary")
+        if evidence.get("case_id") != manifest.get("case_id"):
+            errors.append(f"{rel} evidence.case_id 必须等于 manifest.case_id")
+        if evidence.get("variant_id") != manifest.get("variant_id"):
+            errors.append(f"{rel} evidence.variant_id 必须等于 manifest.variant_id")
+        if evidence.get("kind") == "patch_problem_summary":
+            payload = evidence
+            if "payload" in payload:
+                errors.append(f"{rel} 必须直接使用顶层字段，不能再包一层 payload")
+            if not payload.get("problem_summary") or not payload.get("solution_summary"):
+                errors.append(f"{rel} 必须包含 problem_summary 和 solution_summary")
+            if not isinstance(payload.get("basis"), list) or not payload.get("basis"):
+                errors.append(f"{rel} basis 必须是非空数组")
+            if not isinstance(payload.get("limits"), list):
+                errors.append(f"{rel} limits 必须是数组")
+
+    required_evidence_kinds = (
+        field_correction_required_evidence_kinds
+        if is_field_correction
+        else framework_required_evidence_kinds
+    )
+    for kind in required_evidence_kinds:
+        if kind not in evidence_by_kind:
+            errors.append(f"framework_change 缺少 {kind} evidence")
+
+    if is_field_correction:
+        forbidden_evidence = sorted(field_correction_forbidden_evidence_kinds & set(evidence_by_kind))
+        if forbidden_evidence:
+            errors.append(
+                "字段级补证不能携带核心证据 evidence: "
+                + ", ".join(forbidden_evidence)
+                + "；缺这些内容时必须完整重采。"
+            )
+        corrected_fields = manifest.get("corrected_fields")
+        if not isinstance(corrected_fields, dict) or not corrected_fields:
+            errors.append("字段级补证必须提供非空 corrected_fields")
+            corrected_fields = {}
+        forbidden_fields = sorted(field_correction_forbidden_fields & {str(field) for field in corrected_fields})
+        if forbidden_fields:
+            errors.append(
+                "字段级补证不能补核心证据字段: "
+                + ", ".join(forbidden_fields)
+                + "；缺验证、补丁资产、patch_ai_facts 或搜索证据时必须完整重采。"
+            )
+        unknown_fields = sorted(
+            set(str(field) for field in corrected_fields)
+            - field_correction_allowed_fields
+            - field_correction_forbidden_fields
+        )
+        if unknown_fields:
+            errors.append("字段级补证 corrected_fields 包含未知字段: " + ", ".join(unknown_fields))
+        field_correction = evidence_by_kind.get("field_correction", {})
+        field_payload = field_correction.get("payload", field_correction) if isinstance(field_correction, dict) else {}
+        if not isinstance(field_payload, dict):
+            field_payload = {}
+        if field_payload.get("target_package_key") != supplement_target:
+            errors.append("field_correction.target_package_key 必须等于 manifest.supplement_for_package_key")
+        if field_payload.get("corrected_fields") != corrected_fields:
+            errors.append("field_correction.corrected_fields 必须等于 manifest.corrected_fields")
+        if field_payload.get("supplement_mode") != "field_correction":
+            errors.append("field_correction.supplement_mode 必须是 field_correction")
+        if not field_payload.get("correction_reason"):
+            errors.append("field_correction.correction_reason 必须提供")
+        corrected_by = field_payload.get("corrected_by")
+        if not isinstance(corrected_by, dict) or corrected_by.get("member_alias") != manifest.get("member_alias"):
+            errors.append("field_correction.corrected_by.member_alias 必须等于 manifest.member_alias")
+
+    return FrameworkChangeStructureContext(
+        case_problem=case_problem,
+        case_solution=case_solution,
+        evidence_by_kind=evidence_by_kind,
+    )
+
 
 PATCH_VIEW_REQUIRED_FIELDS = (
     "material_kind_label",
