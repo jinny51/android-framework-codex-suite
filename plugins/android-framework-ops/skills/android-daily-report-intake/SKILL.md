@@ -5,7 +5,7 @@ description: "Use when generating, replacing, checking, or submitting a member p
 
 # Android Daily Report Intake
 
-Use this member-facing skill for personal 日报包（daily report package） work. It answers one question: 今天干了什么.
+Use this member-facing skill for personal 日报包（daily report package） work. It answers one question: 今天干了什么、怎么干的、结果是什么.
 
 This skill is an entrypoint, not a separate upload implementation. It routes to the shared member intake kernel in `android-knowledge-intake/scripts/android_knowledge_intake.py` with `daily` mode, so member identity, server submission, manifest protocol, replacement metadata, plugin version gate, session cache gate, duplicate guard, and local validation remain shared with weekly and patch intake.
 
@@ -25,7 +25,9 @@ Generate `reports/daily.md` with the Codex office daily template:
 - 今日产出
 - 明日重点
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `report_type=daily`, `report_date`, `display_title`, `one_line_summary`, `projects[]`, `work_items[]`, `risks[]`, `outputs[]`, and `tomorrow_focus[]`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `report_type=daily`, `report_date`, `display_title`, `material_name`, `material_summary`, `one_line_summary`, `projects[]`, `work_items[]`, `risks[]`, `outputs[]`, and `tomorrow_focus[]`.
+
+Daily card identity is not the date. `material_name` must be project + customer, such as `TVE1086U（青鸾云）`; multiple projects use `、` and keep each project paired with its own customer. `material_summary` must be a short daily topic summary, such as `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`. `ui_card.title` must equal `material_name`; `ui_card.subtitle` must equal `material_summary`.
 
 Daily project rows must include both a recognized company project name and a customer name. The member can provide this in natural language as `TVE1086U 青鸾云，帮我生成日报并提交`; parse it as project `TVE1086U` and customer `青鸾云`. If either value is missing, generate the package with `需成员补充项目名` or `需成员补充客户名` so the member can edit it, but local submit must stop until both values are present.
 

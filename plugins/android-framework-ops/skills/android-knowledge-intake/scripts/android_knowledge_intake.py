@@ -569,8 +569,12 @@ MISSING_REPORT_PROJECT = "需成员补充项目名"
 MISSING_REPORT_CUSTOMER = "需成员补充客户名"
 REPORT_MISSING_PROJECT_VALUES = {"", "unknown", "未识别项目", MISSING_REPORT_PROJECT}
 REPORT_MISSING_CUSTOMER_VALUES = {"", "unknown", "未识别客户", "需成员确认", MISSING_REPORT_CUSTOMER}
-REPORT_CUSTOMER_STOP_RE = re.compile(r"\s*(?:[，,。.;；\n\r]|帮我|请|生成|提交|上传|日报|周报)")
-REPORT_CUSTOMER_COMMAND_RE = re.compile(r"(帮我|请|生成|提交|上传|日报|周报|今天|本周|主要工作|围绕|处理|完成|进度)")
+REPORT_CUSTOMER_STOP_RE = re.compile(r"\s*(?:[，,。.;；\n\r]|帮我|请|生成|提交|上传|日报|周报|报告)")
+REPORT_CUSTOMER_COMMAND_RE = re.compile(r"(帮我|请|生成|提交|上传|日报|周报|报告|今天|本周|主要工作|围绕|处理|完成|进度)")
+REPORT_CUSTOMER_WORK_TERM_RE = re.compile(
+    r"(?:功能|模块|策略|需求|事项|问题|补丁|开发|修复|适配|排查|验证|联调|进度|状态栏|锁屏|鼠标|副屏)$"
+)
+REPORT_GENERATION_REQUEST_RE = re.compile(r"(?:帮我|请).{0,24}(?:生成|提交|上传).{0,24}(?:日报|周报|报告)")
 
 
 def project_name(work: SessionWork) -> str:
@@ -587,6 +591,8 @@ def clean_report_customer_name(value: Any) -> str:
     if not customer or customer in REPORT_MISSING_CUSTOMER_VALUES:
         return ""
     if REPORT_CUSTOMER_COMMAND_RE.search(customer):
+        return ""
+    if REPORT_CUSTOMER_WORK_TERM_RE.search(customer):
         return ""
     if len(customer) > 32:
         return ""
@@ -631,6 +637,10 @@ def report_customer_for_project(project: Any, project_customers: dict[str, str] 
         return MISSING_REPORT_CUSTOMER
     customer = (project_customers or {}).get(canonical, "")
     return customer or MISSING_REPORT_CUSTOMER
+
+
+def is_report_generation_request(text: str) -> bool:
+    return bool(REPORT_GENERATION_REQUEST_RE.search(str(text or "")))
 
 
 def parse_sessions(config: dict[str, str], dates: set[dt.date]) -> list[SessionWork]:
@@ -790,7 +800,11 @@ def summarize_session(work: SessionWork) -> str:
     if all(keyword in text for keyword in ("codex", "日报")) and any(keyword in text for keyword in ("自动化", "skill", "插件", "知识库")):
         return "搭建 Codex incoming 自动上传材料与知识库检索能力"
     project = project_anchor(" ".join([work.project, work.thread_name, *work.messages]))
-    messages = [item for item in work.messages if not item.startswith("执行命令:") and not should_skip_message(item)]
+    messages = [
+        item
+        for item in work.messages
+        if not item.startswith("执行命令:") and not should_skip_message(item) and not is_report_generation_request(item)
+    ]
     anchored_messages = [item for item in messages if project and project.lower() in item.lower()]
     candidates = anchored_messages or messages
     if candidates:
@@ -963,6 +977,8 @@ def progress_bucket(progress: str) -> str:
     text = str(progress or "")
     if any(token in text for token in ("阻塞", "blocked", "失败", "报错")):
         return "blocked"
+    if re.search(r"(?:^|[^0-9])100\s*%|进度\s*100", text):
+        return "completed"
     if any(token in text for token in ("待验证", "验证中")):
         return "in_progress"
     if any(token in text for token in ("处理中", "进行中", "继续排查", "未完成", "待处理")):
@@ -1289,6 +1305,77 @@ def weekly_progress_summary_payload(
     }
 
 
+def report_project_customer_title(
+    items: dict[str, list[tuple[str, str]]],
+    project_customers: dict[str, str] | None = None,
+    *,
+    max_projects: int = 3,
+) -> str:
+    normalized = normalized_report_items(items)
+    labels: list[str] = []
+    for project in sorted(normalized):
+        customer = report_customer_for_project(project, project_customers)
+        labels.append(f"{project}（{customer}）")
+    if not labels:
+        return f"{MISSING_REPORT_PROJECT}（{MISSING_REPORT_CUSTOMER}）"
+    visible = labels[:max_projects]
+    suffix = f"等 {len(labels)} 个项目" if len(labels) > max_projects else ""
+    return "、".join(visible + ([suffix] if suffix else []))
+
+
+def daily_material_summary(
+    items: dict[str, list[tuple[str, str]]],
+    *,
+    max_projects: int = 3,
+) -> str:
+    normalized = normalized_report_items(items)
+    if not normalized:
+        return "今日未识别到有效工作内容，需补充日报材料。"
+    parts: list[str] = []
+    for project, entries in sorted(normalized.items())[:max_projects]:
+        topics = "；".join(compact_text(re.sub(r"^(?:处理|修复|排查|完成|推进)\s*", "", desc), 32) for desc, _ in entries[:3])
+        parts.append(f"{project}：今日处理{topics or '未明确事项'}。")
+    if len(normalized) > max_projects:
+        parts.append(f"另有 {len(normalized) - max_projects} 个项目。")
+    return compact_text("".join(parts), 220)
+
+
+def weekly_material_summary(
+    items: dict[str, list[tuple[str, str]]],
+    project_customers: dict[str, str] | None = None,
+    *,
+    max_projects: int = 3,
+) -> str:
+    ledgers = project_ledger_rows(items, project_customers)
+    visible = [row for row in ledgers if row["project"] not in {MISSING_REPORT_PROJECT, "未识别项目"}]
+    if not visible:
+        return "本周未识别到有效项目进展，需补充周报材料。"
+    parts: list[str] = []
+    for ledger in visible[:max_projects]:
+        risk_text = "有风险" if ledger.get("risk") not in ("", "无明确风险") else "无明确风险"
+        parts.append(
+            f"{ledger['project']}：本周完成 {ledger['this_week_completed']} 项，"
+            f"剩余 {ledger['remaining']} 项，{risk_text}。"
+        )
+    if len(visible) > max_projects:
+        parts.append(f"另有 {len(visible) - max_projects} 个项目。")
+    return compact_text("".join(parts), 220)
+
+
+def weekly_completion_sentence(ledger: dict[str, Any]) -> str:
+    previous = int(ledger.get("previous_week_remaining") or 0)
+    completed = int(ledger.get("this_week_completed") or 0)
+    remaining = int(ledger.get("remaining") or 0)
+    expected = str(ledger.get("expected_completion_week") or "需成员确认")
+    if remaining == 0 and completed:
+        tail = "当前无明确剩余事项。"
+    elif expected == "需成员确认":
+        tail = "剩余事项预计完成时间需成员确认。"
+    else:
+        tail = f"预计 {expected} 完成整体收敛。"
+    return f"本周从上周剩余 {previous} 项中完成 {completed} 项，当前剩余 {remaining} 项，{tail}"
+
+
 def weekly_detail_sections_payload(
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
@@ -1435,25 +1522,21 @@ def write_weekly_report(
 ) -> None:
     items = normalized_report_items(items)
     ledgers = project_ledger_rows(items, project_customers)
-    summary = weekly_progress_summary_payload(items, project_customers)
     lines += [
         "## 一、本周概况",
         "",
-        f"- 本周涉及项目：{summary['project_count']}",
-        f"- 需求事项合计：{summary['total']}",
-        f"- 本周完成：{summary['this_week_completed']}",
-        f"- 当前剩余：{summary['remaining']}",
-        f"- 风险项目：{summary['risk_count']}",
-        f"- 一句话总结：本周围绕 {summary['project_count']} 个项目推进，完成 {summary['this_week_completed']} 项，剩余 {summary['remaining']} 项。",
-        "",
-        "| 项目 | 客户 | 来源类型 | 接到文档时间 | 已持续时间 | 新增功能 | 移植适配 | Bug | BSP | 其他 | 合计 | 本周完成 | 累计完成 | 当前剩余 | 预计完成周 | 状态 |",
-        "| --- | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for ledger in ledgers:
-        totals = ledger["totals"]
-        lines.append(
-            f"| {ledger['project']} | {ledger['customer_name']} | {ledger['source_type']} | {ledger['start_date']} | {ledger['duration_label']} | {totals['feature_add']} | {totals['feature_port']} | {totals['bug']} | {totals['bsp']} | {totals['other']} | {totals['total']} | {ledger['this_week_completed']} | {ledger['cumulative_completed']} | {ledger['remaining']} | {ledger['expected_completion_week']} | {ledger['status']} |"
-        )
+        if len(ledgers) > 1:
+            lines += [f"### {ledger['project']} {ledger['customer_name']}", ""]
+        lines += [
+            f"- 项目名称：{ledger['project']}",
+            f"- 客户名称：{ledger['customer_name']}",
+            f"- 接到文档时间：{ledger['start_date']}",
+            f"- 需求类型：{ledger['source_type']}",
+            f"- 当周完成情况：{weekly_completion_sentence(ledger)}",
+            "",
+        ]
     lines += ["", "## 二、项目详情", ""]
     for ledger in ledgers:
         project = str(ledger["project"])
@@ -1477,12 +1560,6 @@ def write_weekly_report(
             "",
             "#### 2. 本周进展",
             "",
-            f"- 本周完成：{ledger['this_week_completed']}",
-            f"- 累计完成：{ledger['cumulative_completed']}",
-            f"- 当前剩余：{ledger['remaining']}",
-            f"- 预计完成周：{ledger['expected_completion_week']}",
-            f"- 当前状态：{ledger['status']}",
-            "",
             "已完成事项：",
             "",
             *(f"- {compact_text(item, 120)}" for item in (completed or ["暂无明确完成项"])),
@@ -1502,8 +1579,15 @@ def write_weekly_report(
             "",
         ]
     lines += ["## 三、下周计划", ""]
-    plans = [f"{project}：{next_step_for_entries(entries, 'weekly')}" for project, entries in sorted(items.items())]
-    lines += [f"{index}. {plan}" for index, plan in enumerate(plans, start=1)] or ["1. 继续补充真实工作记录并推进未闭环事项。"]
+    for ledger in ledgers:
+        project = str(ledger["project"])
+        entries = items.get(project, [])
+        lines += [
+            f"### {project} {ledger['customer_name']}",
+            "",
+            f"- {next_step_for_entries(entries, 'weekly') if entries else '继续补充真实工作记录并推进未闭环事项。'}",
+            "",
+        ]
 
 
 def report_view_payload(
@@ -1517,19 +1601,23 @@ def report_view_payload(
     project_customers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     display_title = f"{ymd(date) if report_type == 'daily' else week_key}_{config['member_name']}_{'日报' if report_type == 'daily' else '周报'}"
+    material_name = report_project_customer_title(items, project_customers)
+    material_summary = daily_material_summary(items) if report_type == "daily" else weekly_material_summary(items, project_customers)
     payload: dict[str, Any] = {
         "report_type": report_type,
         "display_title": display_title,
+        "material_name": material_name,
+        "material_summary": material_summary,
         "report_date": date.isoformat(),
         "week_range": week_key if report_type == "weekly" else "",
         "display_date": weekly_display_date(date) if report_type == "weekly" else date.isoformat(),
         "member_alias": config["member_alias"],
         "member_name": config["member_name"],
         "overview": summary,
-        "one_line_summary": summary,
+        "one_line_summary": material_summary,
         "ui_card": {
-            "title": display_title,
-            "subtitle": summary,
+            "title": material_name,
+            "subtitle": material_summary,
             "status": "有阻塞" if any(project_stats(entries).get("blocked", 0) for entries in items.values()) else "正常推进",
             "primary_count": sum(len(entries) for entries in items.values()),
             "secondary_count": len(patches),

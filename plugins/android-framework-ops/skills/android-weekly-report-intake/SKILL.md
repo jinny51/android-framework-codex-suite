@@ -5,7 +5,7 @@ description: "Use when generating, replacing, checking, or submitting a member p
 
 # Android Weekly Report Intake
 
-Use this member-facing skill for personal 周报包（weekly report package） work. It answers one question: 这一周整体推进得怎么样.
+Use this member-facing skill for personal 周报包（weekly report package） work. It answers one question: 这一周完成多少、还剩多少、风险和依赖是什么.
 
 This skill is an entrypoint, not a separate upload implementation. It routes to the shared member intake kernel in `android-knowledge-intake/scripts/android_knowledge_intake.py` with `weekly` mode, so member identity, server submission, manifest protocol, replacement metadata, plugin version gate, session cache gate, duplicate guard, and local validation remain shared with daily and patch intake.
 
@@ -19,8 +19,8 @@ This skill is an entrypoint, not a separate upload implementation. It routes to 
 
 Daily reports record what happened today, how the member handled it, and the
 current result. Weekly reports do not repeat daily execution details. They
-summarize the week around project total ledgers that the member can correct
-before uploading.
+summarize the week around project progress: completed count, remaining count,
+risks, dependencies, and next-week closure plan.
 
 Generate `reports/weekly.md` with this required structure:
 
@@ -31,6 +31,21 @@ Generate `reports/weekly.md` with this required structure:
   - 本周重点说明
   - 风险与依赖
 - 下周计划
+
+The weekly Markdown baseline is the project block format:
+
+```markdown
+## 一、本周概况
+
+- 项目名称：TVE1086U
+- 客户名称：青鸾云
+- 接到文档时间：2026-06-18
+- 需求类型：混合，包含定制需求、Bug / Debug 处理及 BSP 配合事项
+- 当周完成情况：本周从上周剩余 8 项中完成 5 项，当前剩余 3 项，预计下周完成整体收敛。
+```
+
+For multiple projects, repeat the same block per project. Do not use a large
+overview table in `本周概况`.
 
 Each project section must preserve:
 
@@ -47,7 +62,13 @@ Each project section must preserve:
 
 Every formal weekly item should preserve both dimensions when available: 需求来源地（项目经理、上级、客户、测试、禅道） and 需求种类（需求清单、Buglist）. Work without a formal source should stay as 临时工作 / 内部优化 instead of being mixed into formal requirement or Buglist statistics.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `report_type=weekly`, `week_range`, `display_date`, `display_title`, `one_line_summary`, `project_ledgers[]`, `weekly_progress_summary`, `weekly_detail_sections[]`, `project_overview[]`, `source_lists[]`, `source_category_stats[]`, `requirement_origin`, `requirement_list_type`, `item_statistics[]`, `completed_items[]`, `in_progress_items[]`, `remaining_items[]`, `risks[]`, `patch_outputs[]`, `delivery_verifications[]`, and `next_week_plan[]`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `report_type=weekly`, `week_range`, `display_date`, `display_title`, `material_name`, `material_summary`, `one_line_summary`, `project_ledgers[]`, `weekly_progress_summary`, `weekly_detail_sections[]`, `project_overview[]`, `source_lists[]`, `source_category_stats[]`, `requirement_origin`, `requirement_list_type`, `item_statistics[]`, `completed_items[]`, `in_progress_items[]`, `remaining_items[]`, `risks[]`, `patch_outputs[]`, `delivery_verifications[]`, and `next_week_plan[]`.
+
+Weekly card identity is not the week range. `material_name` must be project +
+customer, such as `TVE1086U（青鸾云）`; multiple projects must keep each project
+paired with its own customer. `material_summary` must summarize each project's
+weekly completed count, remaining count, and risk/dependency state. `ui_card.title`
+must equal `material_name`; `ui_card.subtitle` must equal `material_summary`.
 
 `project_ledgers[]` is the structured view of the member's own weekly project
 ledger. Each project ledger must include both a recognized company project name

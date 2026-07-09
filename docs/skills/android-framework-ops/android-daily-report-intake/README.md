@@ -4,13 +4,15 @@
 
 成员个人日报入口。它只负责生成、替换、检查和提交日报包（daily report package），并复用 `android-knowledge-intake` 的共享脚本和上传协议。
 
-日报回答“今天干了什么”。新日报包生成：
+日报回答“今天干了什么、怎么干的、结果是什么”。新日报包生成：
 
 - `reports/daily.md`
 - `materials/display/report_view.json`
 - `materials/evidence/work_findings.json`
 
-`report_view.json` 是同一份日报正文的 UI 读模型（UI read model），至少包含 `report_type=daily`、`report_date`、`display_title`、`one_line_summary`、`projects[]`、`work_items[]`、`risks[]`、`outputs[]` 和 `tomorrow_focus[]`。它不是 AI 证据层，也不改变日报只归档的性质。
+`report_view.json` 是同一份日报正文的 UI 读模型（UI read model），至少包含 `report_type=daily`、`report_date`、`display_title`、`material_name`、`material_summary`、`one_line_summary`、`projects[]`、`work_items[]`、`risks[]`、`outputs[]` 和 `tomorrow_focus[]`。它不是 AI 证据层，也不改变日报只归档的性质。
+
+日报卡片不使用日期当标题。`material_name` 写项目 + 客户，例如 `TVE1086U（青鸾云）`；多项目时每个项目都带自己的客户。`material_summary` 写今日主题，例如 `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`。
 
 日报项目行必须同时有公司项目名和客户名。成员可以直接说 `TVE1086U 青鸾云，帮我生成日报并提交`；生成阶段会识别为项目 `TVE1086U`、客户 `青鸾云`。如果缺项目或客户，包会保留给成员修正，但提交会被本地校验拦住。
 

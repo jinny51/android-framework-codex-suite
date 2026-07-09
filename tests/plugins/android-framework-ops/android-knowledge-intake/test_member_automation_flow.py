@@ -1586,31 +1586,38 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "## 一、本周概况",
                 "## 二、项目详情",
                 "#### 1. 基本信息",
+                "- 项目名称：",
+                "- 客户名称：",
+                "- 当周完成情况：",
                 "来源类型",
                 "来源说明",
                 "接到文档时间",
                 "已持续时间",
                 "需求结构",
                 "上周一剩余",
-                "新增功能",
+                "定制需求",
                 "移植适配",
                 "Bug",
+                "BSP",
                 "合计",
                 "#### 2. 本周进展",
                 "本周完成",
-                "累计完成",
                 "当前剩余",
-                "预计完成周",
                 "#### 3. 本周重点说明",
                 "#### 4. 风险与依赖",
                 "## 三、下周计划",
             ):
                 self.assertIn(text, weekly_report)
+            self.assertNotIn("| 项目 | 客户 | 来源类型 | 接到文档时间 | 已持续时间 |", weekly_report)
             daily_view = read_report_view(daily)
             weekly_view = read_report_view(weekly)
             self.assertEqual(daily_view["kind"], "report_view")
             self.assertEqual(daily_view["payload"]["report_type"], "daily")
             self.assertEqual(daily_view["payload"]["report_date"], "2026-06-30")
+            self.assertEqual(daily_view["payload"]["material_name"], "TVE8402M（合成客户一）")
+            self.assertIn("TVE8402M：", daily_view["payload"]["material_summary"])
+            self.assertEqual(daily_view["payload"]["ui_card"]["title"], daily_view["payload"]["material_name"])
+            self.assertEqual(daily_view["payload"]["ui_card"]["subtitle"], daily_view["payload"]["material_summary"])
             self.assertIn("ui_card", daily_view["payload"])
             self.assertTrue(daily_view["payload"]["one_line_summary"])
             self.assertGreaterEqual(len(daily_view["payload"]["projects"]), 1)
@@ -1635,6 +1642,10 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(weekly_view["kind"], "report_view")
             self.assertEqual(weekly_view["payload"]["report_type"], "weekly")
             self.assertEqual(weekly_view["payload"]["display_date"], "2026-07-03")
+            self.assertEqual(weekly_view["payload"]["material_name"], "TVE8402M（合成客户一）")
+            self.assertIn("TVE8402M：本周完成", weekly_view["payload"]["material_summary"])
+            self.assertEqual(weekly_view["payload"]["ui_card"]["title"], weekly_view["payload"]["material_name"])
+            self.assertEqual(weekly_view["payload"]["ui_card"]["subtitle"], weekly_view["payload"]["material_summary"])
             self.assertTrue(weekly_view["payload"]["one_line_summary"])
             self.assertGreaterEqual(len(weekly_view["payload"]["project_overview"]), 1)
             self.assertGreaterEqual(len(weekly_view["payload"]["source_lists"]), 1)

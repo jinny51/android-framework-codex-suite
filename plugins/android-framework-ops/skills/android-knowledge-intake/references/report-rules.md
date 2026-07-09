@@ -46,10 +46,12 @@
 ```markdown
 # YYYY-MM-DD 日报 - 成员名
 
+日报目的：讲清楚今天干了什么、怎么干的、结果是什么。日报不是周总结，不要写成项目总账。
+
 ## 一、今日工作概览
 
-| 项目 | 模块/功能 | 事项类型 | 当前状态 | 是否阻塞 | 今日一句话进展 |
-| --- | --- | --- | --- | --- | --- |
+| 项目 | 客户 | 模块/功能 | 事项类型 | 当前状态 | 是否阻塞 | 今日一句话进展 |
+| --- | --- | --- | --- | --- | --- | --- |
 
 ## 二、今日具体事项
 
@@ -83,9 +85,19 @@ Patch、文档、验证结果、对外同步。
 ```markdown
 # YYYYMMDD-YYYYMMDD 周报 - 成员名
 
+周报目的：按项目汇总这一周完成多少、还剩多少、风险和依赖是什么、下周怎么收敛。周报不复述每天流水。
+
 ## 一、本周概况
 
-按项目汇总：本周涉及项目、客户、接到文档时间、需求类型、当周完成情况和一句话总结。不要使用“总盘子”这类说法。
+单项目直接写：
+
+- 项目名称：TVE1086U
+- 客户名称：青鸾云
+- 接到文档时间：2026-06-18
+- 需求类型：混合，包含定制需求、Bug / Debug 处理及 BSP 配合事项
+- 当周完成情况：本周从上周剩余 8 项中完成 5 项，当前剩余 3 项，预计下周完成整体收敛。
+
+多项目时，在“本周概况”下按项目重复上述块；不要使用“总盘子”这类说法，也不要用大表格堆字段。
 
 ## 二、项目详情
 
@@ -129,20 +141,28 @@ Daily and weekly reports are the primary human-readable product. The package als
   "payload": {
     "report_type": "daily",
     "display_title": "20260701_成员_日报",
-    "one_line_summary": "今天处理了...",
+    "material_name": "TVE1086U（青鸾云）",
+    "material_summary": "TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。",
+    "one_line_summary": "TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。",
     "projects": [],
     "work_items": [],
     "risks": [],
     "outputs": [],
     "tomorrow_focus": [],
     "ui_card": {
-      "title": "20260701_成员_日报",
-      "subtitle": "今天处理了...",
+      "title": "TVE1086U（青鸾云）",
+      "subtitle": "TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。",
       "status": "正常推进"
     }
   }
 }
 ```
+
+Report card fields are authoritative:
+
+- `material_name`：项目 + 客户。多项目写 `TVE1086U（青鸾云）、TVE8801M（未标注客户）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
+- `material_summary`：日报写各项目“今日主题”；周报写各项目“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
+- `ui_card.title` 必须等于 `material_name`，`ui_card.subtitle` 必须等于 `material_summary`。
 
 Weekly `report_view.json` must preserve the same report facts in structured
 form. Required weekly payload fields include `project_ledgers[]`,
