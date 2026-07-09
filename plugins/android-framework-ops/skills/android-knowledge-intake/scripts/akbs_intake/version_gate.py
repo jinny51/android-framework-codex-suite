@@ -358,6 +358,9 @@ def reexec_latest_plugin_script_after_update(freshness: dict[str, Any]) -> str:
         return ""
     if os.environ.get(PLUGIN_REEXEC_ATTEMPT_ENV):
         return ""
+    auto_update = freshness.get("auto_update") if isinstance(freshness.get("auto_update"), dict) else {}
+    if freshness.get("git_root") and auto_update.get("command") and not auto_update.get("installed_plugin_path"):
+        return ""
     script_path = updated_plugin_intake_script_path(freshness)
     if not script_path:
         return "已更新插件缓存，但未找到新缓存里的上传脚本；请新开或重启 Codex 会话后重新运行。"

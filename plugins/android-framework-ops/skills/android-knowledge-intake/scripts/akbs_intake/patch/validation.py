@@ -16,6 +16,7 @@ TextFieldQualityErrors = Callable[[dict[str, Any]], list[str]]
 EvidencePayload = Callable[[dict[str, Any]], dict[str, Any]]
 ListStringValues = Callable[[Any], list[str]]
 UniqueStrings = Callable[[list[str]], list[str]]
+TemplateLeakErrors = Callable[..., list[str]]
 ImplementationOriginsRequirePreChangeSearch = Callable[[list[str]], bool]
 SearchPayloadPredicate = Callable[[dict[str, Any]], bool]
 SupplementTargetRelationErrors = Callable[[str], list[str]]
@@ -388,6 +389,45 @@ def validate_patch_ai_facts_and_diff(
             if isinstance(item, dict):
                 modified_files.extend(list_string_values(item.get("modified_files")))
     return PatchAIFactsValidationContext(modified_files=unique_strings(modified_files))
+
+
+def validate_patch_template_leaks(
+    *,
+    package_dir: Path,
+    manifest: dict[str, Any],
+    evidence_paths: list[Any],
+    case_problem: str,
+    case_solution: str,
+    patch_paths: list[Any],
+    modified_files: list[str],
+    read_referenced_json: ReadReferencedJson,
+    template_leak_errors: TemplateLeakErrors,
+    errors: list[str],
+) -> None:
+    errors.extend(
+        template_leak_errors(
+            summary=manifest.get("summary"),
+            problem=case_problem,
+            solution=case_solution,
+            patch_paths=patch_paths,
+            modified_files=modified_files,
+        )
+    )
+    for rel in evidence_paths:
+        if not isinstance(rel, str):
+            continue
+        evidence = read_referenced_json(package_dir, rel)
+        if not isinstance(evidence, dict) or evidence.get("kind") != "patch_problem_summary":
+            continue
+        errors.extend(
+            template_leak_errors(
+                summary=manifest.get("summary"),
+                problem=evidence.get("problem_summary"),
+                solution=evidence.get("solution_summary"),
+                patch_paths=patch_paths,
+                modified_files=modified_files,
+            )
+        )
 
 
 def validate_patch_verification_result(

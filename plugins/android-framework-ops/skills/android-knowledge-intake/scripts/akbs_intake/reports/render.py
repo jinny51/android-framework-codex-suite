@@ -643,6 +643,7 @@ def report_view_payload(
                 {
                     "project": project,
                     "customer": customer,
+                    "customer_name": customer,
                     "today_topic": daily_topic_for_entries(entries),
                     "current_result": daily_result_for_entries(entries),
                     "work_items": work_items,
@@ -671,6 +672,7 @@ def report_view_payload(
             {
                 "project": project,
                 "customer": customer,
+                "customer_name": customer,
                 "week_summary": f"本周围绕 {project} {customer} 项目推进：{next_step_for_entries(entries, 'weekly') if entries else '需补充真实工作记录。'}",
                 "received_date": str(ledger.get("start_date") or "需成员确认"),
                 "source": weekly_source_label(entries),

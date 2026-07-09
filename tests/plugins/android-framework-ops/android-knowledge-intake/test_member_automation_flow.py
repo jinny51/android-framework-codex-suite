@@ -879,9 +879,10 @@ class MemberAutomationFlowTests(unittest.TestCase):
                         ]
                         stdout = io.StringIO()
 
-                        with contextlib.redirect_stdout(stdout):
+                        with patch("os.execv") as execv, contextlib.redirect_stdout(stdout):
                             code = module.main()
 
+                        self.assertFalse(execv.called)
                         self.assertEqual(code, 1)
                         payload = json.loads(stdout.getvalue())
                         self.assertEqual(payload["status"], "FAIL")
@@ -903,7 +904,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             module = load_intake_module()
             calls: list[tuple[bool, bool]] = []
 
-            def unknown_freshness(fetch: bool = True, require: bool = False) -> dict:
+            def unknown_freshness(config: dict[str, str] | None = None, fetch: bool = True, require: bool = False) -> dict:
                 calls.append((fetch, require))
                 return {
                     "status": "UNKNOWN",
@@ -911,7 +912,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     "message": "无法确认插件是否为最新版本。",
                 }
 
-            module.plugin_freshness_check = unknown_freshness
+            module.plugin_version_gate_check = unknown_freshness
             old_argv = sys.argv[:]
             old_env = os.environ.copy()
             try:

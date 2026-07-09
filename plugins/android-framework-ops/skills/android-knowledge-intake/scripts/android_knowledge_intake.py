@@ -2399,30 +2399,18 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         )
         modified_files = ai_context.modified_files
         if not is_field_correction:
-            errors.extend(
-                template_leak_errors(
-                    summary=manifest.get("summary"),
-                    problem=case_problem,
-                    solution=case_solution,
-                    patch_paths=patch_paths,
-                    modified_files=modified_files,
-                )
+            validate_patch_template_leaks(
+                package_dir=package_dir,
+                manifest=manifest,
+                evidence_paths=evidence_paths,
+                case_problem=case_problem,
+                case_solution=case_solution,
+                patch_paths=patch_paths,
+                modified_files=modified_files,
+                read_referenced_json=read_referenced_json,
+                template_leak_errors=template_leak_errors,
+                errors=errors,
             )
-            for rel in evidence_paths:
-                if not isinstance(rel, str):
-                    continue
-                evidence = read_referenced_json(package_dir, rel)
-                if not isinstance(evidence, dict) or evidence.get("kind") != "patch_problem_summary":
-                    continue
-                errors.extend(
-                    template_leak_errors(
-                        summary=manifest.get("summary"),
-                        problem=evidence.get("problem_summary"),
-                        solution=evidence.get("solution_summary"),
-                        patch_paths=patch_paths,
-                        modified_files=modified_files,
-                    )
-                )
             errors.extend(validate_framework_function_scope(package_dir, manifest, readme_path, patch_paths, evidence_by_kind))
         framework_change_summary = read_optional_json_object(package_dir / materials_rel("evidence", "framework_change_summary.json"))
         validate_patch_supplement_basics(
@@ -2520,6 +2508,7 @@ from akbs_intake.patch.validation import (  # noqa: E402
     validate_framework_change_structure,
     validate_patch_display_files,
     validate_patch_ai_facts_and_diff,
+    validate_patch_template_leaks,
     validate_patch_verification_result,
     validate_patch_pre_change_search,
     validate_patch_supplement_basics,
