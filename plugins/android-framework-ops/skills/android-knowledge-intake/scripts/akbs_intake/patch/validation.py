@@ -18,6 +18,9 @@ ListStringValues = Callable[[Any], list[str]]
 UniqueStrings = Callable[[list[str]], list[str]]
 ImplementationOriginsRequirePreChangeSearch = Callable[[list[str]], bool]
 SearchPayloadPredicate = Callable[[dict[str, Any]], bool]
+SupplementTargetRelationErrors = Callable[[str], list[str]]
+PatchAssetCorrectionSourceErrors = Callable[[dict[str, Any], Any], list[str]]
+SplitCompanyProject = Callable[[str], tuple[str, str]]
 
 
 @dataclass
@@ -459,6 +462,89 @@ def validate_patch_pre_change_search(
             "已验证（validated）补丁包命中知识搜索结果时必须闭合搜索使用决策（search usage decision），"
             "请使用 reuse/adapt/reference_only/not_applicable/not_found"
         )
+
+
+def validate_patch_supplement_basics(
+    *,
+    manifest: dict[str, Any],
+    evidence_by_kind: dict[str, dict[str, Any]],
+    supplement_target: str,
+    is_field_correction: bool,
+    is_asset_correction: bool,
+    manifest_platform: str,
+    manifest_android_version: str,
+    framework_change_summary: dict[str, Any] | None,
+    supplement_target_relation_errors: SupplementTargetRelationErrors,
+    patch_asset_correction_source_errors: PatchAssetCorrectionSourceErrors,
+    split_company_project: SplitCompanyProject,
+    errors: list[str],
+) -> None:
+    if not supplement_target:
+        return
+
+    errors.extend(supplement_target_relation_errors(supplement_target))
+    if is_asset_correction:
+        summary_for_asset = dict(framework_change_summary or {})
+        summary_for_asset.setdefault("capture_package_count", 0)
+        manifest_for_asset = dict(manifest)
+        manifest_for_asset["supplement_reason"] = (
+            str(manifest_for_asset.get("supplement_reason") or "")
+            + " 补丁资产修正（patch asset correction）"
+        )
+        errors.extend(patch_asset_correction_source_errors(manifest_for_asset, summary_for_asset))
+    else:
+        errors.extend(patch_asset_correction_source_errors(manifest, framework_change_summary))
+
+    supplement_reason = str(manifest.get("supplement_reason") or "").strip()
+    supplement = evidence_by_kind.get("evidence_supplement")
+    if not supplement:
+        errors.append("补证包必须包含 evidence_supplement evidence")
+        supplement_payload = {}
+    else:
+        supplement_payload = supplement.get("payload", supplement) if isinstance(supplement, dict) else {}
+    if isinstance(supplement_payload, dict):
+        expected_source_key = "/".join(
+            [
+                str(manifest.get("date") or "").replace("-", ""),
+                str(manifest.get("member_alias") or ""),
+                str(manifest.get("run_id") or ""),
+            ]
+        )
+        if supplement_payload.get("target_package_key") != supplement_target:
+            errors.append("evidence_supplement.target_package_key 必须等于 manifest.supplement_for_package_key")
+        if supplement_payload.get("reason") != supplement_reason:
+            errors.append("evidence_supplement.reason 必须等于 manifest.supplement_reason")
+        if supplement_payload.get("source_package_key") != expected_source_key:
+            errors.append("evidence_supplement.source_package_key 必须等于当前补证包 package key")
+        for field in ("project", "platform", "android_version", "package_status"):
+            if supplement_payload.get(field) != manifest.get(field):
+                errors.append(f"evidence_supplement.{field} 必须等于 manifest.{field}")
+        if is_field_correction:
+            if supplement_payload.get("supplement_mode") != "field_correction":
+                errors.append("evidence_supplement.supplement_mode 必须是 field_correction")
+            if supplement_payload.get("corrected_fields") != manifest.get("corrected_fields"):
+                errors.append("evidence_supplement.corrected_fields 必须等于 manifest.corrected_fields")
+
+    supplement_text = " ".join([supplement_reason, str(manifest.get("summary") or "")]).lower()
+    project_payload = {}
+    project_evidence = evidence_by_kind.get("project_inference")
+    if isinstance(project_evidence, dict):
+        project_payload = project_evidence.get("payload", project_evidence)
+        if not isinstance(project_payload, dict):
+            project_payload = {}
+    if any(token in supplement_text for token in ("项目", "project")):
+        project = str(manifest.get("project") or "").strip()
+        base_model, _suffix = split_company_project(project)
+        if project == "unknown" or not base_model:
+            errors.append("补项目（project）证据时，补证包 project 不能为 unknown，且必须是 TVD/TVE/TVA/TVI 项目型号")
+        if project_payload.get("recognized") is not True or project_payload.get("company_rule_match") is not True:
+            errors.append("补项目（project）证据时，project_inference 必须确认 recognized=true 且 company_rule_match=true")
+        if not project_payload.get("basis") or not project_payload.get("checked_sources"):
+            errors.append("补项目（project）证据时，project_inference 必须包含 basis 和 checked_sources")
+    if any(token in supplement_text for token in ("平台", "platform")) and manifest_platform == "unknown":
+        errors.append("补平台（platform）证据时，补证包 platform 不能为 unknown")
+    if any(token in supplement_text for token in ("android 版本", "android version", "android_version")) and manifest_android_version == "unknown":
+        errors.append("补 Android 版本（Android version）证据时，补证包 android_version 不能为 unknown")
 
 
 PATCH_VIEW_REQUIRED_FIELDS = (
