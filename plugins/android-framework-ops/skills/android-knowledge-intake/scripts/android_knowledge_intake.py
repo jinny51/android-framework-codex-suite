@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import hashlib
 import json
 import os
 import re
@@ -82,7 +81,6 @@ PATCH_README_FORBIDDEN_MARKERS = (
 )
 INCOMING_KINDS = {"daily_trace", "weekly_trace", "framework_change"}
 PACKAGE_STATUS_VALUES = {"validated", "candidate", "draft", "failed", "blocked"}
-MATERIALS_DIR = "materials"
 TRACE_REQUIRED_EVIDENCE_KINDS = {"source", "work_findings"}
 FRAMEWORK_REQUIRED_EVIDENCE_KINDS = {
     "source",
@@ -289,6 +287,22 @@ from akbs_intake.report_sessions import (  # noqa: E402
     week_bounds,
     ymd,
 )
+from akbs_intake.io_utils import (  # noqa: E402
+    MATERIALS_DIR,
+    list_string_values,
+    materials_rel,
+    read_json_file,
+    read_optional_json_object,
+    safe_id,
+    sha1_file,
+    stable_slug_id,
+    unique_strings,
+    write_json,
+)
+from akbs_intake.patch.capture_import import (  # noqa: E402
+    copy_patch_capture_packages,
+    patch_capture_package_scope_errors,
+)
 from akbs_intake.doctor import (  # noqa: E402
     doctor as _intake_doctor,
     doctor_strict_checks as _intake_doctor_strict_checks,
@@ -488,225 +502,6 @@ def patch_infos_from_paths(paths: list[str], project: str) -> list[PatchInfo]:
     return sorted(result.values(), key=lambda item: item.name)
 
 
-def safe_id(value: str) -> str:
-    value = re.sub(r"[^A-Za-z0-9_.-]+", "-", value.strip()).strip("-._")
-    return value or "item"
-
-
-def sha1_text(value: str, length: int = 10) -> str:
-    return hashlib.sha1(value.encode("utf-8")).hexdigest()[:length]
-
-
-def stable_slug_id(value: str, fallback: str, limit: int, hash_source: str | None = None) -> str:
-    base = safe_id(value).lower()
-    if base == "item":
-        base = safe_id(fallback).lower()
-    digest = sha1_text(hash_source if hash_source is not None else value)
-    head_limit = max(1, limit - len(digest) - 1)
-    head = base[:head_limit].strip("-._") or safe_id(fallback).lower()
-    return f"{head}-{digest}"[:limit].strip("-._")
-
-
-def sha1_file(path: Path) -> str:
-    digest = hashlib.sha1()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def list_string_values(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if value:
-        return [str(value).strip()]
-    return []
-
-
-def unique_strings(values: list[str]) -> list[str]:
-    return sorted(dict.fromkeys(item for item in values if item))
-
-
-def read_json_file(path: Path) -> dict[str, Any]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise SystemExit(f"读取 JSON 失败: {path}: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise SystemExit(f"JSON 必须是对象: {path}")
-    return payload
-
-
-def read_optional_json_object(path: Path) -> dict[str, Any]:
-    if not path.is_file():
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return payload if isinstance(payload, dict) else {}
-
-
-def copy_capture_file(source_root: Path, rel: str, target: Path) -> None:
-    source = (source_root / rel).resolve()
-    root = source_root.resolve()
-    if source != root and root not in source.parents:
-        raise SystemExit(f"capture package 引用路径越界: {rel}")
-    if not source.is_file():
-        raise SystemExit(f"capture package 引用文件不存在: {rel}")
-    if target.exists():
-        raise SystemExit(f"目标文件已存在，避免覆盖: {target}")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, target)
-
-
-def verification_payload_passes(package_root: Path, evidence_item: dict[str, Any]) -> bool:
-    if evidence_item.get("kind") not in {"verification_result", "device_verification", "equivalent_verification"}:
-        return False
-    if evidence_item.get("result") != "PASS":
-        return False
-    rel = evidence_item.get("path")
-    if not isinstance(rel, str) or not rel:
-        return False
-    payload = read_json_file(package_root / rel)
-    if payload.get("result") != "PASS":
-        return False
-    if payload.get("method") == "device":
-        return True
-    if payload.get("method") == "equivalent":
-        return bool(payload.get("reason") and payload.get("coverage") and "remaining_risk" in payload)
-    return False
-
-
-def copy_patch_capture_packages(
-    package_dir: Path,
-    package_paths: list[str],
-    default_project: str,
-    default_status: str,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], bool, list[str], list[dict[str, Any]], str]:
-    if len(package_paths) > 1:
-        raise SystemExit("framework_change incoming 一次只接受一个功能级 patch-capture 包；多个功能请分别提交。")
-    patch_dir = package_dir / "patches"
-    materials_dir = package_dir / MATERIALS_DIR
-    evidence_dir = package_dir / MATERIALS_DIR / "evidence" / "capture"
-    patch_dir.mkdir(parents=True, exist_ok=True)
-    materials_dir.mkdir(parents=True, exist_ok=True)
-    evidence_dir.mkdir(parents=True, exist_ok=True)
-
-    patch_entries: list[dict[str, Any]] = []
-    evidence_entries: list[dict[str, Any]] = []
-    sources: list[dict[str, Any]] = []
-    has_pass_verification = False
-    related_report_run_ids: list[str] = []
-    source_contexts: list[dict[str, Any]] = []
-    feature_readme_rel = ""
-
-    for raw in package_paths:
-        capture_dir = Path(raw).expanduser().resolve()
-        manifest = read_json_file(capture_dir / "manifest.json")
-        if manifest.get("package_type") != "framework_feature_patch":
-            raise SystemExit(f"不是功能级 android-framework-patch-capture 工作包: {capture_dir}")
-        readme_rel = str(manifest.get("readme") or "")
-        if not readme_rel:
-            raise SystemExit(f"capture package 缺少功能 readme: {capture_dir}")
-        implementation_origin = str(manifest.get("implementation_origin") or "unknown")
-        captured_by = str(manifest.get("captured_by") or "codex")
-        coding_standard_check = manifest.get("coding_standard_check") if isinstance(manifest.get("coding_standard_check"), dict) else {}
-        feature_readme_rel = materials_rel("readme.md")
-        copy_capture_file(capture_dir, readme_rel, package_dir / feature_readme_rel)
-        related_report_run_ids.extend(list_string_values(manifest.get("related_report_run_ids")))
-        repositories = manifest.get("git_repositories", [])
-        if isinstance(repositories, list):
-            for repository in repositories:
-                if not isinstance(repository, dict):
-                    continue
-                git = repository.get("git") if isinstance(repository.get("git"), dict) else {}
-                source_contexts.append(
-                    {
-                        "source_root": str(repository.get("root") or ""),
-                        "repo_path": str(repository.get("repo_path") or ""),
-                        "local_mount_path": str(repository.get("local_mount_path") or ""),
-                        "remote_root": str(repository.get("remote_root") or ""),
-                        "ssh_host": str(repository.get("ssh_host") or ""),
-                        "sdk_name": str(repository.get("sdk_name") or ""),
-                        "git_branch": str(git.get("branch") or ""),
-                        "git_remote": str(git.get("remote") or ""),
-                        "git_remotes": str(git.get("remotes") or ""),
-                        "implementation_origin": implementation_origin,
-                        "captured_by": captured_by,
-                    }
-                )
-        capture_id = safe_id(capture_dir.name)
-        patches = manifest.get("patches", [])
-        if not isinstance(patches, list) or not patches:
-            raise SystemExit(f"capture package 缺少 patches: {capture_dir}")
-        evidence = manifest.get("evidence", [])
-        if not isinstance(evidence, list):
-            evidence = []
-
-        for index, item in enumerate(patches, start=1):
-            if not isinstance(item, dict):
-                raise SystemExit(f"capture package patches[{index}] 不是对象: {capture_dir}")
-            patch_rel = str(item.get("path", ""))
-            patch_name = Path(patch_rel).name
-            if not patch_name:
-                raise SystemExit(f"capture package patch 路径无效: {capture_dir}")
-            copy_capture_file(capture_dir, patch_rel, patch_dir / patch_name)
-            entry_status = item.get("status") or default_status
-            copied_patch = patch_dir / patch_name
-            patch_entries.append(
-                {
-                    "path": f"patches/{patch_name}",
-                    "repo_path": str(item.get("repo_path") or ""),
-                    "source_root": str(item.get("source_root") or ""),
-                    "content_sha1": item.get("content_sha1") or sha1_file(copied_patch),
-                    "status": entry_status,
-                    "reuse_hint": bool(item.get("reuse_hint", entry_status == "validated")),
-                    "project": item.get("project") or manifest.get("project") or default_project,
-                    "platform_token": str(item.get("platform_token") or manifest.get("platform_token") or ""),
-                    "platform": str(item.get("platform") or manifest.get("platform") or ""),
-                    "android_version": str(item.get("android_version") or manifest.get("android_version") or ""),
-                    "implementation_origin": str(item.get("implementation_origin") or implementation_origin),
-                    "captured_by": str(item.get("captured_by") or captured_by),
-                    "coding_standard_check": coding_standard_check,
-                    "note": "来自 android-framework-patch-capture 工作包",
-                    "facts": item.get("facts") if isinstance(item.get("facts"), dict) else {},
-                }
-            )
-            sources.append(
-                {
-                    "name": patch_name,
-                    "source": str(capture_dir / patch_rel),
-                    "project": item.get("project") or default_project,
-                    "implementation_origin": str(item.get("implementation_origin") or implementation_origin),
-                    "captured_by": str(item.get("captured_by") or captured_by),
-                }
-            )
-
-        for item in evidence:
-            if not isinstance(item, dict):
-                continue
-            rel = item.get("path")
-            if not isinstance(rel, str) or not rel:
-                continue
-            base_id = safe_id(str(item.get("id") or Path(rel).stem))
-            target_name = f"{capture_id}-{Path(rel).name}"
-            target = evidence_dir / target_name
-            copy_capture_file(capture_dir, rel, target)
-            copied = {
-                "id": f"{capture_id}-{base_id}",
-                "kind": item.get("kind", "capture_evidence"),
-                "path": materials_rel("evidence", "capture", target_name),
-                "result": item.get("result", "INFO"),
-                "summary": item.get("summary", "captured patch evidence"),
-            }
-            evidence_entries.append(copied)
-            if verification_payload_passes(capture_dir, item):
-                has_pass_verification = True
-
-    return patch_entries, evidence_entries, sources, has_pass_verification, unique_strings(related_report_run_ids), source_contexts, feature_readme_rel
-
-
 def discover_patches_from_cwd(project: str, date: dt.date) -> list[PatchInfo]:
     candidates: dict[Path, PatchInfo] = {}
     for pattern in ("*.patch", "patches/*.patch"):
@@ -750,30 +545,6 @@ def patch_readme_usable_for_inference(path: Path) -> bool:
 def evidence_payload(evidence: dict[str, Any]) -> dict[str, Any]:
     payload = evidence.get("payload")
     return payload if isinstance(payload, dict) else evidence
-
-
-def patch_capture_package_scope_errors(package_paths: list[str] | None, summary: str, run_id: str) -> list[str]:
-    texts = [str(summary or ""), str(run_id or "")]
-    patch_count = 0
-    for raw in package_paths or []:
-        capture_dir = Path(raw).expanduser().resolve()
-        manifest = read_json_file(capture_dir / "manifest.json")
-        texts.append(str(manifest.get("summary") or ""))
-        texts.append(str(manifest.get("feature") or ""))
-        patches = manifest.get("patches")
-        if isinstance(patches, list):
-            patch_count = max(patch_count, len(patches))
-        readme_rel = str(manifest.get("readme") or "")
-        if readme_rel:
-            readme_path = (capture_dir / readme_rel).resolve()
-            root = capture_dir.resolve()
-            try:
-                readme_path.relative_to(root)
-            except ValueError as exc:
-                raise SystemExit(f"capture package readme 路径越界: {readme_rel}") from exc
-            if readme_path.is_file():
-                texts.append(readme_path.read_text(encoding="utf-8", errors="ignore"))
-    return aggregate_package_scope_errors("\n".join(texts), patch_count)
 
 
 def validate_patch_file(path: Path) -> list[str]:
@@ -849,16 +620,6 @@ def validate_package(package_dir: Path) -> dict[str, Any]:
         incoming_schema_version=INCOMING_SCHEMA_VERSION,
         validate_incoming_package_fn=validate_incoming_package,
     )
-
-
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-
-def materials_rel(*parts: str) -> str:
-    clean = [part.strip("/") for part in parts if part]
-    return "/".join([MATERIALS_DIR, *clean])
 
 
 from akbs_intake.search_usage import (  # noqa: E402
