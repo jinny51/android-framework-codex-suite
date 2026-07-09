@@ -1,5 +1,7 @@
 # Android Framework Codex Suite 设计计划
 
+> 历史计划归档：本文记录 2026-05-26 建仓阶段的设计和实施状态，不代表当前插件结构。当前事实以仓库根 README、`manifests/*.toml`、各插件 `.codex-plugin/plugin.json` 和 `docs/skills/` 为准。
+
 ## 目标
 
 建立 Android Framework Codex 插件套件，并把它作为团队成员安装 Android Framework 工程能力的插件市场来源。

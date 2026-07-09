@@ -82,7 +82,7 @@ android-framework-codex-suite/
 ├── manifests/                              # 每个插件包含的 skill 白名单
 ├── docs/
 │   ├── skills/                             # GitHub 上给人看的每个 skill 说明
-│   └── plans/                              # 设计文档和实施计划
+│   └── archive/                            # 历史计划归档，不作为当前结构事实
 └── scripts/                                # 插件校验脚本
 ```
 
