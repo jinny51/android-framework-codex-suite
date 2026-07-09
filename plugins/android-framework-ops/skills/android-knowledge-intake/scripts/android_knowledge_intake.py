@@ -302,6 +302,7 @@ from akbs_intake.patch.supplement import (  # noqa: E402
     normalize_corrected_fields as _normalize_corrected_fields,
     parse_corrected_field_args,
     prepare_field_correction_package,
+    write_evidence_supplement,
     write_default_evidence,
 )
 from akbs_intake.doctor import (  # noqa: E402
@@ -1234,25 +1235,21 @@ def prepare_patch_package(
     if supplement_for_package_key:
         if not supplement_reason:
             supplement_reason = "补充原始上传包的沉淀证据。"
-        supplement_path = write_default_evidence(
+        supplement_path = write_evidence_supplement(
             package_dir,
-            materials_rel("evidence", "evidence_supplement.json"),
-            {
-                "kind": "evidence_supplement",
-                "case_id": case_id,
-                "variant_id": variant_id,
-                "payload": {
-                    "target_package_key": supplement_for_package_key,
-                    "reason": supplement_reason,
-                    "source_package_key": f"{ymd(date)}/{config['member_alias']}/{run_id}",
-                    "project": project,
-                    "platform": platform,
-                    "android_version": android_version,
-                    "package_status": package_status,
-                    "summary": summary,
-                    "supplement_mode": inferred_mode,
-                },
-            },
+            date=date,
+            config=config,
+            run_id=run_id,
+            case_id=case_id,
+            variant_id=variant_id,
+            target_package_key=supplement_for_package_key,
+            reason=supplement_reason,
+            project=project,
+            platform=platform,
+            android_version=android_version,
+            package_status=package_status,
+            summary=summary,
+            supplement_mode=inferred_mode,
         )
 
     manifest_context = {

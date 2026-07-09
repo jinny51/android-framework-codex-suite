@@ -28,6 +28,48 @@ def write_default_evidence(package_dir: Path, rel: str, payload: dict[str, Any])
     return rel
 
 
+def write_evidence_supplement(
+    package_dir: Path,
+    *,
+    date: dt.date,
+    config: dict[str, str],
+    run_id: str,
+    case_id: str,
+    variant_id: str,
+    target_package_key: str,
+    reason: str,
+    project: str,
+    platform: str,
+    android_version: str,
+    package_status: str,
+    summary: str,
+    supplement_mode: str,
+    payload_extra: dict[str, Any] | None = None,
+) -> str:
+    payload: dict[str, Any] = {
+        "target_package_key": target_package_key,
+        "reason": reason,
+        "source_package_key": f"{ymd(date)}/{config['member_alias']}/{run_id}",
+        "project": project,
+        "platform": platform,
+        "android_version": android_version,
+        "package_status": package_status,
+        "summary": summary,
+        "supplement_mode": supplement_mode,
+    }
+    payload.update(payload_extra or {})
+    return write_default_evidence(
+        package_dir,
+        materials_rel("evidence", "evidence_supplement.json"),
+        {
+            "kind": "evidence_supplement",
+            "case_id": case_id,
+            "variant_id": variant_id,
+            "payload": payload,
+        },
+    )
+
+
 def parse_corrected_field_args(items: list[str] | None) -> dict[str, str]:
     corrected: dict[str, str] = {}
     for raw in items or []:
@@ -267,28 +309,26 @@ def prepare_field_correction_package(
             "payload": correction_payload,
         },
     )
-    supplement_path = write_default_evidence(
+    supplement_path = write_evidence_supplement(
         package_dir,
-        materials_rel("evidence", "evidence_supplement.json"),
-        {
-            "kind": "evidence_supplement",
-            "case_id": case_id,
-            "variant_id": variant_id,
-            "payload": {
-                "target_package_key": supplement_for_package_key,
-                "reason": supplement_reason or correction_reason,
-                "source_package_key": expected_source_key,
-                "project": project,
-                "platform": platform,
-                "android_version": android_version,
-                "package_status": package_status,
-                "summary": summary,
-                "supplement_mode": "field_correction",
-                "corrected_fields": corrected_fields,
-                "correction_reason": correction_reason or supplement_reason,
-                "corrected_by": correction_payload["corrected_by"],
-                "corrected_at": correction_payload["corrected_at"],
-            },
+        date=date,
+        config=config,
+        run_id=run_id,
+        case_id=case_id,
+        variant_id=variant_id,
+        target_package_key=supplement_for_package_key,
+        reason=supplement_reason or correction_reason,
+        project=project,
+        platform=platform,
+        android_version=android_version,
+        package_status=package_status,
+        summary=summary,
+        supplement_mode="field_correction",
+        payload_extra={
+            "corrected_fields": corrected_fields,
+            "correction_reason": correction_reason or supplement_reason,
+            "corrected_by": correction_payload["corrected_by"],
+            "corrected_at": correction_payload["corrected_at"],
         },
     )
     patch_view_path = materials_rel("display", "patch_view.json")
