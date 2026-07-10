@@ -70,6 +70,12 @@ if rg -n "android-wsl-source-access|android-wsl-remote-build-deploy|android-wsl-
   exit 1
 fi
 
+if rg -n 'WSL source/build skills from android-framework-ops|通用源码接入、构建、推送和验收流程；这些属于 `android-framework-ops`' "$repo_root/plugins" "$repo_root/docs" >/tmp/akbs-plugin-layer-errors.txt; then
+  cat /tmp/akbs-plugin-layer-errors.txt >&2
+  echo "platform source/build responsibilities must stay in android-wsl-ops or android-mac-ops" >&2
+  exit 1
+fi
+
 if rg -n "\.codex/android-macos-source-access-info" "$repo_root/plugins/android-mac-ops" "$repo_root/docs" >/tmp/akbs-plugin-old-mac-paths.txt; then
   cat /tmp/akbs-plugin-old-mac-paths.txt >&2
   echo "android-mac-ops must store registry and credential references under ~/.servers" >&2

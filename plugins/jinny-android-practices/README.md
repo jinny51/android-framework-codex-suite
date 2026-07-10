@@ -31,7 +31,7 @@ Jinny Android Practices 是可选实践插件，用于放置 Jinny 团队的 And
 
 ## 不适合放进这里的内容
 
-- Android Framework 通用源码接入、构建、推送和验收流程；这些属于 `android-framework-ops`。
+- Android Framework 通用诊断和验收流程属于 `android-framework-ops`；源码接入、构建和推送分别属于 `android-wsl-ops` 或 `android-mac-ops`。
 - Codex 本地聊天历史清理和上下文交接；这些属于 `codex-workspace-care`。
 - 成员个人私有规则、真实客户配置、账号、路径、凭据或本地数据库。
 

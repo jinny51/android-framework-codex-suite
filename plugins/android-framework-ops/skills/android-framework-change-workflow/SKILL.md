@@ -1,6 +1,6 @@
 ---
 name: android-framework-change-workflow
-description: "Use when implementing requirements, modifying, diagnosing, or verifying Android platform/framework code such as frameworks/base, system_server services, WindowManager, ActivityTaskManager, PackageManager, SystemUI, Launcher3 integration, input, resources/overlays, surfaces, boot/runtime services, or OEM/system-level behavior. Orchestrates requirement contracts, pre-change knowledge search, evidence-backed diagnosis, targeted instrumentation, scoped framework changes, build/deploy coordination, final acceptance verification, patch capture, incoming submission handoff, diagnostic log lifecycle cleanup, and concise reporting. Use WSL source/build skills from android-framework-ops for the default team workflow."
+description: "Use when implementing requirements, modifying, diagnosing, or verifying Android platform/framework code such as frameworks/base, system_server services, WindowManager, ActivityTaskManager, PackageManager, SystemUI, Launcher3 integration, input, resources/overlays, surfaces, boot/runtime services, or OEM/system-level behavior. Orchestrates requirement contracts, pre-change knowledge search, evidence-backed diagnosis, targeted instrumentation, scoped framework changes, build/deploy coordination, final acceptance verification, patch capture, incoming submission handoff, diagnostic log lifecycle cleanup, and concise reporting. Use android-wsl-ops for WSL source/build work and android-mac-ops for macOS source/build work."
 ---
 
 # Android Framework Change Workflow

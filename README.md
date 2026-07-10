@@ -148,11 +148,18 @@ $CODEX_HOME/<skill-name>.toml
 # 3. 自检
 scripts/validate_plugins.sh
 
-# 4. 提交并推送
-git add .
+# 4. 只暂存本次文件，提交并推送
+git add <本次修改文件>
 git commit -m "update plugins"
 git push
+
+# 5. 刷新 marketplace，并重装本机实际使用的平台插件
+codex plugin marketplace upgrade android-framework-codex-suite
+codex plugin add android-framework-ops@android-framework-codex-suite
+codex plugin add android-wsl-ops@android-framework-codex-suite  # 仅 WSL
 ```
+macOS 只安装 `android-mac-ops`，WSL 只安装 `android-wsl-ops`。安装更新了磁盘缓存，但已经打开的会话不会因此自动替换本轮加载的 skill；受影响工作应在新会话中继续，活跃会话只做定向事实刷新。
+
 不要提交成员个人配置、真实凭据、私钥、构建输出、日志、`__pycache__`、`.pytest_cache` 或本地历史数据库。
 
 ## 自检
@@ -169,6 +176,8 @@ scripts/validate_plugins.sh
 - marketplace 中声明的插件路径有效。
 - manifest 中列出的 skill 都存在。
 - skill 目录包含必要入口文件。
+- macOS 源码接入脚本通过模拟回归；发布 macOS 插件前还必须通过真实 Mac SSH 回归。
+- WSL 运行脚本在 Git 中可执行，源码接入和构建交付回归通过。
 - 仓库没有明显的本地缓存、日志、凭据类文件。
 
 维护时如果只想快速确认 runtime skill 目录里没有 README 残留，可以执行：
@@ -212,7 +221,6 @@ manifests/<plugin-name>.toml
 plugins/<plugin-name>/README.md
 README.md
 scripts/validate_plugins.sh
-scripts/validate_plugins.ps1
 ```
 
 实践类、代码风格类、review 类规则默认放进 `jinny-android-practices` 或其他可选插件，不放进 `android-framework-ops`。
