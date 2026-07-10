@@ -11,11 +11,13 @@ except ImportError:  # pragma: no cover - direct script import fallback
     from akbs_intake.reports.common import week_bounds, ymd
 
 from android_framework_ops.knowledge_rules import find_company_project
-
-MISSING_REPORT_PROJECT = "需成员补充项目名"
-MISSING_REPORT_CUSTOMER = "需成员补充客户名"
-REPORT_MISSING_PROJECT_VALUES = {"", "unknown", "未识别项目", MISSING_REPORT_PROJECT}
-REPORT_MISSING_CUSTOMER_VALUES = {"", "unknown", "未识别客户", "需成员确认", MISSING_REPORT_CUSTOMER}
+from akbs_intake.report_sessions import (
+    MISSING_REPORT_CUSTOMER,
+    MISSING_REPORT_PROJECT,
+    REPORT_MISSING_CUSTOMER_VALUES,
+    REPORT_MISSING_PROJECT_VALUES,
+    report_customer_for_project,
+)
 
 
 def compact_text(text: str, limit: int) -> str:
@@ -23,14 +25,6 @@ def compact_text(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 1)].rstrip() + "…"
-
-
-def report_customer_for_project(project: Any, project_customers: dict[str, str] | None = None) -> str:
-    canonical = find_company_project(str(project or ""))
-    if not canonical:
-        return MISSING_REPORT_CUSTOMER
-    customer = (project_customers or {}).get(canonical, "")
-    return customer or MISSING_REPORT_CUSTOMER
 
 
 def materials_rel(*parts: str) -> str:
@@ -75,33 +69,12 @@ def status_label_from_stats(stats: dict[str, int]) -> str:
         return "已完成"
     return "无事项"
 
-def item_type(desc: str, progress: str) -> str:
-    text = f"{desc} {progress}".lower()
-    if any(token in text for token in ("验证", "test", "测试")):
-        return "验证"
-    if any(token in text for token in ("排查", "问题", "报错", "失败", "定位")):
-        return "问题排查"
-    if any(token in text for token in ("补丁", "patch", "修改", "适配", "修复", "开发")):
-        return "开发"
-    if any(token in text for token in ("文档", "readme", "整理", "交接")):
-        return "文档/交接"
-    return "工程事项"
-
-def issue_or_none(entries: list[tuple[str, str]]) -> str:
-    issues = [desc for desc, progress in entries if progress_bucket(progress) in {"blocked", "in_progress", "not_started"}]
-    return "；".join(compact_text(item, 48) for item in issues[:3]) if issues else "暂无明确遗留问题"
-
 def next_step_for_entries(entries: list[tuple[str, str]], report_type: str) -> str:
     issues = [desc for desc, progress in entries if progress_bucket(progress) in {"blocked", "in_progress", "not_started"}]
     if issues:
         prefix = "明日继续" if report_type == "daily" else "下周继续"
         return f"{prefix}推进：{compact_text('；'.join(issues[:3]), 120)}"
     return "保持验证和交付记录完整，必要时补齐 patch-capture 证据。"
-
-def render_patch_list(patches: list[PatchInfo], empty_text: str) -> list[str]:
-    if not patches:
-        return [empty_text]
-    return [f"- {patch.name}（项目线索：{patch.project or '未识别项目'}）" for patch in patches]
 
 def report_item_source(desc: str) -> str:
     text = str(desc or "")
@@ -181,62 +154,6 @@ def weekly_source_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[str
             "risks": 0,
             "note": "未发现可归档事项",
         }
-    ]
-
-def weekly_category_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for source in weekly_source_rows(items):
-        project = str(source["project"])
-        origin = str(source["origin"])
-        list_type = str(source["list_type"])
-        related = [
-            (desc, progress)
-            for desc, progress in items.get(project, [])
-            if report_item_source(desc) == origin and report_list_type(desc) == list_type
-        ]
-        counts = {"功能添加": 0, "Bug处理": 0, "UI修改": 0, "功能移植": 0}
-        done = {"功能添加": 0, "Bug处理": 0, "UI修改": 0, "功能移植": 0}
-        for desc, progress in related:
-            category = report_category(desc, progress)
-            counts[category] += 1
-            if progress_bucket(progress) == "completed":
-                done[category] += 1
-        rows.append(
-            {
-                "origin": origin,
-                "list_type": list_type,
-                "list_name": source["list_name"],
-                "feature_total": counts["功能添加"],
-                "bug_total": counts["Bug处理"],
-                "ui_total": counts["UI修改"],
-                "porting_total": counts["功能移植"],
-                "feature_done": done["功能添加"],
-                "bug_done": done["Bug处理"],
-                "ui_done": done["UI修改"],
-                "porting_done": done["功能移植"],
-                "remaining": source["remaining"],
-            }
-        )
-    return rows
-
-def weekly_item_statistics(items: dict[str, list[tuple[str, str]]]) -> list[dict[str, Any]]:
-    totals = {"received": 0, "legacy": 0, "completed": 0, "in_progress": 0, "not_started": 0, "blocked": 0, "remaining": 0}
-    for entries in items.values():
-        stats = project_stats(entries)
-        totals["received"] += stats["total"]
-        totals["completed"] += stats["completed"]
-        totals["in_progress"] += stats["in_progress"]
-        totals["not_started"] += stats["not_started"]
-        totals["blocked"] += stats["blocked"]
-    totals["remaining"] = totals["in_progress"] + totals["not_started"] + totals["blocked"]
-    return [
-        {"type": "本周接收事项", "count": totals["received"], "note": "本周新接收或本周被记录的需求 / Bug / 客户问题"},
-        {"type": "历史遗留事项", "count": totals["legacy"], "note": "从上周或更早遗留到本周的事项；无明确证据时为 0"},
-        {"type": "本周完成事项", "count": totals["completed"], "note": "已开发完成 / 已修复 / 已验证 / 已提交测试"},
-        {"type": "进行中事项", "count": totals["in_progress"], "note": "已开始处理但未闭环"},
-        {"type": "未开始事项", "count": totals["not_started"], "note": "已接收但暂未处理"},
-        {"type": "阻塞事项", "count": totals["blocked"], "note": "当前无法继续推进"},
-        {"type": "剩余事项", "count": totals["remaining"], "note": "本周后仍未闭环的事项"},
     ]
 
 def project_source_type(entries: list[tuple[str, str]]) -> str:
@@ -465,19 +382,6 @@ def weekly_dependencies(entries: list[tuple[str, str]]) -> list[str]:
         if re.search(r"依赖|等待|客户确认|外部|第三方|\bBSP\b|测试反馈", f"{desc} {progress}", re.IGNORECASE)
     ]
     return dependencies or ["无外部依赖事项。"]
-
-def weekly_completion_sentence(ledger: dict[str, Any]) -> str:
-    previous = int(ledger.get("previous_week_remaining") or 0)
-    completed = int(ledger.get("this_week_completed") or 0)
-    remaining = int(ledger.get("remaining") or 0)
-    expected = str(ledger.get("expected_completion_week") or "需成员确认")
-    if remaining == 0 and completed:
-        tail = "当前无明确剩余事项。"
-    elif expected == "需成员确认":
-        tail = "剩余事项预计完成时间需成员确认。"
-    else:
-        tail = f"预计 {expected} 完成整体收敛。"
-    return f"本周从上周剩余 {previous} 项中完成 {completed} 项，当前剩余 {remaining} 项，{tail}"
 
 def write_daily_report(
     lines: list[str],

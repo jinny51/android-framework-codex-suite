@@ -17,6 +17,7 @@ from android_framework_ops.knowledge_rules import (
 )
 
 from akbs_intake.config import CONFIG_DEFAULTS, expanded_path
+from akbs_intake.io_utils import list_string_values, unique_strings
 from akbs_intake.patch.validation import SCOPE_ANCHOR_GENERIC_TOKENS, scope_semantic_tokens
 from akbs_intake.reports.common import ymd
 
@@ -41,18 +42,6 @@ SEARCH_USAGE_GENERIC_TOKENS = SCOPE_ANCHOR_GENERIC_TOKENS | {
     "values",
     "xml",
 }
-
-
-def list_string_values(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(item).strip() for item in value if str(item).strip()]
-    if value:
-        return [str(value).strip()]
-    return []
-
-
-def unique_strings(values: list[str]) -> list[str]:
-    return sorted(dict.fromkeys(item for item in values if item))
 
 
 def search_usage_root(config: dict[str, str]) -> Path:

@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from android_framework_ops.patch_analysis import resource_keys_from_patch_text
 
 AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
 BANNED_LOG_PATTERNS = (
@@ -22,11 +23,6 @@ BANNED_LOG_PATTERNS = (
     "Slog.e(",
     "Slog.wtf(",
 )
-XML_RESOURCE_NAME_RE = re.compile(
-    r"<(?:string|string-array|array|plurals|bool|integer|color|dimen|style)\b[^>]*\bname=[\"']([^\"']+)[\"']"
-)
-
-
 def run(cmd: list[str], cwd: Path, check: bool = False) -> subprocess.CompletedProcess[str]:
     cp = subprocess.run(
         cmd,
@@ -143,15 +139,6 @@ def changed_lines(diff_text: str) -> list[str]:
         for line in diff_text.splitlines()
         if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
     ]
-
-
-def resource_keys_from_patch_text(text: str) -> list[str]:
-    keys = {
-        *re.findall(r"R\.string\.([A-Za-z0-9_]+)", text),
-        *re.findall(r"@string/([A-Za-z0-9_]+)", text),
-        *XML_RESOURCE_NAME_RE.findall(text),
-    }
-    return sorted(key for key in keys if key)
 
 
 def facts_from_diff(diff_text: str) -> dict[str, Any]:

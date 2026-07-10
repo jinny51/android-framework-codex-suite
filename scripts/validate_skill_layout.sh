@@ -39,6 +39,25 @@ validate_manifest_skill_layout() {
 
 validate_manifest_skill_layout
 
+failed=0
+while IFS= read -r script; do
+  IFS= read -r first_line < "$script" || true
+  if [[ "$first_line" == '#!'* && ! -x "$script" ]]; then
+    echo "runtime script with a shebang must be executable: $script" >&2
+    failed=1
+  fi
+done < <(find "$repo_root/plugins" -path '*/skills/*/scripts/*' -type f | sort)
+if [[ "$failed" != "0" ]]; then
+  exit 1
+fi
+
+core_manifest_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["version"])' "$repo_root/plugins/android-framework-ops/.codex-plugin/plugin.json")"
+core_rules_version="$(sed -n 's/^ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "\([^"]*\)"/\1/p' "$repo_root/plugins/android-framework-ops/lib/android_framework_ops/knowledge_rules.py")"
+if [[ -z "$core_rules_version" || "$core_manifest_version" != "$core_rules_version" ]]; then
+  echo "android-framework-ops manifest/rules version mismatch: manifest=$core_manifest_version rules=${core_rules_version:-missing}" >&2
+  exit 1
+fi
+
 if find "$repo_root/plugins/android-framework-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-windows-*' | grep -q .; then
   echo "Windows-side skills must not be inside android-framework-ops" >&2
   exit 1

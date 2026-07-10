@@ -6,6 +6,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from android_framework_ops.artifact_paths import require_safe_artifact_path
+from android_framework_ops.member_config import (
+    default_codex_home,
+    expand_codex_path,
+    find_project_report_config,
+    load_toml,
+)
 
 
 ROOT_MARKERS = (
@@ -23,96 +29,15 @@ MEMBER_MERGE_CONFIRMATIONS_PATH = "/akbs/api/member/me/merge-confirmations"
 
 
 def expand_path(value: str | os.PathLike[str]) -> Path:
-    codex_home_value = os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))
-    text = str(value).replace("${CODEX_HOME}", codex_home_value).replace("$CODEX_HOME", codex_home_value)
-    return Path(os.path.expandvars(os.path.expanduser(text))).resolve()
+    return expand_codex_path(value, resolve=True)
 
 
 def codex_home() -> Path:
-    return expand_path(os.environ.get("CODEX_HOME", Path.home() / ".codex"))
-
-
-def parse_toml_scalar(value: str) -> Any:
-    value = value.strip()
-    if value.startswith("[") and value.endswith("]"):
-        body = value[1:-1].strip()
-        if not body:
-            return []
-        items: list[Any] = []
-        current = ""
-        quote = ""
-        for char in body:
-            if quote:
-                current += char
-                if char == quote:
-                    quote = ""
-            elif char in {"'", '"'}:
-                quote = char
-                current += char
-            elif char == ",":
-                items.append(parse_toml_scalar(current))
-                current = ""
-            else:
-                current += char
-        if current.strip():
-            items.append(parse_toml_scalar(current))
-        return items
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-        return value[1:-1]
-    lowered = value.lower()
-    if lowered in {"true", "false"}:
-        return lowered == "true"
-    return value
-
-
-def parse_simple_toml(text: str) -> dict[str, Any]:
-    payload: dict[str, Any] = {}
-    current: dict[str, Any] = payload
-    for raw in text.splitlines():
-        line = raw.split("#", 1)[0].strip()
-        if not line:
-            continue
-        if line.startswith("[") and line.endswith("]"):
-            current = payload
-            for part in line[1:-1].split("."):
-                key = part.strip().strip('"').strip("'")
-                nested = current.setdefault(key, {})
-                if not isinstance(nested, dict):
-                    nested = {}
-                    current[key] = nested
-                current = nested
-            continue
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        current[key.strip()] = parse_toml_scalar(value)
-    return payload
+    return expand_path(default_codex_home())
 
 
 def read_toml(path: Path) -> dict[str, Any]:
-    try:
-        try:
-            import tomllib
-
-            return tomllib.loads(path.read_text(encoding="utf-8"))
-        except ModuleNotFoundError:
-            return parse_simple_toml(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-
-
-def find_project_report_config(start: Path | None = None) -> Path | None:
-    try:
-        current = (start or Path.cwd()).resolve()
-    except OSError:
-        return None
-    if current.is_file():
-        current = current.parent
-    for directory in [current, *current.parents]:
-        candidate = directory / ".codex" / "report.toml"
-        if candidate.exists():
-            return candidate
-    return None
+    return load_toml(path)
 
 
 def selected_profile(payload: dict[str, Any]) -> str:

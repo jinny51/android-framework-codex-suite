@@ -6,19 +6,16 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
-from dataclasses import dataclass
-from pathlib import Path, PureWindowsPath
+import sys
+from pathlib import Path
 from typing import Any, Iterable
 
 
-@dataclass
-class ThreadRow:
-    id: str
-    title: str
-    archived: int
-    rollout_path: str
-    updated_at_ms: int
-    updated_at: str
+PLUGIN_LIB = Path(__file__).resolve().parents[3] / "lib"
+if PLUGIN_LIB.is_dir() and str(PLUGIN_LIB) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_LIB))
+
+from codex_workspace_care.history import ThreadRow, resolve_rollout_path, rollout_files, state_dbs
 
 
 def parse_args() -> argparse.Namespace:
@@ -37,37 +34,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def state_dbs(codex_home: Path) -> list[Path]:
-    return sorted(codex_home.glob("state_*.sqlite"))
-
-
-def rollout_files(codex_home: Path) -> list[Path]:
-    roots = [codex_home / "sessions", codex_home / "archived_sessions"]
-    files: list[Path] = []
-    for root in roots:
-        if root.exists():
-            files.extend(root.glob("**/rollout-*.jsonl"))
-    return sorted(files)
-
-
-def resolve_rollout_path(codex_home: Path, path_text: str) -> Path | None:
-    if not path_text:
-        return None
-    path = Path(path_text).expanduser()
-    if path.exists():
-        return path
-
-    # Stored rollout paths can come from another OS view of the same Codex home.
-    # Fall back to matching the rollout filename under known transcript roots.
-    name = PureWindowsPath(path_text).name if "\\" in path_text else path.name
-    if not name:
-        return path
-    matches = [candidate for candidate in rollout_files(codex_home) if candidate.name == name]
-    if len(matches) == 1:
-        return matches[0]
-    return path
-
-
 def fetch_threads(db_path: Path) -> list[ThreadRow]:
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute(
@@ -75,7 +41,14 @@ def fetch_threads(db_path: Path) -> list[ThreadRow]:
             "from threads order by updated_at_ms desc, updated_at desc"
         ).fetchall()
     return [
-        ThreadRow(str(row[0]), str(row[1] or ""), int(row[2] or 0), str(row[3] or ""), int(row[4] or 0), str(row[5] or ""))
+        ThreadRow(
+            str(row[0]),
+            str(row[1] or ""),
+            int(row[2] or 0),
+            str(row[3] or ""),
+            updated_at_ms=int(row[4] or 0),
+            updated_at=str(row[5] or ""),
+        )
         for row in rows
     ]
 

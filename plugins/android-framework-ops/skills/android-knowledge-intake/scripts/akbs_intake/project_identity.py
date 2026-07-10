@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-import shlex
 from pathlib import Path
 from typing import Any, Callable
 
@@ -10,6 +8,7 @@ from android_framework_ops.knowledge_rules import (
     find_company_projects,
     parse_company_project,
 )
+from android_framework_ops.project_registry import source_access_registry_clues as registry_source_access_registry_clues
 from akbs_intake.io_utils import read_text_sample
 
 
@@ -37,59 +36,11 @@ def project_inference_payload(
     return payload
 
 
-def parse_shell_array(text: str, name: str) -> list[str]:
-    match = re.search(rf"^{re.escape(name)}=\((.*)\)$", text, re.M)
-    if not match:
-        return []
-    try:
-        return [item for item in shlex.split(match.group(1)) if item]
-    except ValueError:
-        return []
-
-
-def path_strings_overlap(left: str, right: str) -> bool:
-    left = left.replace("\\", "/").rstrip("/")
-    right = right.replace("\\", "/").rstrip("/")
-    if not left or not right:
-        return False
-    return left == right or left.startswith(right + "/") or right.startswith(left + "/")
-
-
-def source_access_registry_clues(source_paths: list[str]) -> list[tuple[str, str]]:
-    registry_dir = Path.home() / ".servers" / "projects"
-    if not registry_dir.is_dir():
-        return []
-    source_paths = [path for path in source_paths if path]
-    if not source_paths:
-        return []
-    clues: list[tuple[str, str]] = []
-    for registry_file in sorted(registry_dir.glob("*.env")):
-        try:
-            text = registry_file.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        paths = parse_shell_array(text, "PROJECT_PATHS")
-        if not paths:
-            continue
-        ssh_hosts = parse_shell_array(text, "REMOTE_SSH_HOSTS")
-        remote_roots = parse_shell_array(text, "REMOTE_ROOTS")
-        platforms = parse_shell_array(text, "PLATFORMS")
-        sdk_names = parse_shell_array(text, "SDK_NAMES")
-        shares = parse_shell_array(text, "SAMBA_PROJECT_SHARES")
-        for index, project_path in enumerate(paths):
-            if not any(path_strings_overlap(source_path, project_path) for source_path in source_paths):
-                continue
-            if index < len(sdk_names):
-                clues.append(("source-access registry sdk_name", sdk_names[index]))
-            if index < len(remote_roots):
-                clues.append(("source-access registry remote_root", remote_roots[index]))
-            if index < len(shares):
-                clues.append(("source-access registry share", shares[index]))
-            if index < len(platforms):
-                clues.append(("source-access registry platform", platforms[index]))
-            if index < len(ssh_hosts):
-                clues.append(("source-access registry ssh_host", ssh_hosts[index]))
-    return clues
+def source_access_registry_clues(
+    source_paths: list[str],
+    registry_dir: Path | None = None,
+) -> list[tuple[str, str]]:
+    return registry_source_access_registry_clues(source_paths, registry_dir)
 
 
 def source_context_clues(source_contexts: list[dict[str, Any]]) -> list[tuple[str, str]]:

@@ -11,12 +11,14 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .config import CONFIG_DEFAULTS, local_now
+    from .config import CONFIG_DEFAULTS, default_codex_home, expanded_path, local_now, parse_bool
+    from .io_utils import read_optional_json_object as read_json_object
 except ImportError:  # pragma: no cover - direct script import fallback
     scripts_root = Path(__file__).resolve().parents[1]
     if str(scripts_root) not in sys.path:
         sys.path.insert(0, str(scripts_root))
-    from akbs_intake.config import CONFIG_DEFAULTS, local_now
+    from akbs_intake.config import CONFIG_DEFAULTS, default_codex_home, expanded_path, local_now, parse_bool
+    from akbs_intake.io_utils import read_optional_json_object as read_json_object
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -40,22 +42,6 @@ def run(cmd: list[str], check: bool = False, cwd: Path | None = None) -> subproc
         detail = cp.stderr.strip() or cp.stdout.strip()
         raise SystemExit(f"命令失败: {' '.join(cmd)}\n{detail}")
     return cp
-
-
-def default_codex_home() -> str:
-    if os.environ.get("CODEX_HOME"):
-        return os.environ["CODEX_HOME"]
-    return str(Path.home() / ".codex")
-
-
-def expanded_path(value: str) -> Path:
-    codex_home = default_codex_home()
-    expanded = str(value).replace("${CODEX_HOME}", codex_home).replace("$CODEX_HOME", codex_home)
-    return Path(os.path.expandvars(expanded)).expanduser()
-
-
-def parse_bool(value: str) -> bool:
-    return str(value).strip().lower() in {"1", "true", "yes", "on", "y"}
 
 
 def env_enabled(name: str) -> bool:
@@ -101,14 +87,6 @@ def plugin_install_metadata() -> dict[str, str]:
         "repository": str(payload.get("repository") or payload.get("homepage") or ""),
         "plugin_installation": "packaged" if manifest_path else "unknown",
     }
-
-
-def read_json_object(path: Path) -> dict[str, Any]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return payload if isinstance(payload, dict) else {}
 
 
 def current_skill_cache_metadata() -> dict[str, str]:

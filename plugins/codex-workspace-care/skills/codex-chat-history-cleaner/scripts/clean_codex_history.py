@@ -11,22 +11,19 @@ import shlex
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from collections import Counter, defaultdict
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
 
-@dataclass(frozen=True)
-class ThreadRow:
-    id: str
-    title: str
-    archived: int
-    rollout_path: str
-    cwd: str = ""
-    source: str = ""
+PLUGIN_LIB = Path(__file__).resolve().parents[3] / "lib"
+if PLUGIN_LIB.is_dir() and str(PLUGIN_LIB) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_LIB))
+
+from codex_workspace_care.history import ThreadRow, resolve_rollout_path, rollout_files, state_dbs
 
 
 def parse_args() -> argparse.Namespace:
@@ -63,10 +60,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def state_dbs(codex_home: Path) -> list[Path]:
-    return sorted(codex_home.glob("state_*.sqlite"))
-
-
 def sqlite_dbs_for_health(codex_home: Path) -> list[Path]:
     paths: list[Path] = []
     paths.extend(sorted(codex_home.glob("state_*.sqlite")))
@@ -79,15 +72,6 @@ def sqlite_dbs_for_health(codex_home: Path) -> list[Path]:
 
 def logs_dbs(codex_home: Path) -> list[Path]:
     return sorted(codex_home.glob("logs_*.sqlite"))
-
-
-def rollout_files(codex_home: Path) -> list[Path]:
-    roots = [codex_home / "sessions", codex_home / "archived_sessions"]
-    files: list[Path] = []
-    for root in roots:
-        if root.exists():
-            files.extend(root.glob("**/rollout-*.jsonl"))
-    return sorted(files)
 
 
 def rollout_file_thread_id(path: Path) -> str:
@@ -119,38 +103,6 @@ def transcript_thread_ids(codex_home: Path, *, archived: bool | None = None) -> 
         if thread_id:
             ids.add(thread_id)
     return ids
-
-
-def resolve_rollout_path(codex_home: Path, path_text: str) -> Path | None:
-    if not path_text:
-        return None
-    path = Path(path_text).expanduser()
-    if path.exists():
-        return path
-
-    # Stored rollout paths can come from another OS view of the same Codex home.
-    # Fall back to matching the rollout filename under the same transcript root
-    # class; a normal sessions row must not be masked by an archived copy.
-    name = PureWindowsPath(path_text).name if "\\" in path_text else path.name
-    if not name:
-        return path
-    normalized = path_text.replace("\\", "/")
-    wants_archived = "archived_sessions/" in normalized
-    wants_sessions = "sessions/" in normalized and not wants_archived
-    matches = []
-    for candidate in rollout_files(codex_home):
-        if candidate.name != name:
-            continue
-        is_archived = "archived_sessions" in candidate.parts
-        is_session = "sessions" in candidate.parts and not is_archived
-        if wants_archived and not is_archived:
-            continue
-        if wants_sessions and not is_session:
-            continue
-        matches.append(candidate)
-    if len(matches) == 1:
-        return matches[0]
-    return path
 
 
 def fetch_threads(db_path: Path) -> list[ThreadRow]:
@@ -671,11 +623,6 @@ def describe_thread_refs(
             item["workspace"] = extra_by_id[thread_id]
         samples.append(item)
     return samples
-
-
-def thread_keyed_dict_items(data: dict[str, Any], key: str) -> dict[str, Any]:
-    value = data.get(key)
-    return value if isinstance(value, dict) else {}
 
 
 def describe_thread_keyed_dict_refs(ids: list[str], names: dict[str, str], values: dict[str, Any]) -> list[dict[str, Any]]:

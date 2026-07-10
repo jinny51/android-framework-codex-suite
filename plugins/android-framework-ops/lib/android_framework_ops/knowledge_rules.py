@@ -8,7 +8,7 @@ from typing import Any
 
 
 AKBS_RULES_CONTRACT_VERSION = "2026-07-02.1"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.124"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.126"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -499,36 +499,6 @@ def find_company_projects(text: str, platform: str = "") -> list[str]:
     return sorted(dict.fromkeys(projects))
 
 
-def project_model_parts(project: str) -> dict[str, str]:
-    parsed = parse_company_project(project)
-    if not parsed.get("base_model"):
-        return {"base_model": "", "suffix": ""}
-    return {
-        "base_model": str(parsed["base_model"]),
-        "suffix": str(parsed.get("suffix") or ""),
-    }
-
-
-def project_mentions_in_text(text: str) -> list[str]:
-    return find_company_projects(text)
-
-
-def framework_applicability_gaps(anchors: dict[str, Any]) -> list[str]:
-    gaps: list[str] = []
-    project = str(anchors.get("project") or "").strip()
-    platform = str(anchors.get("platform") or "").strip()
-    android_version = str(anchors.get("android_version") or "").strip()
-    if project in {"", "unknown"} or not valid_project_model(project):
-        gaps.append("project")
-    if not valid_framework_platform(platform):
-        gaps.append("platform")
-    if not valid_android_version(android_version):
-        gaps.append("android_version")
-    if anchors.get("project_traceability_issue") and "project" not in gaps:
-        gaps.append("project")
-    return gaps
-
-
 def aggregate_package_scope_errors(text: str, patch_count: int = 0) -> list[str]:
     if not (
         DAILY_BUNDLE_SUMMARY_RE.search(text)
@@ -591,15 +561,6 @@ def classify_pre_change_search(
         "validity_score_effect": "search_loop_score_possible" if searched and decision != "unknown" else "no_search_loop_score",
         "package_status": str(package_status or "").strip().lower(),
     }
-
-
-def manifest_has_uncontrolled_app_patch_asset(manifest: dict[str, Any]) -> bool:
-    files = manifest.get("files") if isinstance(manifest.get("files"), dict) else {}
-    patches = files.get("patches") if isinstance(files.get("patches"), list) else []
-    for rel in patches:
-        if has_uncontrolled_patch_asset_prefix(rel):
-            return True
-    return False
 
 
 def current_plugin_version() -> str:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import json
 import shutil
 import sys
 from pathlib import Path
@@ -9,11 +8,13 @@ from typing import Any
 
 try:
     from ..config import expanded_path, local_now, require_safe_artifact_path
+    from ..io_utils import read_optional_json_object as read_json_file
 except ImportError:  # pragma: no cover - direct script import fallback
     scripts_root = Path(__file__).resolve().parents[2]
     if str(scripts_root) not in sys.path:
         sys.path.insert(0, str(scripts_root))
     from akbs_intake.config import expanded_path, local_now, require_safe_artifact_path
+    from akbs_intake.io_utils import read_optional_json_object as read_json_file
 
 
 def ymd(date: dt.date) -> str:
@@ -31,14 +32,6 @@ def report_dates(report_type: str, date: dt.date) -> tuple[set[dt.date], dt.date
     start, end = week_bounds(date)
     days = {start + dt.timedelta(days=offset) for offset in range((end - start).days + 1)}
     return days, start, end, f"{ymd(start)}-{ymd(end)}"
-
-
-def read_json_file(path: Path) -> dict[str, Any]:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return payload if isinstance(payload, dict) else {}
 
 
 def package_key_from_manifest(manifest: dict[str, Any], package_dir: Path | None = None) -> str:

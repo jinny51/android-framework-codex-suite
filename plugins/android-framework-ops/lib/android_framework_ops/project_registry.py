@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+import json
+import re
+import shlex
+from pathlib import Path
+from typing import Iterable
+
+
+REGISTRY_FIELDS = (
+    ("sdk_name", "source-access registry sdk_name"),
+    ("remote_root", "source-access registry remote_root"),
+    ("share", "source-access registry share"),
+    ("platform", "source-access registry platform"),
+    ("ssh_host", "source-access registry ssh_host"),
+)
+
+
+def path_strings_overlap(left: str, right: str) -> bool:
+    left = left.replace("\\", "/").rstrip("/")
+    right = right.replace("\\", "/").rstrip("/")
+    if not left or not right:
+        return False
+    return left == right or left.startswith(right + "/") or right.startswith(left + "/")
+
+
+def parse_shell_array(text: str, name: str) -> list[str]:
+    match = re.search(rf"^{re.escape(name)}=\((.*)\)$", text, re.M)
+    if not match:
+        return []
+    try:
+        return [item for item in shlex.split(match.group(1)) if item]
+    except ValueError:
+        return []
+
+
+def env_registry_entries(path: Path) -> list[dict[str, str]]:
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return []
+    arrays = {
+        "local_path": parse_shell_array(text, "PROJECT_PATHS"),
+        "share": parse_shell_array(text, "SAMBA_PROJECT_SHARES"),
+        "ssh_host": parse_shell_array(text, "REMOTE_SSH_HOSTS"),
+        "remote_root": parse_shell_array(text, "REMOTE_ROOTS"),
+        "platform": parse_shell_array(text, "PLATFORMS"),
+        "sdk_name": parse_shell_array(text, "SDK_NAMES"),
+    }
+    entries: list[dict[str, str]] = []
+    for index, local_path in enumerate(arrays["local_path"]):
+        entry = {"local_path": local_path}
+        for key, values in arrays.items():
+            if key != "local_path" and index < len(values):
+                entry[key] = values[index]
+        entries.append(entry)
+    return entries
+
+
+def json_registry_entries(path: Path) -> list[dict[str, str]]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    ssh_host = str(payload.get("server") or path.stem).strip()
+    shares = payload.get("shares")
+    if not isinstance(shares, dict):
+        return []
+    entries: list[dict[str, str]] = []
+    for share_name, raw_share in shares.items():
+        if not isinstance(raw_share, dict):
+            continue
+        mount_point = str(raw_share.get("mount_point") or "").strip()
+        share_remote = str(raw_share.get("remote_path") or "").strip()
+        projects = raw_share.get("projects")
+        if not isinstance(projects, dict):
+            continue
+        for project_name, raw_project in projects.items():
+            if not isinstance(raw_project, dict):
+                continue
+            entry = {
+                "local_path": str(raw_project.get("local_path") or mount_point).strip(),
+                "remote_root": str(raw_project.get("remote_path") or share_remote).strip(),
+                "share": str(share_name).strip(),
+                "platform": str(raw_project.get("platform") or "").strip(),
+                "sdk_name": str(project_name).strip(),
+                "ssh_host": ssh_host,
+            }
+            entries.append({key: value for key, value in entry.items() if value})
+    return entries
+
+
+def registry_entries(registry_dir: Path) -> list[dict[str, str]]:
+    if not registry_dir.is_dir():
+        return []
+    entries: list[dict[str, str]] = []
+    for path in sorted(registry_dir.glob("*.env")):
+        entries.extend(env_registry_entries(path))
+    for path in sorted(registry_dir.glob("*.json")):
+        entries.extend(json_registry_entries(path))
+    return entries
+
+
+def source_access_registry_clues(
+    source_paths: Iterable[str | Path],
+    registry_dir: Path | None = None,
+) -> list[tuple[str, str]]:
+    candidates = [str(path) for path in source_paths if str(path).strip()]
+    if not candidates:
+        return []
+    root = registry_dir or (Path.home() / ".servers" / "projects")
+    clues: list[tuple[str, str]] = []
+    for entry in registry_entries(root):
+        registry_paths = [entry.get("local_path", ""), entry.get("remote_root", "")]
+        if not any(
+            path_strings_overlap(candidate, registry_path)
+            for candidate in candidates
+            for registry_path in registry_paths
+            if registry_path
+        ):
+            continue
+        for key, label in REGISTRY_FIELDS:
+            value = entry.get(key, "")
+            if value:
+                clues.append((label, value))
+    return list(dict.fromkeys(clues))

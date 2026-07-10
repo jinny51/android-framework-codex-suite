@@ -5,7 +5,6 @@ import argparse
 import datetime as dt
 import json
 import re
-import shlex
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,12 +29,18 @@ from android_framework_ops.knowledge_rules import (
     template_leak_errors,
 )
 from android_framework_ops.artifact_paths import require_safe_artifact_path
+from android_framework_ops.patch_analysis import (
+    modules_from_files,
+    semantic_flags,
+    semantic_keywords,
+    semantic_problem_solution,
+    semantic_risk_areas,
+)
+from android_framework_ops.project_registry import source_access_registry_clues as registry_source_access_registry_clues
 
 
 SCHEMA_VERSION = "2.0"
 PATCH_NAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
-USB_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])usb(?![A-Za-z0-9])", re.I)
-USB_CAMEL_PATH_RE = re.compile(r"(?:^|[/_.-])Usb(?=[A-Z0-9])")
 FRAMEWORK_LOG_LITERAL_RE = re.compile(r"FrameworkLog\.(?:d|i|w|e)\s*\([^,]+,\s*\"")
 SUPPORTED_EXTERNAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
 AUTO_VERIFICATION_EVIDENCE_NAMES = (
@@ -71,7 +76,6 @@ from patch_capture.git_diff import (  # noqa: E402
     filter_mode_only_diff_sections,
     git_metadata,
     git_root,
-    infer_module,
     infer_module_for_repo,
     infer_repo_path_from_root,
     mode_only_diff_path,
@@ -83,7 +87,7 @@ from patch_capture.git_diff import (  # noqa: E402
     split_diff_sections,
     unique_preserve,
 )
-from patch_capture.readme import feature_readme_text  # noqa: E402
+from patch_capture.readme import feature_readme_text, infer_reuse_decision  # noqa: E402
 
 
 def direct_log_call_lines(diff_text: str) -> list[str]:
@@ -233,57 +237,8 @@ def infer_capture_project_for_feature(
     return "unknown", project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
 
 
-def parse_shell_array(text: str, name: str) -> list[str]:
-    match = re.search(rf"^{re.escape(name)}=\((.*)\)$", text, re.M)
-    if not match:
-        return []
-    try:
-        return [item for item in shlex.split(match.group(1)) if item]
-    except ValueError:
-        return []
-
-
-def path_strings_overlap(left: str, right: str) -> bool:
-    left = left.replace("\\", "/").rstrip("/")
-    right = right.replace("\\", "/").rstrip("/")
-    if not left or not right:
-        return False
-    return left == right or left.startswith(right + "/") or right.startswith(left + "/")
-
-
-def source_access_registry_clues(source_root: Path) -> list[tuple[str, str]]:
-    registry_dir = Path.home() / ".servers" / "projects"
-    if not registry_dir.is_dir():
-        return []
-    clues: list[tuple[str, str]] = []
-    source_text = str(source_root)
-    for registry_file in sorted(registry_dir.glob("*.env")):
-        try:
-            text = registry_file.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        paths = parse_shell_array(text, "PROJECT_PATHS")
-        if not paths:
-            continue
-        ssh_hosts = parse_shell_array(text, "REMOTE_SSH_HOSTS")
-        remote_roots = parse_shell_array(text, "REMOTE_ROOTS")
-        platforms = parse_shell_array(text, "PLATFORMS")
-        sdk_names = parse_shell_array(text, "SDK_NAMES")
-        shares = parse_shell_array(text, "SAMBA_PROJECT_SHARES")
-        for index, project_path in enumerate(paths):
-            if not path_strings_overlap(source_text, project_path):
-                continue
-            if index < len(sdk_names):
-                clues.append(("source-access registry sdk_name", sdk_names[index]))
-            if index < len(remote_roots):
-                clues.append(("source-access registry remote_root", remote_roots[index]))
-            if index < len(shares):
-                clues.append(("source-access registry share", shares[index]))
-            if index < len(platforms):
-                clues.append(("source-access registry platform", platforms[index]))
-            if index < len(ssh_hosts):
-                clues.append(("source-access registry ssh_host", ssh_hosts[index]))
-    return clues
+def source_access_registry_clues(source_root: Path, registry_dir: Path | None = None) -> list[tuple[str, str]]:
+    return registry_source_access_registry_clues([source_root], registry_dir)
 
 
 def project_inference_payload(
@@ -562,15 +517,6 @@ def search_before_change(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def infer_reuse_decision(queries: list[str], results: list[str], summary: str) -> str:
-    text = "\n".join([*queries, *results, summary]).lower()
-    if not text.strip():
-        return "unknown"
-    if any(token in text for token in ("未发现", "未命中", "no reuse", "no candidate", "not found")):
-        return "not_found"
-    return "unknown"
-
-
 def validate_search_decision_for_status(args: argparse.Namespace, search_payload: dict[str, Any]) -> tuple[list[str], list[str]]:
     if args.status != "validated":
         return [], []
@@ -611,161 +557,6 @@ def validate_patch_asset_names(captures: list[RepositoryCapture]) -> list[str]:
         + (f"：{names}" if names else "")
         + "。前缀必须是合法项目名（project）或 mtk/rk/unisoc 受控平台 Android 版本前缀。"
     ]
-
-
-def modules_from_files(files: list[str]) -> list[str]:
-    modules: list[str] = []
-    for path in files:
-        lower = path.lower()
-        if "/com/android/server/wm/" in lower or "windowstate" in lower:
-            modules.append("WindowManager")
-        if "activitytaskmanager" in lower or "activityrecord" in lower:
-            modules.append("ActivityTaskManager")
-        if "phonewindowmanager" in lower or "/com/android/server/policy/" in lower:
-            modules.append("Policy")
-        if "packagemanager" in lower or "/com/android/server/pm/" in lower:
-            modules.append("PackageManager")
-        if "systemui" in lower or "/com/android/systemui/" in lower:
-            modules.append("SystemUI")
-        if "launcher" in lower or "quickstep" in lower or "recentsview" in lower:
-            modules.append("Launcher")
-        if "/input/" in lower or "inputflinger" in lower:
-            modules.append("Input")
-        if "/com/android/server/audio/" in lower or "audioservice" in lower or "audioflinger" in lower or "mediafocuscontrol" in lower:
-            modules.append("Audio")
-        if "cameraservice" in lower or "camera2" in lower:
-            modules.append("Camera")
-        if "vold" in lower or "volumemanager" in lower or "publicvolume" in lower or "obbvolume" in lower or "externalstorage" in lower:
-            modules.append("Storage")
-        if "wifiservice" in lower or "/wifi/" in lower:
-            modules.append("Wifi")
-        if has_usb_semantic_anchor(path):
-            modules.append("USB")
-        if any(name in lower for name in ("rockchip_apps.mk", "apps.mk", "boardconfig.mk", "device.mk")):
-            modules.append("ProductConfig")
-    if not modules and files:
-        modules.append(infer_module(files))
-    return sorted(set(modules))
-
-
-def semantic_flags(joined: str, modules: list[str]) -> dict[str, bool]:
-    module_set = set(modules)
-    return {
-        "focus": "focus" in joined,
-        "launcher": "Launcher" in module_set or "launcher" in joined or "quickstep" in joined,
-        "power": "power" in joined or "Policy" in module_set,
-        "package": "package" in joined or "PackageManager" in module_set,
-        "input": "input" in joined or "Input" in module_set,
-        "audio": "Audio" in module_set or "audio" in joined or "microphone" in joined or "volume" in joined,
-        "camera": "Camera" in module_set or "camera" in joined or "qrcode" in joined or "preview" in joined,
-        "storage": "Storage" in module_set or "storage" in joined or "vold" in joined or "volume" in joined or "obb" in joined,
-        "wifi": "Wifi" in module_set or "wifi" in joined or "wlan" in joined,
-        "usb": "USB" in module_set or has_usb_semantic_anchor(joined),
-        "product_config": "ProductConfig" in module_set or "boardconfig" in joined or "device.mk" in joined or "apps.mk" in joined,
-    }
-
-
-def has_usb_semantic_anchor(text: str) -> bool:
-    return "ueventd" in text.lower() or bool(USB_TOKEN_RE.search(text) or USB_CAMEL_PATH_RE.search(text))
-
-
-def semantic_keywords(flags: dict[str, bool]) -> list[str]:
-    labels = {
-        "audio": "音频路由/音量",
-        "camera": "相机行为",
-        "storage": "存储/挂载",
-        "wifi": "Wi-Fi",
-        "usb": "USB/设备权限",
-        "product_config": "产品配置/预置应用",
-    }
-    return [label for flag, label in labels.items() if flags.get(flag)]
-
-
-def semantic_problem_solution(modules: list[str], flags: dict[str, bool]) -> tuple[str, str, str]:
-    if flags["focus"] and ("WindowManager" in modules or "ActivityTaskManager" in modules):
-        return (
-            "窗口或 Activity 焦点行为需要按产品需求调整。",
-            "修改 WindowManager 或 ActivityTaskManager 相关路径中的焦点处理逻辑。",
-            "medium",
-        )
-    if flags["power"]:
-        return (
-            "按键、策略或电源相关行为需要按产品需求调整。",
-            "修改 Framework policy 路径中的策略处理逻辑。",
-            "medium",
-        )
-    if flags["audio"] and flags["camera"]:
-        return (
-            "音频录制、麦克风或相机链路可能不符合产品权限或回退策略要求。",
-            "调整 Audio/Camera 相关服务或 HAL 路径，并验证录音、拍照、扫码和权限切换场景。",
-            "medium",
-        )
-    if flags["audio"]:
-        return (
-            "音频路由、音量或麦克风行为可能不符合产品要求。",
-            "调整 AudioService、AudioFlinger 或音量策略相关路径，并验证音量、录音和媒体播放场景。",
-            "medium",
-        )
-    if flags["camera"]:
-        return (
-            "相机预览、扫码、拍照或相机权限行为可能不符合产品要求。",
-            "调整 CameraService、Camera2 或相机 HAL 相关路径，并验证目标相机场景。",
-            "medium",
-        )
-    if flags["storage"]:
-        return (
-            "外部存储、挂载或应用访问存储的权限行为可能不符合产品要求。",
-            "调整 vold、VolumeManager 或存储访问相关路径，并验证 U 盘、OBB 和外部存储访问场景。",
-            "medium",
-        )
-    if flags["wifi"]:
-        return (
-            "Wi-Fi 服务、默认配置或连接权限行为可能不符合产品要求。",
-            "调整 Wi-Fi service 或产品配置路径，并验证连接、开关和权限相关场景。",
-            "medium",
-        )
-    if flags["usb"]:
-        return (
-            "USB 设备节点、权限或外设识别行为可能不符合产品要求。",
-            "调整 ueventd、USB 权限或设备配置路径，并验证目标外设识别和访问权限。",
-            "medium",
-        )
-    if flags["product_config"]:
-        return (
-            "产品编译配置、预置应用或板级开关可能不符合项目要求。",
-            "调整 BoardConfig、device makefile 或预置应用清单，并验证编译产物和首次开机状态。",
-            "medium",
-        )
-    if modules:
-        return (
-            f"{'、'.join(modules)} 相关行为需要按产品需求调整。",
-            "结合需求、修改文件和验证记录复核对应逻辑。",
-            "low",
-        )
-    return (
-        "补丁对应的具体问题需要结合原始需求和会话记录确认。",
-        "先阅读补丁 diff、readme 和验证记录，再决定是否复用或适配。",
-        "low",
-    )
-
-
-def semantic_risk_areas(modules: list[str], flags: dict[str, bool]) -> list[str]:
-    risks = sorted(
-        {
-            *("窗口焦点/显示层级" for _ in [0] if flags["focus"] or "WindowManager" in modules),
-            *("Activity 启动/恢复" for _ in [0] if "ActivityTaskManager" in modules),
-            *("按键/电源/策略行为" for _ in [0] if flags["power"]),
-            *("包安装/包状态" for _ in [0] if "PackageManager" in modules),
-            *("音频路由/音量行为" for _ in [0] if flags["audio"]),
-            *("相机行为" for _ in [0] if flags["camera"]),
-            *("存储/挂载管理" for _ in [0] if flags["storage"]),
-            *("Wi-Fi 服务/配置" for _ in [0] if flags["wifi"]),
-            *("USB/设备权限" for _ in [0] if flags["usb"]),
-            *("产品配置/预置应用" for _ in [0] if flags["product_config"]),
-            *("输入分发" for _ in [0] if flags["input"]),
-        }
-    )
-    return risks or ["修改路径需要按当前项目需求重新验证"]
 
 
 def symbols_from_diff(diff_text: str) -> list[str]:

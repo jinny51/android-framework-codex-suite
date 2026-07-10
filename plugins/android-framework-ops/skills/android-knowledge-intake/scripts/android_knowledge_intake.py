@@ -253,9 +253,6 @@ from akbs_intake.io_utils import (  # noqa: E402
     unique_strings,
     write_json,
 )
-from akbs_intake.project_identity import (  # noqa: E402
-    infer_project as _infer_project,
-)
 from akbs_intake.patch.assets import (  # noqa: E402
     PatchInfo,
     patch_readme_template,
@@ -263,7 +260,7 @@ from akbs_intake.patch.assets import (  # noqa: E402
     validate_patch_file,
     validate_patch_readme,
 )
-from akbs_intake.patch.builder import build_patch_package  # noqa: E402
+from akbs_intake.patch.builder import build_patch_package, infer_project  # noqa: E402
 from akbs_intake.patch.evidence import (  # noqa: E402
     select_search_before_change_payload,
     verification_payload_or_missing,
@@ -309,14 +306,6 @@ def discover_patches(config: dict[str, str], sessions: list[SessionWork], start:
         git_branch_or_name=git_branch_or_name,
         patch_info_factory=lambda path, name, project: PatchInfo(path=path, name=name, project=project),
     )
-
-
-def report_dates(report_type: str, date: dt.date) -> tuple[set[dt.date], dt.date, dt.date, str]:
-    if report_type in {"daily", "patch"}:
-        return {date}, date, date, ymd(date)
-    start, end = week_bounds(date)
-    days = {start + dt.timedelta(days=offset) for offset in range((end - start).days + 1)}
-    return days, start, end, f"{ymd(start)}-{ymd(end)}"
 
 
 def evidence_payload(evidence: dict[str, Any]) -> dict[str, Any]:
@@ -661,29 +650,6 @@ def prepare_package(
         write_package_source_fn=write_package_source,
         parse_sessions_fn=parse_sessions,
         discover_patches_fn=discover_patches,
-    )
-
-
-def infer_project(
-    explicit_project: str,
-    patch_entries: list[dict[str, Any]],
-    patch_sources: list[dict[str, Any]],
-    summary: str,
-    package_dir: Path | None = None,
-    source_contexts: list[dict[str, Any]] | None = None,
-    related_report_clues: list[tuple[str, str]] | None = None,
-    trusted_platform: str = "",
-) -> tuple[str, dict[str, Any]]:
-    return _infer_project(
-        explicit_project,
-        patch_entries,
-        patch_sources,
-        summary,
-        package_dir=package_dir,
-        source_contexts=source_contexts,
-        related_report_clues=related_report_clues,
-        trusted_platform=trusted_platform,
-        readme_usable_for_inference=patch_readme_usable_for_inference,
     )
 
 

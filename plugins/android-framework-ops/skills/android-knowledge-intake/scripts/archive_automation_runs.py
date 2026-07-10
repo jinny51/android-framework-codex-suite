@@ -5,23 +5,21 @@ import argparse
 import json
 import os
 import sqlite3
+import sys
 import time
 from pathlib import Path
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+PLUGIN_LIB = Path(__file__).resolve().parents[3] / "lib"
+if PLUGIN_LIB.is_dir() and str(PLUGIN_LIB) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_LIB))
 
-
-def default_codex_home() -> str:
-    if os.environ.get("CODEX_HOME"):
-        return os.environ["CODEX_HOME"]
-    return str(Path.home() / ".codex")
+from android_framework_ops.member_config import expand_codex_path
 
 
 def expanded_path(value: str) -> Path:
-    codex_home = default_codex_home()
-    expanded = str(value).replace("${CODEX_HOME}", codex_home).replace("$CODEX_HOME", codex_home)
-    return Path(os.path.expandvars(expanded)).expanduser()
+    return expand_codex_path(value)
 
 
 def same_path(left: str | None, right: Path) -> bool:
