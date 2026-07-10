@@ -3,6 +3,38 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+repo_search() {
+  local pattern="$1"
+  shift
+  if command -v rg >/dev/null 2>&1; then
+    rg -n "$pattern" "$@"
+    return
+  fi
+  python3 - "$pattern" "$@" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+pattern = re.compile(sys.argv[1])
+found = False
+for raw_root in sys.argv[2:]:
+    root = Path(raw_root)
+    paths = [root] if root.is_file() else root.rglob("*")
+    for path in paths:
+        if not path.is_file() or ".git" in path.parts:
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            continue
+        for number, line in enumerate(lines, 1):
+            if pattern.search(line):
+                print(f"{path}:{number}:{line}")
+                found = True
+raise SystemExit(0 if found else 1)
+PY
+}
+
 validate_manifest_skill_layout() {
   local failed=0
   local manifest plugin skill actual missing extra
@@ -29,7 +61,7 @@ validate_manifest_skill_layout() {
         echo "skill \`$actual\` exists in $plugin but is not listed in manifests/$plugin.toml" >&2
         failed=1
       fi
-    done < <(find "$repo_root/plugins/$plugin/skills" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+    done < <(find "$repo_root/plugins/$plugin/skills" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
   done
 
   if [[ "$failed" != "0" ]]; then
@@ -83,19 +115,19 @@ if find "$repo_root/plugins/android-mac-ops/skills" -mindepth 1 -maxdepth 1 -typ
   exit 1
 fi
 
-if rg -n "android-wsl-source-access|android-wsl-remote-build-deploy|android-wsl-remote-channel|android-macos-source-access|android-macos-ops" "$repo_root/plugins" "$repo_root/docs" "$repo_root/manifests" >/tmp/akbs-plugin-old-skill-names.txt; then
+if repo_search "android-wsl-source-access|android-wsl-remote-build-deploy|android-wsl-remote-channel|android-macos-source-access|android-macos-ops" "$repo_root/plugins" "$repo_root/docs" "$repo_root/manifests" >/tmp/akbs-plugin-old-skill-names.txt; then
   cat /tmp/akbs-plugin-old-skill-names.txt >&2
   echo "old platform skill/plugin names must not appear in current plugin sources" >&2
   exit 1
 fi
 
-if rg -n 'WSL source/build skills from android-framework-ops|通用源码接入、构建、推送和验收流程；这些属于 `android-framework-ops`' "$repo_root/plugins" "$repo_root/docs" >/tmp/akbs-plugin-layer-errors.txt; then
+if repo_search 'WSL source/build skills from android-framework-ops|通用源码接入、构建、推送和验收流程；这些属于 `android-framework-ops`' "$repo_root/plugins" "$repo_root/docs" >/tmp/akbs-plugin-layer-errors.txt; then
   cat /tmp/akbs-plugin-layer-errors.txt >&2
   echo "platform source/build responsibilities must stay in android-wsl-ops or android-mac-ops" >&2
   exit 1
 fi
 
-if rg -n "\.codex/android-macos-source-access-info" "$repo_root/plugins/android-mac-ops" "$repo_root/docs" >/tmp/akbs-plugin-old-mac-paths.txt; then
+if repo_search "\.codex/android-macos-source-access-info" "$repo_root/plugins/android-mac-ops" "$repo_root/docs" >/tmp/akbs-plugin-old-mac-paths.txt; then
   cat /tmp/akbs-plugin-old-mac-paths.txt >&2
   echo "android-mac-ops must store registry and credential references under ~/.servers" >&2
   exit 1
@@ -131,9 +163,10 @@ validate_skill_metadata
 
 validate_runtime_skill_cleanliness() {
   local failed=0
-  local skill_dir rel top_level_name path
+  local skill_file skill_dir rel top_level_name path
 
-  while IFS= read -r -d '' skill_dir; do
+  while IFS= read -r -d '' skill_file; do
+    skill_dir="${skill_file%/SKILL.md}"
     for top_level_name in README.md tests fixtures output reports pending submitted logs; do
       if [[ -e "$skill_dir/$top_level_name" ]]; then
         echo "runtime skill directory must not contain $top_level_name: $skill_dir/$top_level_name" >&2
@@ -161,7 +194,7 @@ validate_runtime_skill_cleanliness() {
           ;;
       esac
     done < <(find "$skill_dir" -type f -name '*.md' -print0)
-  done < <(find "$repo_root/plugins" -path '*/skills/*/SKILL.md' -print0 | xargs -0 -n1 dirname -z)
+  done < <(find "$repo_root/plugins" -path '*/skills/*/SKILL.md' -print0)
 
   if [[ "$failed" != "0" ]]; then
     exit 1

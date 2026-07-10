@@ -27,15 +27,19 @@ python3 -m unittest discover \
   -p 'test_*.py' \
   -v
 
-python3 -m unittest discover \
-  -s "$repo_root/tests/plugins/android-wsl-ops/android-source-access" \
-  -p 'test_*.py' \
-  -v
+if [[ "$(uname -s)" == "Linux" ]]; then
+  python3 -m unittest discover \
+    -s "$repo_root/tests/plugins/android-wsl-ops/android-source-access" \
+    -p 'test_*.py' \
+    -v
 
-python3 -m unittest discover \
-  -s "$repo_root/tests/plugins/android-wsl-ops/android-remote-build-deploy" \
-  -p 'test_*.py' \
-  -v
+  python3 -m unittest discover \
+    -s "$repo_root/tests/plugins/android-wsl-ops/android-remote-build-deploy" \
+    -p 'test_*.py' \
+    -v
+fi
+
+python3 "$repo_root/plugins/codex-workspace-care/skills/codex-chat-history-context-extractor/scripts/self_test_extract_codex_context.py"
 
 cleanup_caches
 
