@@ -25,7 +25,7 @@ scripts/unmount-share.sh
 
 密码通过 macOS Keychain 管理。`scripts/_keychain_helpers.sh` 提供统一读写接口，`scripts/keychain-store.sh` 只在认证成功后保存凭据。无密码的引用位于 `~/.servers/credentials/`，项目映射统一写入 `~/.servers/projects/<server>.json`；不会再读取 ENV 项目注册表或明文密码文件。
 
-默认目录边界：AKBS 系统根目录是 `/Users/jinny/akbs`，Android 源码根目录是 `/Users/jinny/work`。项目默认挂到 `/Users/jinny/work/<平台>/<项目>`，不能挂到 AKBS 根目录。
+默认目录边界：AKBS 系统根目录是 `$HOME/akbs`，Android 源码根目录是 `$HOME/work`。项目默认挂到 `$HOME/work/<平台>/<项目>`，不能挂到 AKBS 根目录。
 
 ## 和其他 skill 的关系
 

@@ -139,7 +139,7 @@ $HOME/work/<platform>/             → 仅在成员明确要求父 share 时使�
 For test61 project `TVE1088U`:
 
 ```text
-/Users/jinny/work/unisoc/TVE1088U/  → project root
+$HOME/work/unisoc/TVE1088U/  → project root
 ```
 
 ## Scripts
@@ -162,13 +162,13 @@ For test61 project `TVE1088U`:
   "smb_user": "test61",
   "shares": {
     "TVE1088U": {
-      "mount_point": "/Users/jinny/work/unisoc/TVE1088U",
+      "mount_point": "$HOME/work/unisoc/TVE1088U",
       "remote_path": "/home/test61/unisoc/huiwei_uis7885_5g",
       "smb_user": "test61",
       "projects": {
         "TVE1088U": {
           "platform": "unisoc",
-          "local_path": "/Users/jinny/work/unisoc/TVE1088U",
+          "local_path": "$HOME/work/unisoc/TVE1088U",
           "remote_path": "/home/test61/unisoc/huiwei_uis7885_5g"
         }
       }
@@ -188,7 +188,7 @@ Report results in Chinese with technical identifiers in English:
 
 ```text
 Samba 共享: //192.168.100.23/TVE1088U
-挂载点: /Users/jinny/work/unisoc/TVE1088U
+挂载点: $HOME/work/unisoc/TVE1088U
 发现项目: TVE1088U (平台: unisoc)
 远端路径: /home/test61/unisoc/huiwei_uis7885_5g
 注册状态: 已记录
@@ -198,7 +198,7 @@ Samba 共享: //192.168.100.23/TVE1088U
 ## Safety Rules
 
 - Store passwords only in macOS Keychain. Keychain reference files under `~/.servers/credentials/` must use mode `600`.
-- Use `/Users/jinny/akbs` as the default `AKBS_ROOT` and `/Users/jinny/work` as the default `ANDROID_WORK_ROOT`; never mount Android source below AKBS_ROOT.
+- Use `$HOME/akbs` as the default `AKBS_ROOT` and `$HOME/work` as the default `ANDROID_WORK_ROOT`; never mount Android source below AKBS_ROOT.
 - Never put credentials in skills, repo files, or build scripts.
 - Do not unmount or replace an existing mount unless the user explicitly asks.
 - Do not run authoritative Android `git` or builds through the SMB mount.

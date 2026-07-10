@@ -292,6 +292,7 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
         self.assertNotIn("save-credentials.sh", combined)
         self.assertNotIn(".codex/android-source-access", combined)
         self.assertNotIn("Work/Samba", combined)
+        self.assertNotIn("/Users/jinny", combined)
         self.assertIn("~/.servers/projects/<server>.json", combined)
         for script_name in re.findall(r"scripts/([A-Za-z0-9_.-]+\.sh)", combined):
             self.assertTrue((SCRIPT_DIR / script_name).is_file(), script_name)
