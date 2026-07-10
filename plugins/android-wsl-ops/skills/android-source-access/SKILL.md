@@ -317,7 +317,6 @@ Never persist a candidate into this skill automatically. Only update `SKILL.md`,
 - `scripts/discover-samba-share.sh`: read server Samba config over SSH and derive a Samba URL from a remote source path.
 - `scripts/mount-platform.sh`: low-level CIFS mount helper; normal project-level flows pass `--target /home/<wsl-user>/work/<platform>/<project>`, while the platform-folder default is only for explicit parent/platform share operations.
 - `scripts/restore-project-mount.sh`: list, remember, and restore exact project paths after reboot; stores remote source mapping, stores Samba credentials with `--remember-password`, and reuses saved local sudo/Samba fallback passwords when available.
-- `scripts/validate-skill.sh`: one-command non-destructive regression check for script syntax, path non-inference, project-level Samba defaults, conflict-acceptance flags, stale wording, and optional remote inspect checks.
 
 ## Safety Rules
 

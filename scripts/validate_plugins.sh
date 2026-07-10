@@ -27,6 +27,16 @@ python3 -m unittest discover \
   -p 'test_*.py' \
   -v
 
+python3 -m unittest discover \
+  -s "$repo_root/tests/plugins/android-wsl-ops/android-source-access" \
+  -p 'test_*.py' \
+  -v
+
+python3 -m unittest discover \
+  -s "$repo_root/tests/plugins/android-wsl-ops/android-remote-build-deploy" \
+  -p 'test_*.py' \
+  -v
+
 cleanup_caches
 
 echo "Plugin validation passed"
