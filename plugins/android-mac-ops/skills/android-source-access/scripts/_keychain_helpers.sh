@@ -117,8 +117,11 @@ credential_save() {
   # 更新 .keychain.env
   local env_file
   env_file=$(keychain_env_path "$hash")
+  local credential_dir
+  credential_dir=$(dirname "$env_file")
+  mkdir -p "$credential_dir"
+  chmod 700 "$credential_dir"
   if [ ! -f "$env_file" ]; then
-    mkdir -p "$(dirname "$env_file")"
     cat > "$env_file" <<-EOF
 ACCOUNT_KEY=${hash}
 REMOTE_USER=${remote_user}
@@ -136,6 +139,7 @@ EOF
   state_key=$(password_state_key "$role")
   keychain_env_set "$env_file" "$state_key" "stored"
   keychain_env_set "$env_file" "UPDATED_AT" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  chmod 600 "$env_file"
 }
 
 # 从 Keychain 读取密码（带 fallback 链）
@@ -174,7 +178,10 @@ local_credential_save() {
 
   local env_file
   env_file=$(local_keychain_env_path)
-  mkdir -p "$(dirname "$env_file")"
+  local credential_dir
+  credential_dir=$(dirname "$env_file")
+  mkdir -p "$credential_dir"
+  chmod 700 "$credential_dir"
   cat > "$env_file" <<-EOF
 LOCAL_USER=${local_user}
 LOCAL_USER_HASH=${hash}
@@ -182,6 +189,7 @@ LOCAL_SUDO_KEYCHAIN_SERVICE=${service}
 LOCAL_SUDO_PASSWORD_STATE=stored
 UPDATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 EOF
+  chmod 600 "$env_file"
 }
 
 # 读取本机 sudo 密码

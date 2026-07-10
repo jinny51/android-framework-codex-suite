@@ -74,7 +74,7 @@ def script_env(root: Path, fake_bin: Path) -> Dict[str, str]:
 
 class MacSourceAccessScriptsTests(unittest.TestCase):
     def test_mount_share_saves_verified_credentials_with_real_script_name(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
             root = Path(tmp)
             fake_bin = make_fake_bin(root)
             env = script_env(root, fake_bin)
@@ -104,7 +104,30 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
             credential_files = list(Path(env["CODEX_CREDENTIALS_DIR"]).glob("*.keychain.env"))
             self.assertEqual(len(credential_files), 1)
             self.assertIn("SMB_PASSWORD_STATE=stored", credential_files[0].read_text(encoding="utf-8"))
+            self.assertEqual(stat.S_IMODE(credential_files[0].stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(credential_files[0].parent.stat().st_mode), 0o700)
             self.assertIn("add-generic-password", Path(env["FAKE_SECURITY_LOG"]).read_text(encoding="utf-8"))
+
+    def test_local_keychain_reference_is_private(self) -> None:
+        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+            root = Path(tmp)
+            fake_bin = make_fake_bin(root)
+            env = script_env(root, fake_bin)
+            env["CODEX_TARGET_PASSWORD"] = "secret"
+
+            result = run_script(
+                "keychain-store.sh",
+                "--role",
+                "local",
+                "--local-user",
+                "jinny",
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            reference = Path(env["CODEX_CREDENTIALS_DIR"]) / "local.keychain.env"
+            self.assertEqual(stat.S_IMODE(reference.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(reference.parent.stat().st_mode), 0o700)
 
     def test_mount_share_enforces_akbs_and_android_work_root_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
