@@ -13,7 +13,6 @@ usage() {
   --remote-user USER   远端 SSH 用户名。
   --server HOST        服务器 IP 或主机名。
   --local-user USER    本机用户名。默认: $(whoami)。
-  --all                删除该角色对应的完整 .keychain.env（仅远端角色）。
   -h, --help           显示此帮助。
 
 输出:
@@ -27,7 +26,7 @@ USAGE
 
 die() { local c="$1"; shift; echo "ERROR: $*" >&2; exit "$c"; }
 
-role=; remote_user=; server=; local_user=; remove_all=false
+role=; remote_user=; server=; local_user=
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -35,7 +34,6 @@ while [ "$#" -gt 0 ]; do
     --remote-user) remote_user="${2:?}"; shift 2 ;;
     --server)      server="${2:?}"; shift 2 ;;
     --local-user)  local_user="${2:?}"; shift 2 ;;
-    --all)         remove_all=true; shift ;;
     -h|--help)     usage; exit 0 ;;
     *)             die 2 "未知参数: $1" ;;
   esac
@@ -54,13 +52,9 @@ case "$role" in
     keychain_delete "$service" "${remote_user}@${server}"
 
     env_file=$(keychain_env_path "$hash")
-    keychain_env_set "$env_file" "${role^^}_PASSWORD_STATE" "missing"
+    state_key=$(password_state_key "$role")
+    keychain_env_set "$env_file" "$state_key" "missing"
     keychain_env_set "$env_file" "UPDATED_AT" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-
-    if [ "$remove_all" = true ]; then
-      rm -f "$env_file"
-      rm -f "$(project_registry_path "$hash")"
-    fi
     echo "KEYCHAIN_STATUS=deleted"
     ;;
   local)

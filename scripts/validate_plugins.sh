@@ -22,6 +22,11 @@ done
 
 "$repo_root/scripts/validate_skill_layout.sh"
 
+python3 -m unittest discover \
+  -s "$repo_root/tests/plugins/android-mac-ops/android-source-access" \
+  -p 'test_*.py' \
+  -v
+
 cleanup_caches
 
 echo "Plugin validation passed"

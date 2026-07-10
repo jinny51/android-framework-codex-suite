@@ -14,6 +14,7 @@ usage() {
 选项:
   --server NAME               SSH 主机别名。必需。
   --server-ip IP              服务器 IP。必需。
+  --smb-user USER             SMB/Samba 用户名。默认: server 名称。
   --share NAME                Samba 共享名。必需。
   --mount-point PATH          本地共享挂载点。必需。
   --remote-share-path PATH    远端共享路径，如 /home/test61/unisoc。必需。
@@ -45,7 +46,7 @@ die() {
   exit "$code"
 }
 
-server=; server_ip=; share=; mount_point=; remote_share_path=
+server=; server_ip=; smb_user=; share=; mount_point=; remote_share_path=
 project=; project_path=; platform=; remote_project_path=
 registry_dir="${HOME}/.servers/projects"
 
@@ -53,6 +54,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --server)               server="${2:?缺少 --server 的值}"; shift 2 ;;
     --server-ip)            server_ip="${2:?缺少 --server-ip 的值}"; shift 2 ;;
+    --smb-user)             smb_user="${2:?缺少 --smb-user 的值}"; shift 2 ;;
     --share)                share="${2:?缺少 --share 的值}"; shift 2 ;;
     --mount-point)          mount_point="${2:?缺少 --mount-point 的值}"; shift 2 ;;
     --remote-share-path)    remote_share_path="${2:?缺少 --remote-share-path 的值}"; shift 2 ;;
@@ -73,6 +75,24 @@ done
 [ -n "$platform" ]            || die 2 "--platform 是必需的"
 [ -n "$project_path" ]        || die 2 "--project-path 是必需的"
 [ -n "$remote_project_path" ] || die 2 "--remote-project-path 是必需的"
+smb_user="${smb_user:-$server}"
+
+case "$server" in
+  *[!A-Za-z0-9._-]*) die 2 "--server 只能包含字母、数字、点、下划线和连字符" ;;
+esac
+case "$share" in
+  ""|*/*) die 2 "--share 必须是顶层 Samba share 名称，不能包含路径分隔符" ;;
+esac
+
+work_root="${ANDROID_WORK_ROOT:-$HOME/work}"
+case "$mount_point" in
+  "$work_root"|"$work_root"/*) ;;
+  *) die 2 "--mount-point 必须位于 Android work root 下: ${work_root}" ;;
+esac
+case "$project_path" in
+  "$mount_point"|"$mount_point"/*) ;;
+  *) die 2 "--project-path 必须位于共享挂载点下: ${mount_point}" ;;
+esac
 
 case "$platform" in
   unisoc|mtk|rk) ;;
@@ -86,11 +106,11 @@ registry_file="$registry_dir/${server}.json"
 status="created"
 [ -f "$registry_file" ] && status="updated"
 
-python3 - "$registry_file" "$server" "$server_ip" "$share" "$mount_point" \
+python3 - "$registry_file" "$server" "$server_ip" "$smb_user" "$share" "$mount_point" \
   "$remote_share_path" "$project" "$project_path" "$platform" "$remote_project_path" <<'PY'
 import json, sys, os
 
-f, srv, ip, sh, mp, rsp, proj, pp, plat, rpp = sys.argv[1:]
+f, srv, ip, smb_user, sh, mp, rsp, proj, pp, plat, rpp = sys.argv[1:]
 
 data = {}
 if os.path.exists(f):
@@ -99,11 +119,16 @@ if os.path.exists(f):
 
 data["server"] = srv
 data["server_ip"] = ip
+data["smb_user"] = smb_user
 data.setdefault("shares", {}).setdefault(sh, {
     "mount_point": mp,
     "remote_path": rsp,
+    "smb_user": smb_user,
     "projects": {}
 })
+data["shares"][sh]["mount_point"] = mp
+data["shares"][sh]["remote_path"] = rsp
+data["shares"][sh]["smb_user"] = smb_user
 data["shares"][sh]["projects"][proj] = {
     "platform": plat,
     "local_path": pp,

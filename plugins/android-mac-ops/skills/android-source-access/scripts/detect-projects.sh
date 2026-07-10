@@ -66,6 +66,9 @@ done
 
 [ -n "$mount_point" ] || die 2 "--mount-point 是必需的"
 [ -d "$mount_point" ] || die 3 "挂载点不存在: $mount_point"
+case "$max_depth" in
+  ''|*[!0-9]*) die 2 "--max-depth 必须是非负整数" ;;
+esac
 
 # ── 辅助函数 ──
 is_android_project() {
@@ -177,6 +180,25 @@ printf "PLATFORM_SCORE_MTK=%s\n" "\$score_mtk"
 REMOTE
 }
 
+# BSD find 不支持 -maxdepth/-mindepth；用 Python 做本地有界遍历。
+list_local_directories() {
+  python3 - "$mount_point" "$max_depth" <<'PY'
+import os
+import sys
+
+root = os.path.abspath(sys.argv[1])
+max_depth = int(sys.argv[2])
+
+for current, directories, _files in os.walk(root):
+    directories.sort()
+    relative = os.path.relpath(current, root)
+    depth = 0 if relative == "." else relative.count(os.sep) + 1
+    if depth >= max_depth:
+        directories[:] = []
+    sys.stdout.buffer.write(os.fsencode(current) + b"\0")
+PY
+}
+
 # ── 扫描项目目录 ──
 found=0
 while IFS= read -r -d '' dir; do
@@ -218,7 +240,7 @@ while IFS= read -r -d '' dir; do
     echo ""
     found=1
   fi
-done < <(find "$mount_point" -maxdepth "$max_depth" -mindepth 1 -type d -print0 2>/dev/null)
+done < <(list_local_directories)
 
 if [ "$found" -eq 0 ]; then
   die 1 "未在 $mount_point 下检测到 Android 项目（需 .repo/ 或 build/+frameworks/）"

@@ -8,7 +8,7 @@ macOS 原生 Android 服务器源码接入 skill。
 
 该 skill 用于在 macOS 上通过 SMB/Samba 访问 Android 远程构建服务器源码。它负责发现 Samba 共享、挂载共享、扫描挂载树识别 Android 项目、推断平台，并登记本地路径到远程 Linux 源码路径的映射。
 
-macOS 版和 WSL 版的关键差异是：macOS 通常先挂载 share 级目录，再在挂载树里识别项目；不要直接从目录名推断平台或项目名。
+macOS 和 WSL 使用同一目录模型：源码默认挂到 `$HOME/work/<平台>/<项目>`。差异只在挂载和凭据实现：WSL 使用 CIFS 和本机 sudo，macOS 使用原生 SMB 和 Keychain。两边都不能从远端目录名直接猜平台或项目名。
 
 ## 常用脚本
 
@@ -23,7 +23,9 @@ scripts/unmount-share.sh
 
 ## 凭据存储
 
-密码通过 macOS Keychain 管理。`scripts/_keychain_helpers.sh` 提供统一的 Keychain 读写接口，`scripts/save-credentials.sh` 负责验证后保存凭据。密码不写入插件仓库，也不写入 runtime skill 目录。
+密码通过 macOS Keychain 管理。`scripts/_keychain_helpers.sh` 提供统一读写接口，`scripts/keychain-store.sh` 只在认证成功后保存凭据。无密码的引用位于 `~/.servers/credentials/`，项目映射统一写入 `~/.servers/projects/<server>.json`；不会再读取 ENV 项目注册表或明文密码文件。
+
+默认目录边界：AKBS 系统根目录是 `/Users/jinny/akbs`，Android 源码根目录是 `/Users/jinny/work`。项目默认挂到 `/Users/jinny/work/<平台>/<项目>`，不能挂到 AKBS 根目录。
 
 ## 和其他 skill 的关系
 

@@ -29,4 +29,7 @@ Android Mac Ops 是 macOS 平台层插件，在 `android-framework-ops` 提供�
 
 ```bash
 scripts/validate_plugins.sh
+scripts/validate_macos_over_ssh.sh jinny
 ```
+
+第一条在当前开发机运行全部静态和模拟回归；第二条把当前工作树中的 macOS 插件与测试复制到远端临时目录，用真实 macOS、系统 Bash 3.2 和系统 Python 复验，完成后删除临时目录，不修改 Mac 上已安装插件或 AKBS 文件。

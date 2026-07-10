@@ -34,13 +34,6 @@ local_keychain_env_path() {
   printf "%s/local.keychain.env" "$dir"
 }
 
-# projects registry 文件路径
-project_registry_path() {
-  local hash="$1"
-  local dir="${CODEX_PROJECTS_DIR:-$HOME/.servers/projects}"
-  printf "%s/%s.env" "$dir" "$hash"
-}
-
 # 安全存储密码到 Keychain
 # 注意: macOS security CLI 不支持 stdin 传密码（-w - 无效），
 # 只能用 -w <password> 传参。调用方必须确保不暴露密码。
@@ -88,11 +81,25 @@ keychain_env_set() {
   local file="$1" key="$2" value="$3"
   if [ -f "$file" ]; then
     if grep -q "^${key}=" "$file"; then
-      sed -i '' "s|^${key}=.*|${key}=${value}|" "$file"
+      local tmp_file="${file}.tmp.$$"
+      awk -v key="$key" -v value="$value" '
+        index($0, key "=") == 1 { print key "=" value; next }
+        { print }
+      ' "$file" > "$tmp_file"
+      mv "$tmp_file" "$file"
     else
       printf "\n%s=%s\n" "$key" "$value" >> "$file"
     fi
   fi
+}
+
+password_state_key() {
+  case "$1" in
+    ssh) printf "SSH_PASSWORD_STATE" ;;
+    smb) printf "SMB_PASSWORD_STATE" ;;
+    remote-sudo) printf "REMOTE_SUDO_PASSWORD_STATE" ;;
+    *) return 1 ;;
+  esac
 }
 
 # 保存密码到 Keychain 并更新 .keychain.env
@@ -125,7 +132,9 @@ REMOTE_SUDO_PASSWORD_STATE=missing
 UPDATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 EOF
   fi
-  keychain_env_set "$env_file" "${role^^}_PASSWORD_STATE" "stored"
+  local state_key
+  state_key=$(password_state_key "$role")
+  keychain_env_set "$env_file" "$state_key" "stored"
   keychain_env_set "$env_file" "UPDATED_AT" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
 
@@ -144,7 +153,7 @@ credential_read() {
 
   # 2. 如果 Keychain 没有，检查显式环境变量
   if [ -z "$password" ]; then
-    local explicit_var="CODEX_$(echo "$role" | tr '[:lower:]' '[:upper:]')_PASSWORD"
+    local explicit_var="CODEX_$(printf '%s' "$role" | tr '[:lower:]-' '[:upper:]_')_PASSWORD"
     if [ -n "${!explicit_var:-}" ]; then
       password="${!explicit_var}"
     fi

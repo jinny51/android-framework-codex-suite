@@ -14,7 +14,7 @@ usage() {
 
 选项:
   --share URL            Samba 地址，如 //192.168.100.23/unisoc。必需。
-  --mount-point PATH     本地挂载目录。不存在则自动创建。必需。
+  --mount-point PATH     本地挂载目录。不存在则自动创建。必需；应位于 $HOME/work 下。
   --user USER            Samba 用户名。除非 --guest，否则必需。
   --password-env NAME    Samba 密码所在环境变量名。默认: SAMBA_PASSWORD。
   --guest                无凭据挂载（匿名/游客）。
@@ -22,6 +22,7 @@ usage() {
   --remote-user USER     Keychain 查询用的远端用户名。
   --server HOST          Keychain 查询用的服务器 IP/主机名。
   --save-credentials     挂载成功后保存密码到 Keychain。
+  --non-interactive      缺少密码时直接失败，不进入交互提示。
   -h, --help             显示此帮助。
 
 密码优先级:
@@ -60,6 +61,8 @@ use_keychain=0
 remote_user=
 server=
 save_creds=0
+non_interactive=0
+script_dir="$(cd "$(dirname "$0")" && pwd)"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -72,6 +75,7 @@ while [ "$#" -gt 0 ]; do
     --remote-user)       remote_user="${2:?缺少 --remote-user 的值}"; shift 2 ;;
     --server)            server="${2:?缺少 --server 的值}"; shift 2 ;;
     --save-credentials)  save_creds=1; shift ;;
+    --non-interactive)   non_interactive=1; shift ;;
     -h|--help)           usage; exit 0 ;;
     *)                   die 2 "未知参数: $1" ;;
   esac
@@ -90,6 +94,18 @@ if [ "$use_keychain" -eq 1 ] || [ "$save_creds" -eq 1 ]; then
   [ -n "$remote_user" ] || die 2 "--keychain/--save-credentials 需要 --remote-user"
   [ -n "$server" ] || die 2 "--keychain/--save-credentials 需要 --server"
 fi
+
+akbs_root="${AKBS_ROOT:-$HOME/akbs}"
+work_root="${ANDROID_WORK_ROOT:-$HOME/work}"
+case "$mount_point" in
+  "$akbs_root"|"$akbs_root"/*)
+    die 2 "Android 源码不能挂到 AKBS_ROOT 下: ${mount_point}；请使用 Android work root: ${work_root}"
+    ;;
+esac
+case "$mount_point" in
+  "$work_root"|"$work_root"/*) ;;
+  *) die 2 "Android 源码挂载点必须位于 Android work root 下: ${work_root}" ;;
+esac
 
 # 检查是否已挂载
 if mount | grep -q " on $mount_point (" 2>/dev/null; then
@@ -118,7 +134,6 @@ if [ "$guest" -ne 1 ]; then
 
   # 优先级 2: Keychain
   if [ -z "$password" ] && [ "$use_keychain" -eq 1 ]; then
-    script_dir="$(cd "$(dirname "$0")" && pwd)"
     # shellcheck disable=SC1091
     source "$script_dir/_keychain_helpers.sh"
     password="$(credential_read "smb" "$remote_user" "$server")"
@@ -126,6 +141,7 @@ if [ "$guest" -ne 1 ]; then
 
   # 优先级 3: 提示用户
   if [ -z "$password" ]; then
+    [ "$non_interactive" -eq 0 ] || die 5 "Keychain 中没有 ${remote_user}@${server} 的 SMB/Samba 密码"
     echo "SMB_PASSWORD_REQUIRED: 请输入 $user@$server 的 SMB 密码" >&2
     read -r -s -p "SMB 密码: " password
     echo >&2
@@ -138,23 +154,23 @@ if [ "$guest" -ne 1 ]; then
 fi
 
 # 挂载
+mount_error_file="$(mktemp "${TMPDIR:-/tmp}/android-mac-mount.XXXXXX")"
+trap 'rm -f "$mount_error_file"' EXIT
 mount_ok=false
 if [ "$guest" -eq 1 ]; then
-  if mount -t smbfs "$share" "$mount_point" 2>/tmp/mount-share.err; then
+  if mount -t smbfs "$share" "$mount_point" 2>"$mount_error_file"; then
     mount_ok=true
   fi
 else
-  if mount -t smbfs "$mount_url" "$mount_point" 2>/tmp/mount-share.err; then
+  if mount -t smbfs "$mount_url" "$mount_point" 2>"$mount_error_file"; then
     mount_ok=true
   fi
 fi
 
 if [ "$mount_ok" = false ]; then
-  err="$(cat /tmp/mount-share.err 2>/dev/null || true)"
-  rm -f /tmp/mount-share.err
+  err="$(cat "$mount_error_file" 2>/dev/null || true)"
   # 如果密码来自 Keychain 但失败了，标记为可能过期
   if [ "$use_keychain" -eq 1 ] && [ -n "$remote_user" ] && [ -n "$server" ]; then
-    script_dir="$(cd "$(dirname "$0")" && pwd)"
     # shellcheck disable=SC1091
     source "$script_dir/_keychain_helpers.sh" 2>/dev/null || true
     hash="$(account_key "$remote_user" "$server" 2>/dev/null || echo "")"
@@ -165,20 +181,21 @@ if [ "$mount_ok" = false ]; then
   fi
   die 4 "Samba 挂载失败: $err"
 fi
-rm -f /tmp/mount-share.err
+rm -f "$mount_error_file"
 
 # 挂载成功，保存凭据（如果 --save-credentials）
 if [ "$save_creds" -eq 1 ] && [ "$guest" -ne 1 ] && [ -n "$remote_user" ] && [ -n "$server" ]; then
-  script_dir="$(cd "$(dirname "$0")" && pwd)"
   # shellcheck disable=SC1091
   source "$script_dir/_keychain_helpers.sh"
   export CODEX_TARGET_PASSWORD="$password"
-  if ! "$script_dir/save-credentials.sh" \
+  if ! "$script_dir/keychain-store.sh" \
     --role smb \
     --remote-user "$remote_user" \
-    --server "$server" \
-    --verified 2>/dev/null; then
-    echo "WARN: Keychain 保存失败（挂载已成功）" >&2
+    --server "$server" >/dev/null; then
+    unset CODEX_TARGET_PASSWORD
+    password=""
+    mount_url=""
+    die 6 "挂载已成功，但 Keychain 保存失败"
   fi
   unset CODEX_TARGET_PASSWORD
 fi
