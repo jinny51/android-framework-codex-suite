@@ -27,6 +27,8 @@ scripts/unmount-share.sh
 
 默认目录边界：AKBS 系统根目录是 `$HOME/akbs`，Android 源码根目录是 `$HOME/work`。项目默认挂到 `$HOME/work/<平台>/<项目>`，不能挂到 AKBS 根目录。
 
+项目注册表中的本地路径使用 `$HOME/...`，不会写死 macOS 用户名。服务器共享存在子目录时，`smb_path` 单独记录完整的服务器相对路径，例如 `work/mtk/u_mt8xxx_tablet`；恢复挂载时不会把它误当成单层 share 名。
+
 ## 和其他 skill 的关系
 
 - `android-remote-build-deploy`：消费本 skill 的路径映射，执行远程构建和本地 adb 推送。

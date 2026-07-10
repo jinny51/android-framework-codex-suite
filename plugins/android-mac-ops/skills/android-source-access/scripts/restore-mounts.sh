@@ -62,6 +62,17 @@ registry_dir = Path(sys.argv[1])
 server_filter = sys.argv[2]
 smb_user_override = sys.argv[3]
 
+
+def expand_home_path(value):
+    home = str(Path.home())
+    for marker in ("$HOME", "${HOME}", "~"):
+        if value == marker:
+            return home
+        prefix = marker + "/"
+        if value.startswith(prefix):
+            return str(Path(home) / value[len(prefix):])
+    return value
+
 try:
     for path in sorted(registry_dir.glob("*.json")):
         with path.open(encoding="utf-8") as handle:
@@ -77,9 +88,13 @@ try:
         for share, item in sorted(shares.items()):
             if not isinstance(item, dict):
                 raise ValueError(f"{path}: share {share!r} 必须是对象")
-            mount_point = str(item.get("mount_point") or "")
+            mount_point = expand_home_path(str(item.get("mount_point") or ""))
+            smb_path = str(item.get("smb_path") or share)
             smb_user = smb_user_override or str(item.get("smb_user") or default_user)
-            values = (server, server_ip, smb_user, str(share), mount_point)
+            path_parts = smb_path.split("/")
+            if any(not part or part in {".", ".."} for part in path_parts):
+                raise ValueError(f"{path}: share {share!r} 的 smb_path 非法")
+            values = (server, server_ip, smb_user, str(share), smb_path, mount_point)
             if not all(values):
                 raise ValueError(f"{path}: share {share!r} 缺少恢复字段")
             if any("\t" in value or "\n" in value for value in values):
@@ -99,13 +114,13 @@ no_credentials=0
 failed=0
 entries=0
 
-while IFS=$'\t' read -r server server_ip smb_user share mount_point; do
+while IFS=$'\t' read -r server server_ip smb_user share smb_path mount_point; do
   [ -n "$server" ] || continue
   entries=$((entries + 1))
 
   if mount_output="$(
     "$script_dir/mount-share.sh" \
-      --share "//${server_ip}/${share}" \
+      --share "//${server_ip}/${smb_path}" \
       --mount-point "$mount_point" \
       --user "$smb_user" \
       --remote-user "$smb_user" \

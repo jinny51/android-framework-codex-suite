@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 from pathlib import Path
@@ -14,6 +15,17 @@ REGISTRY_FIELDS = (
     ("platform", "source-access registry platform"),
     ("ssh_host", "source-access registry ssh_host"),
 )
+
+
+def expand_home_path(value: str) -> str:
+    home = os.path.expanduser("~")
+    for marker in ("$HOME", "${HOME}", "~"):
+        if value == marker:
+            return home
+        prefix = marker + "/"
+        if value.startswith(prefix):
+            return str(Path(home) / value[len(prefix) :])
+    return value
 
 
 def path_strings_overlap(left: str, right: str) -> bool:
@@ -72,7 +84,7 @@ def json_registry_entries(path: Path) -> list[dict[str, str]]:
     for share_name, raw_share in shares.items():
         if not isinstance(raw_share, dict):
             continue
-        mount_point = str(raw_share.get("mount_point") or "").strip()
+        mount_point = expand_home_path(str(raw_share.get("mount_point") or "").strip())
         share_remote = str(raw_share.get("remote_path") or "").strip()
         projects = raw_share.get("projects")
         if not isinstance(projects, dict):
@@ -81,7 +93,9 @@ def json_registry_entries(path: Path) -> list[dict[str, str]]:
             if not isinstance(raw_project, dict):
                 continue
             entry = {
-                "local_path": str(raw_project.get("local_path") or mount_point).strip(),
+                "local_path": expand_home_path(
+                    str(raw_project.get("local_path") or mount_point).strip()
+                ),
                 "remote_root": str(raw_project.get("remote_path") or share_remote).strip(),
                 "share": str(share_name).strip(),
                 "platform": str(raw_project.get("platform") or "").strip(),

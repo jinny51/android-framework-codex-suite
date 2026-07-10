@@ -156,6 +156,8 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
                 "test61",
                 "--share",
                 "TVE1088U",
+                "--smb-path",
+                "unisoc/huiwei_uis7885_5g",
                 "--mount-point",
                 str(mount_point),
                 "--remote-share-path",
@@ -175,7 +177,18 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
             self.assertEqual(register.returncode, 0, register.stderr)
             registry = json.loads((registry_dir / "test61.json").read_text(encoding="utf-8"))
             self.assertEqual(registry["smb_user"], "test61")
-            self.assertEqual(registry["shares"]["TVE1088U"]["mount_point"], str(mount_point))
+            self.assertEqual(
+                registry["shares"]["TVE1088U"]["mount_point"],
+                "$HOME/work/unisoc/TVE1088U",
+            )
+            self.assertEqual(
+                registry["shares"]["TVE1088U"]["projects"]["TVE1088U"]["local_path"],
+                "$HOME/work/unisoc/TVE1088U",
+            )
+            self.assertEqual(
+                registry["shares"]["TVE1088U"]["smb_path"],
+                "unisoc/huiwei_uis7885_5g",
+            )
 
             restore = run_script(
                 "restore-mounts.sh",
@@ -189,7 +202,45 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
             self.assertIn("RESTORE_STATUS=mounted server=test61 share=TVE1088U", restore.stdout)
             self.assertIn("RESTORE_SUMMARY mounted=1", restore.stdout)
             mount_log = Path(env["FAKE_MOUNT_LOG"]).read_text(encoding="utf-8")
-            self.assertIn("//test61:stored-secret@192.168.100.23/TVE1088U", mount_log)
+            self.assertIn(
+                "//test61:stored-secret@192.168.100.23/unisoc/huiwei_uis7885_5g",
+                mount_log,
+            )
+
+    def test_register_rejects_non_relative_smb_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = make_fake_bin(root)
+            env = script_env(root, fake_bin)
+            mount_point = Path(env["ANDROID_WORK_ROOT"]) / "mtk" / "TVE1065M_EG110"
+
+            result = run_script(
+                "register-project.sh",
+                "--server",
+                "test35",
+                "--server-ip",
+                "192.168.100.118",
+                "--share",
+                "TVE1065M_EG110",
+                "--smb-path",
+                "/work/mtk/u_mt8xxx_tablet",
+                "--mount-point",
+                str(mount_point),
+                "--remote-share-path",
+                "/home/test35/work/mtk/u_mt8xxx_tablet",
+                "--project",
+                "TVE1065M_EG110",
+                "--project-path",
+                str(mount_point),
+                "--platform",
+                "mtk",
+                "--remote-project-path",
+                "/home/test35/work/mtk/u_mt8xxx_tablet",
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("--smb-path 必须是相对服务器的 SMB 路径", result.stderr)
 
     def test_restore_does_not_report_success_without_json_entries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

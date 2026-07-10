@@ -1,6 +1,6 @@
 {
   "name": "android-mac-ops",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "macOS platform layer for Android Framework source access and remote build/deploy.",
   "author": {
     "name": "Jinny Android Framework Team",

@@ -7,6 +7,7 @@ usage() {
   cat <<'USAGE'
 用法:
   register-project.sh --server 名称 --server-ip IP --share 名称 \
+    [--smb-path 路径] \
     --mount-point 路径 --remote-share-path 路径 \
     --project 名称 --project-path 路径 --platform 名称 \
     --remote-project-path 路径 [选项]
@@ -15,7 +16,9 @@ usage() {
   --server NAME               SSH 主机别名。必需。
   --server-ip IP              服务器 IP。必需。
   --smb-user USER             SMB/Samba 用户名。默认: server 名称。
-  --share NAME                Samba 共享名。必需。
+  --share NAME                Registry 中的稳定挂载项名称。必需。
+  --smb-path PATH             服务器上的 SMB 路径，可含 share 下的子路径。
+                              默认与 --share 相同。
   --mount-point PATH          本地共享挂载点。必需。
   --remote-share-path PATH    远端共享路径，如 /home/test61/unisoc。必需。
   --project NAME              项目/SDK 名称。必需。
@@ -46,7 +49,7 @@ die() {
   exit "$code"
 }
 
-server=; server_ip=; smb_user=; share=; mount_point=; remote_share_path=
+server=; server_ip=; smb_user=; share=; smb_path=; mount_point=; remote_share_path=
 project=; project_path=; platform=; remote_project_path=
 registry_dir="${HOME}/.servers/projects"
 
@@ -56,6 +59,7 @@ while [ "$#" -gt 0 ]; do
     --server-ip)            server_ip="${2:?缺少 --server-ip 的值}"; shift 2 ;;
     --smb-user)             smb_user="${2:?缺少 --smb-user 的值}"; shift 2 ;;
     --share)                share="${2:?缺少 --share 的值}"; shift 2 ;;
+    --smb-path)             smb_path="${2:?缺少 --smb-path 的值}"; shift 2 ;;
     --mount-point)          mount_point="${2:?缺少 --mount-point 的值}"; shift 2 ;;
     --remote-share-path)    remote_share_path="${2:?缺少 --remote-share-path 的值}"; shift 2 ;;
     --project)              project="${2:?缺少 --project 的值}"; shift 2 ;;
@@ -76,12 +80,18 @@ done
 [ -n "$project_path" ]        || die 2 "--project-path 是必需的"
 [ -n "$remote_project_path" ] || die 2 "--remote-project-path 是必需的"
 smb_user="${smb_user:-$server}"
+smb_path="${smb_path:-$share}"
 
 case "$server" in
   *[!A-Za-z0-9._-]*) die 2 "--server 只能包含字母、数字、点、下划线和连字符" ;;
 esac
 case "$share" in
-  ""|*/*) die 2 "--share 必须是顶层 Samba share 名称，不能包含路径分隔符" ;;
+  ""|*/*) die 2 "--share 必须是稳定的单段注册项名称，不能包含路径分隔符" ;;
+esac
+case "/$smb_path/" in
+  *"//"*|*"/./"*|*"/../"*)
+    die 2 "--smb-path 必须是相对服务器的 SMB 路径，且不能包含空段、. 或 .."
+    ;;
 esac
 
 work_root="${ANDROID_WORK_ROOT:-$HOME/work}"
@@ -106,11 +116,20 @@ registry_file="$registry_dir/${server}.json"
 status="created"
 [ -f "$registry_file" ] && status="updated"
 
-python3 - "$registry_file" "$server" "$server_ip" "$smb_user" "$share" "$mount_point" \
+python3 - "$registry_file" "$server" "$server_ip" "$smb_user" "$share" "$smb_path" "$mount_point" \
   "$remote_share_path" "$project" "$project_path" "$platform" "$remote_project_path" <<'PY'
 import json, sys, os
 
-f, srv, ip, smb_user, sh, mp, rsp, proj, pp, plat, rpp = sys.argv[1:]
+f, srv, ip, smb_user, sh, smb_path, mp, rsp, proj, pp, plat, rpp = sys.argv[1:]
+
+
+def portable_home_path(value):
+    home = os.path.expanduser("~").rstrip("/")
+    if value == home:
+        return "$HOME"
+    if home and value.startswith(home + "/"):
+        return "$HOME/" + value[len(home) + 1 :]
+    return value
 
 data = {}
 if os.path.exists(f):
@@ -127,13 +146,15 @@ data.setdefault("shares", {}).setdefault(sh, {
     "projects": {}
 })
 data["shares"][sh]["mount_point"] = mp
+data["shares"][sh]["smb_path"] = smb_path
 data["shares"][sh]["remote_path"] = rsp
 data["shares"][sh]["smb_user"] = smb_user
 data["shares"][sh]["projects"][proj] = {
     "platform": plat,
-    "local_path": pp,
+    "local_path": portable_home_path(pp),
     "remote_path": rpp
 }
+data["shares"][sh]["mount_point"] = portable_home_path(mp)
 
 with open(f, "w") as fh:
     json.dump(data, fh, indent=2, ensure_ascii=False)
@@ -144,6 +165,7 @@ chmod 600 "$registry_file"
 
 echo "REGISTRY_FILE=$registry_file"
 echo "REGISTRY_STATUS=$status"
+echo "SMB_PATH=$smb_path"
 echo "PROJECT=$project"
 echo "PLATFORM=$platform"
 echo "SSH_HOST=$server"

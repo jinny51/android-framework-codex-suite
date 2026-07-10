@@ -60,7 +60,11 @@ def test_project_registry_reads_current_wsl_env_contract(tmp_path: Path) -> None
     ]
 
 
-def test_project_registry_reads_current_macos_json_contract(tmp_path: Path) -> None:
+def test_project_registry_reads_current_macos_json_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
     registry = tmp_path / "projects"
     registry.mkdir()
     local_project = tmp_path / "work" / "mtk" / "TVE1065M_EG110"
@@ -73,12 +77,13 @@ def test_project_registry_reads_current_macos_json_contract(tmp_path: Path) -> N
                 "smb_user": "test35",
                 "shares": {
                     "work": {
-                        "mount_point": str(local_project),
+                        "mount_point": "$HOME/work/mtk/TVE1065M_EG110",
+                        "smb_path": "work/mtk/u_mt8xxx_tablet",
                         "remote_path": "/home/test35/work",
                         "projects": {
                             "TVE1065M_EG110": {
                                 "platform": "mtk",
-                                "local_path": str(local_project),
+                                "local_path": "$HOME/work/mtk/TVE1065M_EG110",
                                 "remote_path": remote_project,
                             }
                         },
