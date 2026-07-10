@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import posixpath
 import re
 import shlex
 from pathlib import Path
@@ -111,10 +112,44 @@ def registry_entries(registry_dir: Path) -> list[dict[str, str]]:
         return []
     entries: list[dict[str, str]] = []
     for path in sorted(registry_dir.glob("*.env")):
-        entries.extend(env_registry_entries(path))
+        for entry in env_registry_entries(path):
+            entry["registry_path"] = str(path)
+            entries.append(entry)
     for path in sorted(registry_dir.glob("*.json")):
-        entries.extend(json_registry_entries(path))
+        for entry in json_registry_entries(path):
+            entry["registry_path"] = str(path)
+            entries.append(entry)
     return entries
+
+
+def resolve_project_mapping(
+    source_path: str | Path,
+    registry_dir: Path | None = None,
+) -> dict[str, str]:
+    target = Path(source_path).expanduser().resolve()
+    root = registry_dir or (Path.home() / ".servers" / "projects")
+    matches: list[tuple[int, dict[str, str], Path]] = []
+    for entry in registry_entries(root):
+        local_path = entry.get("local_path", "")
+        if not local_path:
+            continue
+        local_root = Path(expand_home_path(local_path)).expanduser().resolve()
+        try:
+            target.relative_to(local_root)
+        except ValueError:
+            continue
+        matches.append((len(local_root.parts), entry, local_root))
+    if not matches:
+        return {}
+
+    _, selected, local_root = max(matches, key=lambda item: item[0])
+    result = dict(selected)
+    remote_root = result.get("remote_root", "")
+    relative = target.relative_to(local_root)
+    if remote_root and relative.parts:
+        result["remote_root"] = posixpath.join(remote_root, *relative.parts)
+    result["local_path"] = str(target)
+    return result
 
 
 def source_access_registry_clues(

@@ -1,7 +1,0 @@
-interface:
-  display_name: "Android macOS Remote Build Deploy"
-  short_description: "Remote Android build and local adb deploy on macOS."
-  default_prompt: "Use $android-remote-build-deploy to build Android framework changes on a remote server and deploy artifacts via local adb on macOS. Requires prior source mount via android-source-access."
-
-policy:
-  allow_implicit_invocation: true

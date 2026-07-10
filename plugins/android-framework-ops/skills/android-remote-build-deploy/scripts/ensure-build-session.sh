@@ -6,11 +6,11 @@ usage() {
 ensure-build-session.sh --repo LOCAL_REPO --ssh-host HOST --remote-root PATH [options]
 
 Ensure REMOTE_ROOT/.codex/build-session.sh exists before using a persistent
-remote build session. For WSL agents, generation writes through the mounted
-LOCAL_REPO path and then verifies the file on the remote Linux path.
+remote build session. Generation writes through the locally mounted source
+path and then verifies the file on the remote Linux path.
 
 Required:
-  --repo PATH           Mounted WSL Android source path.
+  --repo PATH           Locally mounted Android source path.
   --ssh-host HOST       Remote SSH target.
   --remote-root PATH    Remote Android source root.
 

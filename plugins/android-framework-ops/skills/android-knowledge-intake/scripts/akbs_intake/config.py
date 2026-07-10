@@ -33,41 +33,21 @@ ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
 DEFAULT_SUBMISSION_API_BASE_URL = "http://192.168.100.118:8088/akbs/api"
 DEFAULT_SUBMISSION_SESSION_COOKIE = ""
 DEFAULT_SUBMISSION_API_TOKEN = ""
-DEFAULT_KNOWLEDGE_REPO_URL = ""
 AKBS_ENDPOINT_ENV_PREFIXES = ("CODEX_REPORT_AKBS_ENDPOINT_", "CODEX_WORK_REPORT_AKBS_ENDPOINT_")
 AKBS_ENDPOINT_DEFAULTS = {
     "submission_api_base_url": DEFAULT_SUBMISSION_API_BASE_URL,
     "submission_session_cookie": DEFAULT_SUBMISSION_SESSION_COOKIE,
     "submission_api_token": DEFAULT_SUBMISSION_API_TOKEN,
-    "knowledge_repo_url": DEFAULT_KNOWLEDGE_REPO_URL,
-}
-LEGACY_TEST35_ENDPOINT_VALUES = {
-    "server_profile": "test35",
-    "submission_method": "ssh",
-    "submission_ssh_host": "test35",
-    "submission_command": "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit",
-    "submission_api_base_url": "",
-    "submission_session_cookie": "",
-    "submission_api_token": "",
-    "knowledge_repo_url": "test35:/home/test35/work/akbs/knowledge.git",
 }
 
 CONFIG_DEFAULTS = {
     "default_profile": "",
     "profile": "",
-    "server_profile": "",
     "role": "",
     "allowed_modes": "",
     "member_alias": "",
     "member_name": "",
-    "knowledge_repo_url": "",
     "knowledge_repo_worktree": "",
-    "submission_method": "",
-    "submission_ssh_host": "",
-    "submission_command": "",
-    "submission_api_base_url": "",
-    "submission_session_cookie": "",
-    "submission_api_token": "",
     "git_user_name": "",
     "git_user_email": "",
     "codex_home": "$CODEX_HOME",
@@ -83,6 +63,10 @@ CONFIG_DEFAULTS = {
 
 def expanded_path(value: str) -> Path:
     return expand_codex_path(value)
+
+
+def synthetic_mode(config: dict[str, str]) -> bool:
+    return parse_bool(config.get("synthetic_data", "false"))
 
 
 def read_toml(path: Path) -> dict[str, Any]:
@@ -111,22 +95,8 @@ def flatten_config_payload(payload: dict[str, Any]) -> dict[str, str]:
             normalized = "member_alias"
         elif section == "member" and key == "name":
             normalized = "member_name"
-        elif section == "knowledge" and key in {"repo_url", "url", "knowledge_repo_url"}:
-            normalized = "knowledge_repo_url"
         elif section == "knowledge" and key in {"repo_worktree", "worktree", "knowledge_repo_worktree"}:
             normalized = "knowledge_repo_worktree"
-        elif section == "submission" and key in {"method", "submission_method"}:
-            normalized = "submission_method"
-        elif section == "submission" and key in {"ssh_host", "host", "submission_ssh_host"}:
-            normalized = "submission_ssh_host"
-        elif section == "submission" and key in {"command", "submit_command", "submission_command"}:
-            normalized = "submission_command"
-        elif section == "submission" and key in {"api_base_url", "base_url", "submission_api_base_url"}:
-            normalized = "submission_api_base_url"
-        elif section == "submission" and key in {"session_cookie", "cookie", "submission_session_cookie"}:
-            normalized = "submission_session_cookie"
-        elif section == "submission" and key in {"api_token", "token", "submission_api_token"}:
-            normalized = "submission_api_token"
         elif section == "paths" and key in {"knowledge_repo_worktree", "knowledge_worktree"}:
             normalized = "knowledge_repo_worktree"
         elif section == "paths" and key in {"codex_home", "out_dir"}:
@@ -181,9 +151,6 @@ def apply_env_overrides(config: dict[str, str]) -> None:
         "MEMBER_NAME": "member_name",
         "KNOWLEDGE_WORKTREE": "knowledge_repo_worktree",
         "KNOWLEDGE_REPO_WORKTREE": "knowledge_repo_worktree",
-        "SUBMISSION_API_BASE_URL": "submission_api_base_url",
-        "SUBMISSION_SESSION_COOKIE": "submission_session_cookie",
-        "SUBMISSION_API_TOKEN": "submission_api_token",
     }
     for env_key, value in os.environ.items():
         for prefix in ENV_PREFIXES:
@@ -218,83 +185,7 @@ def resolve_akbs_endpoint(config: dict[str, str]) -> dict[str, str]:
         endpoint["source"] = "env_override"
         return endpoint
 
-    role = str(config.get("role") or "").strip()
-    configured = {
-        key: str(config.get(key) or "").strip()
-        for key in (
-            "submission_api_base_url",
-            "submission_session_cookie",
-            "submission_api_token",
-        )
-        if str(config.get(key) or "").strip()
-    }
-    if role == "admin" and configured:
-        endpoint.update(configured)
-        endpoint["source"] = "admin_config_override"
     return endpoint
-
-
-def configured_endpoint_fields(loaded: list[Path]) -> dict[str, str]:
-    fields: dict[str, str] = {}
-    for path in loaded:
-        if not path.exists():
-            continue
-        payload = read_toml(path)
-        flattened = flatten_config_payload(payload)
-        for key in (
-            "server_profile",
-            "submission_method",
-            "submission_ssh_host",
-            "submission_command",
-            "submission_api_base_url",
-            "submission_session_cookie",
-            "submission_api_token",
-            "knowledge_repo_url",
-        ):
-            value = str(flattened.get(key) or "").strip()
-            if value:
-                fields[key] = value
-    return fields
-
-
-def endpoint_migration_report(config: dict[str, str], loaded: list[Path]) -> dict[str, Any]:
-    configured = configured_endpoint_fields(loaded)
-    legacy_fields = sorted(
-        key
-        for key, value in configured.items()
-        if value == LEGACY_TEST35_ENDPOINT_VALUES.get(key, "")
-        or (
-            key
-            in {
-                "submission_ssh_host",
-                "knowledge_repo_url",
-                "submission_command",
-                "submission_api_base_url",
-                "server_profile",
-            }
-            and "test35" in value
-        )
-    )
-    custom_fields = sorted(key for key in configured if key not in legacy_fields)
-    role = str(config.get("role") or "").strip()
-    if not configured:
-        status = "CURRENT"
-        message = "普通成员配置未包含服务器入口字段，AKBS endpoint resolver 将提供上传入口和只读知识库入口。"
-    elif role == "member" and legacy_fields and not custom_fields:
-        status = "MIGRATED_IN_MEMORY"
-        message = "检测到已废弃的 test35 服务器硬编码；本次运行已在内存中迁移为 AKBS endpoint resolver 默认入口，未改成员身份字段。"
-    elif role == "member":
-        status = "MANUAL_ACTION_REQUIRED"
-        message = "检测到普通成员配置中的自定义服务器字段；请移除这些字段，改由管理员/测试环境 endpoint override 提供。"
-    else:
-        status = "ADMIN_OVERRIDE"
-        message = "检测到管理员/测试 endpoint override 配置；普通成员配置不应复制这些字段。"
-    return {
-        "status": status,
-        "message": message,
-        "legacy_fields": legacy_fields,
-        "custom_fields": custom_fields,
-    }
 
 
 def load_config(profile_override: str | None = None) -> tuple[dict[str, str], list[Path]]:
@@ -337,10 +228,6 @@ def require_config(config: dict[str, str]) -> None:
         missing.append("submission_api_base_url")
     if missing:
         raise SystemExit("缺少必要配置: " + ", ".join(missing))
-
-
-def knowledge_repo_url(config: dict[str, str]) -> str:
-    return resolve_akbs_endpoint(config)["knowledge_repo_url"].strip()
 
 
 def knowledge_repo_worktree(config: dict[str, str]) -> Path:

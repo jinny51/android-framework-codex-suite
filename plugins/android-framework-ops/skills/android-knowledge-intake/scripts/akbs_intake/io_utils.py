@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from typing import Any, Iterable
 
+from android_framework_ops.json_io import write_json
+
 
 MATERIALS_DIR = "materials"
 
@@ -98,11 +100,6 @@ def read_text_sample(path: Path, limit: int = 12000) -> str:
         return path.read_text(encoding="utf-8", errors="ignore")[:limit]
     except OSError:
         return ""
-
-
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def materials_rel(*parts: str) -> str:

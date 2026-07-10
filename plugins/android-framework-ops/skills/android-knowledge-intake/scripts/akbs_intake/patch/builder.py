@@ -6,7 +6,7 @@ from typing import Any, Callable
 
 from android_framework_ops.knowledge_rules import apply_platform_overrides
 
-from akbs_intake.config import expanded_path, local_now, parse_bool, require_config, require_safe_artifact_path
+from akbs_intake.config import expanded_path, local_now, require_config, require_safe_artifact_path, synthetic_mode
 from akbs_intake.io_utils import list_string_values, materials_rel, unique_strings, write_json
 from akbs_intake.project_identity import infer_project as _infer_project
 from akbs_intake.report_sessions import ymd
@@ -54,10 +54,6 @@ from akbs_intake.patch.supplement import (
 ValidatePackage = Callable[[Path], dict[str, Any]]
 WritePackageSource = Callable[[Path, dict[str, str], str], dict[str, Any]]
 PluginInstallMetadata = Callable[[], dict[str, str]]
-
-
-def synthetic_mode(config: dict[str, str]) -> bool:
-    return parse_bool(config.get("synthetic_data", "false"))
 
 
 def infer_project(
@@ -512,5 +508,4 @@ def build_patch_package(
     check = validate_package_fn(package_dir)
     write_json(package_dir / "local-check.json", check)
     return package_dir
-
 

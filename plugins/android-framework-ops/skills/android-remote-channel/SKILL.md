@@ -9,7 +9,7 @@ Use this skill as the shared remote channel layer for Android build-server workf
 
 ## Boundary
 
-Use this skill from `android-remote-build-deploy` or `android-remote-build-deploy` when a build agent needs repeated remote Linux commands.
+Use this skill from `android-remote-build-deploy` when a build agent needs repeated remote Linux commands.
 
 Do not use this skill as a replacement for:
 

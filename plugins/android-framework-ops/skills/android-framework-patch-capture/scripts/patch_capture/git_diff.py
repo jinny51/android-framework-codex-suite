@@ -1,28 +1,20 @@
 from __future__ import annotations
 
-import hashlib
 import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Any
 
-from android_framework_ops.patch_analysis import resource_keys_from_patch_text
-
-AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
-BANNED_LOG_PATTERNS = (
-    "Log.v(",
-    "Log.d(",
-    "Log.i(",
-    "Log.w(",
-    "Log.e(",
-    "Slog.v(",
-    "Slog.d(",
-    "Slog.i(",
-    "Slog.w(",
-    "Slog.e(",
-    "Slog.wtf(",
+from android_framework_ops.patch_analysis import (
+    BANNED_LOG_PATTERNS,
+    added_lines,
+    changed_files_from_diff,
+    changed_lines,
+    facts_from_diff,
+    sha1_text,
 )
+
+
 def run(cmd: list[str], cwd: Path, check: bool = False) -> subprocess.CompletedProcess[str]:
     cp = subprocess.run(
         cmd,
@@ -51,20 +43,6 @@ def slug(value: str, *, lower: bool = True) -> str:
     value = re.sub(r"[^A-Za-z0-9._-]+", "-", value)
     value = re.sub(r"-+", "-", value).strip("-._")
     return value or "unnamed"
-
-
-def sha1_text(value: str) -> str:
-    return hashlib.sha1(value.encode("utf-8", errors="replace")).hexdigest()
-
-
-def changed_files_from_diff(diff_text: str) -> list[str]:
-    files: list[str] = []
-    for match in re.finditer(r"^diff --git a/(.+?) b/(.+)$", diff_text, re.M):
-        old, new = match.group(1), match.group(2)
-        path = new if new != "/dev/null" else old
-        if path not in files:
-            files.append(path)
-    return files
 
 
 def split_diff_sections(diff_text: str) -> list[str]:
@@ -127,35 +105,6 @@ def infer_module(files: list[str]) -> str:
     if len(parts) >= 2:
         return f"{parts[0]}-{parts[1]}"
     return parts[0]
-
-
-def added_lines(diff_text: str) -> list[str]:
-    return [line[1:] for line in diff_text.splitlines() if line.startswith("+") and not line.startswith("+++")]
-
-
-def changed_lines(diff_text: str) -> list[str]:
-    return [
-        line[1:]
-        for line in diff_text.splitlines()
-        if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
-    ]
-
-
-def facts_from_diff(diff_text: str) -> dict[str, Any]:
-    files = changed_files_from_diff(diff_text)
-    added = "\n".join(added_lines(diff_text))
-    changed = "\n".join(changed_lines(diff_text))
-    all_text = diff_text
-    return {
-        "content_sha1": sha1_text(diff_text),
-        "modified_files": files,
-        "system_properties": sorted(set(re.findall(r"\b(?:persist|ro|sys|debug|vendor)\.[A-Za-z0-9_.-]+", changed))),
-        "settings_keys": sorted(set(re.findall(r"Settings\.(?:System|Secure|Global)\.([A-Za-z0-9_.-]+)", changed))),
-        "resource_keys": resource_keys_from_patch_text(changed),
-        "framework_log_keys": sorted(set(re.findall(r"FrameworkLog\.([A-Za-z0-9_]+)", changed))),
-        "banned_log_hits": sorted(pattern for pattern in BANNED_LOG_PATTERNS if pattern in added),
-        "author_date_marker_present": bool(AUTHOR_DATE_RE.search(all_text)),
-    }
 
 
 def git_metadata(root: Path) -> dict[str, str]:

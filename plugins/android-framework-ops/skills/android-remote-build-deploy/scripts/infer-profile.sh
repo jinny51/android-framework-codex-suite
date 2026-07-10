@@ -8,7 +8,7 @@ infer-profile.sh --repo PATH --path FILE [--path FILE ...] [options]
 Infer a project-local build profile from Android source paths.
 
 Required:
-  --repo PATH          Local WSL/Samba repo path.
+  --repo PATH          Locally mounted Android source path.
   --path FILE          Changed or requirement-relevant path. Repeatable.
 
 Optional:

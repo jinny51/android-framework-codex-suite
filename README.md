@@ -8,9 +8,9 @@
 
 | 插件 | 定位 | 包含内容 | 推荐安装对象 |
 | --- | --- | --- | --- |
-| [android-framework-ops](plugins/android-framework-ops/README.md) | Android Framework 核心工程插件 | 需求分析、知识检索、远程执行、补丁归档、incoming 上传材料 | 所有需要 Codex 处理 Android Framework 工程任务的成员 |
-| [android-wsl-ops](plugins/android-wsl-ops/README.md) | WSL 平台层插件 | WSL 源码接入、远程构建交付 | 在 WSL 环境中使用 Codex 的成员 |
-| [android-mac-ops](plugins/android-mac-ops/README.md) | macOS 平台层插件 | macOS SMB 源码挂载、远程构建、本地 adb 推送 | 在 macOS 环境中使用 Codex 的成员 |
+| [android-framework-ops](plugins/android-framework-ops/README.md) | Android Framework 核心工程插件 | 需求分析、知识检索、远程执行、跨平台构建交付、补丁归档、incoming 上传材料 | 所有需要 Codex 处理 Android Framework 工程任务的成员 |
+| [android-wsl-ops](plugins/android-wsl-ops/README.md) | WSL 平台插件 | WSL Samba/CIFS 源码接入 | 在 WSL 环境中使用 Codex 的成员 |
+| [android-mac-ops](plugins/android-mac-ops/README.md) | macOS 平台插件 | macOS 原生 SMB 源码接入和 Keychain 凭据引用 | 在 macOS 环境中使用 Codex 的成员 |
 | [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选团队实践插件 | Jinny 团队代码风格、FrameworkLog 规范、review、项目本地规范等有倾向性的规则入口 | 想沿用 Jinny 团队实践的成员 |
 | [codex-workspace-care](plugins/codex-workspace-care/README.md) | 独立工作区维护插件 | Codex 本地聊天历史清理、修复、隐私残留检查、上下文交接 | 需要维护本地 Codex 状态或迁移会话上下文的成员 |
 
@@ -25,15 +25,15 @@
 1. 用户当前明确要求和项目本地规范优先。
 2. 个人或团队实践 skill 负责代码风格、review 口径、项目偏好。
 3. `android-framework-ops` 负责 Framework 工程闭环：知识检索、诊断修改、验收证据、补丁归档、incoming 上传材料。
-4. `android-wsl-ops` 提供 WSL 平台层（源码接入、构建交付）。
-5. `android-mac-ops` 提供 macOS 平台层（源码接入、构建交付）。
+4. `android-framework-ops` 使用一套跨平台远程构建和本地 adb 交付实现。
+5. `android-wsl-ops` 或 `android-mac-ops` 只提供当前操作系统的源码挂载。
 6. `codex-workspace-care` 只在用户明确需要处理本地 Codex 历史或交接上下文时使用。
 
 这样做的目的很直接：核心插件可以给很多人用，但不把某个人的编码习惯绑定进所有人的工作流。
 
 ## Android Framework 工作流
 
-一句话：`android-source-access` 负责连接服务器源码，`android-knowledge-search` 负责开工前先查知识库仓库，`android-framework-change-workflow` 负责分析和改代码并给验收结论，`android-remote-channel` 负责稳定执行服务器命令，`android-remote-build-deploy` 负责编译和推送设备，`android-framework-patch-capture` 负责整理功能级补丁资料，`android-framework-patch-intake`、`android-daily-report-intake`、`android-weekly-report-intake` 负责按材料类型生成 incoming，`android-knowledge-intake` 承载共享内核、doctor、版本门禁和兼容路由。
+一句话：`android-source-access` 负责连接服务器源码，`android-knowledge-search` 负责开工前先查知识，`android-framework-change-workflow` 负责分析和改代码并给验收结论，`android-remote-channel` 负责稳定执行服务器命令，`android-remote-build-deploy` 用一套实现完成远程编译和本地设备推送，`android-framework-patch-capture` 负责整理功能级补丁资料，`android-framework-patch-intake`、`android-daily-report-intake`、`android-weekly-report-intake` 负责按材料类型生成 incoming，`android-knowledge-intake` 承载共享内核、doctor 和版本门禁。
 
 | 阶段 | 负责 skill | 职责 |
 | --- | --- | --- |
@@ -47,11 +47,11 @@
 | 补丁包上传材料 | `android-framework-patch-intake` | 生成原始补丁包、补证包、替换包和补丁资产修正 `framework_change` incoming |
 | 日报上传材料 | `android-daily-report-intake` | 生成个人日报正文、同源 UI 读模型和 `daily_trace` incoming |
 | 周报上传材料 | `android-weekly-report-intake` | 生成个人周报正文、同源 UI 读模型和 `weekly_trace` incoming |
-| 共享内核 / 配置诊断 | `android-knowledge-intake` | 提供成员配置、doctor、插件更新、版本门禁、会话缓存门禁、manifest 协议和兼容路由 |
+| 共享内核 / 配置诊断 | `android-knowledge-intake` | 提供成员配置、doctor、插件更新、版本门禁、会话缓存门禁和 manifest 协议 |
 
 `android-remote-build-deploy` 只证明产物是否编出、是否推上设备；最终能不能算需求完成，由 `android-framework-change-workflow` 结合需求和验证证据判断。
 
-Framework 需求默认闭环是：开工前查知识库仓库，开发和验证后通过 `patch-capture` 与 `android-framework-patch-intake` 生成 incoming，并通过服务器上传入口进入上传分支；管理端本地推广入口再决定是否入库。普通补丁上传和补证包上传默认必须是 `validated`：功能边界清楚、项目/平台/Android 版本可追溯、补丁资产干净，并且构建与设备或等价验证通过。需要复验的 `candidate`、未完成的 `draft`、失败或阻塞路径按事实保留在本地材料或日报/周报上下文里，不直接进入服务器上传队列。日报使用 `android-daily-report-intake`，周报使用 `android-weekly-report-intake`；两者只归档，不进入知识库沉淀候选。是否进入知识库仓库由你本机的本地技能 `akbs-curation-maintainer` 和 AI 知识闭环决定，不由成员端插件直接决定。
+Framework 需求默认闭环是：开工前查 AKBS，开发和验证后通过 `patch-capture` 与 `android-framework-patch-intake` 生成 incoming，并由 AKBS HTTP API 写入 active SQLite。普通补丁上传和补证包上传默认必须是 `validated`：功能边界清楚、项目/平台/Android 版本可追溯、补丁资产干净，并且构建与设备或等价验证通过。需要复验的 `candidate`、未完成的 `draft`、失败或阻塞路径按事实保留在本地材料或日报/周报上下文里，不直接进入上传队列。日报使用 `android-daily-report-intake`，周报使用 `android-weekly-report-intake`；两者只归档，不进入知识沉淀候选。是否沉淀由本机 `akbs-curation-maintainer` 和 AI 知识闭环决定，不由成员端插件决定。
 
 按环境选择对应平台层插件：WSL 环境安装 `android-wsl-ops`，macOS 环境安装 `android-mac-ops`。
 
@@ -177,7 +177,7 @@ scripts/validate_plugins.sh
 - manifest 中列出的 skill 都存在。
 - skill 目录包含必要入口文件。
 - macOS 源码接入脚本通过模拟回归；发布 macOS 插件前还必须通过真实 Mac SSH 回归。
-- WSL 运行脚本在 Git 中可执行，源码接入和构建交付回归通过。
+- WSL 源码接入脚本在 Git 中可执行；共享构建交付在 WSL 与真实 Mac SSH 环境回归通过。
 - 仓库没有明显的本地缓存、日志、凭据类文件。
 
 维护时如果只想快速确认 runtime skill 目录里没有 README 残留，可以执行：

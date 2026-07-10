@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Callable
 
-from akbs_intake.config import expanded_path, local_now, parse_bool, require_config, require_safe_artifact_path
+from akbs_intake.config import expanded_path, local_now, require_config, require_safe_artifact_path, synthetic_mode
 from akbs_intake.io_utils import materials_rel, write_json
 from akbs_intake.report_sessions import SessionWork, synthetic_sessions
 from akbs_intake.reports.common import ensure_report_date_allowed, ensure_report_not_duplicate, report_dates, report_identity, ymd
@@ -20,10 +20,6 @@ ValidatePackage = Callable[[Path], dict[str, Any]]
 WritePackageSource = Callable[[Path, dict[str, str], str], dict[str, Any]]
 ParseSessions = Callable[[dict[str, str], set[dt.date]], list[SessionWork]]
 DiscoverPatches = Callable[[dict[str, str], list[SessionWork], dt.date, dt.date], list[PatchInfo]]
-
-
-def synthetic_mode(config: dict[str, str]) -> bool:
-    return parse_bool(config.get("synthetic_data", "false"))
 
 
 def incoming_report_manifest(

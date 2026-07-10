@@ -4,7 +4,6 @@ import datetime as dt
 import json
 import os
 import re
-import shlex
 import subprocess
 from pathlib import Path
 from typing import Any, Callable
@@ -13,9 +12,7 @@ from akbs_intake.config import (
     allowed_modes,
     artifact_path_guard_error,
     default_codex_home,
-    endpoint_migration_report,
     expanded_path,
-    knowledge_repo_url,
     knowledge_repo_worktree,
     parse_bool,
     resolve_akbs_endpoint,
@@ -28,14 +25,6 @@ from akbs_intake.config import (
 MEMBER_ALIAS_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 RunCommand = Callable[[list[str]], subprocess.CompletedProcess[str]]
 PluginGateCheck = Callable[..., dict[str, Any]]
-
-
-def git_run(repo: Path, args: list[str], run_command: RunCommand, check: bool = True) -> subprocess.CompletedProcess[str]:
-    cp = run_command(["git", "-C", str(repo), *args])
-    if check and cp.returncode != 0:
-        detail = cp.stderr.strip() or cp.stdout.strip()
-        raise SystemExit(f"git {' '.join(args)} 失败: {detail}")
-    return cp
 
 
 def latest_pending(report_type: str, config: dict[str, str], date: dt.date | None = None) -> Path:
@@ -97,7 +86,6 @@ def doctor_strict_checks(
     alias = config.get("member_alias", "").strip()
     name = config.get("member_name", "").strip()
     role = config.get("role", "").strip()
-    knowledge_url = knowledge_repo_url(config)
     knowledge_repo = knowledge_repo_worktree(config)
     out_dir = expanded_path(config.get("out_dir", ""))
 
@@ -135,12 +123,6 @@ def doctor_strict_checks(
     if parse_bool(config.get("synthetic_data", "false")) and not allow_synthetic:
         error("synthetic_data=true 只能用于协议/灰度测试，成员端正式自动化必须关闭。")
 
-    migration = endpoint_migration_report(config, loaded)
-    if migration["status"] == "MIGRATED_IN_MEMORY":
-        warn("检测到已废弃的 test35 服务器硬编码；已由 AKBS endpoint resolver 在内存中迁移，普通成员无需继续维护服务器字段。")
-    elif migration["status"] == "MANUAL_ACTION_REQUIRED":
-        error(str(migration["message"]))
-
     if not submission_api_base_url(config):
         error("submission_api_base_url 不能为空。")
     if ".codex/plugins/cache" in knowledge_repo.as_posix():
@@ -161,31 +143,14 @@ def doctor_strict_checks(
     elif freshness.get("status") == "UNKNOWN":
         warn(str(freshness.get("message") or "无法确认插件是否为最新版本。"))
 
-    if not knowledge_url:
-        warn("未配置 knowledge_repo_url；成员端知识检索将优先使用 AKBS API，本地知识库只作为可选兜底。")
     if not knowledge_repo.exists():
-        clone_hint = f"git clone {knowledge_url} {shlex.quote(str(knowledge_repo))}" if knowledge_url else ""
-        suffix = f" 可选兜底克隆命令: {clone_hint}" if clone_hint else ""
-        warn(f"knowledge_repo_worktree 不存在: {knowledge_repo}.{suffix}")
+        warn(f"knowledge_repo_worktree 不存在，本地离线搜索不可用: {knowledge_repo}")
     elif not (knowledge_repo / ".git").exists():
         warn(f"knowledge_repo_worktree 已存在但不是 Git 仓库，本地兜底搜索不可用: {knowledge_repo}")
-    elif knowledge_url:
-        origin = git_run(knowledge_repo, ["config", "--get", "remote.origin.url"], run_command, check=False)
-        origin_url = origin.stdout.strip()
-        if origin_url and origin_url != knowledge_url:
-            warn(
-                "knowledge_repo_worktree origin 与 knowledge_repo_url 不一致，本地兜底搜索可能不可用: "
-                f"origin={origin_url}, knowledge_repo_url={knowledge_url}"
-            )
 
     out_parent = nearest_existing_parent(out_dir.parent)
     if not os.access(out_parent, os.W_OK):
         error(f"out_dir 父目录不可写，无法生成 pending 包: {out_parent}")
-
-    if check_remote and knowledge_url:
-        remote = run_command(["git", "ls-remote", "--heads", knowledge_url])
-        if remote.returncode != 0:
-            warn("knowledge_repo_url 无法访问；AKBS API 上传不受影响，本地兜底搜索不可用: " + (remote.stderr.strip() or remote.stdout.strip()))
 
     return {
         "status": "FAIL" if errors else "PASS",
@@ -218,11 +183,9 @@ def doctor(
         "member_alias": config.get("member_alias"),
         "member_name": config.get("member_name"),
         "akbs_endpoint": endpoint,
-        "endpoint_migration": endpoint_migration_report(config, loaded),
         "submission_api_base_url": submission_api_base_url(config),
         "submission_api_token_configured": bool(submission_api_token(config)),
         "submission_session_cookie_configured": bool(submission_session_cookie(config)),
-        "knowledge_repo_url": knowledge_repo_url(config),
         "knowledge_repo_worktree": str(knowledge_repo),
         "knowledge_repo_cloned": (knowledge_repo / ".git").exists(),
         "out_dir": str(expanded_path(config["out_dir"])),

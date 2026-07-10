@@ -21,6 +21,7 @@ from android_framework_ops.knowledge_rules import (
     find_company_project,
 )
 from akbs_intake.config import expanded_path
+from akbs_intake.reports.common import week_bounds, ymd
 
 
 RunCommand = Callable[[list[str]], subprocess.CompletedProcess[str]]
@@ -61,15 +62,6 @@ class SessionWork:
     cwd: str = ""
     project: str = "未识别项目"
     messages: list[str] = field(default_factory=list)
-
-
-def ymd(date: dt.date) -> str:
-    return date.strftime("%Y%m%d")
-
-
-def week_bounds(date: dt.date) -> tuple[dt.date, dt.date]:
-    start = date - dt.timedelta(days=date.weekday())
-    return start, start + dt.timedelta(days=6)
 
 
 def compact_text(text: str, limit: int = 160) -> str:

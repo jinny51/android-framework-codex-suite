@@ -4,8 +4,3 @@
 name = "android-source-access"
 category = "WSL Source Access"
 summary = "在 WSL 中挂载或恢复 Android 服务器源码，并记录本地路径、远程路径和 SSH 主机映射"
-
-[[skills]]
-name = "android-remote-build-deploy"
-category = "WSL Build Deploy"
-summary = "在 WSL 源码接入场景下调用服务器完成 Android 编译、产物定位和设备推送"

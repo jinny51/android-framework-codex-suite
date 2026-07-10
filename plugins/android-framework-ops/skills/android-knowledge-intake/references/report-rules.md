@@ -155,4 +155,4 @@ Report card fields are authoritative:
 - `material_summary`：日报写各项目“今日主题”；周报写各项目“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
 - Daily project rows contain `project/customer/today_topic/current_result/work_items/tomorrow_focus`.
 - Weekly project rows contain `project/customer/week_summary/received_date/source/requirement_type/requirement_structure/completed_this_week/remaining/expected_finish/completed_items/remaining_items/risks/dependencies/next_week_plan`.
-- Do not emit deprecated `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.
+- The current read model does not emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.

@@ -1,6 +1,6 @@
 {
   "name": "android-framework-ops",
-  "version": "1.0.127",
+  "version": "1.0.128",
   "description": "Shared operational workflows for Android Framework engineering with Codex.",
   "author": {
     "name": "Jinny Android Framework Team",
@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "Android Framework Ops",
     "shortDescription": "Android Framework 团队共享工作流：需求分析、诊断修改、知识复用和补丁归档",
-    "longDescription": "面向 Android Framework 团队的共享 Codex 工作流，覆盖需求分析、远程执行、验证验收、补丁归档和团队知识复用。WSL 和 macOS 平台层分别由 android-wsl-ops 和 android-mac-ops 提供。",
+    "longDescription": "面向 Android Framework 团队的共享 Codex 工作流，覆盖需求分析、远程执行、跨平台远程构建交付、验证验收、补丁归档和团队知识复用。WSL 和 macOS 平台插件只负责各自的源码挂载。",
     "developerName": "Jinny Android Framework Team",
     "category": "Coding",
     "capabilities": [

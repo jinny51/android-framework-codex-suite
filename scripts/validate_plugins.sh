@@ -34,7 +34,7 @@ if [[ "$(uname -s)" == "Linux" ]]; then
     -v
 
   python3 -m unittest discover \
-    -s "$repo_root/tests/plugins/android-wsl-ops/android-remote-build-deploy" \
+    -s "$repo_root/tests/plugins/android-framework-ops/android-remote-build-deploy" \
     -p 'test_*.py' \
     -v
 fi

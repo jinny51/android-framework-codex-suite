@@ -1,8 +1,6 @@
 # Build Deploy Contract
 
-Read this when handing off to or receiving results from the platform build/deploy executor:
-
-- WSL agents: `android-remote-build-deploy`.
+Read this when handing off to or receiving results from the shared `android-remote-build-deploy` executor on WSL or macOS.
 
 ## Responsibility Split
 

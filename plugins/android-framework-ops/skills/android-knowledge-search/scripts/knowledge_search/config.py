@@ -40,6 +40,11 @@ def read_toml(path: Path) -> dict[str, Any]:
     return load_toml(path)
 
 
+def append_nonempty_text(values: list[str], value: Any) -> None:
+    if isinstance(value, str) and value.strip():
+        values.append(value.strip())
+
+
 def selected_profile(payload: dict[str, Any]) -> str:
     for prefix in ENV_PREFIXES:
         value = os.environ.get(f"{prefix}PROFILE")
@@ -51,28 +56,23 @@ def selected_profile(payload: dict[str, Any]) -> str:
 
 def configured_worktree_values(payload: dict[str, Any]) -> list[str]:
     values: list[str] = []
-
-    def add(value: Any) -> None:
-        if isinstance(value, str) and value.strip():
-            values.append(value.strip())
-
-    add(payload.get("knowledge_repo_worktree"))
+    append_nonempty_text(values, payload.get("knowledge_repo_worktree"))
     knowledge = payload.get("knowledge")
     if isinstance(knowledge, dict):
-        add(knowledge.get("worktree"))
-        add(knowledge.get("repo_worktree"))
-        add(knowledge.get("knowledge_repo_worktree"))
+        append_nonempty_text(values, knowledge.get("worktree"))
+        append_nonempty_text(values, knowledge.get("repo_worktree"))
+        append_nonempty_text(values, knowledge.get("knowledge_repo_worktree"))
     paths = payload.get("paths")
     if isinstance(paths, dict):
-        add(paths.get("knowledge_worktree"))
-        add(paths.get("knowledge_repo_worktree"))
+        append_nonempty_text(values, paths.get("knowledge_worktree"))
+        append_nonempty_text(values, paths.get("knowledge_repo_worktree"))
     profiles = payload.get("profiles")
     profile = selected_profile(payload)
     if profile and isinstance(profiles, dict):
         profile_payload = profiles.get(profile)
         if isinstance(profile_payload, dict):
-            add(profile_payload.get("knowledge_repo_worktree"))
-            add(profile_payload.get("knowledge_worktree"))
+            append_nonempty_text(values, profile_payload.get("knowledge_repo_worktree"))
+            append_nonempty_text(values, profile_payload.get("knowledge_worktree"))
     return values
 
 
@@ -159,21 +159,16 @@ def configured_endpoint_values(payload: dict[str, Any]) -> dict[str, str]:
 
 def configured_out_dir_values(payload: dict[str, Any]) -> list[str]:
     values: list[str] = []
-
-    def add(value: Any) -> None:
-        if isinstance(value, str) and value.strip():
-            values.append(value.strip())
-
-    add(payload.get("out_dir"))
+    append_nonempty_text(values, payload.get("out_dir"))
     paths = payload.get("paths")
     if isinstance(paths, dict):
-        add(paths.get("out_dir"))
+        append_nonempty_text(values, paths.get("out_dir"))
     profiles = payload.get("profiles")
     profile = selected_profile(payload)
     if profile and isinstance(profiles, dict):
         profile_payload = profiles.get(profile)
         if isinstance(profile_payload, dict):
-            add(profile_payload.get("out_dir"))
+            append_nonempty_text(values, profile_payload.get("out_dir"))
     return values
 
 

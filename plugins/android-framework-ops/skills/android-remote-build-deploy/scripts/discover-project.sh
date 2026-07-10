@@ -14,8 +14,6 @@ Required:
 Optional:
   --ssh-user USER        SSH user when HOST is not already user@host.
   --output FILE          Write shell config to FILE instead of stdout.
-  --max-depth N          Reserved for compatibility. Lunch discovery is limited
-                         to root-level build scripts.
   --ignore-repo-config   Ignore remote .codex/build-push.config.sh and infer from source scripts only.
 
 Environment:
@@ -42,7 +40,6 @@ SSH_HOST=""
 SSH_USER=""
 REMOTE_ROOT=""
 OUTPUT=""
-MAX_DEPTH=5
 IGNORE_REPO_CONFIG=false
 
 while [[ $# -gt 0 ]]; do
@@ -51,7 +48,6 @@ while [[ $# -gt 0 ]]; do
     --ssh-user) SSH_USER="${2:-}"; shift 2 ;;
     --remote-root) REMOTE_ROOT="${2:-}"; shift 2 ;;
     --output) OUTPUT="${2:-}"; shift 2 ;;
-    --max-depth) MAX_DEPTH="${2:-}"; shift 2 ;;
     --ignore-repo-config) IGNORE_REPO_CONFIG=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown argument: $1" ;;

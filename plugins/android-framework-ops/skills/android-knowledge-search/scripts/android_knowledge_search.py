@@ -30,6 +30,7 @@ from knowledge_search.config import search_usage_root as configured_search_usage
 from knowledge_search.config import selected_member_alias
 from knowledge_search.formatting import compact_list, format_markdown
 from knowledge_search.local_index import load_rows, search
+from android_framework_ops.json_io import write_json
 
 
 REUSE_DECISIONS = ("reuse", "adapt", "reference_only", "not_applicable", "not_found", "unknown")
@@ -67,11 +68,6 @@ def usage_result(row: dict[str, Any]) -> dict[str, Any]:
         if value not in (None, "", []):
             payload[key] = value
     return payload
-
-
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def record_search_usage(

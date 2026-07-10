@@ -1,7 +1,7 @@
 {
   "name": "android-mac-ops",
-  "version": "1.0.5",
-  "description": "macOS platform layer for Android Framework source access and remote build/deploy.",
+  "version": "1.0.6",
+  "description": "macOS platform layer for Android Framework Samba/SMB source access.",
   "author": {
     "name": "Jinny Android Framework Team",
     "url": "https://github.com/jinny51"
@@ -17,15 +17,13 @@
     "smb",
     "cifs",
     "source-access",
-    "remote-build",
-    "adb",
     "codex"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Android macOS Ops",
-    "shortDescription": "Android Framework macOS 平台层：Samba 源码接入和远程构建部署",
-    "longDescription": "面向 macOS 环境的 Android Framework 平台层插件，负责 Samba/SMB 源码挂载恢复和远程构建部署。不包含平台无关的工作流编排逻辑；平台无关能力参见 android-framework-ops。",
+    "shortDescription": "Android Framework macOS Samba/SMB 源码接入",
+    "longDescription": "面向 macOS 环境的 Android Framework 平台插件，只负责原生 Samba/SMB 源码挂载恢复、Keychain 凭据引用和远程路径登记。远程构建与设备交付由 android-framework-ops 的共享 skill 负责。",
     "developerName": "Jinny Android Framework Team",
     "category": "Coding",
     "capabilities": [
@@ -34,8 +32,7 @@
       "Write"
     ],
     "defaultPrompt": [
-      "帮我在 macOS 上挂载 Android 服务器 Samba 源码",
-      "在 macOS 上构建并推送 Framework 修改"
+      "帮我在 macOS 上挂载 Android 服务器 Samba 源码"
     ],
     "brandColor": "#F59E0B",
     "screenshots": []

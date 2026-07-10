@@ -1,6 +1,6 @@
 ---
 name: android-framework-change-workflow
-description: "Use when implementing requirements, modifying, diagnosing, or verifying Android platform/framework code such as frameworks/base, system_server services, WindowManager, ActivityTaskManager, PackageManager, SystemUI, Launcher3 integration, input, resources/overlays, surfaces, boot/runtime services, or OEM/system-level behavior. Orchestrates requirement contracts, pre-change knowledge search, evidence-backed diagnosis, targeted instrumentation, scoped framework changes, build/deploy coordination, final acceptance verification, patch capture, incoming submission handoff, diagnostic log lifecycle cleanup, and concise reporting. Use android-wsl-ops for WSL source/build work and android-mac-ops for macOS source/build work."
+description: "Use when implementing requirements, modifying, diagnosing, or verifying Android platform/framework code such as frameworks/base, system_server services, WindowManager, ActivityTaskManager, PackageManager, SystemUI, Launcher3 integration, input, resources/overlays, surfaces, boot/runtime services, or OEM/system-level behavior. Orchestrates requirement contracts, pre-change knowledge search, evidence-backed diagnosis, targeted instrumentation, scoped framework changes, shared remote build/deploy, final acceptance verification, patch capture, incoming submission handoff, diagnostic log lifecycle cleanup, and concise reporting. Use the platform android-source-access skill for mounting and the core android-remote-build-deploy skill for WSL or macOS build delivery."
 ---
 
 # Android Framework Change Workflow
@@ -21,9 +21,9 @@ It coordinates with adjacent Android skills:
 
 - `android-knowledge-search` searches prior cases, platform variants, archived patches, search anchors, and validation evidence before re-analysis or re-implementation. Use it as the pre-analysis knowledge gate when the team knowledge repository is available.
 - `android-source-access` proves the source tree is mounted and usable; `android-remote-build-deploy` proves artifacts were built and delivered.
-- Build/deploy executors may use `android-remote-channel` internally for reusable SSH/tmux remote sessions; this workflow should still call the platform build/deploy executor rather than the channel directly.
+- `android-remote-build-deploy` may use `android-remote-channel` internally for reusable SSH/tmux sessions; this workflow should call the build/deploy skill rather than the channel directly.
 - `android-framework-patch-capture` turns an implemented or stage-worthy Framework feature into a feature README, repository-level patches, and evidence after this workflow has produced a concrete change. Use it before `android-framework-patch-intake` whenever a Framework change, failed attempt, or stage-worthy draft should be preserved.
-- `android-framework-patch-intake` turns the capture package into the single automatic intake channel: an `incoming` package. `android-knowledge-intake` remains the shared kernel and compatibility command entry; do not invent a second upload path.
+- `android-framework-patch-intake` turns the capture package into the single automatic intake channel: an `incoming` package. `android-knowledge-intake` is the shared kernel; do not invent a second upload path.
 - This skill proves the framework change satisfies the requirement or diagnosis outcome on device.
 
 ## Core Contract
@@ -159,9 +159,7 @@ Change with framework discipline:
 
 ## Gate 4: Build And Delivery
 
-Use the platform-appropriate build/deploy executor for remote build and push mechanics:
-
-- WSL: `android-remote-build-deploy`.
+Use the core `android-remote-build-deploy` skill for remote build and local push mechanics on WSL or macOS.
 
 Require it to return:
 

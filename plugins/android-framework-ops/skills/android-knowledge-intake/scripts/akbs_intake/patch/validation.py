@@ -6,7 +6,10 @@ from pathlib import Path
 import re
 from typing import Any, Callable, Pattern
 
-from .facts import patch_changed_lines, resource_keys_from_patch_text
+from android_framework_ops.patch_analysis import (
+    changed_lines as patch_changed_lines,
+    resource_keys_from_patch_text,
+)
 
 
 RequireFile = Callable[[Any, str], Path | None]
@@ -17,7 +20,6 @@ ValidatePatchReadme = Callable[[Path], list[str]]
 HasUncontrolledPatchAssetPrefix = Callable[[Any], bool]
 ValueValidator = Callable[[str], bool]
 TextFieldQualityErrors = Callable[[dict[str, Any]], list[str]]
-EvidencePayload = Callable[[dict[str, Any]], dict[str, Any]]
 ListStringValues = Callable[[Any], list[str]]
 UniqueStrings = Callable[[list[str]], list[str]]
 TemplateLeakErrors = Callable[..., list[str]]
@@ -233,7 +235,6 @@ def validate_framework_change_structure(
     text_field_quality_errors: TextFieldQualityErrors,
     is_valid_platform_value: ValueValidator,
     is_valid_android_version_value: ValueValidator,
-    legacy_patch_problem_kind: str,
     framework_required_evidence_kinds: set[str],
     field_correction_required_evidence_kinds: set[str],
     field_correction_forbidden_evidence_kinds: set[str],
@@ -298,8 +299,6 @@ def validate_framework_change_structure(
         evidence = read_referenced_json(package_dir, rel)
         if not isinstance(evidence, dict):
             continue
-        if evidence.get("kind") == legacy_patch_problem_kind:
-            errors.append(f"{rel} 使用了残留补丁问题证据类型；请改用 patch_problem_summary")
         if evidence.get("case_id") != manifest.get("case_id"):
             errors.append(f"{rel} evidence.case_id 必须等于 manifest.case_id")
         if evidence.get("variant_id") != manifest.get("variant_id"):
@@ -377,7 +376,6 @@ def validate_patch_ai_facts_and_diff(
     *,
     evidence_by_kind: dict[str, dict[str, Any]],
     is_field_correction: bool,
-    evidence_payload: EvidencePayload,
     list_string_values: ListStringValues,
     unique_strings: UniqueStrings,
     errors: list[str],
@@ -482,7 +480,7 @@ def validate_patch_template_leaks(
         )
 
 
-def _evidence_payload(evidence: dict[str, Any]) -> dict[str, Any]:
+def evidence_payload(evidence: dict[str, Any]) -> dict[str, Any]:
     payload = evidence.get("payload")
     return payload if isinstance(payload, dict) else evidence
 
@@ -490,7 +488,7 @@ def _evidence_payload(evidence: dict[str, Any]) -> dict[str, Any]:
 def patch_count_from_framework_package(patch_paths: list[Any], evidence_by_kind: dict[str, dict[str, Any]]) -> int:
     counts = [len(patch_paths)]
     patch_diff = evidence_by_kind.get("patch_diff_facts", {})
-    payload = _evidence_payload(patch_diff) if isinstance(patch_diff, dict) else {}
+    payload = evidence_payload(patch_diff) if isinstance(patch_diff, dict) else {}
     try:
         counts.append(int(payload.get("patch_count") or 0))
     except (TypeError, ValueError):
@@ -566,7 +564,7 @@ def patch_resource_keys_from_evidence(
 ) -> list[str]:
     keys: list[str] = []
     patch_diff = evidence_by_kind.get("patch_diff_facts", {})
-    payload = _evidence_payload(patch_diff) if isinstance(patch_diff, dict) else {}
+    payload = evidence_payload(patch_diff) if isinstance(patch_diff, dict) else {}
     keys.extend(list_string_values(payload.get("resource_keys")))
     patches = payload.get("patches")
     if isinstance(patches, list):

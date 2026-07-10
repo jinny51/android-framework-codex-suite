@@ -28,7 +28,7 @@ knowledge_repo_worktree = "$CODEX_HOME/worktrees/knowledge"
 git_user_name = "链路测试"
 git_user_email = "admin_alias@codex.local"
 
-# 普通成员不要填写 server_profile、submission_ssh_host、submission_command 或 knowledge_repo_url。
-# AKBS endpoint resolver 会提供上传入口和只读知识库入口；管理员/测试 override 应通过受控环境变量或管理员配置处理。
+# 普通成员配置只保存身份和本地路径。AKBS endpoint resolver 提供 HTTP 上传入口；
+# 管理员/测试 override 只通过受控环境变量处理。
 # AKBS HTTP 上传可由管理员/测试环境设置：
 # CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL=http://<akbs-host>:8088/akbs/api

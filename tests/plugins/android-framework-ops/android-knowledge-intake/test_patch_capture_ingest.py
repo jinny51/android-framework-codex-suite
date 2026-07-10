@@ -470,15 +470,15 @@ class PatchCaptureIngestTests(unittest.TestCase):
             "+++ b/device/product/system.prop\n"
             "@@ -1,5 +1,6 @@\n"
             " ro.product.csk.control.pkg=com.iflytek.xirimiddleware \\\n"
-            " ro.wifi.manufacturer=legacy\n"
-            " ro.wificlass=legacy\n"
+            " ro.wifi.manufacturer=existing\n"
+            " ro.wificlass=existing\n"
             "+persist.dlna.autostart=1\n"
             " debug.old.context=1\n"
             "diff --git a/res/values/strings.xml b/res/values/strings.xml\n"
             "--- a/res/values/strings.xml\n"
             "+++ b/res/values/strings.xml\n"
             "@@ -1,4 +1,5 @@\n"
-            " <string name=\"legacy_context_key\">Legacy</string>\n"
+            " <string name=\"unrelated_context_key\">Existing</string>\n"
             "+<string name=\"dlna_autostart_title\">DLNA autostart</string>\n"
         )
 
@@ -2409,7 +2409,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 self.assertTrue(payload["company_rule_match"])
                 self.assertIn(raw_project, " ".join(payload["raw_inputs"]))
 
-    def test_project_inference_normalizes_confirmed_legacy_project_alias(self) -> None:
+    def test_project_inference_normalizes_confirmed_project_alias(self) -> None:
         project, payload = intake.infer_project(
             "TVE8402",
             [],

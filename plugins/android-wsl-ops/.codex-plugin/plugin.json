@@ -1,7 +1,7 @@
 {
   "name": "android-wsl-ops",
-  "version": "1.0.4",
-  "description": "WSL platform layer for Android Framework source access and remote build/deploy.",
+  "version": "1.0.5",
+  "description": "WSL platform layer for Android Framework Samba/CIFS source access.",
   "author": {
     "name": "Jinny Android Framework Team",
     "url": "https://github.com/jinny51"
@@ -16,14 +16,13 @@
     "cifs",
     "samba",
     "source-access",
-    "remote-build",
     "codex"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Android WSL Ops",
-    "shortDescription": "WSL Android Framework 源码接入和远程构建部署",
-    "longDescription": "面向 WSL 环境的 Android Framework 平台层插件，负责 CIFS/Samba 源码挂载恢复和远程构建部署。依赖 android-framework-ops 提供的工作流、远程通道和知识系统。",
+    "shortDescription": "WSL Android Framework Samba/CIFS 源码接入",
+    "longDescription": "面向 WSL 环境的 Android Framework 平台插件，只负责 CIFS/Samba 源码挂载恢复和远程路径登记。远程构建与设备交付由 android-framework-ops 的共享 skill 负责。",
     "developerName": "Jinny Android Framework Team",
     "category": "Coding",
     "capabilities": [
@@ -32,8 +31,7 @@
       "Write"
     ],
     "defaultPrompt": [
-      "帮我在 WSL 中挂载 Android 服务器源码",
-      "在 WSL 中构建并推送 Framework 修改"
+      "帮我在 WSL 中挂载 Android 服务器源码"
     ],
     "brandColor": "#059669",
     "screenshots": []

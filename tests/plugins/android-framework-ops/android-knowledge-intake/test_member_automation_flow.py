@@ -20,9 +20,8 @@ from unittest.mock import patch
 
 SUITE_ROOT = Path(__file__).resolve().parents[4]
 INTAKE_SCRIPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "scripts" / "android_knowledge_intake.py"
-MIGRATE_CONFIG_SCRIPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "scripts" / "migrate_member_config.py"
 CAPTURE_SCRIPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-framework-patch-capture" / "scripts" / "capture_framework_patch.py"
-MIGRATION_PROMPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "references" / "member-migration-prompt.md"
+SETUP_PROMPT = SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "references" / "member-setup-prompt.md"
 MEMBER_BOUNDARY_DOCS = (
     SUITE_ROOT / "README.md",
     SUITE_ROOT / "plugins" / "android-framework-ops" / "README.md",
@@ -30,7 +29,7 @@ MEMBER_BOUNDARY_DOCS = (
     SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "agents" / "openai.yaml",
     SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "config.example.toml",
     SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "references" / "incoming-package-protocol.md",
-    MIGRATION_PROMPT,
+    SETUP_PROMPT,
     SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-framework-patch-capture" / "SKILL.md",
     SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-framework-patch-capture" / "references" / "package-contract.md",
     SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-search" / "SKILL.md",
@@ -207,49 +206,6 @@ def write_member_config(root: Path, knowledge_remote: Path, synthetic_data: bool
             f"""
             default_profile = "member01"
             incoming_schema_version = "1"
-
-            [paths]
-            out_dir = "{(root / "artifacts" / "android-knowledge-intake").as_posix()}"
-
-            [profiles.member01]
-            member_alias = "member01"
-            member_name = "成员甲"
-            role = "member"
-            allowed_modes = ["daily", "weekly", "patch"]
-            knowledge_repo_worktree = "{(root / "worktrees" / "knowledge").as_posix()}"
-            git_user_name = "成员甲"
-            git_user_email = "member01@example.invalid"
-            synthetic_data = {str(synthetic_data).lower()}
-            synthetic_item_count = "2"
-            """
-        ).strip()
-        + "\n",
-        encoding="utf-8",
-    )
-    env = os.environ.copy()
-    env["CODEX_HOME"] = str(codex_home)
-    env["CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"] = "1"
-    return env
-
-
-def write_legacy_test35_member_config(root: Path, synthetic_data: bool = False) -> dict[str, str]:
-    codex_home = root / "codex-home"
-    config_dir = codex_home / "report"
-    config_dir.mkdir(parents=True)
-    (config_dir / "config.toml").write_text(
-        textwrap.dedent(
-            f"""
-            default_profile = "member01"
-            incoming_schema_version = "1"
-            server_profile = "test35"
-
-            [submission]
-            method = "ssh"
-            ssh_host = "test35"
-            command = "/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit"
-
-            [knowledge]
-            repo_url = "test35:/home/test35/work/akbs/knowledge.git"
 
             [paths]
             out_dir = "{(root / "artifacts" / "android-knowledge-intake").as_posix()}"
@@ -484,9 +440,6 @@ class MemberAutomationFlowTests(unittest.TestCase):
             "提交到数据库仓库",
             "提交给数据库仓库",
             "提交数据库仓库",
-            "/home/test35/work/akbs/database-worktree/scripts/akbs-submit",
-            "git clone test35:/home/test35/work/akbs/database.git",
-            "git clone /home/test35/work/akbs/database.git",
         ]
         for term in forbidden:
             self.assertNotIn(term, combined)
@@ -494,36 +447,26 @@ class MemberAutomationFlowTests(unittest.TestCase):
         member_only_docs = (
             SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "SKILL.md",
             SUITE_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "config.example.toml",
-            MIGRATION_PROMPT,
+            SETUP_PROMPT,
             SUITE_ROOT / "docs" / "skills" / "android-framework-ops" / "android-knowledge-intake" / "README.md",
         )
         member_text = "\n".join(path.read_text(encoding="utf-8") for path in member_only_docs)
-        self.assertNotIn("database_repo_worktree", member_text)
-        self.assertNotIn("knowledge-database-", member_text)
         self.assertIn("server submission channel", member_text)
         self.assertIn("akbs-curation-maintainer", combined)
-        self.assertIn("周报包", member_text)
-        self.assertIn("不进入知识库仓库", member_text)
+        self.assertIn("Weekly packages are progress archives only", member_text)
+        self.assertIn("do not become knowledge materialization candidates", member_text)
 
-    def test_member_migration_prompt_covers_update_and_dual_repositories(self) -> None:
-        text = MIGRATION_PROMPT.read_text(encoding="utf-8")
+    def test_member_setup_prompt_covers_current_plugin_and_endpoint(self) -> None:
+        text = SETUP_PROMPT.read_text(encoding="utf-8")
 
         self.assertIn("首次启用提示词", text)
         self.assertIn("插件更新（plugin update）", text)
         self.assertIn("当前配置（current configuration）", text)
         self.assertIn("服务器上传入口（server upload endpoint）", text)
         self.assertIn("AKBS endpoint resolver", text)
-        self.assertNotIn("/home/test35/work/akbs/database-intake-worktree/scripts/akbs-submit", text)
-        self.assertNotIn("/home/test35/work/akbs/database-worktree/scripts/akbs-submit", text)
-        self.assertNotIn("test35:/home/test35/work/akbs/knowledge.git", text)
-        self.assertIn('git -C "$CODEX_HOME/worktrees/knowledge" pull --ff-only', text)
-        self.assertIn('git -C "$CODEX_HOME/worktrees/knowledge" pull --ff-only', text)
         self.assertIn("doctor --strict --check-remote", text)
-        self.assertNotIn("database_repo_worktree", text)
-        self.assertNotIn("remote.git", text)
-        self.assertNotIn("config-migrate", text)
 
-    def test_default_endpoint_targets_new_akbs_http_upload_api(self) -> None:
+    def test_default_endpoint_targets_current_akbs_http_upload_api(self) -> None:
         module = load_intake_module()
 
         endpoint = module.resolve_akbs_endpoint({})
@@ -533,9 +476,8 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertNotIn("submission_method", endpoint)
         self.assertNotIn("submission_ssh_host", endpoint)
         self.assertNotIn("submission_command", endpoint)
-        self.assertEqual(endpoint["knowledge_repo_url"], "")
 
-    def test_http_submission_posts_tarball_to_new_akbs_upload_api(self) -> None:
+    def test_http_submission_posts_tarball_to_current_akbs_upload_api(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             package_dir = root / "package"
@@ -968,49 +910,6 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertIn("worktrees/knowledge", result["knowledge_repo_worktree"])
             self.assertNotIn("submission_repo_url", result)
             self.assertNotIn("approved_repo_url", result)
-
-    def test_doctor_migrates_legacy_test35_endpoint_config_without_changing_identity(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            env = write_legacy_test35_member_config(root)
-
-            result = run_json(
-                [sys.executable, str(INTAKE_SCRIPT), "--profile", "member01", "doctor", "--strict"],
-                SUITE_ROOT,
-                env,
-                check=False,
-            )
-
-            self.assertEqual(result["member_alias"], "member01")
-            self.assertEqual(result["member_name"], "成员甲")
-            self.assertEqual(result["akbs_endpoint"]["source"], "default")
-            self.assertEqual(result["endpoint_migration"]["status"], "MIGRATED_IN_MEMORY")
-            self.assertIn("server_profile", result["endpoint_migration"]["legacy_fields"])
-            self.assertIn("submission_command", result["endpoint_migration"]["legacy_fields"])
-            self.assertIn("knowledge_repo_url", result["endpoint_migration"]["legacy_fields"])
-            self.assertTrue(any("已废弃的 test35" in item for item in result["strict"]["warnings"]))
-
-    def test_migrate_member_config_removes_legacy_endpoint_fields(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            env = write_legacy_test35_member_config(root)
-            config_path = Path(env["CODEX_HOME"]) / "report" / "config.toml"
-
-            result = run_json(
-                [sys.executable, str(MIGRATE_CONFIG_SCRIPT), "--config", str(config_path)],
-                SUITE_ROOT,
-                env,
-            )
-
-            self.assertEqual(result["status"], "MIGRATED")
-            self.assertTrue(Path(result["backup_path"]).is_file())
-            migrated = config_path.read_text(encoding="utf-8")
-            self.assertNotIn("server_profile", migrated)
-            self.assertNotIn("[submission]", migrated)
-            self.assertNotIn("[knowledge]", migrated)
-            self.assertNotIn("test35", migrated)
-            self.assertIn("[profiles.member01]", migrated)
-            self.assertIn('member_alias = "member01"', migrated)
 
     def test_daily_uses_remote_project_anchor_and_filters_codex_noise(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

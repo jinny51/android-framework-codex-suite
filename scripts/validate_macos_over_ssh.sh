@@ -13,7 +13,10 @@ trap cleanup EXIT
 (
   cd "$repo_root"
   rsync -aR \
+    plugins/android-framework-ops/lib \
+    plugins/android-framework-ops/skills/android-remote-build-deploy \
     plugins/android-mac-ops \
+    tests/plugins/android-framework-ops/android-remote-build-deploy \
     tests/plugins/android-mac-ops \
     docs/skills/android-mac-ops \
     "$host:$remote_tmp/"
@@ -31,13 +34,20 @@ printf 'MACOS_BASH=%s\n' "$(/bin/bash --version | sed -n '1p')"
 while IFS= read -r script; do
   /bin/bash -n "$script"
 done <<EOF
-$(find "$root/plugins/android-mac-ops" -type f -name '*.sh' -print | sort)
+$(find "$root/plugins/android-mac-ops" "$root/plugins/android-framework-ops/skills/android-remote-build-deploy" -type f -name '*.sh' -print | sort)
 EOF
 
+/usr/bin/python3 -m compileall -q "$root/plugins/android-framework-ops/lib"
+/usr/bin/python3 -m compileall -q "$root/plugins/android-framework-ops/skills/android-remote-build-deploy"
+/usr/bin/python3 -m compileall -q "$root/tests/plugins/android-framework-ops/android-remote-build-deploy"
 /usr/bin/python3 -m compileall -q "$root/tests/plugins/android-mac-ops"
 cd "$root"
 /usr/bin/python3 -m unittest discover \
   -s tests/plugins/android-mac-ops/android-source-access \
+  -p 'test_*.py' \
+  -v
+/usr/bin/python3 -m unittest discover \
+  -s tests/plugins/android-framework-ops/android-remote-build-deploy \
   -p 'test_*.py' \
   -v
 

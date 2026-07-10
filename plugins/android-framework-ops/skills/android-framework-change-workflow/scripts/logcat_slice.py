@@ -9,6 +9,13 @@ import sys
 from pathlib import Path
 
 
+PLUGIN_LIB = Path(__file__).resolve().parents[3] / "lib"
+if str(PLUGIN_LIB) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_LIB))
+
+from android_framework_ops.text_io import read_text_lines as read_lines
+
+
 LOG_RE = re.compile(
     r"^(?P<date>\d{2}-\d{2})\s+"
     r"(?P<time>\d{2}:\d{2}:\d{2}\.\d+)\s+"
@@ -31,12 +38,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-i", "--ignore-case", action="store_true", help="Case-insensitive keyword matching")
     parser.add_argument("--regex", action="store_true", help="Treat keywords as regular expressions")
     return parser.parse_args()
-
-
-def read_lines(path: str) -> list[str]:
-    if path == "-":
-        return sys.stdin.read().splitlines()
-    return Path(path).read_text(errors="replace").splitlines()
 
 
 def line_time_key(line: str) -> str | None:

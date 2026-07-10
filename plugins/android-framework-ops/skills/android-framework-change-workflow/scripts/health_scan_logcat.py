@@ -10,6 +10,13 @@ from collections import Counter
 from pathlib import Path
 
 
+PLUGIN_LIB = Path(__file__).resolve().parents[3] / "lib"
+if str(PLUGIN_LIB) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_LIB))
+
+from android_framework_ops.text_io import read_text_lines as read_lines
+
+
 PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("fatal_exception", re.compile(r"FATAL EXCEPTION|AndroidRuntime", re.I)),
     ("system_server_death", re.compile(r"system_server.*(died|crash|fatal)|SystemServer.*FATAL", re.I)),
@@ -46,12 +53,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-lines", type=int, default=5, help="Example lines per category")
     parser.add_argument("--category", action="append", help="Only report a category")
     return parser.parse_args()
-
-
-def read_lines(path: str) -> list[str]:
-    if path == "-":
-        return sys.stdin.read().splitlines()
-    return Path(path).read_text(errors="replace").splitlines()
 
 
 def main() -> int:

@@ -27,7 +27,7 @@ Patch capture uses the plugin rules module (`android_framework_ops.knowledge_rul
 - `android-framework-patch-capture`: owns feature README, repository-level patch, and evidence packaging for existing changes.
 - `android-framework-patch-intake`: owns framework_change incoming package submission through the server submission channel.
 - `android-daily-report-intake` and `android-weekly-report-intake`: own daily and weekly report incoming packages.
-- `android-knowledge-intake`: owns shared kernel, setup, doctor, plugin update checks, and compatibility command entry.
+- `android-knowledge-intake`: owns the shared kernel, setup, doctor, current configuration, and plugin update checks.
 
 ## Quick Command
 
@@ -142,7 +142,7 @@ The generated feature README should contain facts first. Do not overclaim reuse,
 - remote build server, remote source path, artifact path, artifact SHA1, local transfer, local adb serial, and device delivery action when the member workflow spans a remote build server and a local device
 - risk and rollback notes
 
-When `android-remote-build-deploy/scripts/push-artifacts.sh` has written `.codex/evidence/latest-build-delivery.json` under a source root, `capture_framework_patch.py` reads it automatically and merges it into `verification-result.json`. Manual `--remote-build-*`, `--artifact-transfer`, `--local-artifact`, and `--adb-*` arguments remain available for exceptional cases or historical material.
+When `android-remote-build-deploy/scripts/push_artifacts.py` has written `.codex/evidence/latest-build-delivery.json` under a source root, `capture_framework_patch.py` reads it automatically and merges it into `verification-result.json`. Manual `--remote-build-*`, `--artifact-transfer`, `--local-artifact`, and `--adb-*` arguments remain available when automatic evidence cannot be collected.
 
 `validated`, `candidate`, `draft`, `failed`, `blocked`, and platform labels are useful hints, not final truth. Future `android-framework-change-workflow` or knowledge-search skills should dynamically judge applicability from the stored facts.
 

@@ -55,7 +55,7 @@ Options:
 
 Set SERVER_PASSWORD before running when the user supplied one bare/default
 password. Each password role prefers an explicit role env, then its saved typed
-fallback, then SERVER_PASSWORD as the compatibility default.
+fallback, then SERVER_PASSWORD as the shared default.
 USAGE
 }
 

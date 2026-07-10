@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from akbs_intake.io_utils import materials_rel, sha1_file
-from akbs_intake.patch.facts import AUTHOR_DATE_RE, BANNED_LOG_PATTERNS
+from android_framework_ops.patch_analysis import AUTHOR_DATE_RE, BANNED_LOG_PATTERNS
 from akbs_intake.report_sessions import ymd
 
 
@@ -168,7 +168,7 @@ def copy_patch_assets(
                 "captured_by": "android-knowledge-intake",
                 "coding_standard_check": {
                     "required": True,
-                    "mode": "legacy_patch_gate",
+                    "mode": "intake_patch_gate",
                     "result": "UNKNOWN",
                 },
                 "note": "缺少原始readme，已生成模板，提交前请补充" if generated_readme else note,

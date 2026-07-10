@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import re
+from pathlib import Path
+from typing import Any
 
 
 USB_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])usb(?![A-Za-z0-9])", re.I)
@@ -8,6 +11,95 @@ USB_CAMEL_PATH_RE = re.compile(r"(?:^|[/_.-])Usb(?=[A-Z0-9])")
 XML_RESOURCE_NAME_RE = re.compile(
     r"<(?:string|string-array|array|plurals|bool|integer|color|dimen|style)\b[^>]*\bname=[\"']([^\"']+)[\"']"
 )
+AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
+BANNED_LOG_PATTERNS = (
+    "Log.v(",
+    "Log.d(",
+    "Log.i(",
+    "Log.w(",
+    "Log.e(",
+    "Slog.v(",
+    "Slog.d(",
+    "Slog.i(",
+    "Slog.w(",
+    "Slog.e(",
+    "Slog.wtf(",
+)
+
+
+def sha1_text(value: str) -> str:
+    return hashlib.sha1(value.encode("utf-8", errors="replace")).hexdigest()
+
+
+def changed_files_from_diff(diff_text: str) -> list[str]:
+    files: list[str] = []
+    for match in re.finditer(r"^diff --git a/(.+?) b/(.+)$", diff_text, re.M):
+        old, new = match.group(1), match.group(2)
+        path = new if new != "/dev/null" else old
+        if path not in files:
+            files.append(path)
+    return files
+
+
+def added_lines(diff_text: str) -> list[str]:
+    return [
+        line[1:]
+        for line in diff_text.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    ]
+
+
+def changed_lines(diff_text: str) -> list[str]:
+    return [
+        line[1:]
+        for line in diff_text.splitlines()
+        if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
+    ]
+
+
+def symbols_from_diff(diff_text: str) -> list[str]:
+    symbols: list[str] = []
+    current_class = ""
+    for raw in diff_text.splitlines():
+        if raw.startswith("+++ "):
+            path = raw.removeprefix("+++ ").strip()
+            if path.startswith("b/"):
+                path = path[2:]
+            current_class = Path(path).stem if path and path != "/dev/null" else ""
+            continue
+        if not raw.startswith("@@") or not current_class:
+            continue
+        match = re.match(r"^@@ .* @@\s*(.*)$", raw)
+        context = match.group(1).strip() if match else ""
+        methods = re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", context)
+        method = next(
+            (item for item in reversed(methods) if item not in {"if", "for", "while", "switch"}),
+            "",
+        )
+        if method:
+            symbols.append(f"{current_class}.{method}")
+    return sorted(set(symbols))
+
+
+def facts_from_diff(diff_text: str) -> dict[str, Any]:
+    files = changed_files_from_diff(diff_text)
+    added = "\n".join(added_lines(diff_text))
+    changed = "\n".join(changed_lines(diff_text))
+    return {
+        "content_sha1": sha1_text(diff_text),
+        "modified_files": files,
+        "symbols": symbols_from_diff(diff_text),
+        "system_properties": sorted(
+            set(re.findall(r"\b(?:persist|ro|sys|debug|vendor)\.[A-Za-z0-9_.-]+", changed))
+        ),
+        "settings_keys": sorted(
+            set(re.findall(r"Settings\.(?:System|Secure|Global)\.([A-Za-z0-9_.-]+)", changed))
+        ),
+        "resource_keys": resource_keys_from_patch_text(changed),
+        "framework_log_keys": sorted(set(re.findall(r"FrameworkLog\.([A-Za-z0-9_]+)", changed))),
+        "banned_log_hits": sorted(pattern for pattern in BANNED_LOG_PATTERNS if pattern in added),
+        "author_date_marker_present": bool(AUTHOR_DATE_RE.search(diff_text)),
+    }
 
 
 def resource_keys_from_patch_text(text: str) -> list[str]:

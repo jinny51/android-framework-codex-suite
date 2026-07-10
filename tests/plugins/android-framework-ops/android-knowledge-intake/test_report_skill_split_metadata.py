@@ -18,7 +18,7 @@ class ReportSkillSplitMetadataTests(unittest.TestCase):
         plugin_json = json.loads((REPO_ROOT / "plugins" / "android-framework-ops" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
         plugin_readme = (REPO_ROOT / "plugins" / "android-framework-ops" / "README.md").read_text(encoding="utf-8")
 
-        self.assertEqual(plugin_json["version"], "1.0.127")
+        self.assertEqual(plugin_json["version"], "1.0.128")
         for skill_name, business_label in expected.items():
             skill_dir = REPO_ROOT / "plugins" / "android-framework-ops" / "skills" / skill_name
             self.assertTrue((skill_dir / "SKILL.md").is_file(), skill_name)
@@ -33,9 +33,8 @@ class ReportSkillSplitMetadataTests(unittest.TestCase):
             self.assertIn(business_label, skill_text)
 
         intake_text = (REPO_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-knowledge-intake" / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("兼容命令入口", intake_text)
-        self.assertNotIn("legacy command", intake_text)
         self.assertIn("共享内核", intake_text)
+        self.assertIn("当前配置", intake_text)
         self.assertIn("android-daily-report-intake", intake_text)
         self.assertIn("android-weekly-report-intake", intake_text)
         self.assertIn("android-framework-patch-intake", intake_text)

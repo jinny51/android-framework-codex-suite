@@ -46,7 +46,7 @@ python3 "scripts/capture_framework_patch.py" \
 
 `--platform` 只接受受控平台令牌：`mtk<Android版本>`、`rk<Android版本>`、`unisoc<Android版本>`，历史 `sprd`/`u` 别名会规范化为 `unisoc`。`android14`、`app15` 这类泛化令牌会被拒绝，因为它们不能证明平台（platform）。
 
-如果构建交付流程已经由 `android-remote-build-deploy/scripts/push-artifacts.sh` 写出 `<source-root>/.codex/evidence/latest-build-delivery.json`，补丁采集会自动读取远端构建和本机 adb 证据，并合并进 `verification-result.json`。手工 `--remote-build-*` 和 `--adb-*` 参数只用于历史材料或异常路径补录。
+如果构建交付流程已经由 `android-remote-build-deploy/scripts/push_artifacts.py` 写出 `<source-root>/.codex/evidence/latest-build-delivery.json`，补丁采集会自动读取远端构建和本机 adb 证据，并合并进 `verification-result.json`。手工 `--remote-build-*` 和 `--adb-*` 参数只在自动证据无法取得时使用。
 
 补丁采集会过滤只有文件模式元数据的 diff 段，例如 `old mode 100755` / `new mode 100644`。这类变化通常是 checkout 或 chmod 噪声，不会单独生成补丁包；如果同一仓库还有真实代码改动，会保留代码改动并剔除纯权限段。只有当可执行权限本身是功能的一部分，并且有内容修改、风险说明和验证证据时，才应作为功能补丁保留。
 

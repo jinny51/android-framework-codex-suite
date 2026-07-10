@@ -11,6 +11,7 @@ except ImportError:  # pragma: no cover - direct script import fallback
     from akbs_intake.reports.common import week_bounds, ymd
 
 from android_framework_ops.knowledge_rules import find_company_project
+from android_framework_ops.json_io import write_json
 from akbs_intake.report_sessions import (
     MISSING_REPORT_CUSTOMER,
     MISSING_REPORT_PROJECT,
@@ -30,12 +31,6 @@ def compact_text(text: str, limit: int) -> str:
 def materials_rel(*parts: str) -> str:
     return "/".join(("materials", *parts))
 
-
-def write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    import json
-
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 def progress_bucket(progress: str) -> str:
     text = str(progress or "")

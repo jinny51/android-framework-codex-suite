@@ -1,6 +1,6 @@
 # Incoming Package Protocol
 
-Member-side Codex creates only `incoming` packages and sends them through the AKBS HTTP API. It does not clone, pull, directly search, or push the database repository, and it does not write final knowledge views such as reports, patches, index, or site. The HTTP API receives packages into the server-side AKBS facts database and exposes them to the curation flow. Deprecated SSH/intake-branch submission fields are configuration residue only and must be migrated away, not used as fallback.
+Member-side Codex creates only `incoming` packages and sends them through the AKBS HTTP API. It does not clone, pull, directly search, or push a database repository, and it does not write final knowledge views such as reports, patches, index, or site. The HTTP API stores accepted packages in active SQLite and exposes them to the curation flow. Member configuration contains only the current HTTP endpoint contract.
 
 Only the user's local `akbs-curation-maintainer` skill and the AI knowledge loop can decide whether and how an uploaded package enters the knowledge repository.
 
@@ -297,7 +297,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.127"
+    "plugin_version": "1.0.128"
   }
 }
 ```
@@ -306,13 +306,13 @@ Manifest excerpt:
 
 `validated` requires `verification_result.payload.result = PASS`.
 
-## Source Version Compatibility
+## Source Capability Versions
 
-Generation-time plugin freshness and historical package compatibility are separate rules.
+Generation-time plugin freshness and package capability validation are separate rules.
 
 Member-side generation or upload must stop when `materials/evidence/source.json` records `plugin_version_check.blocking=true` or `plugin_version_check.status=SESSION_CACHE_STALE`. A stale Codex session cannot be treated as a valid package generator.
 
-Admin-side processing of older incoming packages must not require `plugin_version` or `skill_version` to equal the latest plugin version at processing time. It should call the shared deterministic rules layer:
+Admin-side processing validates the capabilities required by each package instead of requiring `plugin_version` or `skill_version` to equal the latest plugin version at processing time. It calls the shared deterministic rules layer:
 
 ```python
 source_version_compatibility_matrix()
@@ -331,7 +331,7 @@ report_view_v2 = 1.0.63
 lightweight_supplement_v1 = 1.0.65
 ```
 
-The required capabilities come from package contents, not from the current plugin release. For example, a package that only needs source version evidence can remain compatible at `1.0.60`; a patch package with `patch_view.json` and `patch_ai_facts.json` requires `1.0.62`; a package relying on split report skills or report view v2 requires `1.0.63`; a field correction supplement requires `1.0.65`.
+The required capabilities come from package contents, not from the current plugin release. For example, a package that only needs source version evidence requires at least `1.0.60`; a patch package with `patch_view.json` and `patch_ai_facts.json` requires `1.0.62`; a package using split report skills or report view v2 requires `1.0.63`; a field correction supplement requires `1.0.65`.
 
 Codex normal development should carry pre-change knowledge search evidence in `materials/evidence/search_before_change.json`. If no reusable knowledge was found, record the explicit search result as `not_found` instead of omitting the evidence. When pre-change search did not really happen, `validated` still means the verification evidence passed; preserve `payload.searched = false`, warn locally, and let admin-side curation perform post-change overlap check without awarding search-loop reuse score. Manual, external, historical, mixed, or unknown implementation origin must not fabricate pre-change search and can still carry verification and patch facts for later admin-side curation.
 

@@ -106,7 +106,7 @@ if find "$repo_root/plugins/android-framework-ops/skills" -mindepth 1 -maxdepth 
 fi
 
 if find "$repo_root/plugins/android-wsl-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-wsl-*' | grep -q .; then
-  echo "WSL platform skills should use current names such as android-source-access and android-remote-build-deploy" >&2
+  echo "WSL platform skills should use current platform-neutral names such as android-source-access" >&2
   exit 1
 fi
 
@@ -121,9 +121,14 @@ if repo_search "android-wsl-source-access|android-wsl-remote-build-deploy|androi
   exit 1
 fi
 
+if find "$repo_root/plugins/android-wsl-ops/skills" "$repo_root/plugins/android-mac-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-remote-build-deploy' | grep -q .; then
+  echo "android-remote-build-deploy must have one platform-neutral implementation in android-framework-ops" >&2
+  exit 1
+fi
+
 if repo_search 'WSL source/build skills from android-framework-ops|通用源码接入、构建、推送和验收流程；这些属于 `android-framework-ops`' "$repo_root/plugins" "$repo_root/docs" >/tmp/akbs-plugin-layer-errors.txt; then
   cat /tmp/akbs-plugin-layer-errors.txt >&2
-  echo "platform source/build responsibilities must stay in android-wsl-ops or android-mac-ops" >&2
+  echo "platform source access stays in android-wsl-ops or android-mac-ops; shared build/deploy stays in android-framework-ops" >&2
   exit 1
 fi
 

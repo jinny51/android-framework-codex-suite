@@ -105,7 +105,6 @@ FIELD_CORRECTION_FORBIDDEN_EVIDENCE_KINDS = {
     "search_before_change",
 }
 FRAMEWORK_OPTIONAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
-LEGACY_PATCH_PROBLEM_KIND = "patch_" + "problem_" + "inference"
 DATE_KEY_RE = re.compile(r"^\d{8}$")
 DATE_DISPLAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RUN_ID_RE = re.compile(r"^\d{8}-\d{6}(-[A-Za-z0-9_.-]+)?$")
@@ -186,37 +185,27 @@ def plugin_version_gate_check(config: dict[str, str] | None = None, fetch: bool 
     return gate
 
 
-def synthetic_mode(config: dict[str, str]) -> bool:
-    return parse_bool(config.get("synthetic_data", "false"))
-
-
 from akbs_intake.config import (  # noqa: E402
     AKBS_ENDPOINT_DEFAULTS,
     AKBS_ENDPOINT_ENV_PREFIXES,
     CONFIG_DEFAULTS,
-    DEFAULT_KNOWLEDGE_REPO_URL,
     DEFAULT_SUBMISSION_API_BASE_URL,
     DEFAULT_SUBMISSION_API_TOKEN,
     DEFAULT_SUBMISSION_SESSION_COOKIE,
     ENV_PREFIXES,
     INCOMING_SCHEMA_VERSION,
-    LEGACY_TEST35_ENDPOINT_VALUES,
     akbs_endpoint_env_value,
     allowed_modes,
     apply_env_overrides,
     artifact_path_guard_error,
-    configured_endpoint_fields,
     default_codex_home,
     enforce_mode_allowed,
-    endpoint_migration_report,
     expanded_path,
     find_project_report_config,
     flatten_config_payload,
-    knowledge_repo_url,
     knowledge_repo_worktree,
     load_config,
     local_now,
-    parse_bool,
     parse_date_arg,
     parse_simple_toml,
     parse_toml_scalar,
@@ -278,7 +267,6 @@ from akbs_intake.patch.supplement import (  # noqa: E402
 from akbs_intake.doctor import (  # noqa: E402
     doctor as _intake_doctor,
     doctor_strict_checks as _intake_doctor_strict_checks,
-    git_run as _intake_git_run,
     latest_pending as _intake_latest_pending,
     nearest_existing_parent,
 )
@@ -306,11 +294,6 @@ def discover_patches(config: dict[str, str], sessions: list[SessionWork], start:
         git_branch_or_name=git_branch_or_name,
         patch_info_factory=lambda path, name, project: PatchInfo(path=path, name=name, project=project),
     )
-
-
-def evidence_payload(evidence: dict[str, Any]) -> dict[str, Any]:
-    payload = evidence.get("payload")
-    return payload if isinstance(payload, dict) else evidence
 
 
 from akbs_intake import validation as _validation  # noqa: E402
@@ -529,7 +512,6 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             text_field_quality_errors=text_field_quality_errors,
             is_valid_platform_value=is_valid_platform_value,
             is_valid_android_version_value=is_valid_android_version_value,
-            legacy_patch_problem_kind=LEGACY_PATCH_PROBLEM_KIND,
             framework_required_evidence_kinds=FRAMEWORK_REQUIRED_EVIDENCE_KINDS,
             field_correction_required_evidence_kinds=FIELD_CORRECTION_REQUIRED_EVIDENCE_KINDS,
             field_correction_forbidden_evidence_kinds=FIELD_CORRECTION_FORBIDDEN_EVIDENCE_KINDS,
@@ -543,7 +525,6 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         ai_context = validate_patch_ai_facts_and_diff(
             evidence_by_kind=evidence_by_kind,
             is_field_correction=is_field_correction,
-            evidence_payload=evidence_payload,
             list_string_values=list_string_values,
             unique_strings=unique_strings,
             errors=errors,
@@ -714,10 +695,6 @@ def prepare_patch_package(
         write_package_source_fn=write_package_source,
         plugin_install_metadata_fn=plugin_install_metadata,
     )
-
-
-def git_run(repo: Path, args: list[str], check: bool = True) -> subprocess.CompletedProcess[str]:
-    return _intake_git_run(repo, args, run, check=check)
 
 
 def submit_package(package_dir: Path, config: dict[str, str]) -> dict[str, Any]:

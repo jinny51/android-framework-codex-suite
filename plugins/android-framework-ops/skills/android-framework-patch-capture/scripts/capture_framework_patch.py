@@ -29,12 +29,21 @@ from android_framework_ops.knowledge_rules import (
     template_leak_errors,
 )
 from android_framework_ops.artifact_paths import require_safe_artifact_path
+from android_framework_ops.json_io import write_json
 from android_framework_ops.patch_analysis import (
+    BANNED_LOG_PATTERNS,
+    added_lines,
+    changed_files_from_diff,
+    changed_lines,
+    facts_from_diff,
     modules_from_files,
+    resource_keys_from_patch_text,
     semantic_flags,
     semantic_keywords,
     semantic_problem_solution,
     semantic_risk_areas,
+    sha1_text,
+    symbols_from_diff,
 )
 from android_framework_ops.project_registry import source_access_registry_clues as registry_source_access_registry_clues
 
@@ -67,12 +76,7 @@ class RepositoryCapture:
 
 
 from patch_capture.git_diff import (  # noqa: E402
-    BANNED_LOG_PATTERNS,
-    added_lines,
-    changed_files_from_diff,
-    changed_lines,
     common_parent,
-    facts_from_diff,
     filter_mode_only_diff_sections,
     git_metadata,
     git_root,
@@ -80,9 +84,7 @@ from patch_capture.git_diff import (  # noqa: E402
     infer_repo_path_from_root,
     mode_only_diff_path,
     prefixed_files,
-    resource_keys_from_patch_text,
     run,
-    sha1_text,
     slug,
     split_diff_sections,
     unique_preserve,
@@ -258,11 +260,6 @@ def project_inference_payload(
         "recognition_scope": "TVD/TVE/TVA/TVI",
         "company_rule_match": project != "unknown",
     }
-
-
-def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -557,27 +554,6 @@ def validate_patch_asset_names(captures: list[RepositoryCapture]) -> list[str]:
         + (f"：{names}" if names else "")
         + "。前缀必须是合法项目名（project）或 mtk/rk/unisoc 受控平台 Android 版本前缀。"
     ]
-
-
-def symbols_from_diff(diff_text: str) -> list[str]:
-    symbols: list[str] = []
-    current_class = ""
-    for raw in diff_text.splitlines():
-        if raw.startswith("+++ "):
-            path = raw.removeprefix("+++ ").strip()
-            if path.startswith("b/"):
-                path = path[2:]
-            current_class = Path(path).stem if path and path != "/dev/null" else ""
-            continue
-        if not raw.startswith("@@") or not current_class:
-            continue
-        match = re.match(r"^@@ .* @@\s*(.*)$", raw)
-        context = match.group(1).strip() if match else ""
-        methods = re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(", context)
-        method = next((item for item in reversed(methods) if item not in {"if", "for", "while", "switch"}), "")
-        if method:
-            symbols.append(f"{current_class}.{method}")
-    return sorted(set(symbols))
 
 
 def validate_verification_for_status(args: argparse.Namespace, payload: dict[str, Any]) -> list[str]:
