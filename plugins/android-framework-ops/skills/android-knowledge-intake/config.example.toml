@@ -28,9 +28,7 @@ knowledge_repo_worktree = "$CODEX_HOME/worktrees/knowledge"
 git_user_name = "链路测试"
 git_user_email = "admin_alias@codex.local"
 
-# 普通成员 TOML 只保存身份和本地路径，绝不能写 token。AKBS endpoint resolver 提供 HTTP 上传入口。
-# 每位成员必须通过受保护的进程环境显式配置安全上传 token；缺失时 doctor 和上传会在本地失败。
-# 不要把 token 写入 TOML、Git、命令行、日志或聊天记录。
+# 普通成员 TOML 只保存身份和本地路径。AKBS endpoint resolver 提供 HTTP 上传入口。
+# 成员请求只发送 member_alias；服务端根据固定工作站来源 IP 验证身份。
 # AKBS HTTP 上传环境配置：
 # CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL=http://<akbs-host>:8088/akbs/api
-# CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_TOKEN=<由受保护配置通道注入，不要在此填写>

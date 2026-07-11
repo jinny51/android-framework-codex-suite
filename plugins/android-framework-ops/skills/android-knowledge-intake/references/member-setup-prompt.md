@@ -9,7 +9,7 @@
 - 全程用中文说明；英文定义放在中文后面的括号中。
 - 只向我确认 member_alias、member_name 和 Git 用户名/邮箱。
 - 成员上传使用 AKBS HTTP API，由 AKBS endpoint resolver 提供入口；不要让我维护服务器名、服务器路径、上传脚本或数据库地址。
-- 上传认证只使用管理员通过受保护进程环境注入的安全 token。不要询问、读取、显示或把 token 写入 TOML、Git、命令行、日志、JSON、Markdown、聊天记录。
+- 上传、搜索和合并确认只发送 member_alias；AKBS 服务端根据这台固定工作站的来源 IP 验证身份。不要配置、保存或显示上传 token，也不要发送 cookie 或客户端 IP 声明。
 - 知识搜索优先调用 AKBS API；本地知识工作树只作为已经存在时可用的离线兜底。
 
 请按顺序执行：
@@ -47,7 +47,7 @@
 4. 找到当前 android-knowledge-intake skill 中的脚本：
    scripts/android_knowledge_intake.py
 
-5. 确认受保护环境已经提供 `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_TOKEN`。只报告 `configured/missing` 和来源类型，不显示值；若缺失，停止并让管理员通过既有受保护通道完成配置，不得拿 member_alias 代替。
+5. 检查 member_alias 已填写且不是占位值。插件会在发出 HTTP 请求前拒绝缺失身份；无需配置 token。
 
 6. 检查服务器上传入口（server upload endpoint）并运行健康检查：
    python3 "<android_knowledge_intake.py>" --profile <member_alias> doctor --strict --check-remote
@@ -60,7 +60,7 @@
 - 插件安装版本和当前会话缓存版本
 - 当前配置写入状态
 - AKBS HTTP 上传入口状态
-- 安全上传 token 的 configured/missing、来源类型和迁移准备状态（不含值）
+- 固定 IP 身份状态（member_alias 已配置；服务器按来源 IP 验证）
 - 可选本地离线搜索路径状态
 - doctor --strict --check-remote 结果
 ```

@@ -2,13 +2,13 @@
 
 ## Data Sources
 
-Default member search first calls the AKBS member hybrid search endpoint:
+Default member search first calls the AKBS member search endpoint:
 
 ```text
 GET /akbs/api/member/knowledge-search?q=<query>&limit=<limit>
 ```
 
-The request must include `X-AKBS-User=<member_alias>` and `X-AKBS-Role=member`. The endpoint comes from the AKBS endpoint resolver defaults or controlled admin/test overrides such as `CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL` and `CODEX_REPORT_AKBS_ENDPOINT_API_BASE_URL`; ordinary member profiles must not require hard-coded `test35`, server paths, submit commands, or database repository paths.
+The request includes `X-AKBS-User=<member_alias>` and standard content-negotiation/type headers only. The endpoint comes from the AKBS endpoint resolver defaults or controlled admin/test overrides such as `CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL` and `CODEX_REPORT_AKBS_ENDPOINT_API_BASE_URL`; ordinary member profiles must not require hard-coded `test35`, server paths, submit commands, or database repository paths. The server verifies the fixed workstation source IP. Never send role, token, cookie, or client-IP claims.
 
 When the endpoint is unavailable, unauthorized, times out, or returns an incompatible response, search falls back to generated JSONL indexes from the knowledge repository worktree:
 
@@ -149,12 +149,12 @@ Markdown output is for humans and Codex final reports. JSON output is for other 
 Every output includes:
 
 ```text
-source=server_hybrid | local_jsonl_fallback
-search_mode=hybrid | local_jsonl
+source=server_api | local_jsonl_fallback
+search_mode=<server-returned mode> | local_jsonl
 fallback_reason=<reason when fallback happened>
 ```
 
-Server hybrid results must preserve `reuse_grade`, `matched_channels`, `matched_anchors`, `case_id`, `package_id`, and other service fields. Human output maps `reuse_grade` directly:
+Server results must preserve `search_mode`, `reuse_grade`, `matched_channels`, `matched_anchors`, `case_id`, `package_id`, and other service fields. Human output maps `reuse_grade` directly:
 
 - `reusable`: `可复用候选`
 - `reference_only`: `仅参考`
@@ -163,7 +163,7 @@ Server hybrid results must preserve `reuse_grade`, `matched_channels`, `matched_
 - `duplicate_source`: `重复来源线索`
 - `unknown`: `未知分级`
 
-Only `reuse_grade=reusable` may be displayed as `可复用候选`. Local fallback output must say `本地文本搜索，未经过服务端 hybrid 分级` so downstream workflows do not treat a local text hit as a server reuse decision.
+Only `reuse_grade=reusable` may be displayed as `可复用候选`. Local fallback output must say `本地文本搜索，未经过服务端复用分级` so downstream workflows do not treat a local text hit as a server reuse decision. The client must never relabel `structured_lexical` as hybrid or semantic.
 
 Human-facing `case` and `variant` results must surface knowledge validity directly when available:
 

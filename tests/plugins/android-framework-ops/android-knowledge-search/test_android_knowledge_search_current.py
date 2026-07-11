@@ -312,7 +312,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         self.assertEqual(payload["targets"], ["case-power-key"])
         self.assertGreater(payload["result_count"], 0)
 
-    def test_main_prefers_server_hybrid_search_for_reusable_results(self):
+    def test_main_preserves_server_search_mode_and_reusable_grade(self):
         temp = Path(tempfile.mkdtemp())
         codex_home = temp / "codex-home"
         out_dir = temp / "artifacts" / "android-knowledge-intake"
@@ -333,7 +333,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         )
         payload = {
             "schema": "akbs-member-knowledge-search-v1",
-            "search_mode": "hybrid",
+            "search_mode": "structured_lexical",
             "results": [
                 {
                     "title": "电源键策略复用",
@@ -350,6 +350,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         def fake_urlopen(request, timeout=0):
             seen_headers["user"] = request.get_header("X-akbs-user")
             seen_headers["role"] = request.get_header("X-akbs-role")
+            seen_headers["token"] = request.get_header("X-akbs-token")
             return FakeHttpResponse(payload)
 
         with patch.dict(
@@ -366,17 +367,19 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         text = stdout.getvalue()
-        self.assertIn("server_hybrid", text)
+        self.assertIn("server_api", text)
+        self.assertIn("structured_lexical", text)
         self.assertIn("可复用候选", text)
         self.assertIn("电源键策略复用", text)
         self.assertEqual(seen_headers["user"], "member01")
-        self.assertEqual(seen_headers["role"], "member")
+        self.assertIsNone(seen_headers["role"])
+        self.assertIsNone(seen_headers["token"])
 
         records = list((out_dir / "search-usage").rglob("*.json"))
         self.assertEqual(len(records), 1)
         usage = json.loads(records[0].read_text(encoding="utf-8"))
-        self.assertEqual(usage["source"], "server_hybrid")
-        self.assertEqual(usage["search_mode"], "hybrid")
+        self.assertEqual(usage["source"], "server_api")
+        self.assertEqual(usage["search_mode"], "structured_lexical")
         self.assertEqual(usage["results"][0]["reuse_grade"], "reusable")
         self.assertEqual(usage["results"][0]["matched_channels"], ["semantic", "symbol"])
         self.assertEqual(usage["results"][0]["matched_anchors"], ["PowerManagerService", "电源键"])
@@ -384,7 +387,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
     def test_server_reference_only_is_not_displayed_as_reusable(self):
         payload = {
             "schema": "akbs-member-knowledge-search-v1",
-            "search_mode": "hybrid",
+            "search_mode": "structured_lexical",
             "results": [
                 {
                     "title": "宽泛代码锚点",
@@ -401,6 +404,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             os.environ,
             {
                 "CODEX_HOME": str(Path(tempfile.mkdtemp()) / "codex-home"),
+                "CODEX_REPORT_MEMBER_ALIAS": "member01",
                 "CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL": "http://akbs.invalid/akbs/api/member/knowledge-search",
             },
         ):
@@ -416,7 +420,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
     def test_json_output_keeps_server_fields_and_source_metadata(self):
         payload = {
             "schema": "akbs-member-knowledge-search-v1",
-            "search_mode": "hybrid",
+            "search_mode": "structured_lexical",
             "results": [
                 {
                     "title": "电源键策略复用",
@@ -433,6 +437,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             os.environ,
             {
                 "CODEX_HOME": str(Path(tempfile.mkdtemp()) / "codex-home"),
+                "CODEX_REPORT_MEMBER_ALIAS": "member01",
                 "CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL": "http://akbs.invalid/akbs/api/member/knowledge-search",
             },
         ):
@@ -442,8 +447,8 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
 
         self.assertEqual(code, 0)
         output = json.loads(stdout.getvalue())
-        self.assertEqual(output["source"], "server_hybrid")
-        self.assertEqual(output["search_mode"], "hybrid")
+        self.assertEqual(output["source"], "server_api")
+        self.assertEqual(output["search_mode"], "structured_lexical")
         self.assertEqual(output["fallback_reason"], "")
         self.assertEqual(output["results"][0]["reuse_grade"], "reusable")
         self.assertEqual(output["results"][0]["case_id"], "case-power-key")
@@ -467,7 +472,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         )
         payload = {
             "schema": "akbs-member-knowledge-search-v1",
-            "search_mode": "hybrid",
+            "search_mode": "structured_lexical",
             "results": [],
         }
         seen_url = {}
@@ -510,6 +515,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             os.environ,
             {
                 "CODEX_HOME": str(codex_home),
+                "CODEX_REPORT_MEMBER_ALIAS": "member01",
                 "CODEX_REPORT_PROFILE": "member01",
                 "CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL": "http://akbs.invalid/akbs/api/member/knowledge-search",
             },
@@ -521,7 +527,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         self.assertEqual(code, 0)
         text = stdout.getvalue()
         self.assertIn("local_jsonl_fallback", text)
-        self.assertIn("本地文本搜索，未经过服务端 hybrid 分级", text)
+        self.assertIn("本地文本搜索，未经过服务端复用分级", text)
         records = list((out_dir / "search-usage").rglob("*.json"))
         self.assertEqual(len(records), 1)
         usage = json.loads(records[0].read_text(encoding="utf-8"))
@@ -537,6 +543,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             os.environ,
             {
                 "CODEX_HOME": str(codex_home),
+                "CODEX_REPORT_MEMBER_ALIAS": "member01",
                 "CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL": "http://akbs.invalid/akbs/api/member/knowledge-search",
             },
         ):
@@ -549,6 +556,41 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         text = stdout.getvalue()
         self.assertIn("local_jsonl_fallback", text)
         self.assertIn("HTTP 401", text)
+
+    def test_incompatible_server_schema_falls_back_without_claiming_server_grading(self):
+        root = self.make_root()
+        with patch.dict(
+            os.environ,
+            {
+                "CODEX_HOME": str(Path(tempfile.mkdtemp()) / "codex-home"),
+                "CODEX_REPORT_MEMBER_ALIAS": "member01",
+                "CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL": "http://akbs.invalid/akbs/api/member/knowledge-search",
+            },
+        ):
+            stdout = io.StringIO()
+            payload = {"schema": "unsupported-schema", "results": []}
+            with patch("urllib.request.urlopen", return_value=FakeHttpResponse(payload)), patch("sys.stdout", new=stdout):
+                code = search.main(["--root", str(root), "电源键"])
+
+        self.assertEqual(code, 0)
+        self.assertIn("local_jsonl_fallback", stdout.getvalue())
+        self.assertIn("schema mismatch", stdout.getvalue())
+        self.assertIn("未经过服务端复用分级", stdout.getvalue())
+
+    def test_missing_alias_stops_before_member_search_or_merge_http(self):
+        env = {
+            "CODEX_HOME": str(Path(tempfile.mkdtemp()) / "codex-home"),
+            "CODEX_REPORT_AKBS_ENDPOINT_MEMBER_SEARCH_URL": "http://akbs.invalid/akbs/api/member/knowledge-search",
+        }
+        with patch.dict(os.environ, env, clear=True), patch("urllib.request.urlopen") as urlopen:
+            with self.assertRaises(SystemExit) as search_error:
+                search.main(["电源键"])
+            with self.assertRaises(SystemExit) as merge_error:
+                search.main(["--merge-confirmation", "list"])
+
+        self.assertIn("member_alias", str(search_error.exception))
+        self.assertIn("member_alias", str(merge_error.exception))
+        urlopen.assert_not_called()
 
     def test_current_rebuild_case_and_variant_indexes_are_searchable(self):
         root = Path(tempfile.mkdtemp())
@@ -952,6 +994,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                 "CODEX_HOME": str(Path(tempfile.mkdtemp()) / "codex-home"),
                 "CODEX_REPORT_AKBS_ENDPOINT_API_BASE_URL": "http://akbs.invalid",
                 "CODEX_REPORT_PROFILE": "member01",
+                "CODEX_REPORT_MEMBER_ALIAS": "member01",
             },
         ):
             stdout = io.StringIO()
@@ -961,7 +1004,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(seen["url"], "http://akbs.invalid/akbs/api/member/me/merge-confirmations")
         self.assertEqual(seen["method"], "GET")
-        self.assertEqual(seen["user"], "unknown")
+        self.assertEqual(seen["user"], "member01")
         self.assertIn("副屏 RecentView 入口调整", stdout.getvalue())
         self.assertIn("case-hdmi-recentview", stdout.getvalue())
 
@@ -999,7 +1042,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         requests = []
 
         def fake_urlopen(request, timeout=0):
-            requests.append((request.get_method(), request.full_url))
+            requests.append((request.get_method(), request.full_url, request.header_items()))
             return FakeHttpResponse(responses[request.full_url])
 
         with patch.dict(
@@ -1007,6 +1050,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             {
                 "CODEX_HOME": str(Path(tempfile.mkdtemp()) / "codex-home"),
                 "CODEX_REPORT_AKBS_ENDPOINT_API_BASE_URL": "http://akbs.invalid",
+                "CODEX_REPORT_MEMBER_ALIAS": "member01",
             },
         ):
             stdout = io.StringIO()
@@ -1014,7 +1058,12 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                 code = search.main(["--merge-confirmation", "analyze", "--merge-confirmation-id", "review-pending-merge"])
 
         self.assertEqual(code, 0)
-        self.assertEqual([method for method, _url in requests], ["GET", "GET", "GET"])
+        self.assertEqual([method for method, _url, _headers in requests], ["GET", "GET", "GET"])
+        for _method, _url, headers in requests:
+            normalized = {key.lower(): value for key, value in headers}
+            self.assertEqual(normalized.get("x-akbs-user"), "member01")
+            self.assertNotIn("x-akbs-role", normalized)
+            self.assertNotIn("x-akbs-token", normalized)
         text = stdout.getvalue()
         self.assertIn("合并确认 Codex 分析摘要", text)
         self.assertIn("人看摘要", text)
@@ -1029,6 +1078,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             {
                 "CODEX_HOME": str(Path(tempfile.mkdtemp()) / "codex-home"),
                 "CODEX_REPORT_AKBS_ENDPOINT_API_BASE_URL": "http://akbs.invalid",
+                "CODEX_REPORT_MEMBER_ALIAS": "member01",
             },
         ):
             with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("offline")):
@@ -1044,6 +1094,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             {
                 "CODEX_HOME": str(Path(tempfile.mkdtemp()) / "codex-home"),
                 "CODEX_REPORT_AKBS_ENDPOINT_API_BASE_URL": "http://akbs.invalid",
+                "CODEX_REPORT_MEMBER_ALIAS": "member01",
             },
         ):
             with patch("urllib.request.urlopen") as urlopen:
@@ -1069,6 +1120,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             seen["url"] = request.full_url
             seen["method"] = request.get_method()
             seen["body"] = json.loads(request.data.decode("utf-8"))
+            seen["headers"] = {key.lower(): value for key, value in request.header_items()}
             return FakeHttpResponse({"dispute_id": "merge-dispute-abc", "state": "dispute_open"})
 
         with patch.dict(
@@ -1076,6 +1128,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             {
                 "CODEX_HOME": str(Path(tempfile.mkdtemp()) / "codex-home"),
                 "CODEX_REPORT_AKBS_ENDPOINT_API_BASE_URL": "http://akbs.invalid",
+                "CODEX_REPORT_MEMBER_ALIAS": "member01",
             },
         ):
             stdout = io.StringIO()
@@ -1102,6 +1155,9 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         self.assertEqual(seen["body"]["reason"], "目标知识不一致")
         self.assertEqual(seen["body"]["member_assessment"], "建议新建知识")
         self.assertEqual(seen["body"]["evidence_refs"], ["compare.counter_evidence[0]"])
+        self.assertEqual(seen["headers"].get("x-akbs-user"), "member01")
+        self.assertNotIn("x-akbs-role", seen["headers"])
+        self.assertNotIn("x-akbs-token", seen["headers"])
         self.assertIn("merge-dispute-abc", stdout.getvalue())
 
 

@@ -31,13 +31,9 @@ from android_framework_ops.member_config import (
 INCOMING_SCHEMA_VERSION = "1"
 ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
 DEFAULT_SUBMISSION_API_BASE_URL = "http://192.168.100.118:8088/akbs/api"
-DEFAULT_SUBMISSION_SESSION_COOKIE = ""
-DEFAULT_SUBMISSION_API_TOKEN = ""
 AKBS_ENDPOINT_ENV_PREFIXES = ("CODEX_REPORT_AKBS_ENDPOINT_", "CODEX_WORK_REPORT_AKBS_ENDPOINT_")
 AKBS_ENDPOINT_DEFAULTS = {
     "submission_api_base_url": DEFAULT_SUBMISSION_API_BASE_URL,
-    "submission_session_cookie": DEFAULT_SUBMISSION_SESSION_COOKIE,
-    "submission_api_token": DEFAULT_SUBMISSION_API_TOKEN,
 }
 
 CONFIG_DEFAULTS = {
@@ -175,8 +171,6 @@ def resolve_akbs_endpoint(config: dict[str, str]) -> dict[str, str]:
     endpoint["source"] = "default"
     env_keys = {
         "submission_api_base_url": "SUBMISSION_API_BASE_URL",
-        "submission_session_cookie": "SUBMISSION_SESSION_COOKIE",
-        "submission_api_token": "SUBMISSION_API_TOKEN",
     }
     env_overrides = {key: akbs_endpoint_env_value(env_key) for key, env_key in env_keys.items()}
     env_overrides = {key: value for key, value in env_overrides.items() if value}
@@ -237,32 +231,6 @@ def knowledge_repo_worktree(config: dict[str, str]) -> Path:
 
 def submission_api_base_url(config: dict[str, str]) -> str:
     return resolve_akbs_endpoint(config)["submission_api_base_url"].strip()
-
-
-def submission_session_cookie(config: dict[str, str]) -> str:
-    return resolve_akbs_endpoint(config)["submission_session_cookie"].strip()
-
-
-def submission_api_token(config: dict[str, str]) -> str:
-    return resolve_akbs_endpoint(config)["submission_api_token"].strip()
-
-
-def submission_api_token_status(config: dict[str, str]) -> dict[str, str]:
-    configured = bool(submission_api_token(config))
-    return {
-        "status": "configured" if configured else "missing",
-        "source": "protected_environment" if configured else "missing",
-        "migration_readiness": "ready" if configured else "token_required",
-    }
-
-
-def require_submission_api_token(config: dict[str, str]) -> str:
-    token = submission_api_token(config)
-    if not token:
-        raise SystemExit(
-            "缺少安全上传 token；请先通过受保护环境配置新 token，运行 doctor 确认后再打包或上传。"
-        )
-    return token
 
 
 def allowed_modes(config: dict[str, str]) -> set[str]:

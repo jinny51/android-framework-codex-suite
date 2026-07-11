@@ -180,6 +180,10 @@ def search_usage_root(config_payloads_fn: Callable[[], list[dict[str, Any]]] = c
 
 
 def selected_member_alias() -> tuple[str, str]:
+    for prefix in ("CODEX_REPORT_", "CODEX_WORK_REPORT_"):
+        alias = os.environ.get(f"{prefix}MEMBER_ALIAS", "").strip()
+        if alias:
+            return selected_profile({}), alias
     for payload in config_payloads():
         profile = selected_profile(payload)
         profiles = payload.get("profiles")

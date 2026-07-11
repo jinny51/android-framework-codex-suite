@@ -190,8 +190,6 @@ from akbs_intake.config import (  # noqa: E402
     AKBS_ENDPOINT_ENV_PREFIXES,
     CONFIG_DEFAULTS,
     DEFAULT_SUBMISSION_API_BASE_URL,
-    DEFAULT_SUBMISSION_API_TOKEN,
-    DEFAULT_SUBMISSION_SESSION_COOKIE,
     ENV_PREFIXES,
     INCOMING_SCHEMA_VERSION,
     akbs_endpoint_env_value,
@@ -217,8 +215,6 @@ from akbs_intake.config import (  # noqa: E402
     resolve_akbs_endpoint,
     stringify_config_value,
     submission_api_base_url,
-    submission_api_token,
-    submission_session_cookie,
 )
 from akbs_intake.report_sessions import (  # noqa: E402
     SessionWork,

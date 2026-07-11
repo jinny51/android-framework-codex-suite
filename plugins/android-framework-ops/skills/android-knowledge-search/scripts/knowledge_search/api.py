@@ -43,7 +43,7 @@ def normalize_server_results(payload: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(raw_results, list):
         raw_results = []
     normalized: list[dict[str, Any]] = []
-    search_mode = str(payload.get("search_mode") or "hybrid")
+    search_mode = str(payload.get("search_mode") or "unknown")
     for item in raw_results:
         if not isinstance(item, dict):
             continue
@@ -51,7 +51,7 @@ def normalize_server_results(payload: dict[str, Any]) -> list[dict[str, Any]]:
         row.setdefault("kind", row.get("type") or "knowledge")
         row.setdefault("id", row.get("case_id") or row.get("package_id") or row.get("knowledge_id") or row.get("id") or "")
         row.setdefault("title", row.get("title") or row.get("material_title") or row.get("summary") or row.get("case_title") or "")
-        row["source"] = "server_hybrid"
+        row["source"] = "server_api"
         row["search_mode"] = search_mode
         row["reuse_grade"] = str(row.get("reuse_grade") or "unknown")
         if not isinstance(row.get("matched_channels"), list):
@@ -62,41 +62,44 @@ def normalize_server_results(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return normalized
 
 
-def fetch_server_hybrid_results(args: Any, query: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    profile, member_alias = selected_member_alias()
-    user = member_alias or profile or "unknown"
+def require_member_alias() -> str:
+    _profile, member_alias = selected_member_alias()
+    if not member_alias or member_alias == "unknown":
+        raise ValueError("member_alias is required before a member API request")
+    return member_alias
+
+
+def fetch_server_results(args: Any, query: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    user = require_member_alias()
     request = urllib.request.Request(
         server_search_url(args, query),
         headers={
             "Accept": "application/json",
             "X-AKBS-User": user,
-            "X-AKBS-Role": "member",
         },
         method="GET",
     )
     with urllib.request.urlopen(request, timeout=args.server_timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
     if not isinstance(payload, dict):
-        raise RuntimeError("server hybrid search response is not a JSON object")
+        raise RuntimeError("server search response is not a JSON object")
     if str(payload.get("schema") or "") != "akbs-member-knowledge-search-v1":
-        raise RuntimeError("server hybrid search response schema mismatch")
+        raise RuntimeError("server search response schema mismatch")
     return normalize_server_results(payload), payload
 
 
 def server_fallback_reason(exc: BaseException) -> str:
     if isinstance(exc, urllib.error.HTTPError):
-        return f"server hybrid search HTTP {exc.code}: {exc.reason}"
+        return f"server search HTTP {exc.code}: {exc.reason}"
     if isinstance(exc, urllib.error.URLError):
-        return f"server hybrid search unavailable: {exc.reason}"
-    return f"server hybrid search unavailable: {exc}"
+        return f"server search unavailable: {exc.reason}"
+    return f"server search unavailable: {exc}"
 
 
 def member_request_headers() -> dict[str, str]:
-    profile, member_alias = selected_member_alias()
     return {
         "Accept": "application/json",
-        "X-AKBS-User": member_alias or profile or "unknown",
-        "X-AKBS-Role": "member",
+        "X-AKBS-User": require_member_alias(),
     }
 
 

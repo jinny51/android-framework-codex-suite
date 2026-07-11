@@ -11,7 +11,6 @@ from typing import Any, Callable
 try:
     from .config import (
         submission_api_base_url,
-        require_submission_api_token,
     )
     from .reports.common import ensure_report_submit_allowed, record_submitted_package
 except ImportError:  # pragma: no cover - direct script import fallback
@@ -20,7 +19,6 @@ except ImportError:  # pragma: no cover - direct script import fallback
         sys.path.insert(0, str(scripts_root))
     from akbs_intake.config import (
         submission_api_base_url,
-        require_submission_api_token,
     )
     from akbs_intake.reports.common import ensure_report_submit_allowed, record_submitted_package
 
@@ -50,13 +48,12 @@ def package_tar_gz_bytes(package_dir: Path) -> bytes:
 
 def server_submit_package(package_dir: Path, config: dict[str, str], method: str = "http") -> dict[str, Any]:
     member = config.get("member_alias", "").strip()
-    if not member:
-        raise SystemExit("member_alias 不能为空")
+    if not member or member == "unknown":
+        raise SystemExit("member_alias 不能为空或不能使用 unknown")
     if method != "http":
         raise SystemExit("AKBS 成员上传只支持 HTTP API；SSH/local 上传字段已废弃，请先更新插件并执行配置迁移。")
-    token = require_submission_api_token(config)
     payload = package_tar_gz_bytes(package_dir)
-    return http_submit_package(package_dir, config, member, payload, token=token)
+    return http_submit_package(package_dir, config, member, payload)
 
 
 def submit_package(
@@ -88,10 +85,7 @@ def http_submit_package(
     config: dict[str, str],
     member: str,
     payload: bytes,
-    *,
-    token: str | None = None,
 ) -> dict[str, Any]:
-    token = token or require_submission_api_token(config)
     base_url = submission_api_base_url(config).rstrip("/")
     if not base_url:
         raise SystemExit("submission_api_base_url 不能为空")
@@ -107,7 +101,6 @@ def http_submit_package(
             "X-AKBS-User": member,
         },
     )
-    request.add_header("X-AKBS-Token", token)
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             stdout = response.read().decode("utf-8", errors="replace")

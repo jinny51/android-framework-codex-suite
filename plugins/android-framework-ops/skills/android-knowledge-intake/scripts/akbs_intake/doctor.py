@@ -17,7 +17,6 @@ from akbs_intake.config import (
     parse_bool,
     resolve_akbs_endpoint,
     submission_api_base_url,
-    submission_api_token_status,
 )
 
 
@@ -124,9 +123,6 @@ def doctor_strict_checks(
 
     if not submission_api_base_url(config):
         error("submission_api_base_url 不能为空。")
-    token_status = submission_api_token_status(config)
-    if token_status["status"] != "configured":
-        error("缺少安全上传 token；必须先通过受保护环境完成配置。")
     if ".codex/plugins/cache" in knowledge_repo.as_posix():
         error("knowledge_repo_worktree 不能放在插件缓存目录下。")
     if ".codex/plugins/cache" in out_dir.as_posix():
@@ -174,7 +170,6 @@ def doctor(
 ) -> dict[str, Any]:
     knowledge_repo = knowledge_repo_worktree(config)
     endpoint = resolve_akbs_endpoint(config)
-    token_status = submission_api_token_status(config)
     public_endpoint = {
         "source": endpoint["source"],
         "submission_api_base_url": endpoint["submission_api_base_url"],
@@ -190,9 +185,12 @@ def doctor(
         "member_alias": config.get("member_alias"),
         "member_name": config.get("member_name"),
         "akbs_endpoint": public_endpoint,
+        "member_identity": {
+            "mode": "fixed_ip_alias",
+            "status": "ready" if config.get("member_alias", "").strip() else "alias_required",
+            "message": "成员只发送 member_alias；服务端按固定来源 IP 验证身份。",
+        },
         "submission_api_base_url": submission_api_base_url(config),
-        "upload_token": token_status,
-        "submission_api_token_configured": token_status["status"] == "configured",
         "knowledge_repo_worktree": str(knowledge_repo),
         "knowledge_repo_cloned": (knowledge_repo / ".git").exists(),
         "out_dir": str(expanded_path(config["out_dir"])),

@@ -59,7 +59,7 @@ $CODEX_HOME/<skill-name>.toml
 <project>/.codex/report.toml
 ```
 
-普通成员 TOML 只写身份和本地路径。服务器上传入口由 AKBS endpoint resolver 提供并默认指向 AKBS HTTP API；上传认证只接受受保护进程环境显式注入的成员 token，不接受 member alias 或 session cookie 回退。缺 token 时 doctor 和上传会在打包、HTTP 之前停止。成员不需要理解 SSH、服务器路径或 API 地址。知识库仓库工作树只作为可选离线搜索兜底，产物目录建议使用：
+普通成员 TOML 只写身份和本地路径。服务器上传入口由 AKBS endpoint resolver 提供并默认指向 AKBS HTTP API；上传、搜索和合并确认只发送 member alias，服务端按固定工作站来源 IP 验证身份。缺 alias 时会在打包、HTTP 之前停止。成员不需要理解 SSH、服务器路径或 API 地址。知识库仓库工作树只作为可选离线搜索兜底，产物目录建议使用：
 
 ```text
 <Codex documents>/worktrees/knowledge

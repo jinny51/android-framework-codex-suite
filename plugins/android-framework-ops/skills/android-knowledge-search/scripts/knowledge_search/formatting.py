@@ -359,7 +359,7 @@ def format_markdown(
     ]
     if fallback_reason:
         lines.append(f"- fallback_reason: {fallback_reason}")
-        lines.append("- fallback 提示: 本地文本搜索，未经过服务端 hybrid 分级；不要把本地命中直接当作可复用结论。")
+        lines.append("- fallback 提示: 本地文本搜索，未经过服务端复用分级；不要把本地命中直接当作可复用结论。")
     if refresh_status:
         lines.append(f"- refresh: {refresh_status}")
     lines.append("")
@@ -368,7 +368,7 @@ def format_markdown(
         return "\n".join(lines)
 
     for index, row in enumerate(results, start=1):
-        if row.get("source") == "server_hybrid":
+        if row.get("source") == "server_api":
             lines.append(format_server_result(row, index))
             lines.append("")
             continue

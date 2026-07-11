@@ -19,7 +19,7 @@ if PLUGIN_LIB.is_dir() and str(PLUGIN_LIB) not in sys.path:
 
 from knowledge_search.api import (
     fetch_merge_confirmation_payload,
-    fetch_server_hybrid_results,
+    fetch_server_results,
     merge_api_error,
     post_merge_dispute,
     server_fallback_reason,
@@ -436,8 +436,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--refresh", action="store_true", help="Run git pull --ff-only first when root is a clean Git worktree.")
     parser.add_argument("--include-synthetic", action="store_true", help="Include synthetic test data.")
     parser.add_argument("--no-record-usage", action="store_true", help="Do not write member-side search usage evidence.")
-    parser.add_argument("--source", choices=["auto", "server", "local"], default="auto", help="Search source: auto prefers server hybrid search, server forbids fallback, local uses JSONL only.")
-    parser.add_argument("--server-timeout", type=float, default=3.0, help="Server hybrid search timeout in seconds.")
+    parser.add_argument("--source", choices=["auto", "server", "local"], default="auto", help="Search source: auto prefers server API, server forbids fallback, local uses JSONL only.")
+    parser.add_argument("--server-timeout", type=float, default=3.0, help="Server search timeout in seconds.")
     parser.add_argument("--reuse-decision", choices=REUSE_DECISIONS, help="Member-side use decision for this search.")
     parser.add_argument("--reuse-target", action="append", default=[], help="Matched case, variant, patch, or evidence id considered by this search. Repeatable.")
     parser.add_argument("--reuse-match", action="append", default=[], help="Why the matched knowledge may apply. Repeatable.")
@@ -504,15 +504,17 @@ def main(argv: list[str] | None = None) -> int:
     root: Path | None = None
     refresh_status = None
     fallback_reason = ""
-    source = "server_hybrid"
-    search_mode = "hybrid"
+    source = "server_api"
+    search_mode = "unknown"
     results: list[dict[str, Any]] = []
 
     if should_try_server(args):
         try:
-            results, server_payload = fetch_server_hybrid_results(args, query)
-            search_mode = str(server_payload.get("search_mode") or "hybrid")
+            results, server_payload = fetch_server_results(args, query)
+            search_mode = str(server_payload.get("search_mode") or "unknown")
         except Exception as exc:
+            if isinstance(exc, ValueError) and "member_alias" in str(exc):
+                raise SystemExit(str(exc))
             fallback_reason = server_fallback_reason(exc)
             if args.source == "server":
                 raise SystemExit(fallback_reason)
