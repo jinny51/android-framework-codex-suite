@@ -182,8 +182,8 @@ def resolve_akbs_endpoint(config: dict[str, str]) -> dict[str, str]:
     env_overrides = {key: value for key, value in env_overrides.items() if value}
     if env_overrides:
         endpoint.update(env_overrides)
-        endpoint["source"] = "env_override"
-        return endpoint
+        if "submission_api_base_url" in env_overrides:
+            endpoint["source"] = "env_override"
 
     return endpoint
 
@@ -245,6 +245,24 @@ def submission_session_cookie(config: dict[str, str]) -> str:
 
 def submission_api_token(config: dict[str, str]) -> str:
     return resolve_akbs_endpoint(config)["submission_api_token"].strip()
+
+
+def submission_api_token_status(config: dict[str, str]) -> dict[str, str]:
+    configured = bool(submission_api_token(config))
+    return {
+        "status": "configured" if configured else "missing",
+        "source": "protected_environment" if configured else "missing",
+        "migration_readiness": "ready" if configured else "token_required",
+    }
+
+
+def require_submission_api_token(config: dict[str, str]) -> str:
+    token = submission_api_token(config)
+    if not token:
+        raise SystemExit(
+            "缺少安全上传 token；请先通过受保护环境配置新 token，运行 doctor 确认后再打包或上传。"
+        )
+    return token
 
 
 def allowed_modes(config: dict[str, str]) -> set[str]:

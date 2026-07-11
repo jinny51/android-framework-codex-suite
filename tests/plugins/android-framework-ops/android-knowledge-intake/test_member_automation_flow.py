@@ -228,6 +228,7 @@ def write_member_config(root: Path, knowledge_remote: Path, synthetic_data: bool
     env = os.environ.copy()
     env["CODEX_HOME"] = str(codex_home)
     env["CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"] = "1"
+    env["CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_TOKEN"] = "test-token-not-a-secret"
     return env
 
 
@@ -518,6 +519,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             endpoint_env = {
                 "CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL": "http://akbs.local/akbs/api",
                 "CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_SESSION_COOKIE": "akbs_session=test-session",
+                "CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_TOKEN": "explicit-test-token",
             }
             with patch.dict(os.environ, endpoint_env), patch("urllib.request.urlopen", fake_urlopen):
                 result = module.server_submit_package(package_dir, config, "http")
@@ -528,10 +530,37 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(timeout, 30)
             self.assertEqual(request.full_url, "http://akbs.local/akbs/api/member/me/uploads/daily")
             self.assertEqual(request.get_header("Content-type"), "application/gzip")
-            self.assertEqual(request.get_header("Cookie"), "akbs_session=test-session")
+            self.assertIsNone(request.get_header("Cookie"))
             self.assertEqual(request.get_header("X-akbs-user"), "member01")
-            self.assertEqual(request.get_header("X-akbs-token"), "member01")
+            self.assertEqual(request.get_header("X-akbs-token"), "explicit-test-token")
             self.assertGreater(len(request.data), 0)
+
+    def test_missing_token_stops_before_packaging_or_http_and_never_uses_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package_dir = Path(tmp) / "package"
+            package_dir.mkdir()
+            (package_dir / "manifest.json").write_text(
+                json.dumps({"package_kind": "daily_trace"}),
+                encoding="utf-8",
+            )
+            module = load_intake_module()
+
+            clean_env = {
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith("CODEX_REPORT_AKBS_ENDPOINT_")
+                and not key.startswith("CODEX_WORK_REPORT_AKBS_ENDPOINT_")
+            }
+            with patch.dict(os.environ, clean_env, clear=True), patch(
+                "akbs_intake.submit.package_tar_gz_bytes",
+            ) as pack, patch("urllib.request.urlopen") as urlopen:
+                with self.assertRaises(SystemExit) as caught:
+                    module.server_submit_package(package_dir, {"member_alias": "member01"}, "http")
+
+            self.assertIn("缺少安全上传 token", str(caught.exception))
+            self.assertNotIn("member01", str(caught.exception))
+            pack.assert_not_called()
+            urlopen.assert_not_called()
 
     def test_http_submission_timeout_does_not_fallback_to_ssh(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -557,12 +586,42 @@ class MemberAutomationFlowTests(unittest.TestCase):
             def forbidden_subprocess_run(*args, **kwargs):
                 raise AssertionError("HTTP upload must not fallback to ssh/local subprocess submission")
 
-            with patch("urllib.request.urlopen", fake_urlopen), patch("subprocess.run", forbidden_subprocess_run):
+            secret = "timeout-secret-token"
+            endpoint_env = {"CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_TOKEN": secret}
+            with patch.dict(os.environ, endpoint_env), patch("urllib.request.urlopen", fake_urlopen), patch(
+                "subprocess.run",
+                forbidden_subprocess_run,
+            ):
                 with self.assertRaises(SystemExit) as caught:
                     module.server_submit_package(package_dir, {"member_alias": "member01"}, "http")
 
             self.assertIn("HTTP 上传入口提交失败", str(caught.exception))
-            self.assertIn("timed out", str(caught.exception))
+            self.assertIn("TimeoutError", str(caught.exception))
+            self.assertNotIn(secret, str(caught.exception))
+
+    def test_doctor_reports_token_state_and_source_without_secret(self) -> None:
+        module = load_intake_module()
+        secret = "doctor-secret-token"
+        config = {
+            "out_dir": "$CODEX_HOME/artifacts/android-knowledge-intake",
+            "role": "member",
+            "allowed_modes": "daily,weekly,patch",
+            "member_alias": "member01",
+            "member_name": "成员甲",
+        }
+
+        with patch.dict(
+            os.environ,
+            {"CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_TOKEN": secret},
+        ):
+            result = module.doctor(config, [])
+
+        rendered = json.dumps(result, ensure_ascii=False)
+        self.assertEqual(result["upload_token"]["status"], "configured")
+        self.assertEqual(result["upload_token"]["source"], "protected_environment")
+        self.assertEqual(result["upload_token"]["migration_readiness"], "ready")
+        self.assertNotIn(secret, rendered)
+        self.assertNotIn("submission_api_token", result["akbs_endpoint"])
 
     def test_ssh_submission_method_is_rejected_before_any_upload_attempt(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

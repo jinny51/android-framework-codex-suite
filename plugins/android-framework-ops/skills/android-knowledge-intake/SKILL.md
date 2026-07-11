@@ -21,7 +21,7 @@ Daily and weekly report bodies are the primary human-readable product. Generate 
 
 Daily and weekly generation is idempotent by member and report identity: daily uses `date`, weekly uses `week_range`. If a local pending or submitted report package already exists for the same member and identity, `--prepare`, `--upload`, and `--submit-latest` must stop instead of silently creating or uploading a second ordinary report package. The member must either cancel the new run or explicitly replace the old package. Use `daily --replace-daily-run-id <old_run_id>` or `weekly --replace-weekly-run-id <old_run_id>`; the replacement package writes `replacement_for_run_id` and `supersedes` metadata so it is not another silent ordinary report package.
 
-Use configuration profiles for identity. Ordinary member config stores identity, optional local knowledge fallback worktree, git author, role, allowed modes, and optional test behavior. AKBS HTTP endpoint values come from the endpoint resolver or controlled environment overrides, not member profiles. Prefer explicit `--profile <name>` in automations so a daily incoming run cannot accidentally use an administrator identity.
+Use configuration profiles for identity. Ordinary member config stores identity, optional local knowledge fallback worktree, git author, role, allowed modes, and optional test behavior. AKBS HTTP endpoint values come from the endpoint resolver or controlled environment overrides, not member profiles. Upload authentication is token-only: `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_TOKEN` (or the legacy prefix equivalent) must be injected through a protected process environment. Never place the token in TOML, Git, command arguments, logs, Markdown, JSON output, or chat. Prefer explicit `--profile <name>` in automations so a daily incoming run cannot accidentally use an administrator identity.
 
 Framework change incoming must carry deterministic merge anchors. Patch content `sha1` is emitted in `patch_diff_facts`; `related_report_run_ids` is used only when the daily or weekly run id is explicitly known. A weekly run id is provenance only and does not make the weekly package a knowledge materialization candidate. Do not create fuzzy report links on the member side.
 
@@ -139,7 +139,7 @@ Recommended member-side incoming automations:
 - Saturday 22:00 weekly prepare.
 - Saturday 22:30 weekly submit.
 
-Before enabling member-side incoming automations, run `doctor --strict --check-remote` for the exact profile used by the automation. Strict doctor must pass before scheduled runs are enabled. It verifies identity, role, allowed modes, submission API, Git availability, plugin freshness, and optional remote reachability. A local knowledge repository worktree is only an optional fallback for offline search; missing local knowledge fallback must warn, not block HTTP upload.
+Before enabling member-side incoming automations, run `doctor --strict --check-remote` for the exact profile used by the automation. Strict doctor must pass before scheduled runs are enabled. It verifies identity, role, allowed modes, submission API, upload-token state/source without revealing its value, Git availability, plugin freshness, and optional remote reachability. Missing token is blocking and must fail locally before archive packaging or any HTTP request. A local knowledge repository worktree is only an optional fallback for offline search; missing local knowledge fallback must warn, not block HTTP upload.
 
 Member profiles submit only through the AKBS HTTP API. Search should use the AKBS member knowledge-search API first and may fall back to a configured local knowledge repository worktree only when the API is unavailable. SSH/local/Git submission is removed from member setup and must not be used.
 
@@ -182,7 +182,7 @@ Configuration is loaded from low to high priority:
 5. The current repository's nearest `.codex/report.toml`.
 6. Environment variables such as `CODEX_REPORT_PROFILE`, `CODEX_REPORT_MEMBER_ALIAS`, `CODEX_REPORT_MEMBER_NAME`, and `CODEX_REPORT_KNOWLEDGE_REPO_WORKTREE`.
 
-Normal member config only stores identity and local paths. Server upload is resolved by the AKBS endpoint resolver and uses the AKBS HTTP API. Admin or test overrides may set `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL`, `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_TOKEN`, or `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_SESSION_COOKIE`. `knowledge_repo_worktree` is optional local fallback for search, not a server endpoint.
+Normal member TOML only stores identity and local paths. Server upload is resolved by the AKBS endpoint resolver and uses the AKBS HTTP API. Admin or test environments may override `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL`; the member upload token must come from the protected `CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_TOKEN` process environment. Session cookies and `member_alias` are not upload-token fallbacks. `knowledge_repo_worktree` is optional local fallback for search, not a server endpoint. Read `references/member-token-migration.md` before updating a member to this token-only release.
 
 Recommended profile config:
 

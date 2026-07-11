@@ -11,8 +11,7 @@ from typing import Any, Callable
 try:
     from .config import (
         submission_api_base_url,
-        submission_api_token,
-        submission_session_cookie,
+        require_submission_api_token,
     )
     from .reports.common import ensure_report_submit_allowed, record_submitted_package
 except ImportError:  # pragma: no cover - direct script import fallback
@@ -21,8 +20,7 @@ except ImportError:  # pragma: no cover - direct script import fallback
         sys.path.insert(0, str(scripts_root))
     from akbs_intake.config import (
         submission_api_base_url,
-        submission_api_token,
-        submission_session_cookie,
+        require_submission_api_token,
     )
     from akbs_intake.reports.common import ensure_report_submit_allowed, record_submitted_package
 
@@ -56,8 +54,9 @@ def server_submit_package(package_dir: Path, config: dict[str, str], method: str
         raise SystemExit("member_alias 不能为空")
     if method != "http":
         raise SystemExit("AKBS 成员上传只支持 HTTP API；SSH/local 上传字段已废弃，请先更新插件并执行配置迁移。")
+    token = require_submission_api_token(config)
     payload = package_tar_gz_bytes(package_dir)
-    return http_submit_package(package_dir, config, member, payload)
+    return http_submit_package(package_dir, config, member, payload, token=token)
 
 
 def submit_package(
@@ -84,7 +83,15 @@ def submit_package(
     return result
 
 
-def http_submit_package(package_dir: Path, config: dict[str, str], member: str, payload: bytes) -> dict[str, Any]:
+def http_submit_package(
+    package_dir: Path,
+    config: dict[str, str],
+    member: str,
+    payload: bytes,
+    *,
+    token: str | None = None,
+) -> dict[str, Any]:
+    token = token or require_submission_api_token(config)
     base_url = submission_api_base_url(config).rstrip("/")
     if not base_url:
         raise SystemExit("submission_api_base_url 不能为空")
@@ -100,16 +107,12 @@ def http_submit_package(package_dir: Path, config: dict[str, str], member: str, 
             "X-AKBS-User": member,
         },
     )
-    cookie = submission_session_cookie(config)
-    if cookie:
-        request.add_header("Cookie", cookie)
-    token = submission_api_token(config) or member
     request.add_header("X-AKBS-Token", token)
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             stdout = response.read().decode("utf-8", errors="replace")
     except Exception as error:
-        raise SystemExit(f"HTTP 上传入口提交失败: {error}") from error
+        raise SystemExit(f"HTTP 上传入口提交失败（认证信息已脱敏）: {type(error).__name__}") from error
     try:
         result = json.loads(stdout or "{}")
     except json.JSONDecodeError:

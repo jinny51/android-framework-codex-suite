@@ -126,7 +126,7 @@ $CODEX_HOME/<skill-name>.toml
 <project>/.codex/report.toml
 ```
 
-普通成员配置只写身份和本地路径。服务器上传入口和只读知识库入口由 AKBS endpoint resolver 提供；知识库仓库工作树和产物目录建议按成员私有配置指定：
+普通成员 TOML 只写身份和本地路径。服务器上传入口和只读知识库入口由 AKBS endpoint resolver 提供；上传认证必须由受保护进程环境显式提供成员 token，缺失时 doctor 和上传会在打包、HTTP 之前停止，且不会再把 member alias 当作 token。知识库仓库工作树和产物目录建议按成员私有配置指定：
 
 ```text
 <Codex documents>/worktrees/knowledge

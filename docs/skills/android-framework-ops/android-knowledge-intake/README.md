@@ -16,10 +16,10 @@
 
 1. 从 Codex 插件市场更新 `android-framework-ops` 和当前操作系统的平台插件。
 2. 检查当前会话是否仍加载旧缓存；无法热刷新时停止生成和上传。
-3. 写入只包含成员身份和本地路径的当前配置。
-4. 运行 `doctor --strict --check-remote`。
+3. 写入只包含成员身份和本地路径的当前配置，并由管理员通过受保护环境配置第二个安全上传 token。
+4. 运行 `doctor --strict --check-remote`，确认 token 为 `configured` 且来源为 `protected_environment`。
 
-普通成员不维护服务器地址、SSH 上传命令或数据库路径。AKBS endpoint resolver 提供 HTTP 上传入口；受控测试覆盖使用环境变量。
+普通成员不维护服务器地址、SSH 上传命令或数据库路径。AKBS endpoint resolver 提供 HTTP 上传入口；上传认证只接受受保护环境变量中的显式 token，不接受成员 alias 或 session cookie 回退。token 不得写入 TOML、Git、命令行、日志、JSON、Markdown 或聊天记录。
 
 ## 当前配置
 
@@ -50,7 +50,11 @@ synthetic_data = false
 python3 scripts/android_knowledge_intake.py --profile <member_alias> doctor --strict --check-remote
 ```
 
-检查内容包括成员身份、允许模式、产物目录、HTTP 上传入口、插件安装版本、远端版本和当前会话缓存版本。
+检查内容包括成员身份、允许模式、产物目录、HTTP 上传入口、脱敏的 token 状态/来源/迁移准备状态、插件安装版本、远端版本和当前会话缓存版本。缺 token 时会在本地失败，且不会打包或发出 HTTP 请求。
+
+## 逐成员迁移与回滚
+
+每次只迁移一名成员：创建第二 token → 通过受保护进程环境配置 → doctor 通过 → 真实上传通过 → 管理端确认新 token 的 `last_used_at` 非空 → 撤销旧 token。上传被拒绝、`last_used_at` 为空或服务健康检查不是 200 时，立即恢复仍 active 的旧 token 配置；旧 token 未验证可回退前不得撤销。本插件发布只提供安全切换能力，不代表生产成员已完成轮换。
 
 ## 共享命令
 
