@@ -1,5 +1,18 @@
 # Incoming Package Protocol
 
+## Public v1 compatibility gate
+
+The member plugin and the authoritative server share the same incoming v1 schema and four golden manifests. The plugin mirror and its exact digest/reason-code compatibility pin live in `contracts/incoming/v1/` at the marketplace repository root. Production plugin code and server runtime code do not import each other.
+
+Before publishing an incoming-contract change on WSL, run:
+
+```bash
+python3 scripts/validate_incoming_contract_gate.py \
+  --system-root /home/jinny/akbs/linux/system
+```
+
+The gate uses the real member CLI to build daily, weekly, patch, and field-correction supplement packages. It submits them to an isolated server SQLite/data root through the authoritative test35 Python runtime, checks the positive path, exercises the rejection matrix, and verifies that every rejection leaves all package/type/queue/asset/material-identity tables and upload storage unchanged. Temporary files and processes are removed when the command exits. The server remains the upload authority; this compatibility gate does not turn the local member check into an acceptance claim.
+
 Member-side Codex creates only `incoming` packages and sends them through the AKBS HTTP API. It does not clone, pull, directly search, or push a database repository, and it does not write final knowledge views such as reports, patches, index, or site. The HTTP API stores accepted packages in active SQLite and exposes them to the curation flow. Member configuration contains only the current HTTP endpoint contract.
 
 Only the user's local `akbs-curation-maintainer` skill and the AI knowledge loop can decide whether and how an uploaded package enters the knowledge repository.
@@ -297,7 +310,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.130"
+    "plugin_version": "1.0.131"
   }
 }
 ```

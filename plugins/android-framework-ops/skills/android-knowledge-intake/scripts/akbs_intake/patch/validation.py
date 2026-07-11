@@ -914,6 +914,10 @@ def validate_patch_view_payload(
         errors.append(f"{rel} payload.android_version 必须等于 manifest.android_version")
     if supplement_target and view.get("supplement_for_package_key") != supplement_target:
         errors.append(f"{rel} payload.supplement_for_package_key 必须等于 manifest.supplement_for_package_key")
+    if manifest.get("supplement_mode") == "field_correction":
+        verification = view.get("verification") if isinstance(view.get("verification"), dict) else {}
+        if str(verification.get("result") or "").upper() != "INFO" or verification.get("method") != "field_correction":
+            errors.append(f"{rel} 字段级补证 verification 必须声明 result=INFO 且 method=field_correction")
     title_text = " ".join(
         [
             str(view.get("display_title") or ""),

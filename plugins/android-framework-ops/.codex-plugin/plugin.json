@@ -1,6 +1,6 @@
 {
   "name": "android-framework-ops",
-  "version": "1.0.130",
+  "version": "1.0.131",
   "description": "Shared operational workflows for Android Framework engineering with Codex.",
   "author": {
     "name": "Jinny Android Framework Team",
@@ -16,7 +16,8 @@
     "remote-build",
     "adb",
     "knowledge-base",
-    "codex"
+    "codex",
+    "akbs-incoming-v1"
   ],
   "skills": "./skills/",
   "interface": {

@@ -1498,6 +1498,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(supplement_manifest["package_kind"], "framework_change")
             self.assertEqual(supplement_manifest["supplement_mode"], "field_correction")
             self.assertEqual(supplement_manifest["corrected_fields"]["project"], "TVE8402M")
+            supplement_view = read_report_view(supplement_package)
+            self.assertEqual(supplement_view["payload"]["verification"]["result"], "INFO")
+            self.assertEqual(supplement_view["payload"]["verification"]["method"], "field_correction")
             self.assertIn("TVE8402M", (daily_package / "reports" / "daily.md").read_text(encoding="utf-8"))
 
             self.assertEqual(

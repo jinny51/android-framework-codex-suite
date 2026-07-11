@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://akbs.internal/contracts/incoming/v1/knowledge-incoming-package.schema.json",
+  "title": "AKBS server incoming package v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "schema_version",
+    "package_kind",
+    "member_alias",
+    "member_name",
+    "date",
+    "run_id",
+    "tool",
+    "summary",
+    "files"
+  ],
+  "properties": {
+    "schema": {"const": "knowledge-incoming-package"},
+    "schema_version": {"const": "1"},
+    "package_key": {"type": "string", "pattern": "^[0-9]{8}/[^/]+/[0-9]{8}-[0-9]{6}(?:-[A-Za-z0-9_.-]+)?$"},
+    "package_kind": {"enum": ["daily_trace", "weekly_trace", "framework_change"]},
+    "member_alias": {"type": "string", "minLength": 1},
+    "member_name": {"type": "string", "minLength": 1},
+    "date": {"type": "string", "format": "date"},
+    "run_id": {"type": "string", "pattern": "^[0-9]{8}-[0-9]{6}(?:-[A-Za-z0-9_.-]+)?$"},
+    "tool": {"type": "string", "minLength": 1},
+    "summary": {"type": "string", "minLength": 1},
+    "files": {"type": "object"},
+    "package_status": {"enum": ["validated", "candidate", "draft", "failed", "blocked"]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"package_kind": {"const": "framework_change"}}},
+      "then": {
+        "required": ["case_id", "variant_id", "package_status", "project", "platform", "android_version"],
+        "properties": {"package_status": {"const": "validated"}}
+      }
+    }
+  ]
+}

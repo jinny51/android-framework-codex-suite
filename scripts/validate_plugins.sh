@@ -41,6 +41,11 @@ fi
 
 python3 "$repo_root/plugins/codex-workspace-care/skills/codex-chat-history-context-extractor/scripts/self_test_extract_codex_context.py"
 
+system_root="${AKBS_SYSTEM_ROOT:-${AKBS_ROOT:-$HOME/akbs}/linux/system}"
+if [[ "$(uname -s)" == "Linux" && -f "$system_root/akbs_active/app.py" ]]; then
+  python3 "$repo_root/scripts/validate_incoming_contract_gate.py" --system-root "$system_root"
+fi
+
 cleanup_caches
 
 echo "Plugin validation passed"

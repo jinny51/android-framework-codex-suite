@@ -455,6 +455,11 @@ def patch_view_payload(
             "member_alias": manifest_like.get("member_alias", ""),
             "member_name": manifest_like.get("member_name", ""),
             "supplement_for_package_key": supplement_for_package_key,
+            "verification": {
+                "result": str(verification_payload.get("result") or ""),
+                "method": str(verification_payload.get("method") or ""),
+                "summary": str(verification_payload.get("summary") or ""),
+            },
             "ui_card": {
                 "title": compact_text(summary, 48),
                 "subtitle": f"{manifest_like.get('project', 'unknown')} / {manifest_like.get('platform', 'unknown')} / Android {manifest_like.get('android_version', 'unknown')}",
