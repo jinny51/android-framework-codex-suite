@@ -28,6 +28,14 @@ die() {
   exit 1
 }
 
+guard_output_path() {
+  local output_path="$1"
+  local plugin_lib
+  plugin_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/lib"
+  PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$plugin_lib${PYTHONPATH:+:$PYTHONPATH}" \
+    python3 -m android_framework_ops.artifact_paths --purpose "remote discovery output" "$output_path" >/dev/null
+}
+
 shell_quote() {
   printf "%q" "$1"
 }
@@ -57,6 +65,9 @@ done
 [[ -n "$SSH_HOST" ]] || die "--ssh-host is required"
 [[ -n "$REMOTE_ROOT" ]] || die "--remote-root is required"
 [[ "$REMOTE_ROOT" == /* ]] || die "--remote-root must be absolute"
+if [[ -n "$OUTPUT" ]]; then
+  guard_output_path "$OUTPUT"
+fi
 
 SSH_TARGET="$SSH_HOST"
 if [[ -n "$SSH_USER" && "$SSH_HOST" != *@* ]]; then

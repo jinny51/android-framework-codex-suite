@@ -6,7 +6,15 @@ from __future__ import annotations
 import argparse
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+
+
+PLUGIN_LIB = Path(__file__).resolve().parents[3] / "lib"
+if str(PLUGIN_LIB) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_LIB))
+
+from android_framework_ops.artifact_paths import require_safe_artifact_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -22,6 +30,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    out = require_safe_artifact_path(Path(args.out), purpose="video frame output")
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         print("ffmpeg not found in PATH.")
@@ -32,7 +41,6 @@ def main() -> int:
         print(f"Video does not exist: {video}")
         return 2
 
-    out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     output_pattern = out / f"{args.prefix}_%05d.png"
     fps = 1.0 / args.every if args.every > 0 else 4.0

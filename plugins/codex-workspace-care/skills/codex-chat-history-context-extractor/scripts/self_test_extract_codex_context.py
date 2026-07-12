@@ -4,13 +4,17 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 
 SCRIPT = Path(__file__).with_name("extract_codex_context.py")
+sys.dont_write_bytecode = True
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 
 def write_jsonl(path: Path) -> None:
@@ -74,6 +78,18 @@ def main() -> int:
         truncated_out = Path(tmp) / "truncated.md"
         run_cmd("--codex-home", str(codex_home), "--ids", thread_id[:8], "--max-chars", "140", "--output", str(truncated_out))
         assert "[Truncated by --max-chars]" in truncated_out.read_text(encoding="utf-8")
+
+        forbidden_out = SCRIPT.parent / "forbidden-context-output.md"
+        rejected = subprocess.run(
+            [str(SCRIPT), "--codex-home", str(codex_home), "--ids", thread_id[:8], "--output", str(forbidden_out)],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert rejected.returncode != 0
+        assert "不能写入" in rejected.stderr
+        assert not forbidden_out.exists()
 
     print("self-test passed")
     return 0

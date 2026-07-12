@@ -16,6 +16,7 @@ if PLUGIN_LIB.is_dir() and str(PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(PLUGIN_LIB))
 
 from codex_workspace_care.history import ThreadRow, resolve_rollout_path, rollout_files, state_dbs
+from codex_workspace_care.artifact_paths import require_safe_artifact_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -244,6 +245,7 @@ def main() -> int:
 
     if not args.output:
         raise SystemExit("--output is required unless --inventory is used.")
+    output = require_safe_artifact_path(Path(args.output), purpose="context extraction output")
 
     selectors_used = args.rollout_file or args.all_archived or args.ids or args.title_contains
     if not selectors_used:
@@ -254,7 +256,6 @@ def main() -> int:
     if not existing:
         raise SystemExit("No matching rollout files found.")
 
-    output = Path(args.output).expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
     chunks = [extract_rollout(path, args.include_tool_output, args.max_chars) for path in existing]
     output.write_text("\n\n---\n\n".join(chunks), encoding="utf-8")

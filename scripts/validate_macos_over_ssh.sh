@@ -3,12 +3,20 @@ set -euo pipefail
 
 host="${1:?用法: scripts/validate_macos_over_ssh.sh SSH_HOST}"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repo_root/scripts/validator_cleanup.sh"
+validator_cleanup_install "$repo_root"
 
 remote_tmp="$(ssh -o BatchMode=yes "$host" 'mktemp -d "${TMPDIR:-/tmp}/android-mac-ops-verify.XXXXXX"')"
-cleanup() {
+cleanup_remote() {
   ssh -o BatchMode=yes "$host" /bin/rm -rf -- "$remote_tmp" >/dev/null 2>&1 || true
 }
-trap cleanup EXIT
+cleanup_all() {
+  local status="${1:-1}"
+  trap - EXIT
+  cleanup_remote
+  validator_cleanup__exit "$status"
+}
+trap 'cleanup_all "$?"' EXIT
 
 (
   cd "$repo_root"

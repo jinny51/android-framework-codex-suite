@@ -34,6 +34,14 @@ die() {
   exit 1
 }
 
+guard_output_path() {
+  local output_path="$1"
+  local plugin_lib
+  plugin_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/lib"
+  PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$plugin_lib${PYTHONPATH:+:$PYTHONPATH}" \
+    python3 -m android_framework_ops.artifact_paths --purpose "checkpoint summary output" "$output_path" >/dev/null
+}
+
 sanitize_name() {
   local value="$1"
   value="${value:-checkpoint-$(date +%Y%m%d-%H%M%S)}"
@@ -69,6 +77,9 @@ done
 [[ -n "$SSH_HOST" ]] || die "--ssh-host is required"
 [[ -n "$REMOTE_ROOT" ]] || die "--remote-root is required"
 [[ "$REMOTE_ROOT" == /* ]] || die "--remote-root must be absolute"
+if [[ -n "$OUTPUT" ]]; then
+  guard_output_path "$OUTPUT"
+fi
 
 NAME="$(sanitize_name "$NAME")"
 [[ -n "$NAME" ]] || die "checkpoint name became empty after sanitizing"

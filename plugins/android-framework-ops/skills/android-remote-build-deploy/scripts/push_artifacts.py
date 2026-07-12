@@ -18,6 +18,7 @@ if str(PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(PLUGIN_LIB))
 
 from android_framework_ops.json_io import write_json
+from android_framework_ops.artifact_paths import require_safe_artifact_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -174,6 +175,16 @@ def main() -> int:
     args = parse_args()
     if args.learn_destinations and args.destinations_file is None:
         raise SystemExit("--learn-destinations requires --destinations-file")
+    if args.learn_destinations and not args.dry_run and args.destinations_file is not None:
+        args.destinations_file = require_safe_artifact_path(
+            args.destinations_file,
+            purpose="artifact destination memory output",
+        )
+    if args.evidence_out is not None:
+        args.evidence_out = require_safe_artifact_path(args.evidence_out, purpose="build delivery evidence output")
+    evidence_path = default_evidence_path(args)
+    if evidence_path is not None:
+        evidence_path = require_safe_artifact_path(evidence_path, purpose="build delivery evidence output")
     memory = read_destination_memory(args.destinations_file)
     pairs: list[tuple[Path, str]] = []
     for index, artifact in enumerate(args.artifact):
@@ -218,7 +229,6 @@ def main() -> int:
         write_json(args.destinations_file, memory)
         print(f"DESTINATION_MEMORY file={args.destinations_file}")
 
-    evidence_path = default_evidence_path(args)
     if evidence_path:
         write_json(evidence_path, delivery_evidence(args, pairs))
         print(f"EVIDENCE {evidence_path}")

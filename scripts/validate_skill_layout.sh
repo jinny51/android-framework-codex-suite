@@ -2,6 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repo_root/scripts/validator_cleanup.sh"
+validator_cleanup_install "$repo_root"
 
 repo_search() {
   local pattern="$1"
@@ -115,8 +117,9 @@ if find "$repo_root/plugins/android-mac-ops/skills" -mindepth 1 -maxdepth 1 -typ
   exit 1
 fi
 
-if repo_search "android-wsl-source-access|android-wsl-remote-build-deploy|android-wsl-remote-channel|android-macos-source-access|android-macos-ops" "$repo_root/plugins" "$repo_root/docs" "$repo_root/manifests" >/tmp/akbs-plugin-old-skill-names.txt; then
-  cat /tmp/akbs-plugin-old-skill-names.txt >&2
+old_skill_names="$VALIDATOR_CLEANUP_TMPDIR/old-skill-names.txt"
+if repo_search "android-wsl-source-access|android-wsl-remote-build-deploy|android-wsl-remote-channel|android-macos-source-access|android-macos-ops" "$repo_root/plugins" "$repo_root/docs" "$repo_root/manifests" >"$old_skill_names"; then
+  cat "$old_skill_names" >&2
   echo "old platform skill/plugin names must not appear in current plugin sources" >&2
   exit 1
 fi
@@ -126,14 +129,16 @@ if find "$repo_root/plugins/android-wsl-ops/skills" "$repo_root/plugins/android-
   exit 1
 fi
 
-if repo_search 'WSL source/build skills from android-framework-ops|通用源码接入、构建、推送和验收流程；这些属于 `android-framework-ops`' "$repo_root/plugins" "$repo_root/docs" >/tmp/akbs-plugin-layer-errors.txt; then
-  cat /tmp/akbs-plugin-layer-errors.txt >&2
+layer_errors="$VALIDATOR_CLEANUP_TMPDIR/layer-errors.txt"
+if repo_search 'WSL source/build skills from android-framework-ops|通用源码接入、构建、推送和验收流程；这些属于 `android-framework-ops`' "$repo_root/plugins" "$repo_root/docs" >"$layer_errors"; then
+  cat "$layer_errors" >&2
   echo "platform source access stays in android-wsl-ops or android-mac-ops; shared build/deploy stays in android-framework-ops" >&2
   exit 1
 fi
 
-if repo_search "\.codex/android-macos-source-access-info" "$repo_root/plugins/android-mac-ops" "$repo_root/docs" >/tmp/akbs-plugin-old-mac-paths.txt; then
-  cat /tmp/akbs-plugin-old-mac-paths.txt >&2
+old_mac_paths="$VALIDATOR_CLEANUP_TMPDIR/old-mac-paths.txt"
+if repo_search "\.codex/android-macos-source-access-info" "$repo_root/plugins/android-mac-ops" "$repo_root/docs" >"$old_mac_paths"; then
+  cat "$old_mac_paths" >&2
   echo "android-mac-ops must store registry and credential references under ~/.servers" >&2
   exit 1
 fi
@@ -207,5 +212,31 @@ validate_runtime_skill_cleanliness() {
 }
 
 validate_runtime_skill_cleanliness
+
+validate_guarded_output_entrypoints() {
+  local failed=0
+  local entry file marker
+  local -a entries=(
+    "plugins/android-framework-ops/skills/android-framework-patch-capture/scripts/capture_framework_patch.py|require_safe_artifact_path"
+    "plugins/android-framework-ops/skills/android-framework-change-workflow/scripts/extract_video_frames.py|require_safe_artifact_path"
+    "plugins/android-framework-ops/skills/android-remote-build-deploy/scripts/push_artifacts.py|require_safe_artifact_path"
+    "plugins/android-framework-ops/skills/android-remote-build-deploy/scripts/create-checkpoint.sh|guard_output_path"
+    "plugins/android-framework-ops/skills/android-remote-build-deploy/scripts/discover-project.sh|guard_output_path"
+    "plugins/codex-workspace-care/skills/codex-chat-history-context-extractor/scripts/extract_codex_context.py|require_safe_artifact_path"
+  )
+  for entry in "${entries[@]}"; do
+    file="${entry%%|*}"
+    marker="${entry#*|}"
+    if ! grep -Fq "$marker" "$repo_root/$file"; then
+      echo "explicit output entrypoint does not call the path guard: $file" >&2
+      failed=1
+    fi
+  done
+  if [[ "$failed" != "0" ]]; then
+    exit 1
+  fi
+}
+
+validate_guarded_output_entrypoints
 
 echo "Skill layout validation passed"

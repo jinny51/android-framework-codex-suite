@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import argparse
-import ast
+import contextlib
 import hashlib
 import io
 import json
@@ -16,12 +16,23 @@ import sys
 import tarfile
 import tempfile
 import textwrap
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
 
+sys.dont_write_bytecode = True
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CONTRACT_ROOT = REPO_ROOT / "contracts" / "incoming" / "v1"
+SCRIPTS_ROOT = Path(__file__).resolve().parent
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
+
+from validator_hygiene import repository_cleanup
+
 INTAKE_SCRIPT = (
     REPO_ROOT
     / "plugins"
@@ -78,20 +89,6 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def reject_codes(server_validator: Path) -> set[str]:
-    tree = ast.parse(server_validator.read_text(encoding="utf-8"))
-    return {
-        node.args[0].value
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "reject"
-        and node.args
-        and isinstance(node.args[0], ast.Constant)
-        and isinstance(node.args[0].value, str)
-    }
-
-
 def validate_fixture_schema(schema: dict[str, Any], manifest: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     for field in schema.get("required", []):
@@ -125,14 +122,82 @@ def validate_fixture_schema(schema: dict[str, Any], manifest: dict[str, Any]) ->
     return errors
 
 
-def verify_public_contract(system_root: Path) -> dict[str, Any]:
-    pin = json.loads((CONTRACT_ROOT / "contract-pin.json").read_text(encoding="utf-8"))
-    if pin.get("schema_version") != "1":
-        raise AssertionError("plugin compatibility pin must remain on incoming schema version 1")
-    system_contract = system_root / "contracts" / "incoming" / "v1"
-    for relative, expected_digest in pin["artifacts"].items():
-        plugin_path = CONTRACT_ROOT / relative
-        system_path = system_contract / relative
+def _relative_contract_path(value: Any, *, label: str) -> Path:
+    relative = Path(str(value or ""))
+    if not relative.parts or relative.is_absolute() or ".." in relative.parts:
+        raise AssertionError(f"invalid {label}: {value}")
+    return relative
+
+
+def _git_head(root: Path) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode:
+        raise AssertionError(f"cannot read system source commit: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> tuple[dict[str, Any], dict[str, Any]]:
+    plugin_contract_root = suite_root / "contracts" / "incoming" / "v1"
+    pin = load_json(plugin_contract_root / "contract-pin.json")
+    if pin.get("schema_version") != "1" or pin.get("compatibility") != "strict-public-contract-equality":
+        raise AssertionError("plugin compatibility pin must enforce strict incoming v1 public-contract equality")
+    if _git_head(system_root) != pin.get("source_commit"):
+        raise AssertionError("system source commit drifted from the plugin compatibility pin")
+
+    source = pin.get("public_contract")
+    if not isinstance(source, dict):
+        raise AssertionError("plugin compatibility pin is missing public_contract metadata")
+    system_relative = _relative_contract_path(source.get("system_path"), label="system public contract path")
+    consumer_relative = _relative_contract_path(source.get("consumer_path"), label="plugin consumer contract path")
+    system_public_path = system_root / system_relative
+    consumer_public_path = suite_root / consumer_relative
+    expected_public_sha = str(source.get("sha256") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_public_sha):
+        raise AssertionError("plugin compatibility pin has an invalid public contract SHA-256")
+    if not system_public_path.is_file() or not consumer_public_path.is_file():
+        raise AssertionError("system or plugin consumer public contract is missing")
+    system_public = load_json(system_public_path)
+    consumer_public = load_json(consumer_public_path)
+    if system_public != consumer_public:
+        raise AssertionError("plugin consumer public contract is not strictly equal to the system public contract")
+    system_public_sha = sha256(system_public_path)
+    consumer_public_sha = sha256(consumer_public_path)
+    if system_public_sha != expected_public_sha or consumer_public_sha != expected_public_sha:
+        raise AssertionError(
+            f"public contract SHA drift: pin={expected_public_sha} plugin={consumer_public_sha} server={system_public_sha}"
+        )
+
+    manifest_schema = system_public.get("manifest_schema")
+    fixtures = system_public.get("golden_fixtures")
+    if not isinstance(manifest_schema, dict) or not isinstance(fixtures, dict) or set(fixtures) != {
+        "daily",
+        "weekly",
+        "patch",
+        "supplement",
+    }:
+        raise AssertionError("system public contract artifact declarations are incomplete")
+    declared_artifacts = [manifest_schema, *fixtures.values()]
+    public_artifacts: dict[str, str] = {}
+    for declaration in declared_artifacts:
+        if not isinstance(declaration, dict):
+            raise AssertionError("system public contract artifact declaration is invalid")
+        relative = _relative_contract_path(declaration.get("path"), label="public artifact path").as_posix()
+        digest = str(declaration.get("sha256") or "")
+        if not re.fullmatch(r"[0-9a-f]{64}", digest) or relative in public_artifacts:
+            raise AssertionError("system public contract artifact declaration is invalid")
+        public_artifacts[relative] = digest
+    if pin.get("artifact_sha256") != public_artifacts:
+        raise AssertionError("plugin artifact SHA pin is not exactly derived from the system public contract")
+    system_contract_root = system_public_path.parent
+    for relative, expected_digest in public_artifacts.items():
+        plugin_path = plugin_contract_root / relative
+        system_path = system_contract_root / relative
         if not plugin_path.is_file() or not system_path.is_file():
             raise AssertionError(f"missing public incoming artifact: {relative}")
         plugin_digest = sha256(plugin_path)
@@ -142,26 +207,33 @@ def verify_public_contract(system_root: Path) -> dict[str, Any]:
                 f"incoming artifact drift: {relative}: pin={expected_digest} plugin={plugin_digest} server={system_digest}"
             )
 
-    schema = json.loads((CONTRACT_ROOT / "knowledge-incoming-package.schema.json").read_text(encoding="utf-8"))
-    fixture_names = ("daily", "weekly", "patch", "supplement")
-    for name in fixture_names:
-        manifest = json.loads((CONTRACT_ROOT / "fixtures" / f"{name}.manifest.json").read_text(encoding="utf-8"))
+    families = system_public.get("reason_code_families")
+    success_codes = system_public.get("success_reason_codes")
+    if not isinstance(families, dict) or not isinstance(success_codes, list):
+        raise AssertionError("system public contract reason-code declarations are invalid")
+    reason_codes = sorted(code for values in families.values() if isinstance(values, list) for code in values)
+    if len(reason_codes) != len(set(reason_codes)) or pin.get("reason_codes") != reason_codes:
+        raise AssertionError("plugin error reason-code pin is not exactly derived from the system public contract")
+    if pin.get("success_reason_codes") != success_codes:
+        raise AssertionError("plugin success reason-code pin is not exactly derived from the system public contract")
+
+    schema_relative = _relative_contract_path(manifest_schema.get("path"), label="manifest schema path")
+    schema = load_json(plugin_contract_root / schema_relative)
+    for name, declaration in fixtures.items():
+        manifest = load_json(plugin_contract_root / _relative_contract_path(declaration.get("path"), label=f"{name} fixture path"))
         errors = validate_fixture_schema(schema, manifest)
         if errors:
             raise AssertionError(f"{name} golden manifest failed schema: {errors[0]}")
-
-    server_validator = system_root / pin["server_validator"]
-    expected_codes = {code for values in pin["reason_code_families"].values() for code in values}
-    actual_codes = reject_codes(server_validator)
-    if actual_codes != expected_codes:
-        raise AssertionError(
-            "incoming reason-code drift: "
-            + json.dumps(
-                {"missing": sorted(expected_codes - actual_codes), "added": sorted(actual_codes - expected_codes)},
-                ensure_ascii=False,
-            )
-        )
-    return {"artifacts": len(pin["artifacts"]), "fixtures": len(fixture_names), "reason_codes": len(actual_codes)}
+    return (
+        {
+            "artifacts": len(public_artifacts),
+            "fixtures": len(fixtures),
+            "reason_codes": len(reason_codes),
+            "public_contract_sha256": system_public_sha,
+            "source_commit": pin["source_commit"],
+        },
+        system_public,
+    )
 
 
 def write_config(root: Path) -> dict[str, str]:
@@ -357,6 +429,103 @@ def expect_reject(client: Any, db_path: Path, data_root: Path, route: str, packa
         raise AssertionError(f"rejected mutation left runtime residue: {code}")
 
 
+class _PluginHttpResponse:
+    def __init__(self, content: bytes):
+        self.content = content
+
+    def __enter__(self) -> _PluginHttpResponse:
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> bool:
+        return False
+
+    def read(self) -> bytes:
+        return self.content
+
+
+class _TestClientUrlopen:
+    def __init__(self, client: Any):
+        self.client = client
+
+    def __call__(self, request: urllib.request.Request, timeout: int = 0) -> _PluginHttpResponse:
+        del timeout
+        path = urllib.parse.urlsplit(request.full_url).path
+        headers = {key: value for key, value in request.header_items()}
+        response = self.client.post(path, content=request.data or b"", headers=headers)
+        if response.status_code >= 400:
+            raise urllib.error.HTTPError(
+                request.full_url,
+                response.status_code,
+                response.reason_phrase,
+                response.headers,
+                io.BytesIO(response.content),
+            )
+        return _PluginHttpResponse(response.content)
+
+
+def load_plugin_submit(suite_root: Path) -> Any:
+    plugin_root = suite_root / "plugins" / "android-framework-ops"
+    scripts_root = plugin_root / "skills" / "android-knowledge-intake" / "scripts"
+    plugin_lib = plugin_root / "lib"
+    if not (scripts_root / "akbs_intake" / "submit.py").is_file():
+        raise AssertionError(f"plugin HTTP client is missing: {scripts_root}")
+    for path in (plugin_lib, scripts_root):
+        if str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+    from akbs_intake import submit
+
+    return submit
+
+
+@contextlib.contextmanager
+def plugin_test_client(plugin_submit: Any, client: Any):
+    endpoint_key = "CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL"
+    previous_endpoint = os.environ.get(endpoint_key)
+    previous_urlopen = plugin_submit.urllib.request.urlopen
+    os.environ[endpoint_key] = "http://testserver/akbs/api"
+    plugin_submit.urllib.request.urlopen = _TestClientUrlopen(client)
+    try:
+        yield
+    finally:
+        plugin_submit.urllib.request.urlopen = previous_urlopen
+        if previous_endpoint is None:
+            os.environ.pop(endpoint_key, None)
+        else:
+            os.environ[endpoint_key] = previous_endpoint
+
+
+def plugin_submit_package(plugin_submit: Any, client: Any, package: Path, member: str) -> dict[str, Any]:
+    with plugin_test_client(plugin_submit, client):
+        result = plugin_submit.server_submit_package(package, {"member_alias": member}, "http")
+    if not isinstance(result, dict):
+        raise AssertionError("plugin HTTP client did not return a JSON object")
+    return result
+
+
+def expect_plugin_conflict(
+    plugin_submit: Any,
+    client: Any,
+    db_path: Path,
+    data_root: Path,
+    package: Path,
+    member: str,
+    reason_code: str,
+    http_status: int,
+) -> None:
+    before = runtime_snapshot(db_path, data_root)
+    try:
+        plugin_submit_package(plugin_submit, client, package, member)
+    except SystemExit as error:
+        detail = str(error)
+        if f"HTTP {http_status}" not in detail or f"reason_code={reason_code}" not in detail:
+            raise AssertionError(f"plugin client did not preserve the declared conflict reason: {detail}") from error
+    else:
+        raise AssertionError("plugin client accepted a different-content duplicate identity")
+    after = runtime_snapshot(db_path, data_root)
+    if after != before:
+        raise AssertionError("different-content duplicate identity left runtime residue")
+
+
 def set_nested_json(package: Path, relative: str, updater: Callable[[dict[str, Any]], None]) -> None:
     path = package / relative
     payload = load_json(path)
@@ -364,7 +533,13 @@ def set_nested_json(package: Path, relative: str, updater: Callable[[dict[str, A
     write_json(path, payload)
 
 
-def exercise_server(system_root: Path, root: Path, packages: dict[str, Path]) -> dict[str, int]:
+def exercise_server(
+    system_root: Path,
+    root: Path,
+    packages: dict[str, Path],
+    suite_root: Path,
+    public_contract: dict[str, Any],
+) -> dict[str, int]:
     sys.path.insert(0, str(system_root))
     from fastapi.testclient import TestClient
     from akbs_active.app import create_app
@@ -377,13 +552,14 @@ def exercise_server(system_root: Path, root: Path, packages: dict[str, Path]) ->
     apply_migrations(db_path)
     client = TestClient(create_app(db_path, data_root=data_root))
     login_member(client, "wick")
+    plugin_submit = load_plugin_submit(suite_root)
 
     accepted = 0
     rejected = 0
     for route in ("daily", "weekly"):
-        response = client.post(f"/akbs/api/member/me/uploads/{route}", content=tar_bytes(packages[route]))
-        if response.status_code != 200:
-            raise AssertionError(f"real plugin {route} package rejected: {response.text}")
+        result = plugin_submit_package(plugin_submit, client, packages[route], "wick")
+        if not result.get("accepted"):
+            raise AssertionError(f"real plugin {route} package was not accepted: {result}")
         accepted += 1
 
     patch = packages["patch"]
@@ -422,10 +598,50 @@ def exercise_server(system_root: Path, root: Path, packages: dict[str, Path]) ->
         expect_reject(client, db_path, data_root, "patch", candidate, code)
         rejected += 1
 
-    patch_response = client.post("/akbs/api/member/me/uploads/patch", content=tar_bytes(patch))
-    if patch_response.status_code != 200:
-        raise AssertionError(f"real plugin patch package rejected: {patch_response.text}")
+    patch_result = plugin_submit_package(plugin_submit, client, patch, "wick")
+    if not patch_result.get("accepted"):
+        raise AssertionError(f"real plugin patch package was not accepted: {patch_result}")
     accepted += 1
+
+    duplicate_contract = public_contract.get("duplicate_package_identity")
+    if not isinstance(duplicate_contract, dict):
+        raise AssertionError("public contract is missing duplicate identity semantics")
+    replay_contract = duplicate_contract.get("same_file_tree_sha256")
+    conflict_contract = duplicate_contract.get("different_file_tree_sha256")
+    if not isinstance(replay_contract, dict) or not isinstance(conflict_contract, dict):
+        raise AssertionError("public contract duplicate identity branches are invalid")
+    before_replay = runtime_snapshot(db_path, data_root)
+    replay_result = plugin_submit_package(plugin_submit, client, patch, "wick")
+    after_replay = runtime_snapshot(db_path, data_root)
+    if int(replay_contract.get("http_status", -1)) != 200 or replay_contract.get("outcome") != "idempotent_replay":
+        raise AssertionError("public contract same-tree duplicate semantics drifted")
+    if after_replay != before_replay:
+        raise AssertionError("same-tree duplicate replay created a new runtime fact")
+    first_hash = patch_result.get("agent_context", {}).get("content_hash")
+    replay_hash = replay_result.get("agent_context", {}).get("content_hash")
+    if not first_hash or replay_hash != first_hash:
+        raise AssertionError("same-tree duplicate replay did not preserve plugin/server content identity")
+    accepted += 1
+
+    conflict = mutate_package(
+        root,
+        patch,
+        "duplicate-content-conflict",
+        lambda _p, manifest: manifest.update(summary="same identity with a different file tree"),
+    )
+    expect_plugin_conflict(
+        plugin_submit,
+        client,
+        db_path,
+        data_root,
+        conflict,
+        "wick",
+        str(conflict_contract.get("reason_code") or ""),
+        int(conflict_contract.get("http_status", -1)),
+    )
+    if conflict_contract.get("outcome") != "reject_conflict":
+        raise AssertionError("public contract different-tree duplicate semantics drifted")
+    rejected += 1
 
     supplement = packages["supplement"]
     missing_target = mutate_package(
@@ -439,9 +655,9 @@ def exercise_server(system_root: Path, root: Path, packages: dict[str, Path]) ->
 
     login_member(client, "jared")
     jared_patch = mutate_package(root, patch, "jared-original", lambda p, m: retarget_member(p, m, "jared", "20260711-120001-patch"))
-    jared_response = client.post("/akbs/api/member/me/uploads/patch", content=tar_bytes(jared_patch))
-    if jared_response.status_code != 200:
-        raise AssertionError(f"cross-member setup patch rejected: {jared_response.text}")
+    jared_result = plugin_submit_package(plugin_submit, client, jared_patch, "jared")
+    if not jared_result.get("accepted"):
+        raise AssertionError(f"cross-member setup patch rejected: {jared_result}")
     accepted += 1
     login_member(client, "wick")
     cross_member = mutate_package(
@@ -453,9 +669,9 @@ def exercise_server(system_root: Path, root: Path, packages: dict[str, Path]) ->
     expect_reject(client, db_path, data_root, "supplement", cross_member, "supplement_target_member_mismatch")
     rejected += 1
 
-    supplement_response = client.post("/akbs/api/member/me/uploads/supplement", content=tar_bytes(supplement))
-    if supplement_response.status_code != 200:
-        raise AssertionError(f"same-member original supplement rejected: {supplement_response.text}")
+    supplement_result = plugin_submit_package(plugin_submit, client, supplement, "wick")
+    if not supplement_result.get("accepted"):
+        raise AssertionError(f"same-member original supplement rejected: {supplement_result}")
     accepted += 1
     chained = mutate_package(
         root,
@@ -472,6 +688,9 @@ def exercise_remote_server(packages: dict[str, Path], host: str, runtime_root: s
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         archive.add(Path(__file__), arcname="gate.py")
+        archive.add(SCRIPTS_ROOT / "validator_hygiene.py", arcname="validator_hygiene.py")
+        archive.add(REPO_ROOT / "contracts", arcname="suite/contracts")
+        archive.add(REPO_ROOT / "plugins" / "android-framework-ops", arcname="suite/plugins/android-framework-ops")
         for name, package in sorted(packages.items()):
             archive.add(package, arcname=f"packages/{name}")
     command = (
@@ -479,8 +698,9 @@ def exercise_remote_server(packages: dict[str, Path], host: str, runtime_root: s
         "tmp=$(mktemp -d /tmp/akbs-contract-gate.XXXXXX); "
         "trap 'rm -rf \"$tmp\"' EXIT; "
         "tar -xzf - -C \"$tmp\"; "
-        f"PYTHONPATH={shlex.quote(python_path)} python3 \"$tmp/gate.py\" "
-        f"--system-root {shlex.quote(runtime_root)} --server-packages-root \"$tmp/packages\""
+        f"PYTHONDONTWRITEBYTECODE=1 PYTHONPATH={shlex.quote(python_path)} python3 \"$tmp/gate.py\" "
+        f"--system-root {shlex.quote(runtime_root)} --server-packages-root \"$tmp/packages\" "
+        "--plugin-suite-root \"$tmp/suite\""
     )
     result = subprocess.run(
         ["ssh", "-o", "BatchMode=yes", host, "bash", "-lc", shlex.quote(command)],
@@ -525,24 +745,31 @@ def main() -> int:
         help="Authoritative server PYTHONPATH used by the temporary harness",
     )
     parser.add_argument("--server-packages-root", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--plugin-suite-root", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
-    system_root = args.system_root.resolve()
-    if not (system_root / "akbs_active" / "app.py").is_file():
-        raise SystemExit(f"invalid system root: {system_root}")
-    if args.server_packages_root:
-        package_root = args.server_packages_root.resolve()
-        packages = {name: package_root / name for name in ("daily", "weekly", "patch", "supplement")}
-        runtime = exercise_server(system_root, package_root.parent, packages)
-        print(json.dumps({"status": "PASS", **runtime}, ensure_ascii=False, sort_keys=True))
+    cleanup = repository_cleanup(REPO_ROOT) if (REPO_ROOT / ".git").exists() else contextlib.nullcontext()
+    with cleanup:
+        system_root = args.system_root.resolve()
+        if not (system_root / "akbs_active" / "app.py").is_file():
+            raise SystemExit(f"invalid system root: {system_root}")
+        if args.server_packages_root:
+            package_root = args.server_packages_root.resolve()
+            if args.plugin_suite_root is None:
+                raise SystemExit("--plugin-suite-root is required with --server-packages-root")
+            suite_root = args.plugin_suite_root.resolve()
+            packages = {name: package_root / name for name in ("daily", "weekly", "patch", "supplement")}
+            public, public_contract = verify_public_contract(system_root, suite_root)
+            runtime = exercise_server(system_root, package_root.parent, packages, suite_root, public_contract)
+            print(json.dumps({"status": "PASS", **public, **runtime}, ensure_ascii=False, sort_keys=True))
+            return 0
+        public, _ = verify_public_contract(system_root)
+        with tempfile.TemporaryDirectory(prefix="akbs-contract-gate-") as temporary:
+            root = Path(temporary)
+            env = write_config(root)
+            packages = generate_real_packages(root, env)
+            runtime = exercise_remote_server(packages, args.server_host, args.server_runtime_root, args.server_python_path)
+        print(json.dumps({"status": "PASS", "contract": "incoming-v1", **public, **runtime}, ensure_ascii=False, sort_keys=True))
         return 0
-    public = verify_public_contract(system_root)
-    with tempfile.TemporaryDirectory(prefix="akbs-contract-gate-") as temporary:
-        root = Path(temporary)
-        env = write_config(root)
-        packages = generate_real_packages(root, env)
-        runtime = exercise_remote_server(packages, args.server_host, args.server_runtime_root, args.server_python_path)
-    print(json.dumps({"status": "PASS", "contract": "incoming-v1", **public, **runtime}, ensure_ascii=False, sort_keys=True))
-    return 0
 
 
 if __name__ == "__main__":

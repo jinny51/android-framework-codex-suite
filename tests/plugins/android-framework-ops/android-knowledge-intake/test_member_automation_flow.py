@@ -14,6 +14,7 @@ import tempfile
 import threading
 import textwrap
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -37,6 +38,22 @@ MEMBER_BOUNDARY_DOCS = (
     SUITE_ROOT / "docs" / "skills" / "android-framework-ops" / "android-framework-patch-capture" / "README.md",
     SUITE_ROOT / "docs" / "skills" / "android-framework-ops" / "android-knowledge-search" / "README.md",
 )
+
+
+def successful_upload_payload() -> dict[str, object]:
+    return {
+        "submitted": True,
+        "accepted": True,
+        "agent_context": {
+            "incoming_contract": {
+                "schema": "knowledge-incoming-package",
+                "version": "1",
+                "result": "PASS",
+                "reason_codes": ["server_contract_v1_pass"],
+                "authority": "akbs-server",
+            }
+        },
+    }
 
 
 def load_intake_module():
@@ -181,7 +198,7 @@ def fake_upload_server():
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps({"submitted": True, "accepted": True}, ensure_ascii=False).encode("utf-8"))
+            self.wfile.write(json.dumps(successful_upload_payload(), ensure_ascii=False).encode("utf-8"))
 
         def log_message(self, format: str, *args) -> None:  # noqa: A002
             return
@@ -505,7 +522,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     return False
 
                 def read(self):
-                    return json.dumps({"accepted": True, "submitted": True}, ensure_ascii=False).encode("utf-8")
+                    return json.dumps(successful_upload_payload(), ensure_ascii=False).encode("utf-8")
 
             def fake_urlopen(request, timeout=0):
                 requests.append((request, timeout))
@@ -536,6 +553,34 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertIsNone(request.get_header("X-forwarded-for"))
             self.assertIsNone(request.get_header("X-real-ip"))
             self.assertGreater(len(request.data), 0)
+
+    def test_http_submission_preserves_declared_server_reason_code(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            package_dir = Path(tmp) / "package"
+            package_dir.mkdir()
+            (package_dir / "manifest.json").write_text(
+                json.dumps({"package_kind": "daily_trace"}),
+                encoding="utf-8",
+            )
+            module = load_intake_module()
+            body = json.dumps(
+                {
+                    "detail": (
+                        "incoming_contract_v1:package_already_exists: "
+                        "package identity already exists with different content"
+                    )
+                }
+            ).encode("utf-8")
+
+            def fake_urlopen(request, timeout=0):
+                raise urllib.error.HTTPError(request.full_url, 409, "Conflict", {}, io.BytesIO(body))
+
+            with patch("urllib.request.urlopen", fake_urlopen):
+                with self.assertRaises(SystemExit) as caught:
+                    module.server_submit_package(package_dir, {"member_alias": "member01"}, "http")
+
+            self.assertIn("HTTP 409", str(caught.exception))
+            self.assertIn("reason_code=package_already_exists", str(caught.exception))
 
     def test_missing_alias_stops_before_packaging_or_http(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

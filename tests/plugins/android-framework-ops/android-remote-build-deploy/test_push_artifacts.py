@@ -14,6 +14,17 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 SKILL_ROOT = REPO_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-remote-build-deploy"
 PUSH_SCRIPT = SKILL_ROOT / "scripts" / "push_artifacts.py"
 MAPPING_SCRIPT = SKILL_ROOT / "scripts" / "resolve_remote_mapping.py"
+DISCOVERY_SCRIPT = SKILL_ROOT / "scripts" / "discover-project.sh"
+CHECKPOINT_SCRIPT = SKILL_ROOT / "scripts" / "create-checkpoint.sh"
+FRAME_SCRIPT = (
+    REPO_ROOT
+    / "plugins"
+    / "android-framework-ops"
+    / "skills"
+    / "android-framework-change-workflow"
+    / "scripts"
+    / "extract_video_frames.py"
+)
 
 
 def parse_shell_output(text: str) -> dict[str, str]:
@@ -27,6 +38,51 @@ def parse_shell_output(text: str) -> dict[str, str]:
 
 
 class PushArtifactsEvidenceTests(unittest.TestCase):
+    def test_explicit_outputs_reject_plugin_source_and_cache_targets_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            targets = [
+                REPO_ROOT / "forbidden-build-evidence.json",
+                Path(tmp) / "codex-home" / "plugins" / "cache" / "suite" / "plugin" / "1.0.0" / "evidence.json",
+            ]
+            artifact = Path(tmp) / "services.jar"
+            artifact.write_text("jar", encoding="utf-8")
+            for target in targets:
+                with self.subTest(target=target):
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            str(PUSH_SCRIPT),
+                            "--artifact",
+                            str(artifact),
+                            "--dest",
+                            "/system/framework/services.jar",
+                            "--dry-run",
+                            "--evidence-out",
+                            str(target),
+                        ],
+                        check=False,
+                        text=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                    )
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("不能写入", result.stderr)
+                    self.assertFalse(target.exists())
+
+    def test_shell_and_frame_output_flags_reject_plugin_source_before_external_work(self) -> None:
+        target = REPO_ROOT / "forbidden-output.txt"
+        commands = [
+            [str(DISCOVERY_SCRIPT), "--ssh-host", "invalid", "--remote-root", "/tmp/android", "--output", str(target)],
+            [str(CHECKPOINT_SCRIPT), "--ssh-host", "invalid", "--remote-root", "/tmp/android", "--output", str(target)],
+            [sys.executable, str(FRAME_SCRIPT), "/missing/video.mp4", "--out", str(target)],
+        ]
+        for command in commands:
+            with self.subTest(command=command[0]):
+                result = subprocess.run(command, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("不能写入", result.stderr)
+                self.assertFalse(target.exists())
+
     def test_writes_remote_local_delivery_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
