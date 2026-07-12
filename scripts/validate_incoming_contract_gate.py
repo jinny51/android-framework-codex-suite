@@ -145,10 +145,15 @@ def _git_head(root: Path) -> str:
 def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> tuple[dict[str, Any], dict[str, Any]]:
     plugin_contract_root = suite_root / "contracts" / "incoming" / "v1"
     pin = load_json(plugin_contract_root / "contract-pin.json")
-    if pin.get("schema_version") != "1" or pin.get("compatibility") != "strict-public-contract-equality":
-        raise AssertionError("plugin compatibility pin must enforce strict incoming v1 public-contract equality")
-    if _git_head(system_root) != pin.get("source_commit"):
-        raise AssertionError("system source commit drifted from the plugin compatibility pin")
+    if pin.get("schema_version") != "1" or pin.get("compatibility") != "strict-content-hash-equality":
+        raise AssertionError("plugin compatibility pin must enforce strict incoming v1 content-hash equality")
+    provenance = pin.get("source_provenance")
+    if not isinstance(provenance, dict):
+        raise AssertionError("plugin compatibility pin is missing source provenance")
+    provenance_commit = str(provenance.get("commit") or "")
+    if not re.fullmatch(r"[0-9a-f]{40}", provenance_commit) or provenance.get("compatibility_condition") is not False:
+        raise AssertionError("source provenance must be an audit-only Git commit")
+    observed_system_commit = _git_head(system_root)
 
     source = pin.get("public_contract")
     if not isinstance(source, dict):
@@ -171,6 +176,29 @@ def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> t
     if system_public_sha != expected_public_sha or consumer_public_sha != expected_public_sha:
         raise AssertionError(
             f"public contract SHA drift: pin={expected_public_sha} plugin={consumer_public_sha} server={system_public_sha}"
+        )
+
+    error_source = pin.get("error_envelope")
+    if not isinstance(error_source, dict):
+        raise AssertionError("plugin compatibility pin is missing error envelope metadata")
+    error_system_path = system_root / _relative_contract_path(
+        error_source.get("system_path"), label="system error envelope path"
+    )
+    error_consumer_path = suite_root / _relative_contract_path(
+        error_source.get("consumer_path"), label="plugin error envelope path"
+    )
+    expected_error_sha = str(error_source.get("sha256") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_error_sha):
+        raise AssertionError("plugin compatibility pin has an invalid error envelope SHA-256")
+    if not error_system_path.is_file() or not error_consumer_path.is_file():
+        raise AssertionError("system or plugin error envelope contract is missing")
+    if load_json(error_system_path) != load_json(error_consumer_path):
+        raise AssertionError("plugin error envelope consumer is not strictly equal to the system schema")
+    system_error_sha = sha256(error_system_path)
+    consumer_error_sha = sha256(error_consumer_path)
+    if system_error_sha != expected_error_sha or consumer_error_sha != expected_error_sha:
+        raise AssertionError(
+            f"error envelope SHA drift: pin={expected_error_sha} plugin={consumer_error_sha} server={system_error_sha}"
         )
 
     manifest_schema = system_public.get("manifest_schema")
@@ -230,7 +258,10 @@ def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> t
             "fixtures": len(fixtures),
             "reason_codes": len(reason_codes),
             "public_contract_sha256": system_public_sha,
-            "source_commit": pin["source_commit"],
+            "error_envelope_sha256": system_error_sha,
+            "source_provenance_commit": provenance_commit,
+            "observed_system_commit": observed_system_commit,
+            "source_provenance_matches": observed_system_commit == provenance_commit,
         },
         system_public,
     )
@@ -517,7 +548,12 @@ def expect_plugin_conflict(
         plugin_submit_package(plugin_submit, client, package, member)
     except SystemExit as error:
         detail = str(error)
-        if f"HTTP {http_status}" not in detail or f"reason_code={reason_code}" not in detail:
+        if (
+            f"HTTP {http_status}" not in detail
+            or f"code={reason_code}" not in detail
+            or re.search(r"request_id=req_[0-9a-f]{32}", detail) is None
+            or "legacy_fallback=true" in detail
+        ):
             raise AssertionError(f"plugin client did not preserve the declared conflict reason: {detail}") from error
     else:
         raise AssertionError("plugin client accepted a different-content duplicate identity")
@@ -544,6 +580,7 @@ def exercise_server(
     from fastapi.testclient import TestClient
     from akbs_active.app import create_app
     from akbs_active.db import apply_migrations
+    from akbs_active.upload_domains.archive_payload import ArchiveLimits
     from tests.auth_helpers import login_member
 
     db_path = root / "runtime" / "akbs.sqlite3"
@@ -556,6 +593,39 @@ def exercise_server(
 
     accepted = 0
     rejected = 0
+    archive_errors = 0
+
+    limited_db = root / "limited-runtime" / "akbs.sqlite3"
+    limited_data = root / "limited-runtime" / "data"
+    limited_db.parent.mkdir(parents=True)
+    apply_migrations(limited_db)
+    limited_client = TestClient(
+        create_app(
+            limited_db,
+            data_root=limited_data,
+            archive_limits=ArchiveLimits(max_compressed_bytes=1),
+        )
+    )
+    login_member(limited_client, "wick")
+    limited_before = runtime_snapshot(limited_db, limited_data)
+    try:
+        plugin_submit_package(plugin_submit, limited_client, packages["patch"], "wick")
+    except SystemExit as error:
+        detail = str(error)
+        if (
+            "HTTP 413" not in detail
+            or "code=archive_compressed_bytes_exceeded" not in detail
+            or "kind=resource_limit" not in detail
+            or re.search(r"request_id=req_[0-9a-f]{32}", detail) is None
+            or "legacy_fallback=true" in detail
+        ):
+            raise AssertionError(f"plugin client did not consume the archive resource envelope: {detail}") from error
+    else:
+        raise AssertionError("plugin client accepted an archive above the configured compressed-byte limit")
+    if runtime_snapshot(limited_db, limited_data) != limited_before:
+        raise AssertionError("archive resource rejection left runtime residue")
+    rejected += 1
+    archive_errors += 1
     for route in ("daily", "weekly"):
         result = plugin_submit_package(plugin_submit, client, packages[route], "wick")
         if not result.get("accepted"):
@@ -681,7 +751,7 @@ def exercise_server(
     )
     expect_reject(client, db_path, data_root, "supplement", chained, "supplement_target_not_original")
     rejected += 1
-    return {"accepted": accepted, "rejected": rejected}
+    return {"accepted": accepted, "rejected": rejected, "archive_errors": archive_errors}
 
 
 def exercise_remote_server(packages: dict[str, Path], host: str, runtime_root: str, python_path: str) -> dict[str, int]:
@@ -717,7 +787,11 @@ def exercise_remote_server(packages: dict[str, Path], host: str, runtime_root: s
         raise AssertionError(result.stdout.decode("utf-8", errors="replace") + result.stderr.decode("utf-8", errors="replace")) from exc
     if payload.get("status") != "PASS":
         raise AssertionError(f"remote server contract harness failed: {payload}")
-    return {"accepted": int(payload["accepted"]), "rejected": int(payload["rejected"])}
+    return {
+        "accepted": int(payload["accepted"]),
+        "rejected": int(payload["rejected"]),
+        "archive_errors": int(payload["archive_errors"]),
+    }
 
 
 def update_supplement_target(package: Path, manifest: dict[str, Any], target: str) -> None:

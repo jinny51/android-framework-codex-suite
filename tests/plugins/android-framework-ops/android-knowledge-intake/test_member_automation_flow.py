@@ -38,6 +38,17 @@ MEMBER_BOUNDARY_DOCS = (
     SUITE_ROOT / "docs" / "skills" / "android-framework-ops" / "android-framework-patch-capture" / "README.md",
     SUITE_ROOT / "docs" / "skills" / "android-framework-ops" / "android-knowledge-search" / "README.md",
 )
+SESSION_CONSENT_ARGS = [
+    "--session-consent",
+    "--session-field",
+    "work_summary",
+    "--session-field",
+    "project_hint",
+    "--session-field",
+    "command_summary",
+    "--session-field",
+    "patch_discovery",
+]
 
 
 def successful_upload_payload() -> dict[str, object]:
@@ -333,6 +344,7 @@ def prepare_daily_package(env: dict[str, str], date: str, run_id: str) -> Path:
             date,
             "--run-id",
             run_id,
+            *SESSION_CONSENT_ARGS,
             "--prepare",
         ],
         SUITE_ROOT,
@@ -353,6 +365,7 @@ def prepare_weekly_package(env: dict[str, str], date: str, run_id: str) -> Path:
             date,
             "--run-id",
             run_id,
+            *SESSION_CONSENT_ARGS,
             "--prepare",
         ],
         SUITE_ROOT,
@@ -376,6 +389,7 @@ def prepare_replacement_package(env: dict[str, str], report_type: str, date: str
             run_id,
             option,
             replacement_run_id,
+            *SESSION_CONSENT_ARGS,
             "--prepare",
         ],
         SUITE_ROOT,
@@ -565,6 +579,10 @@ class MemberAutomationFlowTests(unittest.TestCase):
             module = load_intake_module()
             body = json.dumps(
                 {
+                    "schema": "akbs-error-envelope-v1",
+                    "code": "package_already_exists",
+                    "message": "package identity already exists with different content",
+                    "request_id": "req_0123456789abcdef0123456789abcdef",
                     "detail": (
                         "incoming_contract_v1:package_already_exists: "
                         "package identity already exists with different content"
@@ -580,7 +598,8 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     module.server_submit_package(package_dir, {"member_alias": "member01"}, "http")
 
             self.assertIn("HTTP 409", str(caught.exception))
-            self.assertIn("reason_code=package_already_exists", str(caught.exception))
+            self.assertIn("code=package_already_exists", str(caught.exception))
+            self.assertIn("request_id=req_0123456789abcdef0123456789abcdef", str(caught.exception))
 
     def test_missing_alias_stops_before_packaging_or_http(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -634,7 +653,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     module.server_submit_package(package_dir, {"member_alias": "member01"}, "http")
 
             self.assertIn("HTTP 上传入口提交失败", str(caught.exception))
-            self.assertIn("TimeoutError", str(caught.exception))
+            self.assertIn("code=transport_unavailable", str(caught.exception))
+            self.assertIn("kind=retryable", str(caught.exception))
+            self.assertNotIn("timed out", str(caught.exception))
             self.assertNotIn("token", str(caught.exception).lower())
 
     def test_doctor_reports_fixed_ip_identity_and_ignores_residual_token(self) -> None:
@@ -1282,6 +1303,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     "2026-06-02",
                     "--run-id",
                     "20260602-210000-daily",
+                    *SESSION_CONSENT_ARGS,
                     "--prepare",
                 ],
                 SUITE_ROOT,

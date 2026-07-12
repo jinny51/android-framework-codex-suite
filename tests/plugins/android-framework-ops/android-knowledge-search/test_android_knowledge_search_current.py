@@ -533,7 +533,8 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         usage = json.loads(records[0].read_text(encoding="utf-8"))
         self.assertEqual(usage["source"], "local_jsonl_fallback")
         self.assertEqual(usage["search_mode"], "local_jsonl")
-        self.assertIn("offline", usage["fallback_reason"])
+        self.assertIn("code=transport_unavailable", usage["fallback_reason"])
+        self.assertNotIn("offline", usage["fallback_reason"])
 
     def test_server_unauthorized_falls_back_to_local_jsonl(self):
         root = self.make_root()
@@ -1086,7 +1087,8 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                     search.main(["--merge-confirmation", "detail", "--merge-confirmation-id", "review-missing"])
 
         self.assertIn("merge confirmation API unavailable", str(raised.exception))
-        self.assertIn("offline", str(raised.exception))
+        self.assertIn("code=transport_unavailable", str(raised.exception))
+        self.assertNotIn("offline", str(raised.exception))
 
     def test_merge_confirmation_dispute_requires_explicit_send_flag(self):
         with patch.dict(

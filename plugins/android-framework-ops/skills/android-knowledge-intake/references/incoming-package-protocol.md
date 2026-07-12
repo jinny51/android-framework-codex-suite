@@ -2,7 +2,7 @@
 
 ## Public v1 compatibility gate
 
-The member plugin and the authoritative server share the same incoming v1 schema and four golden manifests. The plugin mirror and its exact digest/reason-code compatibility pin live in `contracts/incoming/v1/` at the marketplace repository root. Production plugin code and server runtime code do not import each other.
+The member plugin and the authoritative server share the same incoming v1 schema, four golden manifests, public reason-code contract, and `akbs-error-envelope-v1` schema. The plugin mirror and its exact content-digest compatibility pin live in `contracts/incoming/v1/` at the marketplace repository root. The recorded system Git commit is audit provenance only: an unrelated server commit with identical contract/schema/fixture bytes remains compatible, while any public-contract, reason-code, schema, fixture, or error-envelope digest drift fails closed. Production plugin code and server runtime code do not import each other.
 
 Before publishing an incoming-contract change on WSL, run:
 
@@ -12,6 +12,8 @@ python3 scripts/validate_incoming_contract_gate.py \
 ```
 
 The gate uses the real member CLI to build daily, weekly, patch, and field-correction supplement packages. It submits them to an isolated server SQLite/data root through the authoritative test35 Python runtime, checks the positive path, exercises the rejection matrix, and verifies that every rejection leaves all package/type/queue/asset/material-identity tables and upload storage unchanged. Temporary files and processes are removed when the command exits. The server remains the upload authority; this compatibility gate does not turn the local member check into an acceptance claim.
+
+Upload, search, and merge clients consume the shared error envelope by stable `code`, `request_id`, optional sanitized `details`, typed category, and safe message. Legacy free-text errors are explicitly marked and cannot drive retry or business decisions. Client errors and logs must not expose credentials, cookies, request bodies, session text, paths, or underlying exception text.
 
 Member-side Codex creates only `incoming` packages and sends them through the AKBS HTTP API. It does not clone, pull, directly search, or push a database repository, and it does not write final knowledge views such as reports, patches, index, or site. The HTTP API stores accepted packages in active SQLite and exposes them to the curation flow. Member configuration contains only the current HTTP endpoint contract.
 
@@ -142,6 +144,8 @@ Manifest excerpt:
 ```
 
 Report traces must not carry `case_id` or `variant_id`. `reports/daily.md` and `reports/weekly.md` are the primary human-readable products. `materials/display/report_view.json` is a UI read model for cards, lists, and detail panes; it is generated from the same report inputs and must not contain a separate fact set.
+
+Real report generation requires explicit per-run consent before any session read or package creation. The report date/week is the exact authorized window; the caller selects only the derived fields needed for that run. `codex_sessions.json` stores only `source_session_ids`, `time_range`, `consent` (`version`, `scope`, `fields`, `granted`), and the memory-only retention policy. It must not store thread titles, cwd, raw messages, raw commands, clipboard/environment values, credentials, or unrelated session content. Temporary extraction state is removed after both success and failure, and a report package without valid consent/privacy evidence is rejected before HTTP.
 
 `report_view` is required:
 

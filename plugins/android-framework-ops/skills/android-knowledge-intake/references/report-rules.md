@@ -2,6 +2,8 @@
 
 ## Session Filtering
 
+- Read sessions only after explicit consent for this report run. The report date or week is the exact time window, and only the selected `work_summary`, `project_hint`, `command_summary`, or `patch_discovery` fields may be derived.
+- Keep only sanitized derived summaries and minimal source session IDs. Do not retain thread titles, cwd, raw messages, raw commands, clipboard content, environment values, credentials, paths, or temporary extraction files.
 - Skip automation sessions, empty sessions, report self-test sessions, and pure report-maintenance sessions.
 - Keep cross-day sessions when messages on the target date contain real work.
 - Keep sessions that produced patches, completed diagnosis, finished validation, or delivered a usable conclusion.

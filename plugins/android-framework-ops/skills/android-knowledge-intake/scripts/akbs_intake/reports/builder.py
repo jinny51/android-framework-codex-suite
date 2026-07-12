@@ -8,6 +8,7 @@ from typing import Any, Callable
 from akbs_intake.config import expanded_path, local_now, require_config, require_safe_artifact_path, synthetic_mode
 from akbs_intake.io_utils import materials_rel, write_json
 from akbs_intake.report_sessions import SessionWork, synthetic_sessions
+from akbs_intake.session_privacy import require_report_session_consent, session_evidence_payload
 from akbs_intake.reports.common import ensure_report_date_allowed, ensure_report_not_duplicate, report_dates, report_identity, ymd
 from akbs_intake.reports.identity import infer_report_project
 from akbs_intake.reports.render import write_report, write_report_view
@@ -86,6 +87,8 @@ def build_report_package(
         raise SystemExit(f"incoming 只支持 schema_version={incoming_schema_version}")
     dates, start, end, week_key = report_dates(report_type, date)
     ensure_report_date_allowed(report_type, date, config)
+    is_synthetic = synthetic_mode(config)
+    consent = require_report_session_consent(config, dates, synthetic=is_synthetic)
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}"
     out_dir = require_safe_artifact_path(expanded_path(config["out_dir"]), purpose="out_dir")
     package_dir = require_safe_artifact_path(out_dir / "pending" / ymd(date) / config["member_alias"] / run_id, purpose="incoming package output")
@@ -101,14 +104,15 @@ def build_report_package(
             run_id,
             replace_report_run_id,
         )
-    package_dir.mkdir(parents=True)
-
-    if synthetic_mode(config):
+    if is_synthetic:
         sessions = synthetic_sessions(config, dates)
         patches = []
     else:
         sessions = parse_sessions_fn(config, dates)
         patches = discover_patches_fn(config, sessions, start, end)
+    for session in sessions:
+        session.cwd = ""
+    package_dir.mkdir(parents=True)
     items = items_by_project(sessions, patches)
     summary = overview_text(report_type, items, patches)
     report_project, project_payload = infer_report_project(report_type, summary, items, sessions, patches)
@@ -127,23 +131,12 @@ def build_report_package(
         },
     )
 
-    evidence = {
-        "source": "android-knowledge-intake",
-        "synthetic_data": synthetic_mode(config),
-        "session_count": len(sessions),
-        "patch_count": len(patches),
-        "date_range": [start.isoformat(), end.isoformat()],
-        "sessions": [
-            {
-                "id": item.session_id,
-                "thread_name": item.thread_name,
-                "cwd": item.cwd,
-                "project": item.project,
-                "message_count": len(item.messages),
-            }
-            for item in sessions
-        ],
-    }
+    evidence = session_evidence_payload(
+        consent,
+        synthetic=is_synthetic,
+        source_session_ids=[item.session_id for item in sessions],
+        timezone=config.get("timezone", "Asia/Shanghai"),
+    )
     write_json(package_dir / materials_rel("evidence", "codex_sessions.json"), {"kind": "codex_sessions", "payload": evidence})
     write_json(package_dir / materials_rel("evidence", "work_findings.json"), {"kind": "work_findings", "payload": work_findings_payload(sessions, patches)})
     search_path = ""

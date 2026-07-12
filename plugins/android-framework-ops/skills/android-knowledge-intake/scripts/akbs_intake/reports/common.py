@@ -9,12 +9,14 @@ from typing import Any
 try:
     from ..config import expanded_path, local_now, require_safe_artifact_path
     from ..io_utils import read_optional_json_object as read_json_file
+    from ..session_privacy import session_evidence_errors
 except ImportError:  # pragma: no cover - direct script import fallback
     scripts_root = Path(__file__).resolve().parents[2]
     if str(scripts_root) not in sys.path:
         sys.path.insert(0, str(scripts_root))
     from akbs_intake.config import expanded_path, local_now, require_safe_artifact_path
     from akbs_intake.io_utils import read_optional_json_object as read_json_file
+    from akbs_intake.session_privacy import session_evidence_errors
 
 
 def ymd(date: dt.date) -> str:
@@ -179,6 +181,16 @@ def ensure_report_submit_allowed(package_dir: Path, config: dict[str, str], mani
     report_type = report_type_from_manifest(manifest)
     if report_type not in {"daily", "weekly"}:
         return
+    evidence_paths = manifest.get("files", {}).get("evidence", []) if isinstance(manifest.get("files"), dict) else []
+    session_payload: Any = None
+    for relative in evidence_paths if isinstance(evidence_paths, list) else []:
+        evidence = read_json_file(package_dir / str(relative))
+        if isinstance(evidence, dict) and evidence.get("kind") == "codex_sessions":
+            session_payload = evidence.get("payload")
+            break
+    privacy_errors = session_evidence_errors(session_payload)
+    if privacy_errors:
+        raise SystemExit("报告包缺少有效 session consent/privacy evidence，已在 HTTP 前停止: " + privacy_errors[0])
     manifest_date = str(manifest.get("date") or "").strip()
     try:
         date = dt.date.fromisoformat(manifest_date)

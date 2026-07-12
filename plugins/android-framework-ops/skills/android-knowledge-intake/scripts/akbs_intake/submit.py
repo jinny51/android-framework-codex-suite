@@ -4,16 +4,21 @@ import io
 import json
 import sys
 import tarfile
-import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any, Callable
+
+OPS_PLUGIN_LIB = Path(__file__).resolve().parents[4] / "lib"
+if OPS_PLUGIN_LIB.is_dir() and str(OPS_PLUGIN_LIB) not in sys.path:
+    sys.path.insert(0, str(OPS_PLUGIN_LIB))
+
+from android_framework_ops.http_client import HttpClientFailure, request_json
 
 try:
     from .config import (
         submission_api_base_url,
     )
-    from .incoming_contract import server_error_reason_code, validate_success_response
+    from .incoming_contract import error_reason_codes, validate_success_response
     from .reports.common import ensure_report_submit_allowed, record_submitted_package
 except ImportError:  # pragma: no cover - direct script import fallback
     scripts_root = Path(__file__).resolve().parents[1]
@@ -22,7 +27,7 @@ except ImportError:  # pragma: no cover - direct script import fallback
     from akbs_intake.config import (
         submission_api_base_url,
     )
-    from akbs_intake.incoming_contract import server_error_reason_code, validate_success_response
+    from akbs_intake.incoming_contract import error_reason_codes, validate_success_response
     from akbs_intake.reports.common import ensure_report_submit_allowed, record_submitted_package
 
 
@@ -105,29 +110,9 @@ def http_submit_package(
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            stdout = response.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as error:
-        body = error.read().decode("utf-8", errors="replace")
-        try:
-            error_payload = json.loads(body or "{}")
-        except json.JSONDecodeError:
-            error_payload = {}
-        detail = error_payload.get("detail") if isinstance(error_payload, dict) else ""
-        try:
-            reason_code = server_error_reason_code(detail)
-        except RuntimeError as contract_error:
-            raise SystemExit(f"HTTP 上传入口合同漂移: {contract_error}") from error
-        suffix = f" reason_code={reason_code}" if reason_code else ""
-        raise SystemExit(f"HTTP 上传入口提交失败（认证信息已脱敏）: HTTP {error.code}{suffix}") from error
-    except Exception as error:
-        raise SystemExit(f"HTTP 上传入口提交失败（认证信息已脱敏）: {type(error).__name__}") from error
-    try:
-        result = json.loads(stdout or "{}")
-    except json.JSONDecodeError:
-        result = {"message": stdout.strip()}
-    if not isinstance(result, dict):
-        raise SystemExit("HTTP 上传入口合同漂移: server success response must be a JSON object")
+        result = request_json(request, timeout=30, contract_codes=error_reason_codes())
+    except HttpClientFailure as error:
+        raise SystemExit(error.result.safe_summary("HTTP 上传入口提交失败")) from None
     try:
         validate_success_response(result)
     except RuntimeError as error:

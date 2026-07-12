@@ -1,12 +1,20 @@
 {
   "contract": "akbs-incoming-v1",
   "schema_version": "1",
-  "compatibility": "strict-public-contract-equality",
-  "source_commit": "340c16d0a738f4029b4ff80c1eed4b8e3a16cf4c",
+  "compatibility": "strict-content-hash-equality",
+  "source_provenance": {
+    "commit": "b20fcd613fbb2dd26265d02cf3f6bfb2c0e76649",
+    "compatibility_condition": false
+  },
   "public_contract": {
     "system_path": "contracts/incoming/v1/public-contract.json",
     "consumer_path": "plugins/android-framework-ops/skills/android-knowledge-intake/references/incoming-public-contract-v1.json",
-    "sha256": "e1b7a40c78a4271f8da7405cbd52b13974f15518f2f140e12ad95566d422d318"
+    "sha256": "286757f2ded64016bdb8f28a46c2a4db2fcc7f0f22536742bc2507ee1627c605"
+  },
+  "error_envelope": {
+    "system_path": "contracts/http/error-envelope-v1.schema.json",
+    "consumer_path": "plugins/android-framework-ops/contracts/http/error-envelope-v1.schema.json",
+    "sha256": "82840edf68f219c52b3b031d3d789d22400bedbb1785dfa855722f30dec77c94"
   },
   "artifact_sha256": {
     "knowledge-incoming-package.schema.json": "706c3c7a8b621cc2a392cdeb5561897728025bd9616ea0afab39dc3c3072541b",
@@ -20,6 +28,18 @@
   ],
   "reason_codes": [
     "ai_trace_mismatch",
+    "archive_compressed_bytes_exceeded",
+    "archive_compression_ratio_exceeded",
+    "archive_duplicate_path",
+    "archive_empty_payload",
+    "archive_file_count_exceeded",
+    "archive_invalid_format",
+    "archive_missing_manifest",
+    "archive_single_file_bytes_exceeded",
+    "archive_total_bytes_exceeded",
+    "archive_unreadable_entry",
+    "archive_unsafe_path",
+    "archive_unsupported_entry",
     "case_binding_mismatch",
     "display_date_mismatch",
     "display_member_mismatch",

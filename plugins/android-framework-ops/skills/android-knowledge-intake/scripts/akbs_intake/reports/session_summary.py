@@ -94,7 +94,7 @@ def progress_for_session(work: SessionWork, has_patch: bool) -> str:
 
 
 def work_finding_for_session(session: SessionWork) -> dict[str, Any]:
-    text = " ".join([session.thread_name, session.cwd, *session.messages]).lower()
+    text = " ".join([session.thread_name, *session.messages]).lower()
     blocked = any(word in text for word in ("失败", "报错", "未解决", "阻塞", "blocked", "fail"))
     framework_like = any(
         token in text
@@ -117,8 +117,6 @@ def work_finding_for_session(session: SessionWork) -> dict[str, Any]:
     else:
         work_status = "draft"
     basis = [session.thread_name or session.session_id]
-    if session.cwd:
-        basis.append(f"工作目录: {session.cwd}")
     basis.extend(session.messages[:3])
     missing_evidence = []
     if framework_like:

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import json
-import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
+
+from android_framework_ops.http_client import (
+    failure_result,
+    invalid_success_response,
+    request_json,
+)
 
 from knowledge_search.config import (
     akbs_endpoint_env_value,
@@ -79,21 +84,14 @@ def fetch_server_results(args: Any, query: str) -> tuple[list[dict[str, Any]], d
         },
         method="GET",
     )
-    with urllib.request.urlopen(request, timeout=args.server_timeout) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    if not isinstance(payload, dict):
-        raise RuntimeError("server search response is not a JSON object")
+    payload = request_json(request, timeout=args.server_timeout)
     if str(payload.get("schema") or "") != "akbs-member-knowledge-search-v1":
-        raise RuntimeError("server search response schema mismatch")
+        raise invalid_success_response("server search response schema mismatch")
     return normalize_server_results(payload), payload
 
 
 def server_fallback_reason(exc: BaseException) -> str:
-    if isinstance(exc, urllib.error.HTTPError):
-        return f"server search HTTP {exc.code}: {exc.reason}"
-    if isinstance(exc, urllib.error.URLError):
-        return f"server search unavailable: {exc.reason}"
-    return f"server search unavailable: {exc}"
+    return failure_result(exc).safe_summary("server search unavailable")
 
 
 def member_request_headers() -> dict[str, str]:
@@ -104,11 +102,7 @@ def member_request_headers() -> dict[str, str]:
 
 
 def merge_api_error(exc: BaseException) -> str:
-    if isinstance(exc, urllib.error.HTTPError):
-        return f"merge confirmation API HTTP {exc.code}: {exc.reason}"
-    if isinstance(exc, urllib.error.URLError):
-        return f"merge confirmation API unavailable: {exc.reason}"
-    return f"merge confirmation API unavailable: {exc}"
+    return failure_result(exc).safe_summary("merge confirmation API unavailable")
 
 
 def fetch_merge_confirmation_payload(identifier: str = "", action: str = "", *, timeout: float = 3.0) -> dict[str, Any]:
@@ -117,11 +111,7 @@ def fetch_merge_confirmation_payload(identifier: str = "", action: str = "", *, 
         headers=member_request_headers(),
         method="GET",
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        payload = json.loads(response.read().decode("utf-8"))
-    if not isinstance(payload, dict):
-        raise RuntimeError("merge confirmation response is not a JSON object")
-    return payload
+    return request_json(request, timeout=timeout)
 
 
 def post_merge_dispute(
@@ -148,8 +138,4 @@ def post_merge_dispute(
         headers=headers,
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        result = json.loads(response.read().decode("utf-8"))
-    if not isinstance(result, dict):
-        raise RuntimeError("merge dispute response is not a JSON object")
-    return result
+    return request_json(request, timeout=timeout)

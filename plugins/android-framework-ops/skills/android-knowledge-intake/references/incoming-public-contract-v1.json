@@ -35,6 +35,20 @@
     "server_contract_v1_pass"
   ],
   "reason_code_families": {
+    "archive": [
+      "archive_compressed_bytes_exceeded",
+      "archive_compression_ratio_exceeded",
+      "archive_duplicate_path",
+      "archive_empty_payload",
+      "archive_file_count_exceeded",
+      "archive_invalid_format",
+      "archive_missing_manifest",
+      "archive_single_file_bytes_exceeded",
+      "archive_total_bytes_exceeded",
+      "archive_unreadable_entry",
+      "archive_unsafe_path",
+      "archive_unsupported_entry"
+    ],
     "identity": [
       "invalid_date",
       "invalid_run_id",

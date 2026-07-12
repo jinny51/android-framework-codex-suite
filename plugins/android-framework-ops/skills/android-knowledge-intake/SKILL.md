@@ -47,13 +47,15 @@ A patch package can still be preserved locally when project, platform, or Androi
 
 Synthetic profiles are for protocol and server testing only. Set `synthetic_data = true` for that temporary profile. In synthetic mode, `daily` and `weekly` generate random synthetic work items instead of reading real Codex sessions or source changes; `patch` can generate a synthetic framework_change package when no `--patch` is provided.
 
+Real daily and weekly generation requires explicit consent for each report run. The current member request to generate that report is the consent event; derive the exact date window from `--date` and pass `--session-consent` plus only the fields needed for that run. Start with `--session-field work_summary`. Add `project_hint` only when local project context is needed, `command_summary` only when command-derived activity is needed, and `patch_discovery` only when patch discovery is needed; `patch_discovery` also requires `project_hint`. Without an explicit current-run request, do not pass consent flags and do not read sessions, create a package, or send HTTP. Consent is not a persistent profile setting and must not be pre-granted by an unattended recurring automation.
+
 ## Commands
 
 Prepare a draft package without submitting:
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --prepare
-python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --prepare
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --prepare
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --prepare
 ```
 
 Submit the latest prepared package:
@@ -66,20 +68,20 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --
 Prepare and submit in one run:
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --upload
-python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --upload
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --upload
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --upload
 ```
 
 Explicitly replace an existing daily package for the same member and date:
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --prepare --replace-daily-run-id 20260629-210000-daily
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --prepare --replace-daily-run-id 20260629-210000-daily
 ```
 
 Explicitly replace an existing weekly package for the same member and week:
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --prepare --replace-weekly-run-id 20260618-090102
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --prepare --replace-weekly-run-id 20260618-090102
 ```
 
 Prepare a Framework change incoming package without generating a report:
@@ -132,14 +134,14 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> doctor --
 
 ## Automation
 
-Recommended member-side incoming automations:
+Member-side submission automations may upload a package that already contains valid consent evidence. Real session-reading prepare runs require a fresh explicit member request and must not receive blanket or persistent consent. With that boundary, useful reminders or guarded automations are:
 
-- 21:00 daily prepare: generate pending package for member check.
+- 21:00 daily prepare reminder: ask the member to authorize this run before generation.
 - 22:30 daily submit: submit the latest pending package.
-- Saturday 22:00 weekly prepare.
+- Saturday 22:00 weekly prepare reminder: ask the member to authorize this run before generation.
 - Saturday 22:30 weekly submit.
 
-Before enabling member-side incoming automations, run `doctor --strict --check-remote` for the exact profile used by the automation. Strict doctor must pass before scheduled runs are enabled. It verifies identity, role, allowed modes, submission API, upload-token state/source without revealing its value, Git availability, plugin freshness, and optional remote reachability. Missing token is blocking and must fail locally before archive packaging or any HTTP request. A local knowledge repository worktree is only an optional fallback for offline search; missing local knowledge fallback must warn, not block HTTP upload.
+Before enabling member-side incoming automations, run `doctor --strict --check-remote` for the exact profile used by the automation. Strict doctor must pass before scheduled runs are enabled. It verifies identity, role, allowed modes, submission API, fixed-IP identity contract, Git availability, plugin freshness, and optional remote reachability. Member upload does not use a token or session cookie; residual credential configuration must never be sent. A local knowledge repository worktree is only an optional fallback for offline search; missing local knowledge fallback must warn, not block HTTP upload.
 
 Member profiles submit only through the AKBS HTTP API. Search should use the AKBS member knowledge-search API first and may fall back to a configured local knowledge repository worktree only when the API is unavailable. SSH/local/Git submission is removed from member setup and must not be used.
 

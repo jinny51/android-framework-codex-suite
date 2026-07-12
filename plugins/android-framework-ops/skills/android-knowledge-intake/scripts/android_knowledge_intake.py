@@ -215,6 +215,7 @@ from akbs_intake.config import (  # noqa: E402
     resolve_akbs_endpoint,
     stringify_config_value,
     submission_api_base_url,
+    synthetic_mode,
 )
 from akbs_intake.report_sessions import (  # noqa: E402
     SessionWork,
@@ -225,6 +226,11 @@ from akbs_intake.report_sessions import (  # noqa: E402
     synthetic_sessions,
     week_bounds,
     ymd,
+)
+from akbs_intake.session_privacy import (  # noqa: E402
+    ALLOWED_SESSION_FIELDS,
+    configure_report_session_consent,
+    require_report_session_consent,
 )
 from akbs_intake.io_utils import (  # noqa: E402
     MATERIALS_DIR,
@@ -798,6 +804,19 @@ def parse_args() -> argparse.Namespace:
                 default="",
                 help="explicitly regenerate a daily package for an existing report date and write supersedes metadata",
             )
+        if report_type in {"daily", "weekly"}:
+            sub.add_argument(
+                "--session-consent",
+                action="store_true",
+                help="explicitly authorize this one report run to read only the derived date window and selected session fields",
+            )
+            sub.add_argument(
+                "--session-field",
+                action="append",
+                choices=sorted(ALLOWED_SESSION_FIELDS),
+                default=[],
+                help="authorized session field for this report run; repeatable and required with --session-consent",
+            )
         action = sub.add_mutually_exclusive_group(required=True)
         action.add_argument("--prepare", action="store_true", help="generate pending package only")
         action.add_argument("--submit-latest", action="store_true", help="submit latest pending package")
@@ -810,11 +829,27 @@ def main() -> int:
     args = parse_args()
 
     config, loaded = load_config(args.profile)
+    date: dt.date | None = None
 
     if args.command == "doctor":
         result = doctor(config, loaded, args.strict, args.check_remote, args.allow_synthetic)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if not args.strict or result.get("status") == "PASS" else 1
+
+    if args.command in {"daily", "weekly"} and not args.validate and (args.prepare or args.upload):
+        date = parse_date_arg(args.date, config)
+        dates, _start, _end, _week_key = report_dates(args.command, date)
+        configure_report_session_consent(
+            config,
+            dates,
+            granted=bool(args.session_consent),
+            fields=list(args.session_field),
+        )
+        require_report_session_consent(config, dates, synthetic=synthetic_mode(config))
+    if args.command in {"daily", "weekly"} and args.submit_latest:
+        pending = latest_pending(args.command, config, parse_date_arg(args.date, config) if args.date else None)
+        pending_manifest = read_json_file(pending / "manifest.json")
+        ensure_report_submit_allowed(pending, config, pending_manifest)
 
     if args.command in PACKAGE_TYPES and not args.validate and (args.prepare or args.submit_latest or args.upload):
         freshness = plugin_version_gate_check(config, fetch=True, require=True)
@@ -835,7 +870,7 @@ def main() -> int:
             )
             return 1
 
-    date = parse_date_arg(args.date, config)
+    date = date or parse_date_arg(args.date, config)
     if args.validate:
         result = validate_package(Path(args.validate))
         print(json.dumps(result, ensure_ascii=False, indent=2))

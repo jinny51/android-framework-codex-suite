@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import json
-import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 
 PUBLIC_CONTRACT_PATH = Path(__file__).resolve().parents[2] / "references" / "incoming-public-contract-v1.json"
-ERROR_DETAIL_RE = re.compile(r"^incoming_contract_v1:([a-z0-9_]+):(?:\s|$)")
 
 
 @lru_cache(maxsize=1)
@@ -34,18 +32,6 @@ def error_reason_codes() -> frozenset[str]:
 
 def success_reason_codes() -> tuple[str, ...]:
     return tuple(public_contract()["success_reason_codes"])
-
-
-def server_error_reason_code(detail: Any) -> str:
-    if not isinstance(detail, str):
-        return ""
-    match = ERROR_DETAIL_RE.match(detail)
-    if not match:
-        return ""
-    code = match.group(1)
-    if code not in error_reason_codes():
-        raise RuntimeError(f"server returned undeclared incoming v1 reason code: {code}")
-    return code
 
 
 def validate_success_response(payload: dict[str, Any]) -> None:

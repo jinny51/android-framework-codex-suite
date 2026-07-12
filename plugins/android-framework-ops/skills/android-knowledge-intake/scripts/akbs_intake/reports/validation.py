@@ -6,6 +6,7 @@ from typing import Any, Callable
 from android_framework_ops.knowledge_rules import find_company_project
 
 from .render import REPORT_MISSING_CUSTOMER_VALUES, REPORT_MISSING_PROJECT_VALUES
+from ..session_privacy import session_evidence_errors
 
 
 RequireFile = Callable[[Any, str], Path | None]
@@ -102,6 +103,14 @@ def validate_work_findings(
         work_status = item.get("work_status")
         if work_status and work_status not in package_status_values:
             errors.append(f"work_findings item work_status 非法: {work_status}")
+
+
+def validate_session_privacy_evidence(*, evidence_by_kind: dict[str, dict[str, Any]], errors: list[str]) -> None:
+    evidence = evidence_by_kind.get("codex_sessions")
+    if not isinstance(evidence, dict):
+        errors.append("report trace 缺少 codex_sessions privacy evidence")
+        return
+    errors.extend(session_evidence_errors(evidence.get("payload")))
 
 
 def validate_daily_report_view_project(rel: str, index: int, project: dict[str, Any], errors: list[str]) -> None:
@@ -240,6 +249,7 @@ def validate_report_trace_package(
             errors.append(f"report trace 缺少 {kind} evidence")
     if package_kind == "daily_trace":
         validate_daily_project_inference(manifest=manifest, evidence_by_kind=evidence_by_kind, errors=errors)
+    validate_session_privacy_evidence(evidence_by_kind=evidence_by_kind, errors=errors)
     validate_work_findings(evidence_by_kind=evidence_by_kind, package_status_values=package_status_values, errors=errors)
     validate_report_display_files(
         package_dir=package_dir,

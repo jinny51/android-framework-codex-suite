@@ -485,6 +485,8 @@ def handle_merge_confirmation_command(args: argparse.Namespace) -> int:
         else:
             raise SystemExit(f"unsupported merge confirmation action: {action}")
     except Exception as exc:
+        if isinstance(exc, ValueError) and "member_alias" in str(exc):
+            raise SystemExit(str(exc))
         raise SystemExit(merge_api_error(exc))
 
     if args.json:

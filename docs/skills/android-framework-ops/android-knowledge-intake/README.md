@@ -61,12 +61,14 @@ python3 scripts/android_knowledge_intake.py --profile <member_alias> doctor --st
 业务 skill 调用以下底层命令：
 
 ```bash
-python3 scripts/android_knowledge_intake.py --profile <member_alias> daily --prepare
-python3 scripts/android_knowledge_intake.py --profile <member_alias> weekly --prepare
+python3 scripts/android_knowledge_intake.py --profile <member_alias> daily --session-consent --session-field work_summary --prepare
+python3 scripts/android_knowledge_intake.py --profile <member_alias> weekly --session-consent --session-field work_summary --prepare
 python3 scripts/android_knowledge_intake.py --profile <member_alias> patch --prepare --patch-package <capture-dir>
 ```
 
 `--upload` 生成并上传，`--submit-latest` 上传最近一个已准备包。日报按日期、周报按周周期保持唯一；替换必须显式提供被替换的运行编号。
+
+真实日报或周报的生成必须来自成员本次明确请求，并通过 `--session-consent` 和最小 `--session-field` 集合授权。本次日期或周范围就是授权时间窗；授权不写入 profile，也不能跨运行或定时任务复用。缺少授权时脚本在读取 session、创建包和 HTTP 前失败。包内只保留最小 source session ID、时间窗、consent version/fields 和 retention policy，不复制 thread 名、cwd、原始消息或原始命令。
 
 日报和周报必须在生成阶段识别项目名和客户名。无法识别时，Codex 应在会话中提示成员补充，例如 `TVE1086U 青鸾云`；未补齐的包可以保留在本地，但上传前必须拒绝。
 

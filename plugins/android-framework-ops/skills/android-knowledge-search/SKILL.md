@@ -13,6 +13,8 @@ Default search uses the AKBS member search endpoint when reachable. The request 
 
 If the server endpoint is unavailable, unauthorized, times out, or returns an incompatible contract, the script falls back to the local JSONL knowledge repository worktree and marks the result as `source=local_jsonl_fallback`. Treat fallback output as local text search that has not passed server reuse grading.
 
+Server failures use the shared `akbs-error-envelope-v1` client. Display only the stable error `code`, `request_id`, typed category, and sanitized message. A legacy HTTP body is explicitly marked as legacy and its free text must not decide retry, fallback business behavior, or merge state. Never expose a token, cookie, request body, session text, path, or underlying exception text.
+
 For merge confirmations, this skill can read the member-only AKBS merge confirmation API: list, detail, target knowledge, compare, and a Codex analysis summary. These actions are read-only. It must not submit a merge dispute unless the user explicitly asks to send an objection and the command includes `--merge-confirmation dispute --send-dispute` plus a reason or assessment.
 
 Each normal search writes a member-side search usage record under the intake artifact directory so later daily and patch packages can carry the pre-change knowledge use evidence. The record is development evidence only; it is not a curation decision.

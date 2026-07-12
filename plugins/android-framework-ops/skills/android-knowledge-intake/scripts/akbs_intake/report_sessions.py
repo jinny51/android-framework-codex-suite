@@ -22,6 +22,13 @@ from android_framework_ops.knowledge_rules import (
 )
 from akbs_intake.config import expanded_path
 from akbs_intake.reports.common import week_bounds, ymd
+from akbs_intake.session_privacy import (
+    minimal_source_id,
+    require_report_session_consent,
+    sanitize_command_summary,
+    sanitize_work_summary,
+    session_extraction_workspace,
+)
 
 
 RunCommand = Callable[[list[str]], subprocess.CompletedProcess[str]]
@@ -100,22 +107,6 @@ def extract_input_text(content: Any) -> str:
     return ""
 
 
-def read_thread_names(codex_home: Path) -> dict[str, str]:
-    index = codex_home / "session_index.jsonl"
-    names: dict[str, str] = {}
-    if not index.exists():
-        return names
-    for line in index.read_text(encoding="utf-8", errors="ignore").splitlines():
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        sid = payload.get("id")
-        if sid:
-            names[sid] = payload.get("thread_name") or sid
-    return names
-
-
 def session_files(codex_home: Path, dates: set[dt.date]) -> list[Path]:
     root = codex_home / "sessions"
     if not root.exists():
@@ -125,9 +116,7 @@ def session_files(codex_home: Path, dates: set[dt.date]) -> list[Path]:
         day_dir = root / f"{date:%Y}" / f"{date:%m}" / f"{date:%d}"
         if day_dir.is_dir():
             candidates.extend(day_dir.glob("*.jsonl"))
-    if candidates:
-        return sorted(set(candidates))
-    return sorted(root.glob("*.jsonl"))
+    return sorted(set(candidates))
 
 
 def should_skip_message(text: str) -> bool:
@@ -275,49 +264,65 @@ def is_report_generation_request(text: str) -> bool:
 
 
 def parse_sessions(config: dict[str, str], dates: set[dt.date], run_command: RunCommand) -> list[SessionWork]:
+    consent = require_report_session_consent(config, dates, synthetic=False)
     codex_home = expanded_path(config["codex_home"])
-    names = read_thread_names(codex_home)
     sessions: list[SessionWork] = []
-    for file in session_files(codex_home, dates):
-        work = SessionWork()
-        for line in file.read_text(encoding="utf-8", errors="ignore").splitlines():
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if local_date(row.get("timestamp", ""), config) not in dates:
-                continue
-            payload = row.get("payload") or {}
-            if row.get("type") == "session_meta":
-                work.session_id = payload.get("id", "") or work.session_id
-                work.cwd = payload.get("cwd", "") or work.cwd
-                continue
-            if row.get("type") != "response_item":
-                continue
-            if payload.get("type") == "message":
-                role = payload.get("role")
-                text = compact_text(extract_input_text(payload.get("content")), 220)
-                if role == "user" and not should_skip_message(text):
-                    work.messages.append(text)
-            elif payload.get("type") == "function_call" and payload.get("name") == "exec_command":
-                try:
-                    args = json.loads(payload.get("arguments") or "{}")
-                except json.JSONDecodeError:
-                    args = {}
-                cmd = compact_text(str(args.get("cmd", "")), 160)
-                if cmd and any(token in cmd for token in ("git ", "apply_patch", ".patch", "build", "test", "adb ", "ssh ", "cd ", "/home/")):
-                    work.messages.append(f"执行命令: {cmd}")
+    try:
+        with session_extraction_workspace():
+            for file in session_files(codex_home, dates):
+                work = SessionWork()
+                raw_cwd = ""
+                for line in file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if local_date(row.get("timestamp", ""), config) not in dates:
+                        continue
+                    payload = row.get("payload") or {}
+                    if row.get("type") == "session_meta":
+                        work.session_id = str(payload.get("id", "") or work.session_id)
+                        if consent.fields & {"project_hint", "patch_discovery"}:
+                            raw_cwd = str(payload.get("cwd", "") or raw_cwd)
+                        continue
+                    if row.get("type") != "response_item":
+                        continue
+                    if payload.get("type") == "message" and "work_summary" in consent.fields:
+                        role = payload.get("role")
+                        raw_text = extract_input_text(payload.get("content"))
+                        text = sanitize_work_summary(raw_text)
+                        if role == "user" and not should_skip_message(text):
+                            work.messages.append(text)
+                    elif (
+                        payload.get("type") == "function_call"
+                        and payload.get("name") == "exec_command"
+                        and "command_summary" in consent.fields
+                    ):
+                        try:
+                            args = json.loads(payload.get("arguments") or "{}")
+                        except json.JSONDecodeError:
+                            args = {}
+                        command = sanitize_command_summary(args.get("cmd", ""))
+                        if command:
+                            work.messages.append(f"执行命令: {command}")
 
-        if not work.session_id:
-            match = re.search(r"([0-9a-f]{8}-[0-9a-f-]{27,})", file.name)
-            work.session_id = match.group(1) if match else file.stem
-        work.thread_name = names.get(work.session_id, work.session_id)
-        if work.cwd and Path(work.cwd).exists():
-            work.project = git_branch_or_name(work.cwd, run_command)
-        if should_skip_session(work) or not work.messages:
-            continue
-        work.project = project_name(work)
-        sessions.append(work)
+                if not work.session_id:
+                    match = re.search(r"([0-9a-f]{8}-[0-9a-f-]{27,})", file.name)
+                    work.session_id = match.group(1) if match else file.stem
+                work.session_id = minimal_source_id(work.session_id)
+                if raw_cwd:
+                    anchored = find_company_project(raw_cwd)
+                    if anchored:
+                        work.project = anchored
+                    if "patch_discovery" in consent.fields and Path(raw_cwd).exists():
+                        work.cwd = raw_cwd
+                        work.project = git_branch_or_name(raw_cwd, run_command)
+                if should_skip_session(work) or not work.messages:
+                    continue
+                work.project = project_name(work)
+                sessions.append(work)
+    except (Exception, SystemExit):
+        raise SystemExit("Codex session extraction failed safely; no raw session content or path was retained.") from None
     return sessions
 
 
