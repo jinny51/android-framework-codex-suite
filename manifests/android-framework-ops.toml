@@ -23,7 +23,7 @@ summary = "生成个人日报正文和同源 report_view，并提交 daily_trace
 [[skills]]
 name = "android-weekly-report-intake"
 category = "Knowledge System"
-summary = "生成个人周报正文和同源 report_view，并提交 weekly_trace incoming 包"
+summary = "汇总当前有效日报和上一周项目台账，生成个人周报正文和同源 report_view，并提交 weekly_trace incoming 包"
 
 [[skills]]
 name = "android-knowledge-search"

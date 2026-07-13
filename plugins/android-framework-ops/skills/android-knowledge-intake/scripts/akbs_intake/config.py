@@ -54,6 +54,8 @@ CONFIG_DEFAULTS = {
     "timezone": "Asia/Shanghai",
     "synthetic_data": "false",
     "synthetic_item_count": "3",
+    "weekly_history_api_enabled": "true",
+    "weekly_history_api_timeout_seconds": "3",
 }
 
 

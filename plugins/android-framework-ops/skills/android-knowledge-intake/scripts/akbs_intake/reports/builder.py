@@ -13,6 +13,7 @@ from akbs_intake.reports.common import ensure_report_date_allowed, ensure_report
 from akbs_intake.reports.identity import infer_report_project
 from akbs_intake.reports.render import write_report, write_report_view
 from akbs_intake.reports.session_summary import items_by_project, overview_text, work_findings_payload
+from akbs_intake.reports.weekly_facts import build_weekly_facts, project_rows_to_items
 from akbs_intake.search_usage import search_usage_payload
 from akbs_intake.patch.assets import PatchInfo
 from akbs_intake.patch.supplement import write_default_evidence
@@ -74,6 +75,7 @@ def build_report_package(
     run_id: str | None = None,
     schema_version: str = "",
     replace_report_run_id: str = "",
+    weekly_facts_path: str = "",
     *,
     incoming_schema_version: str,
     validate_package_fn: ValidatePackage,
@@ -112,16 +114,59 @@ def build_report_package(
         patches = discover_patches_fn(config, sessions, start, end)
     for session in sessions:
         session.cwd = ""
-    package_dir.mkdir(parents=True)
-    items = items_by_project(sessions, patches)
-    summary = overview_text(report_type, items, patches)
-    report_project, project_payload = infer_report_project(report_type, summary, items, sessions, patches)
+    session_items = items_by_project(sessions, patches)
+    preliminary_summary = overview_text(report_type, session_items, patches)
+    report_project, project_payload = infer_report_project(report_type, preliminary_summary, session_items, sessions, patches)
     project_customers = {
         str(item.get("project")): str(item.get("customer_name"))
         for item in project_payload.get("project_customers", [])
         if isinstance(item, dict) and item.get("project") and item.get("customer_name")
     }
-    write_report(package_dir, report_type, date, week_key, config, items, patches, project_customers)
+    weekly_projects: list[dict[str, Any]] = []
+    weekly_fact_evidence_path = ""
+    items = session_items
+    if report_type == "weekly":
+        weekly_facts = build_weekly_facts(
+            config,
+            start,
+            end,
+            week_key,
+            explicit_path=weekly_facts_path,
+            synthetic=is_synthetic,
+            fallback_items=session_items,
+            project_customers=project_customers,
+        )
+        weekly_projects = weekly_facts.projects
+        if weekly_projects:
+            items = project_rows_to_items(weekly_projects)
+            for row in weekly_projects:
+                project = str(row.get("project") or "")
+                customer = str(row.get("customer") or row.get("customer_name") or "")
+                if project and customer:
+                    project_customers[project] = customer
+        weekly_fact_evidence_path = materials_rel("evidence", "weekly_fact_sources.json")
+        package_dir.mkdir(parents=True)
+        write_json(
+            package_dir / weekly_fact_evidence_path,
+            {"kind": "weekly_fact_sources", "payload": weekly_facts.evidence},
+        )
+    summary = overview_text(report_type, items, patches)
+    report_project, project_payload = infer_report_project(report_type, summary, items, sessions, patches)
+    if weekly_projects:
+        fact_customers = [
+            {"project": str(row.get("project") or ""), "customer_name": str(row.get("customer") or row.get("customer_name") or "")}
+            for row in weekly_projects
+            if row.get("project") and (row.get("customer") or row.get("customer_name"))
+        ]
+        project_payload["project_customers"] = fact_customers
+        project_payload["customer_basis"] = {
+            row["project"]: ["weekly_fact_sources"]
+            for row in fact_customers
+        }
+        if len(fact_customers) == 1 and report_project != "unknown":
+            project_payload["customer_name"] = fact_customers[0]["customer_name"]
+    package_dir.mkdir(parents=True, exist_ok=True)
+    write_report(package_dir, report_type, date, week_key, config, items, patches, project_customers, weekly_projects)
     project_path = write_default_evidence(
         package_dir,
         materials_rel("evidence", "project_inference.json"),
@@ -149,7 +194,18 @@ def build_report_package(
     reports_dir.mkdir(parents=True, exist_ok=True)
     shutil.move(str(package_dir / f"{report_type}.md"), reports_dir / f"{report_type}.md")
     source = write_package_source_fn(package_dir, config, "android-knowledge-intake")
-    display_path = write_report_view(package_dir, report_type, date, week_key, config, items, patches, summary, project_customers)
+    display_path = write_report_view(
+        package_dir,
+        report_type,
+        date,
+        week_key,
+        config,
+        items,
+        patches,
+        summary,
+        project_customers,
+        weekly_projects,
+    )
     manifest = incoming_report_manifest(
         report_type,
         date,
@@ -176,6 +232,8 @@ def build_report_package(
         }
     if search_path:
         manifest["files"]["evidence"].append(search_path)
+    if weekly_fact_evidence_path:
+        manifest["files"]["evidence"].append(weekly_fact_evidence_path)
     write_json(package_dir / "manifest.json", manifest)
     check = validate_package_fn(package_dir)
     write_json(package_dir / "local-check.json", check)

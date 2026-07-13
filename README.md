@@ -46,7 +46,7 @@
 | 补丁资料整理 | `android-framework-patch-capture` | 把已完成、阶段性、失败或阻塞但有价值的 Framework 功能整理成一个功能 README、多源码仓库 patch、修改文件证据、符号事实和验证材料 |
 | 补丁包上传材料 | `android-framework-patch-intake` | 生成原始补丁包、补证包、替换包和补丁资产修正 `framework_change` incoming |
 | 日报上传材料 | `android-daily-report-intake` | 生成个人日报正文、同源 UI 读模型和 `daily_trace` incoming |
-| 周报上传材料 | `android-weekly-report-intake` | 生成个人周报正文、同源 UI 读模型和 `weekly_trace` incoming |
+| 周报上传材料 | `android-weekly-report-intake` | 汇总当前有效日报和上一周项目台账，生成个人周报、同源 UI 读模型和 `weekly_trace` incoming |
 | 共享内核 / 配置诊断 | `android-knowledge-intake` | 提供成员配置、doctor、插件更新、版本门禁、会话缓存门禁和 manifest 协议 |
 
 `android-remote-build-deploy` 只证明产物是否编出、是否推上设备；最终能不能算需求完成，由 `android-framework-change-workflow` 结合需求和验证证据判断。

@@ -6,6 +6,8 @@
 - Keep only sanitized derived summaries and minimal source session IDs. Do not retain thread titles, cwd, raw messages, raw commands, clipboard content, environment values, credentials, paths, or temporary extraction files.
 - Skip automation sessions, empty sessions, report self-test sessions, and pure report-maintenance sessions.
 - Keep cross-day sessions when messages on the target date contain real work.
+- Discover cross-day sessions by message timestamp and file activity, not only
+  by the directory in which a session was originally created.
 - Keep sessions that produced patches, completed diagnosis, finished validation, or delivered a usable conclusion.
 - Daily and weekly reports are project-work summaries, not chat title summaries.
 - Skip or downgrade Codex system text, approval history, plugin install/update chatter, report-generation chatter, SSH key prompts, file-upload captions, and pure local workspace maintenance unless the same session contains a clear project anchor and real engineering work.
@@ -79,6 +81,13 @@
 ```
 
 ## Weekly Template
+
+Weekly project facts are not derived by counting sessions. Resolve current
+effective daily reports from AKBS, carry the current previous-week project
+ledger forward, apply report replacement chains, and use sessions only to
+supplement work absent from effective daily reports. `weekly_fact_sources`
+records this provenance. Missing ledger fields block upload and are completed
+through the explicit `akbs-weekly-project-facts-v1` contract.
 
 ```markdown
 # YYYYMMDD-YYYYMMDD 周报 - 成员名

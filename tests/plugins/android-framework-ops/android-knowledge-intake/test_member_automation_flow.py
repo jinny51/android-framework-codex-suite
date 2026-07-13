@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import contextlib
 import http.server
+import importlib
 import importlib.util
 import io
 import json
@@ -248,6 +249,7 @@ def write_member_config(root: Path, knowledge_remote: Path, synthetic_data: bool
             git_user_email = "member01@example.invalid"
             synthetic_data = {str(synthetic_data).lower()}
             synthetic_item_count = "2"
+            weekly_history_api_enabled = false
             """
         ).strip()
         + "\n",
@@ -353,7 +355,8 @@ def prepare_daily_package(env: dict[str, str], date: str, run_id: str) -> Path:
     return Path(result["package"])
 
 
-def prepare_weekly_package(env: dict[str, str], date: str, run_id: str) -> Path:
+def prepare_weekly_package(env: dict[str, str], date: str, run_id: str, weekly_facts: Path | None = None) -> Path:
+    facts_args = ["--weekly-facts", str(weekly_facts)] if weekly_facts else []
     result = run_json(
         [
             sys.executable,
@@ -365,6 +368,7 @@ def prepare_weekly_package(env: dict[str, str], date: str, run_id: str) -> Path:
             date,
             "--run-id",
             run_id,
+            *facts_args,
             *SESSION_CONSENT_ARGS,
             "--prepare",
         ],
@@ -372,6 +376,42 @@ def prepare_weekly_package(env: dict[str, str], date: str, run_id: str) -> Path:
         env,
     )
     return Path(result["package"])
+
+
+def write_weekly_facts(path: Path, week_range: str = "20260601-20260607") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "akbs-weekly-project-facts-v1",
+                "week_range": week_range,
+                "projects": [
+                    {
+                        "project": "TVE1086U",
+                        "customer": "青鸾云",
+                        "week_summary": "本周完成状态栏策略修改和设备验证。",
+                        "received_date": "2026-05-18",
+                        "source": "客户需求文档",
+                        "requirement_type": "混合",
+                        "requirement_structure": {"custom": 8, "bug": 3, "bsp": 1},
+                        "completed_this_week": {"custom": 2, "bug": 1, "bsp": 0},
+                        "remaining": {"custom": 2, "bug": 0, "bsp": 1},
+                        "expected_finish": "预计下周完成整体收敛",
+                        "completed_items": ["状态栏策略修改", "设备验证", "修复亮度同步问题"],
+                        "remaining_items": ["补齐客户验收", "完成 BSP 联调", "收敛配置项"],
+                        "risks": ["BSP 联调环境尚未就绪"],
+                        "dependencies": ["等待 BSP 提供新固件"],
+                        "next_week_plan": ["完成 BSP 联调并提交客户验收"],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
 
 
 def prepare_replacement_package(env: dict[str, str], report_type: str, date: str, run_id: str, replacement_run_id: str) -> Path:
@@ -1195,12 +1235,254 @@ class MemberAutomationFlowTests(unittest.TestCase):
             project_inference = json.loads((daily / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
 
             self.assertEqual(daily_check["status"], "PASS")
-            self.assertEqual(weekly_check["status"], "PASS")
+            self.assertEqual(weekly_check["status"], "FAIL")
+            self.assertIn("TVE1086U.received_date", "\n".join(weekly_check["errors"]))
+            self.assertIn("TVE1086U.source", "\n".join(weekly_check["errors"]))
             self.assertEqual(daily_view["payload"]["projects"][0]["project"], "TVE1086U")
             self.assertEqual(daily_view["payload"]["projects"][0]["customer"], "青鸾云")
             self.assertEqual(weekly_view["payload"]["projects"][0]["project"], "TVE1086U")
             self.assertEqual(weekly_view["payload"]["projects"][0]["customer"], "青鸾云")
             self.assertEqual(project_inference["payload"]["customer_name"], "青鸾云")
+
+    def test_weekly_explicit_project_facts_render_exact_template_and_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            codex_home = Path(env["CODEX_HOME"])
+            source_root = create_framework_repo(root)
+            write_codex_session(
+                codex_home,
+                "55555555-3333-3333-4444-555555555555",
+                source_root,
+                dt.date(2026, 6, 3),
+                "TVE1086U 青鸾云，本周完成状态栏策略修改和设备验证。",
+            )
+            facts = write_weekly_facts(root / "artifacts" / "weekly-facts.json")
+
+            weekly = prepare_weekly_package(env, "2026-06-03", "20260603-225000-weekly", facts)
+            check = json.loads((weekly / "local-check.json").read_text(encoding="utf-8"))
+            report = read_package_report(weekly, "weekly")
+            view = read_report_view(weekly)["payload"]["projects"][0]
+            fact_sources = json.loads(
+                (weekly / "materials" / "evidence" / "weekly_fact_sources.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(check["status"], "PASS")
+            self.assertIn("本周完成状态栏策略修改和设备验证。", report)
+            self.assertNotIn("本周围绕 TVE1086U 青鸾云 项目推进：下周继续", report)
+            self.assertIn("- 接到文档时间：2026-05-18", report)
+            self.assertIn("- 需求结构：12 项（定制 8、Bug 3、BSP 1）", report)
+            self.assertIn("- 本周完成：3 项（定制 2、Bug 1）", report)
+            self.assertIn("- 当前剩余：3 项（定制 2、Bug 0、BSP 1）", report)
+            self.assertEqual(view["requirement_structure"], "12 项（定制 8、Bug 3、BSP 1）")
+            self.assertEqual(view["completed_this_week"], "3 项（定制 2、Bug 1）")
+            self.assertEqual(view["remaining"], "3 项（定制 2、Bug 0、BSP 1）")
+            self.assertEqual(fact_sources["payload"]["source"], "explicit_weekly_facts")
+            self.assertEqual(fact_sources["payload"]["missing_fields"], [])
+
+    def test_weekly_cross_day_session_uses_target_date_messages_and_assistant_outcome(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            module = load_intake_module()
+            codex_home = root / "codex-home"
+            source_root = create_framework_repo(root)
+            session_dir = codex_home / "sessions" / "2026" / "05" / "31"
+            session_dir.mkdir(parents=True)
+            session_path = session_dir / "66666666-3333-3333-4444-555555555555.jsonl"
+            rows = [
+                {
+                    "timestamp": "2026-05-31T20:00:00+08:00",
+                    "type": "session_meta",
+                    "payload": {"id": "66666666-3333-3333-4444-555555555555", "cwd": str(source_root)},
+                },
+                {
+                    "timestamp": "2026-06-01T10:00:00+08:00",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "TVE1086U 青鸾云，处理状态栏策略。"}],
+                    },
+                },
+                {
+                    "timestamp": "2026-06-01T18:00:00+08:00",
+                    "type": "response_item",
+                    "payload": {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "TVE1086U 状态栏策略已完成并验证通过。"}],
+                    },
+                },
+            ]
+            session_path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n", encoding="utf-8")
+            dates = {dt.date(2026, 6, 1)}
+            config = {"codex_home": str(codex_home), "timezone": "Asia/Shanghai"}
+            module.configure_report_session_consent(
+                config,
+                dates,
+                granted=True,
+                fields=["work_summary", "project_hint"],
+            )
+
+            sessions = module.parse_sessions(config, dates)
+            items = module.items_by_project(sessions, [])
+
+            self.assertEqual(len(sessions), 1)
+            self.assertIn("已完成并验证通过", sessions[0].outcomes[0])
+            self.assertEqual(items["TVE1086U"][0][1], "已完成")
+
+    def test_weekly_history_uses_current_akbs_daily_and_previous_week_ledger(self) -> None:
+        load_intake_module()
+        weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+        previous = {
+            "package_key": "20260607/member01/current-weekly",
+            "package_kind": "weekly_trace",
+            "week_range": "20260601-20260607",
+            "standard_view": {
+                "projects": [
+                    {
+                        "project": "TVE1086U",
+                        "customer": "青鸾云",
+                        "week_summary": "上周持续推进状态栏和亮度事项。",
+                        "received_date": "2026-05-18",
+                        "source": "客户需求文档",
+                        "requirement_type": "混合",
+                        "requirement_structure": "3 项（定制 2、Bug 1、BSP 0）",
+                        "completed_this_week": "1 项（定制 1、Bug 0）",
+                        "remaining": "2 项（定制 1、Bug 1）",
+                        "expected_finish": "预计下周完成整体收敛",
+                        "completed_items": ["完成基础接口适配"],
+                        "remaining_items": ["状态栏策略修改", "修复亮度同步问题"],
+                        "risks": ["无超过 3 天无进展事项。"],
+                        "dependencies": ["无外部依赖事项。"],
+                        "next_week_plan": ["完成状态栏和亮度问题收敛"],
+                    }
+                ]
+            },
+        }
+        daily = {
+            "package_key": "20260610/member01/current-daily",
+            "package_kind": "daily_trace",
+            "report_date": "2026-06-10",
+            "standard_view": {
+                "projects": [
+                    {
+                        "project": "TVE1086U",
+                        "customer": "青鸾云",
+                        "work_items": [
+                            {"name": "状态栏策略修改", "result": "已完成并验证通过"},
+                            {"name": "新增开关功能", "result": "已完成"},
+                            {"name": "修复亮度同步问题", "result": "处理中"},
+                        ],
+                        "tomorrow_focus": ["完成亮度同步问题回归"],
+                    }
+                ]
+            },
+        }
+
+        def fake_fetch(_config: dict[str, str], package_kind: str, _month: str) -> list[dict]:
+            return [daily] if package_kind == "daily_trace" else [previous]
+
+        config = {
+            "member_alias": "member01",
+            "submission_api_base_url": "http://127.0.0.1:1/akbs/api",
+            "weekly_history_api_enabled": "true",
+        }
+        with patch.object(weekly_module, "fetch_current_report_items", side_effect=fake_fetch):
+            result = weekly_module.build_weekly_facts(
+                config,
+                dt.date(2026, 6, 8),
+                dt.date(2026, 6, 14),
+                "20260608-20260614",
+            )
+
+        row = result.projects[0]
+        self.assertEqual(result.evidence["source"], "akbs_api")
+        self.assertEqual(result.evidence["daily_package_keys"], ["20260610/member01/current-daily"])
+        self.assertEqual(result.evidence["previous_weekly_package_keys"], ["20260607/member01/current-weekly"])
+        self.assertEqual(result.evidence["missing_fields"], [])
+        self.assertEqual(row["requirement_structure_counts"], {"custom": 3, "bug": 1, "bsp": 0})
+        self.assertEqual(row["completed_this_week_counts"], {"custom": 2, "bug": 0, "bsp": 0})
+        self.assertEqual(row["remaining_counts"], {"custom": 0, "bug": 1, "bsp": 0})
+        self.assertEqual(row["completed_items"], ["状态栏策略修改", "新增开关功能"])
+        self.assertEqual(row["remaining_items"], ["修复亮度同步问题"])
+        self.assertTrue(any("超过 3 天无进展" in item for item in row["risks"]))
+
+    def test_weekly_local_history_fallback_selects_replacement_leaf(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            load_intake_module()
+            weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+            out_dir = root / "artifacts" / "android-knowledge-intake"
+
+            def write_submitted(run_id: str, topic: str, replaces: str = "") -> None:
+                package = out_dir / "submitted" / "20260610" / "member01" / run_id
+                display = package / "materials" / "display" / "report_view.json"
+                display.parent.mkdir(parents=True)
+                display.write_text(
+                    json.dumps(
+                        {
+                            "kind": "report_view",
+                            "payload": {
+                                "projects": [
+                                    {
+                                        "project": "TVE1086U",
+                                        "customer": "青鸾云",
+                                        "today_topic": topic,
+                                        "work_items": [{"name": topic, "result": "已完成"}],
+                                    }
+                                ]
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                manifest = {
+                    "package_kind": "daily_trace",
+                    "member_alias": "member01",
+                    "date": "2026-06-10",
+                    "run_id": run_id,
+                    "files": {"display": ["materials/display/report_view.json"]},
+                }
+                if replaces:
+                    manifest["replacement_for_run_id"] = replaces
+                (package / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+
+            write_submitted("20260610-210000-daily", "错误旧事项")
+            write_submitted("20260610-220000-daily", "补交后的正确事项", "20260610-210000-daily")
+
+            rows = weekly_module.local_current_report_items(
+                {"out_dir": str(out_dir), "member_alias": "member01"},
+                "daily_trace",
+                {"2026-06-10"},
+            )
+
+            self.assertEqual(len(rows), 1)
+            self.assertIn("20260610-220000-daily", rows[0]["package_key"])
+            self.assertEqual(rows[0]["report_view"]["projects"][0]["today_topic"], "补交后的正确事项")
+
+    def test_session_summary_splits_multiple_projects_in_one_session(self) -> None:
+        module = load_intake_module()
+        session = module.SessionWork(
+            session_id="77777777-3333-3333-4444-555555555555",
+            project="TVE1086U",
+            messages=[
+                "TVE1086U 青鸾云，完成状态栏策略修改。",
+                "TVA10A2R 灵犀屏，继续处理摄像头问题。",
+            ],
+            outcomes=[
+                "TVE1086U 状态栏策略已完成并验证通过。",
+                "TVA10A2R 摄像头问题仍在处理中。",
+            ],
+        )
+
+        items = module.items_by_project([session], [])
+
+        self.assertEqual(set(items), {"TVE1086U", "TVA10A2R"})
+        self.assertEqual(items["TVE1086U"][0][1], "已完成")
+        self.assertEqual(items["TVA10A2R"][0][1], "处理中")
 
     def test_report_local_check_rejects_missing_customer_and_command_text_customer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

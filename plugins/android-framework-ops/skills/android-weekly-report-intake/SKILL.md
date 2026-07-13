@@ -22,6 +22,24 @@ current result. Weekly reports do not repeat daily execution details. They
 summarize the week around project progress: completed count, remaining count,
 risks, dependencies, and next-week closure plan.
 
+Weekly facts are resolved in this order:
+
+1. Current effective daily reports for the target week from the member AKBS API.
+2. The current effective previous-week report as the rolling project ledger.
+3. Local `submitted` report packages as an offline fallback, with replacement
+   leaves taking precedence over the reports they supersede.
+4. Sanitized Codex session summaries only as supplementary evidence for work
+   not represented by an effective daily report.
+
+Do not count Codex sessions as requirements. If the effective reports cannot
+prove received date, source, requirement totals, remaining-item identity, or
+expected finish, local check must fail with exact missing fields. Ask the member
+only for those facts, write an `akbs-weekly-project-facts-v1` JSON file under
+`$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/`, and regenerate
+with `--weekly-facts`. Read `../android-knowledge-intake/references/weekly-facts-contract.md`
+when this fact-completion path is needed. Do not ask the member to repair a
+large part of generated Markdown manually.
+
 Generate `reports/weekly.md` with this required structure:
 
 - 本周概况
@@ -64,9 +82,9 @@ and a customer name. The member can provide this in natural language as
 `TVE1086U 青鸾云，本周主要推进...`; parse it as project `TVE1086U` and
 customer `青鸾云`. If either value is missing, generate the package with
 `需成员补充项目名` or `需成员补充客户名` so the member can edit it, but local
-submit must stop until both values are present. Members may manually correct the
-Markdown before upload, but the generated `report_view.json` must remain the
-same-source structured view of that report content. Any management-side
+submit must stop until both values are present. Do not repair Markdown alone.
+Complete the structured weekly facts and regenerate so `reports/weekly.md` and
+`report_view.json` remain the same-source views of one fact set. Any management-side
 aggregation happens outside the member workflow and should not be exposed as a
 member responsibility.
 
@@ -89,6 +107,7 @@ The member's explicit request to generate this weekly report authorizes only thi
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --prepare
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --submit-latest
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --prepare --replace-weekly-run-id <old_run_id>
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --prepare --weekly-facts "$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/<week>.json"
 ```
 
 Future periods are blocked. Past periods are late submissions and are allowed. If an ordinary weekly package for the same member and week exists, stop unless the member explicitly replaces it.

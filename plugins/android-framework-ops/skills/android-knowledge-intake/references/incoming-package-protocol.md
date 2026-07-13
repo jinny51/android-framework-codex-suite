@@ -121,6 +121,7 @@ materials/display/report_view.json
 materials/evidence/source.json
 materials/evidence/codex_sessions.json
 materials/evidence/work_findings.json
+materials/evidence/weekly_fact_sources.json  # weekly_trace only
 ```
 
 Manifest excerpt:
@@ -178,6 +179,14 @@ Real report generation requires explicit per-run consent before any session read
 ```
 
 For `report_type=weekly`, `payload` must include `schema=akbs-report-view-human-v1`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row must contain `project`, `customer`, `week_summary`, `received_date`, `source`, `requirement_type`, `requirement_structure`, `completed_this_week`, `remaining`, `expected_finish`, `completed_items[]`, `remaining_items[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`. `display_date` is the last workday of the week range, not the upload day.
+
+Every new `weekly_trace` also carries `weekly_fact_sources` evidence with
+`schema=akbs-weekly-fact-sources-v1`, the exact `week_range`, source package
+keys, project count, a sanitized facts hash, and `missing_fields`. The member
+client resolves current AKBS daily reports and the current previous-week report
+before local submitted replacement leaves; sessions only supplement missing
+daily coverage. Non-empty `missing_fields` fails local upload validation and is
+closed through an explicit `akbs-weekly-project-facts-v1` artifact.
 
 `work_findings` is required:
 
@@ -314,7 +323,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.131"
+    "plugin_version": "1.0.132"
   }
 }
 ```

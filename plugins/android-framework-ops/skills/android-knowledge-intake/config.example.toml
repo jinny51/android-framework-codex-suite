@@ -9,6 +9,8 @@ incoming_schema_version = "1"
 max_attachment_mb = 5
 push_retries = 3
 timezone = "Asia/Shanghai"
+weekly_history_api_enabled = true
+weekly_history_api_timeout_seconds = 3
 
 [profiles.member_alias]
 member_alias = "member_alias"

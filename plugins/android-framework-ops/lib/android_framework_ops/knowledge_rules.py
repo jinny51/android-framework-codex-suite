@@ -8,7 +8,7 @@ from typing import Any
 
 
 AKBS_RULES_CONTRACT_VERSION = "2026-07-02.1"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.131"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.132"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -60,6 +60,10 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
     "report_view_human_v1": {
         "min_plugin_version": "1.0.79",
         "description": "daily and weekly report_view uses akbs-report-view-human-v1 with material_name/material_summary and project blocks",
+    },
+    "weekly_effective_report_facts_v1": {
+        "min_plugin_version": "1.0.132",
+        "description": "weekly reports use current effective daily/weekly facts, replacement leaves, and explicit fact completion",
     },
 }
 DEFAULT_SOURCE_VERSION_CAPABILITIES = ("source_version_evidence",)

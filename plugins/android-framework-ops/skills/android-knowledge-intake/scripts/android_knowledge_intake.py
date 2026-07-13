@@ -620,6 +620,7 @@ def prepare_package(
     run_id: str | None = None,
     schema_version: str = INCOMING_SCHEMA_VERSION,
     replace_report_run_id: str = "",
+    weekly_facts_path: str = "",
 ) -> Path:
     return build_report_package(
         report_type,
@@ -628,6 +629,7 @@ def prepare_package(
         run_id=run_id,
         schema_version=schema_version,
         replace_report_run_id=replace_report_run_id,
+        weekly_facts_path=weekly_facts_path,
         incoming_schema_version=INCOMING_SCHEMA_VERSION,
         validate_package_fn=validate_package,
         write_package_source_fn=write_package_source,
@@ -794,6 +796,11 @@ def parse_args() -> argparse.Namespace:
             )
         if report_type == "weekly":
             sub.add_argument(
+                "--weekly-facts",
+                default="",
+                help="authoritative akbs-weekly-project-facts-v1 JSON for unresolved project ledger facts",
+            )
+            sub.add_argument(
                 "--replace-weekly-run-id",
                 default="",
                 help="explicitly regenerate a weekly package for an existing week_range and write supersedes metadata",
@@ -907,6 +914,7 @@ def main() -> int:
                 args.run_id,
                 schema_version,
                 getattr(args, "replace_daily_run_id", "") or getattr(args, "replace_weekly_run_id", ""),
+                getattr(args, "weekly_facts", ""),
             )
         result = json.loads((package_dir / "local-check.json").read_text(encoding="utf-8"))
         print(json.dumps({"package": str(package_dir), "local_check": result}, ensure_ascii=False, indent=2))
@@ -948,6 +956,7 @@ def main() -> int:
                 args.run_id,
                 schema_version,
                 getattr(args, "replace_daily_run_id", "") or getattr(args, "replace_weekly_run_id", ""),
+                getattr(args, "weekly_facts", ""),
             )
         result = submit_package(package_dir, config)
         print(json.dumps({"package": str(package_dir), "submit": result}, ensure_ascii=False, indent=2))

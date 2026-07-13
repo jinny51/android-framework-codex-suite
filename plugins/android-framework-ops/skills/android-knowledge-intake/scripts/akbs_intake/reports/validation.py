@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import datetime as dt
+import re
 from pathlib import Path
 from typing import Any, Callable
 
 from android_framework_ops.knowledge_rules import find_company_project
 
 from .render import REPORT_MISSING_CUSTOMER_VALUES, REPORT_MISSING_PROJECT_VALUES
+from .weekly_facts import WEEKLY_FACT_SOURCES_SCHEMA
 from ..session_privacy import session_evidence_errors
 
 
@@ -32,8 +35,11 @@ FORBIDDEN_REPORT_VIEW_FIELDS = {
     "patch_outputs",
     "delivery_verifications",
 }
-WEEKLY_ALLOWED_SOURCES = {"客户需求文档", "TL指派", "Buglist", "测试反馈", "BSP配合", "需成员确认"}
-WEEKLY_ALLOWED_REQUIREMENT_TYPES = {"纯定制", "Buglist", "混合", "需成员确认"}
+WEEKLY_ALLOWED_SOURCES = {"客户需求文档", "TL指派", "Buglist", "测试反馈", "BSP配合"}
+WEEKLY_ALLOWED_REQUIREMENT_TYPES = {"纯定制", "Buglist", "混合"}
+WEEKLY_COUNT_RE = re.compile(
+    r"(?P<total>\d+)\s*项（定制\s*(?P<custom>\d+)、Bug\s*(?P<bug>\d+)(?:、BSP\s*(?P<bsp>\d+))?）"
+)
 
 
 def report_project_customer_errors(rel: str, rows: Any, label: str) -> list[str]:
@@ -113,6 +119,37 @@ def validate_session_privacy_evidence(*, evidence_by_kind: dict[str, dict[str, A
     errors.extend(session_evidence_errors(evidence.get("payload")))
 
 
+def validate_weekly_fact_sources(
+    *,
+    manifest: dict[str, Any],
+    evidence_by_kind: dict[str, dict[str, Any]],
+    errors: list[str],
+) -> None:
+    evidence = evidence_by_kind.get("weekly_fact_sources")
+    if not isinstance(evidence, dict):
+        errors.append("weekly_trace 缺少 weekly_fact_sources evidence")
+        return
+    payload = evidence.get("payload")
+    if not isinstance(payload, dict):
+        errors.append("weekly_fact_sources payload 必须是对象")
+        return
+    if payload.get("schema") != WEEKLY_FACT_SOURCES_SCHEMA:
+        errors.append(f"weekly_fact_sources.schema 必须是 {WEEKLY_FACT_SOURCES_SCHEMA}")
+    if payload.get("week_range") != manifest.get("week_range"):
+        errors.append("weekly_fact_sources.week_range 必须等于 manifest.week_range")
+    try:
+        project_count = int(payload.get("project_count") or 0)
+    except (TypeError, ValueError):
+        project_count = 0
+    if project_count < 1:
+        errors.append("周报未形成项目级事实，请补充有效日报、上一周周报或 --weekly-facts")
+    missing = payload.get("missing_fields")
+    if not isinstance(missing, list):
+        errors.append("weekly_fact_sources.missing_fields 必须是数组")
+    elif missing:
+        errors.append("周报项目事实不完整，请补充后使用 --weekly-facts 重新生成: " + "、".join(str(item) for item in missing))
+
+
 def validate_daily_report_view_project(rel: str, index: int, project: dict[str, Any], errors: list[str]) -> None:
     for field in ("today_topic", "current_result"):
         if not project.get(field):
@@ -139,9 +176,36 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
         errors.append(f"{rel} payload.projects[{index}].source 非法: {project.get('source')}")
     if project.get("requirement_type") not in WEEKLY_ALLOWED_REQUIREMENT_TYPES:
         errors.append(f"{rel} payload.projects[{index}].requirement_type 非法: {project.get('requirement_type')}")
+    try:
+        dt.date.fromisoformat(str(project.get("received_date") or ""))
+    except ValueError:
+        errors.append(f"{rel} payload.projects[{index}].received_date 必须是 YYYY-MM-DD")
+    if str(project.get("expected_finish") or "").strip() in {"", "需成员确认", "待确认"}:
+        errors.append(f"{rel} payload.projects[{index}].expected_finish 必须提供真实收敛计划")
+    if "下周继续" in str(project.get("week_summary") or ""):
+        errors.append(f"{rel} payload.projects[{index}].week_summary 不得用下周计划代替本周进展")
+    parsed_counts: dict[str, dict[str, int]] = {}
+    for field in ("requirement_structure", "completed_this_week", "remaining"):
+        match = WEEKLY_COUNT_RE.fullmatch(str(project.get(field) or "").strip())
+        if not match:
+            errors.append(f"{rel} payload.projects[{index}].{field} 计数格式非法")
+            continue
+        counts = {key: int(match.group(key) or 0) for key in ("custom", "bug", "bsp")}
+        if int(match.group("total")) != sum(counts.values()):
+            errors.append(f"{rel} payload.projects[{index}].{field} 合计与分类不一致")
+        parsed_counts[field] = counts
+    if set(parsed_counts) == {"requirement_structure", "completed_this_week", "remaining"}:
+        total = parsed_counts["requirement_structure"]
+        completed = parsed_counts["completed_this_week"]
+        remaining = parsed_counts["remaining"]
+        for category in ("custom", "bug", "bsp"):
+            if completed[category] + remaining[category] > total[category]:
+                errors.append(f"{rel} payload.projects[{index}].{category} 本周完成加当前剩余不能超过需求结构")
     for field in ("completed_items", "remaining_items", "risks", "dependencies", "next_week_plan"):
         if not isinstance(project.get(field), list):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须是数组")
+    if parsed_counts.get("remaining") and sum(parsed_counts["remaining"].values()) > 0 and not project.get("next_week_plan"):
+        errors.append(f"{rel} payload.projects[{index}].next_week_plan 有剩余事项时必须提供")
 
 
 def validate_report_view_payload(
@@ -249,6 +313,8 @@ def validate_report_trace_package(
             errors.append(f"report trace 缺少 {kind} evidence")
     if package_kind == "daily_trace":
         validate_daily_project_inference(manifest=manifest, evidence_by_kind=evidence_by_kind, errors=errors)
+    else:
+        validate_weekly_fact_sources(manifest=manifest, evidence_by_kind=evidence_by_kind, errors=errors)
     validate_session_privacy_evidence(evidence_by_kind=evidence_by_kind, errors=errors)
     validate_work_findings(evidence_by_kind=evidence_by_kind, package_status_values=package_status_values, errors=errors)
     validate_report_display_files(

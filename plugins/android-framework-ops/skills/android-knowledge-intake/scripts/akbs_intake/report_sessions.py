@@ -69,6 +69,7 @@ class SessionWork:
     cwd: str = ""
     project: str = "未识别项目"
     messages: list[str] = field(default_factory=list)
+    outcomes: list[str] = field(default_factory=list)
 
 
 def compact_text(text: str, limit: int = 160) -> str:
@@ -107,7 +108,7 @@ def extract_input_text(content: Any) -> str:
     return ""
 
 
-def session_files(codex_home: Path, dates: set[dt.date]) -> list[Path]:
+def session_files(codex_home: Path, dates: set[dt.date], timezone_name: str = "Asia/Shanghai") -> list[Path]:
     root = codex_home / "sessions"
     if not root.exists():
         return []
@@ -116,6 +117,18 @@ def session_files(codex_home: Path, dates: set[dt.date]) -> list[Path]:
         day_dir = root / f"{date:%Y}" / f"{date:%m}" / f"{date:%d}"
         if day_dir.is_dir():
             candidates.extend(day_dir.glob("*.jsonl"))
+    start = min(dates)
+    end = max(dates)
+    timezone = ZoneInfo(timezone_name) if ZoneInfo is not None else None
+    threshold = dt.datetime.combine(start, dt.time.min, tzinfo=timezone).timestamp()
+    for path in root.glob("*/*/*/*.jsonl"):
+        try:
+            directory_date = dt.date(int(path.parts[-4]), int(path.parts[-3]), int(path.parts[-2]))
+            modified_at = path.stat().st_mtime
+        except (OSError, ValueError):
+            continue
+        if directory_date <= end and modified_at >= threshold:
+            candidates.append(path)
     return sorted(set(candidates))
 
 
@@ -152,7 +165,7 @@ def strip_project_anchor(text: str, project: str) -> str:
 
 
 def is_noise_session(work: SessionWork) -> bool:
-    text = " ".join([work.thread_name, work.cwd, *work.messages])
+    text = " ".join([work.thread_name, work.cwd, *work.messages, *work.outcomes])
     if has_project_anchor(text):
         return False
     if NOISE_TEXT_RE.search(text):
@@ -198,7 +211,7 @@ def git_branch_or_name(path: str, run_command: RunCommand) -> str:
 
 
 def project_name(work: SessionWork) -> str:
-    candidates = [work.project, work.cwd, work.thread_name, *work.messages]
+    candidates = [work.project, work.cwd, work.thread_name, *work.messages, *work.outcomes]
     for text in candidates:
         project = find_company_project(text)
         if project:
@@ -269,7 +282,7 @@ def parse_sessions(config: dict[str, str], dates: set[dt.date], run_command: Run
     sessions: list[SessionWork] = []
     try:
         with session_extraction_workspace():
-            for file in session_files(codex_home, dates):
+            for file in session_files(codex_home, dates, config.get("timezone", "Asia/Shanghai")):
                 work = SessionWork()
                 raw_cwd = ""
                 for line in file.read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -293,6 +306,8 @@ def parse_sessions(config: dict[str, str], dates: set[dt.date], run_command: Run
                         text = sanitize_work_summary(raw_text)
                         if role == "user" and not should_skip_message(text):
                             work.messages.append(text)
+                        elif role == "assistant" and text and not should_skip_message(text):
+                            work.outcomes.append(text)
                     elif (
                         payload.get("type") == "function_call"
                         and payload.get("name") == "exec_command"
@@ -317,7 +332,7 @@ def parse_sessions(config: dict[str, str], dates: set[dt.date], run_command: Run
                     if "patch_discovery" in consent.fields and Path(raw_cwd).exists():
                         work.cwd = raw_cwd
                         work.project = git_branch_or_name(raw_cwd, run_command)
-                if should_skip_session(work) or not work.messages:
+                if should_skip_session(work) or (not work.messages and not work.outcomes):
                     continue
                 work.project = project_name(work)
                 sessions.append(work)
@@ -366,6 +381,7 @@ def synthetic_sessions(config: dict[str, str], dates: set[dt.date]) -> list[Sess
                     f"合成测试进度：{status}",
                     "合成测试说明：该记录不来自真实 Codex 会话或真实源码仓库。",
                 ],
+                outcomes=[f"处理结果：{status}"],
             )
         )
     return sessions

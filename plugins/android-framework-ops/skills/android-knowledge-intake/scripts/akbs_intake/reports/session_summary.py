@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable
 
-from android_framework_ops.knowledge_rules import find_company_project
+from android_framework_ops.knowledge_rules import find_company_project, find_company_projects
 
 from akbs_intake.config import parse_bool
 from akbs_intake.report_sessions import (
@@ -24,7 +24,7 @@ GitBranchOrName = Callable[[str], str]
 
 
 def summarize_session(work: SessionWork) -> str:
-    text = " ".join([work.thread_name, *work.messages]).lower()
+    text = " ".join([work.thread_name, *work.messages, *work.outcomes]).lower()
     if all(keyword in text for keyword in ("codex", "日报")) and any(keyword in text for keyword in ("自动化", "skill", "插件", "知识库")):
         return "搭建 Codex incoming 自动上传材料与知识库检索能力"
     project = project_anchor(" ".join([work.project, work.thread_name, *work.messages]))
@@ -40,6 +40,10 @@ def summarize_session(work: SessionWork) -> str:
         summary = "；".join(item for item in summaries if item)
         if summary:
             return compact_text(summary, 240)
+    outcome_summaries = [clean_work_summary(item, project) for item in work.outcomes[:2]]
+    outcome_summary = "；".join(item for item in outcome_summaries if item)
+    if outcome_summary:
+        return compact_text(outcome_summary, 240)
     name = work.thread_name.strip()
     if name and not re.fullmatch(r"[0-9a-f-]{20,}", name) and not NOISE_TEXT_RE.search(name):
         summary = clean_work_summary(name, project)
@@ -82,7 +86,11 @@ def progress_phrase(text: str) -> str:
 
 
 def progress_for_session(work: SessionWork, has_patch: bool) -> str:
-    text = " ".join([work.thread_name, *work.messages])
+    outcome_text = " ".join(work.outcomes)
+    text = " ".join([work.thread_name, *work.messages, outcome_text])
+    outcome_phrase = progress_phrase(outcome_text)
+    if outcome_phrase:
+        return outcome_phrase
     phrase = progress_phrase(text)
     if phrase:
         return phrase
@@ -94,7 +102,7 @@ def progress_for_session(work: SessionWork, has_patch: bool) -> str:
 
 
 def work_finding_for_session(session: SessionWork) -> dict[str, Any]:
-    text = " ".join([session.thread_name, *session.messages]).lower()
+    text = " ".join([session.thread_name, *session.messages, *session.outcomes]).lower()
     blocked = any(word in text for word in ("失败", "报错", "未解决", "阻塞", "blocked", "fail"))
     framework_like = any(
         token in text
@@ -118,6 +126,7 @@ def work_finding_for_session(session: SessionWork) -> dict[str, Any]:
         work_status = "draft"
     basis = [session.thread_name or session.session_id]
     basis.extend(session.messages[:3])
+    basis.extend(session.outcomes[:2])
     missing_evidence = []
     if framework_like:
         missing_evidence.append("需要 patch-capture 判断是否可升级为 framework_change")
@@ -183,11 +192,44 @@ def items_by_project(sessions: list[SessionWork], patches: list[Any]) -> dict[st
     patch_projects = {find_company_project(patch.project) or fallback_project or patch.project for patch in patches}
     items: dict[str, list[tuple[str, str]]] = {}
     for session in sessions:
-        desc = summarize_session(session)
-        progress = progress_for_session(session, session.project in patch_projects)
-        entry = (desc, progress)
-        if entry not in items.setdefault(session.project, []):
-            items[session.project].append(entry)
+        groups: dict[str, list[str]] = {}
+        unanchored: list[str] = []
+        for message in session.messages:
+            projects = find_company_projects(message)
+            if not projects:
+                unanchored.append(message)
+                continue
+            for project in projects:
+                groups.setdefault(project, []).append(message)
+        fallback_project = find_company_project(session.project)
+        if not groups and fallback_project:
+            groups[fallback_project] = list(session.messages)
+        if len(groups) == 1:
+            only_project = next(iter(groups))
+            groups[only_project].extend(unanchored)
+        if not groups:
+            groups[session.project] = list(session.messages)
+        for project, messages in groups.items():
+            relevant_outcomes = [
+                outcome
+                for outcome in session.outcomes
+                if project in find_company_projects(outcome)
+            ]
+            if not relevant_outcomes and len(groups) == 1:
+                relevant_outcomes = list(session.outcomes)
+            segment = SessionWork(
+                session_id=session.session_id,
+                thread_name=session.thread_name,
+                cwd=session.cwd,
+                project=project,
+                messages=messages,
+                outcomes=relevant_outcomes,
+            )
+            desc = summarize_session(segment)
+            progress = progress_for_session(segment, project in patch_projects)
+            entry = (desc, progress)
+            if entry not in items.setdefault(project, []):
+                items[project].append(entry)
     for patch in patches:
         project = find_company_project(patch.project) or fallback_project or patch.project
         if not items.get(project):
