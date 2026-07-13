@@ -23,6 +23,12 @@ Generate `reports/daily.md` with the Codex office daily template:
 - 今日工作
 - 明日重点
 
+In `reports/daily.md`, bold the project name every time it appears, including
+headings and body text. Bold only the project name, for example
+`**TVE1091U** AOC 福建移动高清`; keep the customer chain unbolded. This is a
+Markdown presentation rule only. Keep project and customer values in
+`report_view.json` as plain text without Markdown markers.
+
 Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, and `tomorrow_focus[]`.
 
 Daily card identity is not the date. `material_name` must preserve the customer chain, such as `TVE1086U（青鸾云）` or `TVE1091U（AOC → 福建移动高清）`; multiple projects use `、`. `material_summary` must be a short daily topic summary, such as `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`. The current read model emits `material_name`, `material_summary`, and `projects`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.

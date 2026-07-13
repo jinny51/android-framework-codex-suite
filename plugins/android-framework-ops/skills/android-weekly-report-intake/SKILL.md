@@ -58,14 +58,20 @@ Generate `reports/weekly.md` with this required structure:
   - 风险 / 依赖
 - 下周计划
 
+In `reports/weekly.md`, bold the project name every time it appears, not only in
+project headings. This applies to overview prose, completed and remaining items,
+risks, dependencies, and next-week plans. Bold only the project name; keep the
+customer chain unbolded. `report_view.json` remains structured plain text and
+must not contain Markdown markers.
+
 The weekly Markdown baseline is the project block format:
 
 ```markdown
 ## 一、本周概况
 
-### TVE1086U 青鸾云
+### **TVE1086U** 青鸾云
 
-本周围绕 TVE1086U 青鸾云 项目推进：完成系统接口联调。
+本周围绕 **TVE1086U** 青鸾云 项目推进：完成系统接口联调。
 
 - 接到文档时间：2026-06-18
 - 来源说明：客户需求文档

@@ -24,6 +24,17 @@ from akbs_intake.report_sessions import (
 )
 
 
+REPORT_PROJECT_MARKDOWN_RE = re.compile(
+    r"(?<![A-Z0-9*])(TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?|TVI[A-Z0-9]{5}[A-Z0-9]?)(?![A-Z0-9*])",
+    re.IGNORECASE,
+)
+
+
+def emphasize_report_project_names(markdown: Any) -> str:
+    """Bold every project reference in Markdown without changing structured fields."""
+    return REPORT_PROJECT_MARKDOWN_RE.sub(lambda match: f"**{match.group(1)}**", str(markdown or ""))
+
+
 def compact_text(text: str, limit: int) -> str:
     text = re.sub(r"\s+", " ", str(text or "")).strip()
     if len(text) <= limit:
@@ -763,7 +774,8 @@ def write_report(
         write_daily_report(lines, items, patches, project_customers)
     else:
         write_weekly_report(lines, items, patches, project_customers, weekly_projects)
-    report_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    markdown = "\n".join(lines).rstrip() + "\n"
+    report_path.write_text(emphasize_report_project_names(markdown), encoding="utf-8")
     return report_path
 
 def write_report_view(

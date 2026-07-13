@@ -8,6 +8,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -1119,7 +1120,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertIn("materials/evidence/project_inference.json", manifest["files"]["evidence"])
             self.assertEqual(project_inference["payload"]["project"], "TVA10A2R")
             self.assertIn("日报上下文", " ".join(project_inference["payload"]["basis"]))
-            self.assertIn("### TVA10A2R", report)
+            self.assertIn("### **TVA10A2R**", report)
             self.assertIn("视频通话", report)
             self.assertIn("视频监控", report)
             self.assertIn("待设备验证", report)
@@ -1201,9 +1202,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
 
             self.assertEqual(manifest["project"], "TVE1086U")
-            self.assertIn("### TVE1086U", report)
+            self.assertIn("### **TVE1086U**", report)
             self.assertIn("整体项目交接", report)
-            self.assertNotIn("### TVE1086U整体项目交接", report)
+            self.assertNotIn("### **TVE1086U**整体项目交接", report)
             self.assertNotIn("### android16", report)
 
     def test_report_project_customer_phrase_allows_daily_and_weekly_local_check(self) -> None:
@@ -1299,7 +1300,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             )["payload"]
 
             self.assertEqual(daily_check["status"], "PASS")
-            self.assertIn("### TVE1091U AOC 福建移动高清", daily_report)
+            self.assertIn("### **TVE1091U** AOC 福建移动高清", daily_report)
             self.assertEqual(daily_view["material_name"], "TVE1091U（AOC → 福建移动高清）")
             self.assertEqual(daily_view["projects"][0]["customer"], "AOC")
             self.assertEqual(daily_view["projects"][0]["downstream_customer"], "福建移动高清")
@@ -1319,7 +1320,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             weekly_view = read_report_view(weekly)["payload"]
 
             self.assertEqual(weekly_check["status"], "PASS")
-            self.assertIn("### TVE1091U AOC 福建移动高清", weekly_report)
+            self.assertIn("### **TVE1091U** AOC 福建移动高清", weekly_report)
             self.assertEqual(weekly_view["material_name"], "TVE1091U（AOC → 福建移动高清）")
             self.assertEqual(weekly_view["projects"][0]["customer"], "AOC")
             self.assertEqual(weekly_view["projects"][0]["downstream_customer"], "福建移动高清")
@@ -1350,7 +1351,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
 
             self.assertEqual(check["status"], "PASS")
             self.assertIn("本周完成状态栏策略修改和设备验证。", report)
-            self.assertNotIn("本周围绕 TVE1086U 青鸾云 项目推进：下周继续", report)
+            self.assertNotIn("本周围绕 **TVE1086U** 青鸾云 项目推进：下周继续", report)
             self.assertIn("- 接到文档时间：2026-05-18", report)
             self.assertIn("- 需求结构：12 项（定制 8、Bug 3、BSP 1）", report)
             self.assertIn("- 本周完成：3 项（定制 2、Bug 1）", report)
@@ -2006,7 +2007,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "## 一、今日概况",
                 "## 二、今日工作",
                 "## 三、明日重点",
-                "### TVE8402M 合成客户一",
+                "### **TVE8402M** 合成客户一",
                 "- 今日主题：",
                 "- 当前结果：",
                 "做了什么：",
@@ -2028,7 +2029,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "## 一、本周概况",
                 "## 二、项目详情",
                 "## 三、下周计划",
-                "### TVE8402M 合成客户一",
+                "### **TVE8402M** 合成客户一",
                 "来源说明",
                 "需求类型",
                 "需求结构",
@@ -2045,11 +2046,18 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 self.assertNotIn(old_text, weekly_report)
             daily_view = read_report_view(daily)
             weekly_view = read_report_view(weekly)
+            unbolded_project = re.compile(
+                r"(?<!\*)TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?(?![A-Z0-9*])",
+                re.IGNORECASE,
+            )
+            self.assertIsNone(unbolded_project.search(daily_report), daily_report)
+            self.assertIsNone(unbolded_project.search(weekly_report), weekly_report)
             self.assertEqual(daily_view["kind"], "report_view")
             self.assertEqual(daily_view["payload"]["schema"], "akbs-report-view-human-v1")
             self.assertEqual(daily_view["payload"]["report_type"], "daily")
             self.assertEqual(daily_view["payload"]["report_date"], "2026-06-30")
             self.assertEqual(daily_view["payload"]["material_name"], "TVE8402M（合成客户一）")
+            self.assertNotIn("**", daily_view["payload"]["material_name"])
             self.assertIn("TVE8402M：", daily_view["payload"]["material_summary"])
             self.assertGreaterEqual(len(daily_view["payload"]["projects"]), 1)
             for old_field in ("ui_card", "one_line_summary", "display_title", "daily_overview", "work_items", "items", "outputs", "next_steps"):
@@ -2067,6 +2075,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(weekly_view["payload"]["report_type"], "weekly")
             self.assertEqual(weekly_view["payload"]["display_date"], "2026-07-03")
             self.assertEqual(weekly_view["payload"]["material_name"], "TVE8402M（合成客户一）")
+            self.assertNotIn("**", weekly_view["payload"]["material_name"])
             self.assertIn("TVE8402M：本周完成", weekly_view["payload"]["material_summary"])
             for old_field in (
                 "ui_card",
