@@ -12,7 +12,12 @@ from akbs_intake.session_privacy import require_report_session_consent, session_
 from akbs_intake.reports.common import ensure_report_date_allowed, ensure_report_not_duplicate, report_dates, report_identity, ymd
 from akbs_intake.reports.identity import infer_report_project
 from akbs_intake.reports.render import write_report, write_report_view
-from akbs_intake.reports.session_summary import items_by_project, overview_text, work_findings_payload
+from akbs_intake.reports.session_summary import (
+    daily_work_items_by_project,
+    items_by_project,
+    overview_text,
+    work_findings_payload,
+)
 from akbs_intake.reports.weekly_facts import build_weekly_facts, project_rows_to_items
 from akbs_intake.search_usage import search_usage_payload
 from akbs_intake.patch.assets import PatchInfo
@@ -115,6 +120,7 @@ def build_report_package(
     for session in sessions:
         session.cwd = ""
     session_items = items_by_project(sessions, patches)
+    daily_work_items = daily_work_items_by_project(sessions, patches) if report_type == "daily" else {}
     preliminary_summary = overview_text(report_type, session_items, patches)
     report_project, project_payload = infer_report_project(report_type, preliminary_summary, session_items, sessions, patches)
     project_customers: dict[str, dict[str, str]] = {}
@@ -180,7 +186,18 @@ def build_report_package(
             if fact_customers[0].get("downstream_customer"):
                 project_payload["downstream_customer"] = fact_customers[0]["downstream_customer"]
     package_dir.mkdir(parents=True, exist_ok=True)
-    write_report(package_dir, report_type, date, week_key, config, items, patches, project_customers, weekly_projects)
+    write_report(
+        package_dir,
+        report_type,
+        date,
+        week_key,
+        config,
+        items,
+        patches,
+        project_customers,
+        weekly_projects,
+        daily_work_items,
+    )
     project_path = write_default_evidence(
         package_dir,
         materials_rel("evidence", "project_inference.json"),
@@ -219,6 +236,7 @@ def build_report_package(
         summary,
         project_customers,
         weekly_projects,
+        daily_work_items,
     )
     manifest = incoming_report_manifest(
         report_type,

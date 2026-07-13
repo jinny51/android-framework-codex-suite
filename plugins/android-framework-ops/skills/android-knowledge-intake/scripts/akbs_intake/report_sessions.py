@@ -70,6 +70,8 @@ class SessionWork:
     project: str = "未识别项目"
     messages: list[str] = field(default_factory=list)
     outcomes: list[str] = field(default_factory=list)
+    commands: list[str] = field(default_factory=list)
+    latest_at: str = ""
 
 
 def compact_text(text: str, limit: int = 160) -> str:
@@ -361,6 +363,7 @@ def parse_sessions(config: dict[str, str], dates: set[dt.date], run_command: Run
                         continue
                     if local_date(row.get("timestamp", ""), config) not in dates:
                         continue
+                    work.latest_at = max(work.latest_at, str(row.get("timestamp") or ""))
                     payload = row.get("payload") or {}
                     if row.get("type") == "session_meta":
                         work.session_id = str(payload.get("id", "") or work.session_id)
@@ -388,7 +391,7 @@ def parse_sessions(config: dict[str, str], dates: set[dt.date], run_command: Run
                             args = {}
                         command = sanitize_command_summary(args.get("cmd", ""))
                         if command:
-                            work.messages.append(f"执行命令: {command}")
+                            work.commands.append(command)
 
                 if not work.session_id:
                     match = re.search(r"([0-9a-f]{8}-[0-9a-f-]{27,})", file.name)

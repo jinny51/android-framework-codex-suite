@@ -23,13 +23,22 @@ Generate `reports/daily.md` with the Codex office daily template:
 - 今日工作
 - 明日重点
 
+Each `今日工作` item contains `做了什么`, `怎么做的`, `结果`, and `状态`.
+`状态` is required and must be exactly one of `已完成`, `处理中`, `待验证`,
+or `阻塞`. Split independent work items even when they occurred in one Codex
+session. Merge repeated handling of the same item across sessions, keep the
+latest result/status, and deduplicate identical process evidence. Describe the
+actual handling method from authorized messages, sanitized command categories,
+and outcomes; never use a fixed sentence that merely says the report was
+organized from Codex records.
+
 In `reports/daily.md`, bold the project name every time it appears, including
 headings and body text. Bold only the project name, for example
 `**TVE1091U** AOC 福建移动高清`; keep the customer chain unbolded. This is a
 Markdown presentation rule only. Keep project and customer values in
 `report_view.json` as plain text without Markdown markers.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, and `tomorrow_focus[]`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, and `tomorrow_focus[]`; every work item contains `name`, `did[]`, `how[]`, `result`, and fixed-enum `status`.
 
 Daily card identity is not the date. `material_name` must preserve the customer chain, such as `TVE1086U（青鸾云）` or `TVE1091U（AOC → 福建移动高清）`; multiple projects use `、`. `material_summary` must be a short daily topic summary, such as `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`. The current read model emits `material_name`, `material_summary`, and `projects`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
 
@@ -38,19 +47,28 @@ Daily project rows must include a recognized company project and direct customer
 Before running `--prepare`, `--upload`, or `--submit-latest`, check the current member request and visible conversation context for a recognized project + customer pair. If Codex cannot find both values, do not run the command yet. Reply in the conversation:
 
 ```text
-缺少项目名和客户名，请补充，例如：TVE1086U 青鸾云；如有客户的客户，继续写第三段，例如：TVE1091U AOC 福建移动高清。
+当前会话未关联项目，请补充项目名和客户名。
+例如：TVE1086U 青鸾云
+如有客户的客户：TVE1091U AOC 福建移动高清
+
+建议后续按正确流程开展：先创建项目，再在项目下创建开发会话。
 ```
+
+This fallback requests only the minimum project identity needed by the daily
+report. Do not ask for weekly fields such as project role, requirement date,
+requirement source, project total, or remaining count. After the member supplies
+the identity, continue daily generation.
 
 Do not put raw commands, plugin cache paths, Codex session names, JSON fragments, shell output, package keys, case ids, or source paths into UI display fields. If evidence is missing, write clear human text such as `需补充`, not fabricated facts.
 
-The member's explicit request to generate this daily report authorizes only this run's report date and selected derived fields. Pass `--session-consent --session-field work_summary` for the minimum report input. Add `project_hint`, `command_summary`, or `patch_discovery` only when the request needs them; `patch_discovery` requires `project_hint`. If there is no explicit current-run request, stop before session read, package creation, and HTTP. Do not reuse consent from a previous run or recurring automation.
+The member's explicit request to generate this daily report authorizes only this run's report date and selected derived fields. Pass `work_summary` and `command_summary` so the report can describe both the work and the actual handling method. Add `project_hint` or `patch_discovery` only when the request needs them; `patch_discovery` requires `project_hint`. If there is no explicit current-run request, stop before session read, package creation, and HTTP. Do not reuse consent from a previous run or recurring automation.
 
 ## Commands
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --prepare
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --prepare
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --submit-latest
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --prepare --replace-daily-run-id <old_run_id>
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --prepare --replace-daily-run-id <old_run_id>
 ```
 
 Future dates are blocked. Past dates are late submissions and are allowed. If an ordinary daily package for the same member and date already exists, stop unless the member explicitly replaces it.

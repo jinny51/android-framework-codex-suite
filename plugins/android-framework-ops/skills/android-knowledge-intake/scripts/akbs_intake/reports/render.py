@@ -92,6 +92,18 @@ def progress_bucket(progress: str) -> str:
         return "completed"
     return "not_started"
 
+
+def daily_status_from_progress(progress: str) -> str:
+    text = str(progress or "")
+    if any(token in text for token in ("待验证", "验证中", "待回归")):
+        return "待验证"
+    bucket = progress_bucket(text)
+    if bucket == "blocked":
+        return "阻塞"
+    if bucket == "completed":
+        return "已完成"
+    return "处理中"
+
 def project_stats(entries: list[tuple[str, str]]) -> dict[str, int]:
     stats = {"total": len(entries), "completed": 0, "in_progress": 0, "not_started": 0, "blocked": 0}
     for _, progress in entries:
@@ -197,12 +209,12 @@ def weekly_source_rows(items: dict[str, list[tuple[str, str]]]) -> list[dict[str
 
 def project_source_type(entries: list[tuple[str, str]]) -> str:
     list_types = {report_list_type(desc) for desc, _ in entries}
-    has_custom = "需求清单" in list_types
+    has_requirement = "需求清单" in list_types
     has_bug = "Buglist" in list_types
-    if has_custom and has_bug:
+    if has_requirement and has_bug:
         return "混合"
-    if has_custom:
-        return "定制"
+    if has_requirement:
+        return "需求"
     if has_bug:
         return "Buglist"
     return "临时支持"
@@ -215,19 +227,22 @@ def project_source_note(entries: list[tuple[str, str]]) -> str:
     return f"来源：{'、'.join(origins)}；类型：{'、'.join(list_types)}"
 
 def project_ledger_totals(entries: list[tuple[str, str]]) -> dict[str, int]:
-    totals = {"feature_add": 0, "bug": 0, "bsp": 0, "other": 0, "total": 0}
+    totals = {"demand": 0, "migration": 0, "bug": 0, "bsp": 0, "other": 0, "total": 0}
     for desc, progress in entries:
+        text = f"{desc} {progress}"
         category = report_category(desc, progress)
         is_completed = progress_bucket(progress) == "completed"
-        if not is_completed and re.search(r"\bBSP\b", f"{desc} {progress}", re.IGNORECASE):
+        if not is_completed and re.search(r"\bBSP\b", text, re.IGNORECASE):
             totals["bsp"] += 1
         elif category == "Bug处理":
             totals["bug"] += 1
+        elif re.search(r"移植|复用|\bport\b", text, re.IGNORECASE):
+            totals["migration"] += 1
         elif category in {"功能添加", "UI修改"}:
-            totals["feature_add"] += 1
+            totals["demand"] += 1
         else:
             totals["other"] += 1
-    totals["total"] = totals["feature_add"] + totals["bug"] + totals["bsp"] + totals["other"]
+    totals["total"] = sum(totals[key] for key in ("demand", "migration", "bug", "bsp", "other"))
     return totals
 
 def canonical_report_project_label(value: Any) -> str:
@@ -259,11 +274,10 @@ def project_ledger_rows(
                 "customer_name": MISSING_REPORT_CUSTOMER,
                 "downstream_customer": "",
                 "previous_week_remaining": 0,
-                "totals": {"feature_add": 0, "bug": 0, "bsp": 0, "other": 0, "total": 0},
+                "totals": {"demand": 0, "migration": 0, "bug": 0, "bsp": 0, "other": 0, "total": 0},
                 "this_week_completed": 0,
                 "cumulative_completed": 0,
                 "remaining": 0,
-                "expected_completion_week": "需成员确认",
                 "status": "无事项",
                 "risk": "无明确风险",
             }
@@ -289,7 +303,6 @@ def project_ledger_rows(
                 "this_week_completed": stats["completed"],
                 "cumulative_completed": stats["completed"],
                 "remaining": remaining,
-                "expected_completion_week": "本周已完成" if remaining == 0 and totals["total"] else "需成员确认",
                 "status": status_label_from_stats(stats),
                 "risk": "；".join(compact_text(item, 80) for item in risk_items[:3]) if risk_items else "无明确风险",
             }
@@ -346,7 +359,7 @@ def weekly_material_summary(
         parts = []
         for row in weekly_projects[:max_projects]:
             completed = weekly_fact_count_text(row, "completed_this_week_counts", include_bsp=False)
-            remaining = weekly_fact_count_text(row, "remaining_counts", include_bsp=False)
+            remaining = weekly_fact_count_text(row, "remaining_counts", include_bsp=True)
             risk_text = "有风险" if meaningful_fact_list(row.get("risks"), {"无超过 3 天无进展事项。"}) else "无明确风险"
             parts.append(f"{row['project']}：本周完成 {completed}，剩余 {remaining}，{risk_text}。")
         if len(weekly_projects) > max_projects:
@@ -382,33 +395,11 @@ def daily_result_for_entries(entries: list[tuple[str, str]]) -> str:
     return "当前结果需成员确认。"
 
 def weekly_source_label(entries: list[tuple[str, str]]) -> str:
-    sources = {report_item_source(desc) for desc, _ in entries}
-    if "客户" in sources or "项目经理" in sources:
-        return "客户需求文档"
-    if "上级" in sources:
-        return "TL指派"
-    if "禅道" in sources:
-        return "Buglist"
-    if "测试" in sources:
-        return "测试反馈"
-    if any(re.search(r"\bBSP\b", desc, re.IGNORECASE) for desc, _ in entries):
-        return "BSP配合"
-    return "需成员确认"
-
-def weekly_requirement_type(entries: list[tuple[str, str]]) -> str:
-    counts = weekly_requirement_counts(entries)
-    has_custom = counts["custom"] > 0
-    has_bug = counts["bug"] > 0
-    if has_custom and has_bug:
-        return "混合"
-    if has_bug:
-        return "Buglist"
-    if has_custom:
-        return "纯定制"
+    # 需求来源必须由成员在收到需求时明确提供，不能从日报措辞反推。
     return "需成员确认"
 
 def weekly_requirement_counts(entries: list[tuple[str, str]], *, buckets: set[str] | None = None) -> dict[str, int]:
-    counts = {"custom": 0, "bug": 0, "bsp": 0}
+    counts = {"demand": 0, "migration": 0, "bug": 0, "bsp": 0}
     completed_scope = buckets == {"completed"}
     for desc, progress in entries:
         if buckets is not None and progress_bucket(progress) not in buckets:
@@ -418,20 +409,23 @@ def weekly_requirement_counts(entries: list[tuple[str, str]], *, buckets: set[st
             counts["bsp"] += 1
         elif report_category(desc, progress) == "Bug处理" or report_list_type(desc) == "Buglist":
             counts["bug"] += 1
+        elif re.search(r"移植|复用|\bport\b", text, re.IGNORECASE):
+            counts["migration"] += 1
         else:
-            counts["custom"] += 1
+            counts["demand"] += 1
     return counts
 
-def format_requirement_counts(counts: dict[str, int], *, include_bsp: bool) -> str:
-    total = counts["custom"] + counts["bug"] + (counts["bsp"] if include_bsp else 0)
-    parts = [f"定制 {counts['custom']}", f"Bug {counts['bug']}"]
-    if include_bsp:
-        parts.append(f"BSP {counts['bsp']}")
-    return f"{total} 项（{'、'.join(parts)}）"
+def format_requirement_counts(counts: dict[str, int], *, include_bsp: bool, label: str = "") -> str:
+    keys = ("demand", "migration", "bug", "bsp") if include_bsp else ("demand", "migration", "bug")
+    total = sum(int(counts.get(key, 0) or 0) for key in keys)
+    labels = {"demand": "需求", "migration": "移植", "bug": "Bug", "bsp": "BSP"}
+    parts = [f"{labels[key]} {counts.get(key, 0)}" for key in keys if int(counts.get(key, 0) or 0) > 0]
+    prefix = f"{label} " if label else ""
+    return f"{prefix}{total} 项" + (f"：{'、'.join(parts)}" if parts else "")
 
 
 def normalize_fact_counts(value: Any) -> dict[str, int]:
-    result = {"custom": 0, "bug": 0, "bsp": 0}
+    result = {"demand": 0, "migration": 0, "bug": 0, "bsp": 0}
     if not isinstance(value, dict):
         return result
     for key in result:
@@ -448,9 +442,9 @@ def meaningful_fact_list(value: Any, ignored: set[str] | None = None) -> list[st
     return [str(item).strip() for item in rows if str(item).strip() and str(item).strip() not in ignored]
 
 
-def weekly_fact_count_text(row: dict[str, Any], key: str, *, include_bsp: bool) -> str:
+def weekly_fact_count_text(row: dict[str, Any], key: str, *, include_bsp: bool, label: str = "") -> str:
     counts = normalize_fact_counts(row.get(key))
-    return format_requirement_counts(counts, include_bsp=include_bsp)
+    return format_requirement_counts(counts, include_bsp=include_bsp, label=label)
 
 def weekly_risks(entries: list[tuple[str, str]]) -> list[str]:
     risks = [compact_text(desc, 120) for desc, progress in entries if progress_bucket(progress) == "blocked"]
@@ -469,6 +463,7 @@ def write_daily_report(
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
     project_customers: dict[str, Any] | None = None,
+    daily_work_items: dict[str, list[dict[str, Any]]] | None = None,
 ) -> None:
     items = normalized_report_items(items)
     if not items:
@@ -487,18 +482,31 @@ def write_daily_report(
     for project, entries in sorted(items.items()):
         context = report_customer_context_for_project(project, project_customers)
         lines += [f"### {project_customer_heading(project, context['customer_name'], context.get('downstream_customer', ''))}", ""]
-        for index, (desc, progress) in enumerate(entries, start=1):
+        work_rows = (daily_work_items or {}).get(project) or [
+            {
+                "name": report_item_name(desc),
+                "did": [desc],
+                "how": ["未从授权会话中提取到具体处理过程，需成员补充。"],
+                "result": progress,
+                "status": daily_status_from_progress(progress),
+            }
+            for desc, progress in entries
+        ]
+        for index, row in enumerate(work_rows, start=1):
             lines += [
-                f"#### {index}. {report_item_name(desc)}",
+                f"#### {index}. {report_item_name(str(row.get('name') or '未命名事项'))}",
                 "",
                 "做了什么：",
-                f"- {desc}",
+                *(f"- {value}" for value in (row.get("did") or ["需成员补充"])),
                 "",
                 "怎么做的：",
-                "- 根据 Codex 会话记录、工程修改、命令执行和材料证据整理实际处理过程。",
+                *(f"- {value}" for value in (row.get("how") or ["需成员补充"])),
                 "",
                 "结果：",
-                f"- {progress}",
+                f"- {row.get('result') or '需成员补充'}",
+                "",
+                "状态：",
+                f"- {row.get('status') or '处理中'}",
                 "",
             ]
     lines += ["## 三、明日重点", ""]
@@ -535,13 +543,16 @@ def write_weekly_report(
                 "",
                 str(row.get("week_summary") or "需补充真实工作记录。"),
                 "",
-                f"- 接到文档时间：{row.get('received_date') or '需成员确认'}",
-                f"- 来源说明：{row.get('source') or '需成员确认'}",
-                f"- 需求类型：{row.get('requirement_type') or '需成员确认'}",
-                f"- 需求结构：{weekly_fact_count_text(row, 'requirement_structure_counts', include_bsp=True)}",
-                f"- 本周完成：{weekly_fact_count_text(row, 'completed_this_week_counts', include_bsp=False)}",
-                f"- 当前剩余：{weekly_fact_count_text(row, 'remaining_counts', include_bsp=True)}",
-                f"- 预计完成：{row.get('expected_finish') or '需成员确认'}",
+                f"- 项目角色：{row.get('project_role') or '需成员确认'}",
+                f"- 需求时间：{row.get('requirement_date') or '需成员确认'}",
+                f"- 需求来源：{row.get('requirement_source') or '需成员确认'}",
+                *(
+                    [f"- {weekly_fact_count_text(row, 'requirement_structure_counts', include_bsp=True, label='共')}"]
+                    if row.get("project_role") == "主责" and row.get("requirement_structure_present")
+                    else []
+                ),
+                f"- {weekly_fact_count_text(row, 'completed_this_week_counts', include_bsp=False, label='本周完成')}",
+                f"- {weekly_fact_count_text(row, 'remaining_counts', include_bsp=True, label='当前剩余')}",
                 "",
             ]
     else:
@@ -556,13 +567,12 @@ def write_weekly_report(
                 "",
                 f"本周围绕 {project_customer_heading(project, ledger['customer_name'], ledger.get('downstream_customer', ''))} 项目推进：{next_step_for_entries(entries, 'weekly') if entries else '需补充真实工作记录。'}",
                 "",
-                f"- 接到文档时间：{ledger['start_date']}",
-                f"- 来源说明：{weekly_source_label(entries)}",
-                f"- 需求类型：{weekly_requirement_type(entries)}",
-                f"- 需求结构：{format_requirement_counts(all_counts, include_bsp=True)}",
-                f"- 本周完成：{format_requirement_counts(completed_counts, include_bsp=False)}",
-                f"- 当前剩余：{format_requirement_counts(remaining_counts, include_bsp=True)}",
-                f"- 预计完成：{ledger['expected_completion_week']}",
+                "- 项目角色：需成员确认",
+                f"- 需求时间：{ledger['start_date']}",
+                f"- 需求来源：{weekly_source_label(entries)}",
+                f"- {format_requirement_counts(all_counts, include_bsp=True, label='共')}",
+                f"- {format_requirement_counts(completed_counts, include_bsp=False, label='本周完成')}",
+                f"- {format_requirement_counts(remaining_counts, include_bsp=True, label='当前剩余')}",
                 "",
             ]
     lines += ["", "## 二、项目详情", ""]
@@ -573,6 +583,7 @@ def write_weekly_report(
             "downstream_customer": ledger.get("downstream_customer", ""),
             "completed_items": [desc for desc, progress in items.get(str(ledger["project"]), []) if progress_bucket(progress) == "completed"],
             "remaining_items": [desc for desc, progress in items.get(str(ledger["project"]), []) if progress_bucket(progress) != "completed"],
+            "key_points": ["无"],
             "risks": weekly_risks(items.get(str(ledger["project"]), [])),
             "dependencies": weekly_dependencies(items.get(str(ledger["project"]), [])),
         }
@@ -583,6 +594,7 @@ def write_weekly_report(
         context = row_customer_context(row)
         completed = meaningful_fact_list(row.get("completed_items"))
         unfinished = meaningful_fact_list(row.get("remaining_items"))
+        key_points = meaningful_fact_list(row.get("key_points")) or ["无"]
         risks = meaningful_fact_list(row.get("risks")) or ["无超过 3 天无进展事项。"]
         dependencies = meaningful_fact_list(row.get("dependencies")) or ["无外部依赖事项。"]
         lines += [
@@ -596,7 +608,11 @@ def write_weekly_report(
             "",
             *(f"- {compact_text(item, 120)}" for item in (unfinished or ["无明确剩余项"])),
             "",
-            "#### 3. 风险 / 依赖",
+            "#### 3. 重点说明",
+            "",
+            *(f"- {compact_text(item, 120)}" for item in key_points),
+            "",
+            "#### 4. 风险 / 依赖",
             "",
             "风险：",
             "",
@@ -638,6 +654,7 @@ def report_view_payload(
     summary: str,
     project_customers: dict[str, Any] | None = None,
     weekly_projects: list[dict[str, Any]] | None = None,
+    daily_work_items: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     items = normalized_report_items(items)
     if not items:
@@ -664,16 +681,16 @@ def report_view_payload(
         for project, entries in sorted(items.items()):
             context = report_customer_context_for_project(project, project_customers)
             customer = context["customer_name"]
-            work_items = []
-            for desc, progress in entries:
-                work_items.append(
-                    {
-                        "name": report_item_name(desc),
-                        "did": [desc],
-                        "how": ["根据 Codex 会话记录、工程修改、命令执行和材料证据整理实际处理过程。"],
-                        "result": progress,
-                    }
-                )
+            work_items = (daily_work_items or {}).get(project) or [
+                {
+                    "name": report_item_name(desc),
+                    "did": [desc],
+                    "how": ["未从授权会话中提取到具体处理过程，需成员补充。"],
+                    "result": progress,
+                    "status": daily_status_from_progress(progress),
+                }
+                for desc, progress in entries
+            ]
             projects.append(
                 add_downstream_customer({
                     "project": project,
@@ -697,26 +714,32 @@ def report_view_payload(
         for row in weekly_projects:
             context = row_customer_context(row)
             customer = context["customer_name"]
-            projects.append(
-                add_downstream_customer({
+            project_row = add_downstream_customer({
                     "project": str(row["project"]),
                     "customer": customer,
                     "customer_name": customer,
+                    "project_role": str(row.get("project_role") or "需成员确认"),
                     "week_summary": str(row.get("week_summary") or "需补充真实工作记录。"),
-                    "received_date": str(row.get("received_date") or "需成员确认"),
-                    "source": str(row.get("source") or "需成员确认"),
-                    "requirement_type": str(row.get("requirement_type") or "需成员确认"),
-                    "requirement_structure": weekly_fact_count_text(row, "requirement_structure_counts", include_bsp=True),
-                    "completed_this_week": weekly_fact_count_text(row, "completed_this_week_counts", include_bsp=False),
-                    "remaining": weekly_fact_count_text(row, "remaining_counts", include_bsp=True),
-                    "expected_finish": str(row.get("expected_finish") or "需成员确认"),
+                    "requirement_date": str(row.get("requirement_date") or "需成员确认"),
+                    "requirement_source": str(row.get("requirement_source") or "需成员确认"),
+                    "completed_this_week": weekly_fact_count_text(
+                        row, "completed_this_week_counts", include_bsp=False, label="本周完成"
+                    ),
+                    "remaining": weekly_fact_count_text(
+                        row, "remaining_counts", include_bsp=True, label="当前剩余"
+                    ),
                     "completed_items": meaningful_fact_list(row.get("completed_items")) or ["暂无明确完成项"],
                     "remaining_items": meaningful_fact_list(row.get("remaining_items")) or ["无明确剩余项"],
+                    "key_points": meaningful_fact_list(row.get("key_points")) or ["无"],
                     "risks": meaningful_fact_list(row.get("risks")) or ["无超过 3 天无进展事项。"],
                     "dependencies": meaningful_fact_list(row.get("dependencies")) or ["无外部依赖事项。"],
                     "next_week_plan": meaningful_fact_list(row.get("next_week_plan")),
                 }, context["downstream_customer"])
-            )
+            if row.get("project_role") == "主责" and row.get("requirement_structure_present"):
+                project_row["requirement_structure"] = weekly_fact_count_text(
+                    row, "requirement_structure_counts", include_bsp=True, label="共"
+                )
+            projects.append(project_row)
         payload.update({"projects": projects})
         return {"kind": "report_view", "payload": payload}
 
@@ -737,16 +760,16 @@ def report_view_payload(
                 "project": project,
                 "customer": customer,
                 "customer_name": customer,
+                "project_role": "需成员确认",
                 "week_summary": f"本周围绕 {project_customer_heading(project, customer, downstream_customer)} 项目推进：{next_step_for_entries(entries, 'weekly') if entries else '需补充真实工作记录。'}",
-                "received_date": str(ledger.get("start_date") or "需成员确认"),
-                "source": weekly_source_label(entries),
-                "requirement_type": weekly_requirement_type(entries),
-                "requirement_structure": format_requirement_counts(all_counts, include_bsp=True),
-                "completed_this_week": format_requirement_counts(completed_counts, include_bsp=False),
-                "remaining": format_requirement_counts(remaining_counts, include_bsp=True),
-                "expected_finish": str(ledger.get("expected_completion_week") or "需成员确认"),
+                "requirement_date": str(ledger.get("start_date") or "需成员确认"),
+                "requirement_source": weekly_source_label(entries),
+                "requirement_structure": format_requirement_counts(all_counts, include_bsp=True, label="共"),
+                "completed_this_week": format_requirement_counts(completed_counts, include_bsp=False, label="本周完成"),
+                "remaining": format_requirement_counts(remaining_counts, include_bsp=True, label="当前剩余"),
                 "completed_items": completed or ["暂无明确完成项"],
                 "remaining_items": remaining or ["无明确剩余项"],
+                "key_points": ["无"],
                 "risks": weekly_risks(entries),
                 "dependencies": weekly_dependencies(entries),
                 "next_week_plan": [next_step_for_entries(entries, "weekly")],
@@ -765,13 +788,14 @@ def write_report(
     patches: list[PatchInfo],
     project_customers: dict[str, Any] | None = None,
     weekly_projects: list[dict[str, Any]] | None = None,
+    daily_work_items: dict[str, list[dict[str, Any]]] | None = None,
 ) -> Path:
     report_path = package_dir / f"{report_type}.md"
     title_key = ymd(date) if report_type == "daily" else week_key
     title = "日报" if report_type == "daily" else "周报"
     lines = [f"# {title_key}_{config['member_name']}_{title}", ""]
     if report_type == "daily":
-        write_daily_report(lines, items, patches, project_customers)
+        write_daily_report(lines, items, patches, project_customers, daily_work_items)
     else:
         write_weekly_report(lines, items, patches, project_customers, weekly_projects)
     markdown = "\n".join(lines).rstrip() + "\n"
@@ -789,10 +813,22 @@ def write_report_view(
     summary: str,
     project_customers: dict[str, Any] | None = None,
     weekly_projects: list[dict[str, Any]] | None = None,
+    daily_work_items: dict[str, list[dict[str, Any]]] | None = None,
 ) -> str:
     rel = materials_rel("display", "report_view.json")
     write_json(
         package_dir / rel,
-        report_view_payload(report_type, date, week_key, config, items, patches, summary, project_customers, weekly_projects),
+        report_view_payload(
+            report_type,
+            date,
+            week_key,
+            config,
+            items,
+            patches,
+            summary,
+            project_customers,
+            weekly_projects,
+            daily_work_items,
+        ),
     )
     return rel

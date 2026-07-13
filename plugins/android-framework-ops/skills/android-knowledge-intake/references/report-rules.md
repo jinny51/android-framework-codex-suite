@@ -27,6 +27,11 @@
   - `TVE1091UAOC移动高清` -> project `TVE1091U`, item or label `AOC移动高清`.
   - `TVA10A2R_camera_fix` -> project `TVA10A2R`, source context `camera_fix`.
 - If no project anchor can be identified, use `未识别项目` only when the content is still real work. Do not invent a project from directory names.
+- For daily generation, ask only for the missing project + direct customer
+  identity, then continue after the member supplies it. Also remind the member
+  of the normal Codex workflow: create the project first, then create development
+  sessions under that project. Do not ask for weekly ledger fields during daily
+  generation.
 
 ## Report Summary
 
@@ -74,6 +79,9 @@
 结果：
 - 当前结果是什么，是否还要继续。
 
+状态：
+- 已完成 / 处理中 / 待验证 / 阻塞（只选一个）
+
 ## 三、明日重点
 
 ### **项目名** 客户名 [客户的客户]
@@ -87,7 +95,9 @@ effective daily reports from AKBS, carry the current previous-week project
 ledger forward, apply report replacement chains, and use sessions only to
 supplement work absent from effective daily reports. `weekly_fact_sources`
 records this provenance. Missing ledger fields block upload and are completed
-through the explicit `akbs-weekly-project-facts-v1` contract.
+through the explicit `akbs-weekly-project-facts-v2` contract. Requirement
+source is created when the member receives the demand and must not be inferred
+from daily-report wording.
 
 ```markdown
 # YYYYMMDD-YYYYMMDD 周报 - 成员名
@@ -100,18 +110,18 @@ through the explicit `akbs-weekly-project-facts-v1` contract.
 
 本周围绕 **项目名** 客户名 [客户的客户] 项目推进：简短说明本周主要处理的方向。
 
-- 接到文档时间：2026-06-18
-- 来源说明：客户需求文档 / TL指派 / Buglist / 测试反馈 / BSP配合 中选择一个
-- 需求类型：纯定制 / Buglist / 混合 中选择一个
-- 需求结构：18 项（定制 8、Bug 8、BSP 2）
-- 本周完成：5 项（定制 4、Bug 1）
-- 当前剩余：5 项（定制 3、Bug 0、BSP 2）
-- 预计完成：预计完成时间或收敛说明
+- 项目角色：主责 / 协作 中选择一个
+- 需求时间：2026-06-18
+- 需求来源：CR / TL / PM / TE / BSP 中选择一个
+- 共 18 项：需求 4、移植 4、Bug 8、BSP 2（主责必填，协作可省略）
+- 本周完成 5 项：需求 2、移植 2、Bug 1
+- 当前剩余 5 项：需求 1、移植 2、BSP 2
 
-分类按需求归属，不按实现动作：客户需求通过补丁移植、适配或复用完成仍计入
-`定制`，Bug 修复补丁的移植仍计入 `Bug`。`移植/适配/补丁复用`只出现在事项
-描述中。`BSP`仅统计明确由 BSP 负责或待 BSP 配合的未完成事项，不得出现在
-`本周完成`分类中。
+`需求`表示团队以前没有做过的客户需求，`移植`表示复用或移植团队以前做过的
+客户需求，`Bug`表示缺陷处理。不要保留`定制`父分类。Bug 修复补丁的移植仍计
+`Bug`。`BSP`仅统计项目总量或当前剩余中的 BSP 负责项，不得作为本周完成项。
+旧`定制`计数不能自动拆分，必须由成员确认。正数计数行至少包含一项`需求`、
+`移植`或`Bug`，为 0 的分类省略，行总数必须等于分类之和。
 
 多项目时，在“本周概况”下按项目重复上述块；不要使用“总盘子”这类说法，也不要用大表格堆字段。
 
@@ -127,7 +137,11 @@ through the explicit `akbs-weekly-project-facts-v1` contract.
 
 列出当前剩余事项。
 
-#### 3. 风险 / 依赖
+#### 3. 重点说明
+
+说明项目外部消息、范围变化或本周攻克的关键难点；没有则写“无”。
+
+#### 4. 风险 / 依赖
 
 风险：超过 3 天无进展的事项；没有则写“无超过 3 天无进展事项。”
 依赖：依赖外部推进的事项；没有则写“无外部依赖事项。”
@@ -161,7 +175,7 @@ Daily and weekly reports are the primary human-readable product. The package als
         "today_topic": "锁屏鼠标位置刷新",
         "current_result": "已完成基础验证",
         "work_items": [
-          {"name": "锁屏鼠标位置刷新", "did": ["完成属性映射处理"], "how": ["按输入链路排查"], "result": "已完成"}
+          {"name": "锁屏鼠标位置刷新", "did": ["完成属性映射处理"], "how": ["按输入链路排查"], "result": "基础验证通过", "status": "已完成"}
         ],
         "tomorrow_focus": ["继续回归验证"]
       }
@@ -180,6 +194,6 @@ Report card fields are authoritative:
 
 - `material_name`：项目 + 客户链路。多项目写 `TVE1086U（青鸾云）、TVE1091U（AOC → 福建移动高清）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
 - `material_summary`：日报写各项目“今日主题”；周报写各项目“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
-- Daily project rows contain `project/customer/[downstream_customer]/today_topic/current_result/work_items/tomorrow_focus`.
-- Weekly project rows contain `project/customer/[downstream_customer]/week_summary/received_date/source/requirement_type/requirement_structure/completed_this_week/remaining/expected_finish/completed_items/remaining_items/risks/dependencies/next_week_plan`.
+- Daily project rows contain `project/customer/[downstream_customer]/today_topic/current_result/work_items/tomorrow_focus`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
+- Weekly project rows contain `project/customer/[downstream_customer]/project_role/week_summary/requirement_date/requirement_source/[requirement_structure]/completed_this_week/remaining/completed_items/remaining_items/key_points/risks/dependencies/next_week_plan`.
 - The current read model does not emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.

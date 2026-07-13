@@ -14,22 +14,21 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
 
 ```json
 {
-  "schema": "akbs-weekly-project-facts-v1",
+  "schema": "akbs-weekly-project-facts-v2",
   "week_range": "20260601-20260607",
   "projects": [
     {
       "project": "TVE1086U",
       "customer": "青鸾云",
-      "week_summary": "本周完成系统接口联调和设备验证。",
-      "received_date": "2026-05-18",
-      "source": "客户需求文档",
-      "requirement_type": "混合",
-      "requirement_structure": {"custom": 8, "bug": 8, "bsp": 2},
-      "completed_this_week": {"custom": 4, "bug": 1},
-      "remaining": {"custom": 3, "bug": 0, "bsp": 2},
-      "expected_finish": "预计下周完成整体收敛",
-      "completed_items": ["完成系统接口联调", "修复状态同步问题"],
+      "project_role": "主责",
+      "requirement_date": "2026-05-18",
+      "requirement_source": "CR",
+      "requirement_structure": {"demand": 7, "migration": 8, "bug": 15},
+      "completed_this_week": {"demand": 3, "migration": 5},
+      "remaining": {"demand": 4, "migration": 3},
+      "completed_items": ["完成系统接口联调", "移植状态栏策略补丁"],
       "remaining_items": ["完成客户验收"],
+      "key_points": ["攻克状态同步时序问题"],
       "risks": [],
       "dependencies": ["等待客户提供验收环境"],
       "next_week_plan": ["完成客户验收并关闭剩余问题"]
@@ -42,23 +41,34 @@ Rules:
 
 - `week_range` must equal the generated weekly period.
 - `project` must be a recognized TVD/TVE/TVA/TVI company project.
-- `source` is one of `客户需求文档`, `TL指派`, `Buglist`, `测试反馈`, or
-  `BSP配合`.
 - `customer` is the required direct customer. Optional `downstream_customer`
-  means the direct customer's customer. Do not combine those levels into one
-  value or resolve aliases across levels.
-- `requirement_type` is one of `纯定制`, `Buglist`, or `混合`.
-- `requirement_structure` and `remaining` contain non-negative `custom`, `bug`,
-  and `bsp` integers. `completed_this_week` contains `custom` and `bug`; a
-  legacy `bsp` key is accepted only when its value is `0`.
-- `移植`, `适配`, and patch reuse describe implementation methods. Historical
-  `移植`/`适配` count keys are normalized to `custom`, never to `bsp`.
-- `bsp` is only for explicitly BSP-owned or BSP-dependent outstanding work.
-  Android customization-team completions must be counted as `custom` or `bug`.
-- `week_summary` describes this week's result; it must not repeat the next-week
-  plan.
+  means the direct customer's customer.
+- `project_role` is required and must be `主责` or `协作`.
+- `requirement_date` is required and uses `YYYY-MM-DD`.
+- `requirement_source` is required and must be one of `CR`, `TL`, `PM`, `TE`,
+  or `BSP`. Do not infer it from daily-report wording.
+- `completed_this_week` and `remaining` are required for every member.
+  `requirement_structure` is required for `主责`; `协作` may omit it.
+- Count objects use only `demand`, `migration`, `bug`, and optional `bsp`.
+  Display labels are `需求`, `移植`, `Bug`, and `BSP`.
+- `需求` means a customer requirement the team has not implemented before;
+  `移植` means reusing or porting a requirement already implemented before;
+  `Bug` means defect work.
+- `BSP` is allowed only in project total and current remaining. It must never
+  appear as a positive completion count. Work completed by the Android team is
+  `需求`, `移植`, or `Bug`, not `BSP`.
+- A positive count line must contain at least one positive `demand`,
+  `migration`, or `bug`; `BSP` cannot be the only business category.
+- Zero categories may be omitted. The generated line total is always the sum
+  of its categories.
+- Old `custom` or `定制` counts are invalid. They cannot be split into
+  `需求` and `移植` automatically; the member must confirm the split.
+- `key_points` records external project news, scope changes, or a key
+  difficulty overcome this week. Use `["无"]` when there is none.
+- When completed or remaining count is positive, provide the corresponding
+  item list. When remaining is positive, provide `next_week_plan`.
 - Markdown and `report_view.json` are regenerated from this same object. Do not
-  manually repair one while leaving the other unchanged.
+  repair only one representation.
 
 Generate with:
 

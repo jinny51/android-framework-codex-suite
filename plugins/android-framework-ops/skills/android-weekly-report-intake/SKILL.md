@@ -36,22 +36,21 @@ Weekly facts are resolved in this order:
    not represented by an effective daily report.
 
 Do not count Codex sessions as requirements. If the effective reports cannot
-prove received date, source, requirement totals, remaining-item identity, or
-expected finish, local check must fail with exact missing fields. Ask the member
-only for those facts, write an `akbs-weekly-project-facts-v1` JSON file under
+prove project role, requirement date, requirement source, project totals, or
+remaining-item identity, local check must fail with exact missing fields. Ask the member
+only for those facts, write an `akbs-weekly-project-facts-v2` JSON file under
 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/`, and regenerate
 with `--weekly-facts`. Read `../android-knowledge-intake/references/weekly-facts-contract.md`
 when this fact-completion path is needed. Do not ask the member to repair a
 large part of generated Markdown manually.
 
-Classify counts by requirement ownership, not implementation method. Customer
-requirements are `定制` even when completed by patch migration, adaptation, or
-reuse; Buglist or defect work is `Bug` even when its fix is migrated. Keep
-`移植`, `适配`, and `补丁复用` in completed-item wording only. `BSP` is reserved
-for explicitly BSP-owned or BSP-dependent outstanding work. It may be summarized
-in the requirement structure and remaining counts, but `本周完成` must never
-contain a BSP completion count; work completed by the Android customization team
-must be classified as `定制` or `Bug`.
+Use `需求`, `移植`, and `Bug` as the three business categories; do not retain a
+`定制` parent category. `需求` means a customer requirement the team has not
+implemented before. `移植` means reusing or porting a requirement already
+implemented before. A migrated Bug fix remains `Bug`. `BSP` is reserved for
+explicitly BSP-owned or BSP-dependent total/remaining work and must never be a
+positive `本周完成` category. Old `定制` totals cannot be split automatically;
+ask the member to confirm `需求` versus `移植`.
 
 Generate `reports/weekly.md` with this required structure:
 
@@ -59,6 +58,7 @@ Generate `reports/weekly.md` with this required structure:
 - 项目详情
   - 本周完成
   - 当前剩余
+  - 重点说明
   - 风险 / 依赖
 - 下周计划
 
@@ -77,19 +77,31 @@ The weekly Markdown baseline is the project block format:
 
 本周围绕 **TVE1086U** 青鸾云 项目推进：完成系统接口联调。
 
-- 接到文档时间：2026-06-18
-- 来源说明：客户需求文档
-- 需求类型：混合
-- 需求结构：18 项（定制 8、Bug 8、BSP 2）
-- 本周完成：5 项（定制 4、Bug 1）
-- 当前剩余：5 项（定制 3、Bug 0、BSP 2）
-- 预计完成：下周完成整体收敛
+- 项目角色：主责
+- 需求时间：2026-06-18
+- 需求来源：CR
+- 共 18 项：需求 4、移植 4、Bug 8、BSP 2
+- 本周完成 5 项：需求 2、移植 2、Bug 1
+- 当前剩余 5 项：需求 1、移植 2、BSP 2
 ```
+
+`项目角色` is required and must be `主责` or `协作`. `需求时间` is required
+and uses `YYYY-MM-DD`. `需求来源` is required and must be exactly one of
+`CR`, `TL`, `PM`, `TE`, or `BSP`. Every member provides `本周完成` and
+`当前剩余`; only `协作` may omit the `共 N 项` project-total line. Positive
+count lines must contain at least one `需求`, `移植`, or `Bug`. Omit zero
+categories; the displayed total must equal the category sum.
+
+Under each project in `项目详情`, use exactly these numbered subsections:
+`1. 本周完成`, `2. 当前剩余`, `3. 重点说明`, and `4. 风险 / 依赖`.
+`重点说明` records project external news, scope changes, or a key difficulty
+overcome this week; write `无` when there is none. Keep risks and dependencies
+as separate unordered lists under subsection 4.
 
 For multiple projects, repeat the same block per project. Do not use a large
 overview table in `本周概况`.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `week_summary`, `received_date`, `source`, `requirement_type`, `requirement_structure`, `completed_this_week`, `remaining`, `expected_finish`, `completed_items[]`, `remaining_items[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `project_role`, `week_summary`, `requirement_date`, `requirement_source`, optional `requirement_structure` for collaborators, `completed_this_week`, `remaining`, `completed_items[]`, `remaining_items[]`, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`.
 
 Weekly card identity is not the week range. `material_name` must preserve the
 customer chain, such as `TVE1086U（青鸾云）` or

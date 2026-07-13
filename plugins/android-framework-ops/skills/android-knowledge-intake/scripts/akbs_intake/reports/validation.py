@@ -36,10 +36,18 @@ FORBIDDEN_REPORT_VIEW_FIELDS = {
     "patch_outputs",
     "delivery_verifications",
 }
-WEEKLY_ALLOWED_SOURCES = {"客户需求文档", "TL指派", "Buglist", "测试反馈", "BSP配合"}
-WEEKLY_ALLOWED_REQUIREMENT_TYPES = {"纯定制", "Buglist", "混合"}
+WEEKLY_ALLOWED_SOURCES = {"CR", "TL", "PM", "TE", "BSP"}
+WEEKLY_ALLOWED_PROJECT_ROLES = {"主责", "协作"}
 WEEKLY_COUNT_RE = re.compile(
-    r"(?P<total>\d+)\s*项（定制\s*(?P<custom>\d+)、Bug\s*(?P<bug>\d+)(?:、BSP\s*(?P<bsp>\d+))?）"
+    r"^(?P<label>共|本周完成|当前剩余)\s+(?P<total>\d+)\s*项(?:：(?P<parts>.+))?$"
+)
+WEEKLY_COUNT_PART_RE = re.compile(r"^(需求|移植|Bug|BSP)\s+(\d+)$", re.IGNORECASE)
+DAILY_STATUS_VALUES = {"已完成", "处理中", "待验证", "阻塞"}
+OLD_DAILY_HOW_TEXT = "根据 Codex 会话记录、工程修改、命令执行和材料证据整理实际处理过程。"
+MISSING_PROJECT_GUIDANCE = (
+    "当前会话未关联项目，请补充项目名和客户名；例如：TVE1086U 青鸾云；"
+    "如有客户的客户：TVE1091U AOC 福建移动高清。"
+    "建议后续先创建项目，再在项目下创建开发会话。"
 )
 
 
@@ -54,9 +62,7 @@ def report_project_customer_errors(rel: str, rows: Any, label: str) -> list[str]
             continue
         project = str(row.get("project") or "").strip()
         if project in REPORT_MISSING_PROJECT_VALUES or not find_company_project(project):
-            row_errors.append(
-                f"{rel} payload.{label}[{index}].project 未识别到公司项目名，请按“项目名 客户名”补充；可选第三段为客户的客户，例如：TVE1091U AOC 福建移动高清"
-            )
+            row_errors.append(f"{rel} payload.{label}[{index}].project 未识别到公司项目名。{MISSING_PROJECT_GUIDANCE}")
         customer = str(row.get("customer_name") or row.get("customer") or "").strip()
         if customer in REPORT_MISSING_CUSTOMER_VALUES or not clean_report_customer_name(customer):
             row_errors.append(
@@ -90,7 +96,7 @@ def validate_daily_project_inference(
     if not project:
         errors.append("project_inference.project 必须提供")
     if project == "unknown":
-        errors.append("project_inference.project 未识别到公司项目名，请按“项目名 客户名”补充；可选第三段为客户的客户，例如：TVE1091U AOC 福建移动高清")
+        errors.append(f"project_inference.project 未识别到公司项目名。{MISSING_PROJECT_GUIDANCE}")
         if not isinstance(project_payload.get("checked_sources"), list) or not project_payload.get("checked_sources"):
             errors.append("unknown project_inference 必须记录 checked_sources")
         if not isinstance(project_payload.get("limits"), list) or not project_payload.get("limits"):
@@ -173,51 +179,128 @@ def validate_daily_report_view_project(rel: str, index: int, project: dict[str, 
     for field in ("work_items", "tomorrow_focus"):
         if not isinstance(project.get(field), list):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须是数组")
+    work_items = project.get("work_items") if isinstance(project.get("work_items"), list) else []
+    if not work_items:
+        errors.append(f"{rel} payload.projects[{index}].work_items 必须至少包含一项今日工作")
+    for item_index, item in enumerate(work_items):
+        prefix = f"{rel} payload.projects[{index}].work_items[{item_index}]"
+        if not isinstance(item, dict):
+            errors.append(f"{prefix} 必须是对象")
+            continue
+        for field in ("name", "result"):
+            if not str(item.get(field) or "").strip():
+                errors.append(f"{prefix}.{field} 必须提供")
+        for field in ("did", "how"):
+            rows = item.get(field)
+            if not isinstance(rows, list) or not any(str(value or "").strip() for value in rows):
+                errors.append(f"{prefix}.{field} 必须是非空数组")
+        if OLD_DAILY_HOW_TEXT in [str(value) for value in item.get("how", []) if isinstance(item.get("how"), list)]:
+            errors.append(f"{prefix}.how 不得使用固定套话，必须写实际处理方法")
+        if item.get("status") not in DAILY_STATUS_VALUES:
+            errors.append(f"{prefix}.status 必须是已完成、处理中、待验证或阻塞")
+
+
+def parse_weekly_count_text(
+    value: Any,
+    *,
+    expected_label: str,
+    allow_bsp: bool,
+    field_path: str,
+    errors: list[str],
+) -> dict[str, int] | None:
+    match = WEEKLY_COUNT_RE.fullmatch(str(value or "").strip())
+    if not match or match.group("label") != expected_label:
+        errors.append(f"{field_path} 计数格式非法，应使用“{expected_label} N 项：需求 N、移植 N、Bug N”")
+        return None
+    counts = {"demand": 0, "migration": 0, "bug": 0, "bsp": 0}
+    label_keys = {"需求": "demand", "移植": "migration", "bug": "bug", "bsp": "bsp"}
+    parts_text = str(match.group("parts") or "").strip()
+    seen: set[str] = set()
+    if parts_text:
+        for part in re.split(r"、", parts_text):
+            part_match = WEEKLY_COUNT_PART_RE.fullmatch(part.strip())
+            if not part_match:
+                errors.append(f"{field_path} 含非法分类: {part.strip()}")
+                return None
+            key = label_keys[part_match.group(1).lower()]
+            count = int(part_match.group(2))
+            if key in seen:
+                errors.append(f"{field_path} 分类重复: {part_match.group(1)}")
+                return None
+            if count == 0:
+                errors.append(f"{field_path} 为 0 的分类应省略")
+            if key == "bsp" and not allow_bsp:
+                errors.append(f"{field_path} 本周完成不得包含 BSP")
+            seen.add(key)
+            counts[key] = count
+    total = int(match.group("total"))
+    if total != sum(counts.values()):
+        errors.append(f"{field_path} 合计与分类不一致")
+    if total > 0 and not any(counts[key] > 0 for key in ("demand", "migration", "bug")):
+        errors.append(f"{field_path} 至少要有一项需求、移植或 Bug，不能只填 BSP")
+    return counts
 
 
 def validate_weekly_report_view_project(rel: str, index: int, project: dict[str, Any], errors: list[str]) -> None:
+    for old_field in ("received_date", "source", "requirement_type", "expected_finish"):
+        if old_field in project:
+            errors.append(f"{rel} payload.projects[{index}].{old_field} 是旧周报字段，不得继续提供")
     for field in (
         "week_summary",
-        "received_date",
-        "source",
-        "requirement_type",
-        "requirement_structure",
+        "project_role",
+        "requirement_date",
+        "requirement_source",
         "completed_this_week",
         "remaining",
-        "expected_finish",
     ):
         if not project.get(field):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须提供")
-    if project.get("source") not in WEEKLY_ALLOWED_SOURCES:
-        errors.append(f"{rel} payload.projects[{index}].source 非法: {project.get('source')}")
-    if project.get("requirement_type") not in WEEKLY_ALLOWED_REQUIREMENT_TYPES:
-        errors.append(f"{rel} payload.projects[{index}].requirement_type 非法: {project.get('requirement_type')}")
+    role = project.get("project_role")
+    if role not in WEEKLY_ALLOWED_PROJECT_ROLES:
+        errors.append(f"{rel} payload.projects[{index}].project_role 只能是主责或协作")
+    if role == "主责" and not project.get("requirement_structure"):
+        errors.append(f"{rel} payload.projects[{index}].requirement_structure 主责必须提供")
+    if project.get("requirement_source") not in WEEKLY_ALLOWED_SOURCES:
+        errors.append(
+            f"{rel} payload.projects[{index}].requirement_source 只能是 CR、TL、PM、TE 或 BSP"
+        )
+    requirement_date = str(project.get("requirement_date") or "")
     try:
-        dt.date.fromisoformat(str(project.get("received_date") or ""))
+        valid_requirement_date = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", requirement_date))
+        if valid_requirement_date:
+            dt.date.fromisoformat(requirement_date)
     except ValueError:
-        errors.append(f"{rel} payload.projects[{index}].received_date 必须是 YYYY-MM-DD")
-    if str(project.get("expected_finish") or "").strip() in {"", "需成员确认", "待确认"}:
-        errors.append(f"{rel} payload.projects[{index}].expected_finish 必须提供真实收敛计划")
+        valid_requirement_date = False
+    if not valid_requirement_date:
+        errors.append(f"{rel} payload.projects[{index}].requirement_date 必须是 YYYY-MM-DD")
     if "下周继续" in str(project.get("week_summary") or ""):
         errors.append(f"{rel} payload.projects[{index}].week_summary 不得用下周计划代替本周进展")
     parsed_counts: dict[str, dict[str, int]] = {}
-    for field in ("requirement_structure", "completed_this_week", "remaining"):
-        match = WEEKLY_COUNT_RE.fullmatch(str(project.get(field) or "").strip())
-        if not match:
-            errors.append(f"{rel} payload.projects[{index}].{field} 计数格式非法")
+    count_specs = (
+        ("requirement_structure", "共", True),
+        ("completed_this_week", "本周完成", False),
+        ("remaining", "当前剩余", True),
+    )
+    for field, label, allow_bsp in count_specs:
+        if field == "requirement_structure" and not project.get(field):
             continue
-        counts = {key: int(match.group(key) or 0) for key in ("custom", "bug", "bsp")}
-        if int(match.group("total")) != sum(counts.values()):
-            errors.append(f"{rel} payload.projects[{index}].{field} 合计与分类不一致")
-        parsed_counts[field] = counts
-    if set(parsed_counts) == {"requirement_structure", "completed_this_week", "remaining"}:
+        counts = parse_weekly_count_text(
+            project.get(field),
+            expected_label=label,
+            allow_bsp=allow_bsp,
+            field_path=f"{rel} payload.projects[{index}].{field}",
+            errors=errors,
+        )
+        if counts is not None:
+            parsed_counts[field] = counts
+    if all(field in parsed_counts for field in ("requirement_structure", "completed_this_week", "remaining")):
         total = parsed_counts["requirement_structure"]
         completed = parsed_counts["completed_this_week"]
         remaining = parsed_counts["remaining"]
-        for category in ("custom", "bug", "bsp"):
+        for category in ("demand", "migration", "bug", "bsp"):
             if completed[category] + remaining[category] > total[category]:
-                errors.append(f"{rel} payload.projects[{index}].{category} 本周完成加当前剩余不能超过需求结构")
-    for field in ("completed_items", "remaining_items", "risks", "dependencies", "next_week_plan"):
+                errors.append(f"{rel} payload.projects[{index}].{category} 本周完成加当前剩余不能超过项目总量")
+    for field in ("completed_items", "remaining_items", "key_points", "risks", "dependencies", "next_week_plan"):
         if not isinstance(project.get(field), list):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须是数组")
     if parsed_counts.get("remaining") and sum(parsed_counts["remaining"].values()) > 0 and not project.get("next_week_plan"):

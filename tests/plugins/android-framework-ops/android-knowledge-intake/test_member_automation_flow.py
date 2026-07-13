@@ -384,22 +384,22 @@ def write_weekly_facts(path: Path, week_range: str = "20260601-20260607") -> Pat
     path.write_text(
         json.dumps(
             {
-                "schema": "akbs-weekly-project-facts-v1",
+                "schema": "akbs-weekly-project-facts-v2",
                 "week_range": week_range,
                 "projects": [
                     {
                         "project": "TVE1086U",
                         "customer": "青鸾云",
+                        "project_role": "主责",
                         "week_summary": "本周完成状态栏策略修改和设备验证。",
-                        "received_date": "2026-05-18",
-                        "source": "客户需求文档",
-                        "requirement_type": "混合",
-                        "requirement_structure": {"custom": 8, "bug": 3, "bsp": 1},
-                        "completed_this_week": {"custom": 2, "bug": 1},
-                        "remaining": {"custom": 2, "bug": 0, "bsp": 1},
-                        "expected_finish": "预计下周完成整体收敛",
+                        "requirement_date": "2026-05-18",
+                        "requirement_source": "CR",
+                        "requirement_structure": {"demand": 5, "migration": 3, "bug": 3, "bsp": 1},
+                        "completed_this_week": {"demand": 1, "migration": 1, "bug": 1},
+                        "remaining": {"demand": 1, "migration": 1, "bsp": 1},
                         "completed_items": ["状态栏策略修改", "设备验证", "修复亮度同步问题"],
                         "remaining_items": ["补齐客户验收", "完成 BSP 联调", "收敛配置项"],
+                        "key_points": ["完成状态栏策略关键问题收敛"],
                         "risks": ["BSP 联调环境尚未就绪"],
                         "dependencies": ["等待 BSP 提供新固件"],
                         "next_week_plan": ["完成 BSP 联调并提交客户验收"],
@@ -1237,8 +1237,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
 
             self.assertEqual(daily_check["status"], "PASS")
             self.assertEqual(weekly_check["status"], "FAIL")
-            self.assertIn("TVE1086U.received_date", "\n".join(weekly_check["errors"]))
-            self.assertIn("TVE1086U.source", "\n".join(weekly_check["errors"]))
+            self.assertIn("TVE1086U.project_role", "\n".join(weekly_check["errors"]))
+            self.assertIn("TVE1086U.requirement_date", "\n".join(weekly_check["errors"]))
+            self.assertIn("TVE1086U.requirement_source", "\n".join(weekly_check["errors"]))
             self.assertEqual(daily_view["payload"]["projects"][0]["project"], "TVE1086U")
             self.assertEqual(daily_view["payload"]["projects"][0]["customer"], "青鸾云")
             self.assertEqual(weekly_view["payload"]["projects"][0]["project"], "TVE1086U")
@@ -1352,32 +1353,36 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(check["status"], "PASS")
             self.assertIn("本周完成状态栏策略修改和设备验证。", report)
             self.assertNotIn("本周围绕 **TVE1086U** 青鸾云 项目推进：下周继续", report)
-            self.assertIn("- 接到文档时间：2026-05-18", report)
-            self.assertIn("- 需求结构：12 项（定制 8、Bug 3、BSP 1）", report)
-            self.assertIn("- 本周完成：3 项（定制 2、Bug 1）", report)
-            self.assertIn("- 当前剩余：3 项（定制 2、Bug 0、BSP 1）", report)
-            self.assertEqual(view["requirement_structure"], "12 项（定制 8、Bug 3、BSP 1）")
-            self.assertEqual(view["completed_this_week"], "3 项（定制 2、Bug 1）")
-            self.assertEqual(view["remaining"], "3 项（定制 2、Bug 0、BSP 1）")
+            self.assertIn("- 项目角色：主责", report)
+            self.assertIn("- 需求时间：2026-05-18", report)
+            self.assertIn("- 需求来源：CR", report)
+            self.assertIn("- 共 12 项：需求 5、移植 3、Bug 3、BSP 1", report)
+            self.assertIn("- 本周完成 3 项：需求 1、移植 1、Bug 1", report)
+            self.assertIn("- 当前剩余 3 项：需求 1、移植 1、BSP 1", report)
+            self.assertIn("#### 3. 重点说明", report)
+            self.assertIn("#### 4. 风险 / 依赖", report)
+            self.assertEqual(view["requirement_structure"], "共 12 项：需求 5、移植 3、Bug 3、BSP 1")
+            self.assertEqual(view["completed_this_week"], "本周完成 3 项：需求 1、移植 1、Bug 1")
+            self.assertEqual(view["remaining"], "当前剩余 3 项：需求 1、移植 1、BSP 1")
             self.assertEqual(fact_sources["payload"]["source"], "explicit_weekly_facts")
             self.assertEqual(fact_sources["payload"]["missing_fields"], [])
 
-    def test_weekly_migration_is_an_implementation_method_and_bsp_cannot_be_completed(self) -> None:
+    def test_weekly_demand_migration_and_bug_are_separate_and_bsp_cannot_be_completed(self) -> None:
         load_intake_module()
         weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
 
         self.assertEqual(
-            weekly_module.normalize_counts("39 项（移植 24、Bug 15）"),
-            {"custom": 24, "bug": 15, "bsp": 0},
+            weekly_module.normalize_counts("39 项：移植 24、Bug 15"),
+            {"demand": 0, "migration": 24, "bug": 15, "bsp": 0},
         )
         self.assertEqual(
             weekly_module.normalize_counts({"feature_port": 4, "bug": 14, "bsp": 0}),
-            {"custom": 4, "bug": 14, "bsp": 0},
+            {"demand": 0, "migration": 4, "bug": 14, "bsp": 0},
         )
-        self.assertEqual(weekly_module.item_category("完成客户功能补丁移植", completed=True), "custom")
+        self.assertEqual(weekly_module.item_category("完成客户功能补丁移植", completed=True), "migration")
         self.assertEqual(weekly_module.item_category("完成壁纸崩溃修复移植", completed=True), "bug")
         self.assertEqual(weekly_module.item_category("等待 BSP 提供新固件"), "bsp")
-        self.assertEqual(weekly_module.item_category("完成 BSP 联调", completed=True), "custom")
+        self.assertEqual(weekly_module.item_category("完成 BSP 联调", completed=True), "demand")
 
         render_module = importlib.import_module("akbs_intake.reports.render")
         self.assertEqual(
@@ -1388,7 +1393,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     ("完成壁纸崩溃修复移植", "已完成"),
                 ]
             ),
-            {"feature_add": 1, "bug": 1, "bsp": 1, "other": 0, "total": 3},
+            {"demand": 1, "migration": 0, "bug": 1, "bsp": 1, "other": 0, "total": 3},
         )
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -1401,7 +1406,85 @@ class MemberAutomationFlowTests(unittest.TestCase):
 
             payload["projects"][0]["completed_this_week"]["bsp"] = "0"
             facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-            with self.assertRaisesRegex(SystemExit, "completed_this_week.bsp 必须是非负整数"):
+            with self.assertRaisesRegex(SystemExit, "completed_this_week 计数必须是非负整数"):
+                weekly_module.load_explicit_facts(facts, "20260601-20260607")
+
+    def test_weekly_collaborator_may_omit_project_total(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            codex_home = Path(env["CODEX_HOME"])
+            source_root = create_framework_repo(root)
+            write_codex_session(
+                codex_home,
+                "55555555-3333-3333-4444-555555555556",
+                source_root,
+                dt.date(2026, 6, 3),
+                "TVE1086U 青鸾云，本周协作完成状态栏策略修改。",
+            )
+            facts = write_weekly_facts(root / "artifacts" / "collaborator-weekly-facts.json")
+            payload = json.loads(facts.read_text(encoding="utf-8"))
+            payload["projects"][0]["project_role"] = "协作"
+            payload["projects"][0].pop("requirement_structure")
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+            weekly = prepare_weekly_package(env, "2026-06-03", "20260603-225100-weekly", facts)
+            report = read_package_report(weekly, "weekly")
+            view = read_report_view(weekly)["payload"]["projects"][0]
+
+            self.assertEqual(json.loads((weekly / "local-check.json").read_text(encoding="utf-8"))["status"], "PASS")
+            self.assertIn("- 项目角色：协作", report)
+            self.assertNotIn("- 共 12 项", report)
+            self.assertNotIn("requirement_structure", view)
+
+    def test_weekly_main_total_source_and_legacy_category_are_hard_gates(self) -> None:
+        load_intake_module()
+        weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+        with tempfile.TemporaryDirectory() as tmp:
+            facts = write_weekly_facts(Path(tmp) / "weekly-facts.json")
+            payload = json.loads(facts.read_text(encoding="utf-8"))
+
+            payload["projects"][0].pop("requirement_structure")
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "requirement_structure 主责必须提供"):
+                weekly_module.load_explicit_facts(facts, "20260601-20260607")
+
+            payload = json.loads(write_weekly_facts(facts).read_text(encoding="utf-8"))
+            payload["projects"][0]["requirement_source"] = "客户需求文档"
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "requirement_source 只能是 CR、TL、PM、TE 或 BSP"):
+                weekly_module.load_explicit_facts(facts, "20260601-20260607")
+
+            payload = json.loads(write_weekly_facts(facts).read_text(encoding="utf-8"))
+            payload["projects"][0]["requirement_date"] = "20260518"
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "requirement_date 必须是 YYYY-MM-DD"):
+                weekly_module.load_explicit_facts(facts, "20260601-20260607")
+
+            payload = json.loads(write_weekly_facts(facts).read_text(encoding="utf-8"))
+            payload["projects"][0]["requirement_structure"] = {"custom": 8, "bug": 3}
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "定制不能自动拆分"):
+                weekly_module.load_explicit_facts(facts, "20260601-20260607")
+
+            payload["schema"] = "akbs-weekly-project-facts-v1"
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "不能自动拆成需求和移植"):
+                weekly_module.load_explicit_facts(facts, "20260601-20260607")
+
+    def test_weekly_completed_plus_remaining_cannot_exceed_main_total(self) -> None:
+        load_intake_module()
+        weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+        with tempfile.TemporaryDirectory() as tmp:
+            facts = write_weekly_facts(Path(tmp) / "weekly-facts.json")
+            payload = json.loads(facts.read_text(encoding="utf-8"))
+            payload["projects"][0]["requirement_structure"]["demand"] = 1
+            payload["projects"][0]["completed_this_week"]["demand"] = 1
+            payload["projects"][0]["remaining"]["demand"] = 1
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+            with self.assertRaisesRegex(SystemExit, "本周完成加当前剩余不能超过项目总量"):
                 weekly_module.load_explicit_facts(facts, "20260601-20260607")
 
     def test_weekly_cross_day_session_uses_target_date_messages_and_assistant_outcome(self) -> None:
@@ -1467,16 +1550,16 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     {
                         "project": "TVE1086U",
                         "customer": "青鸾云",
+                        "project_role": "主责",
                         "week_summary": "上周持续推进状态栏和亮度事项。",
-                        "received_date": "2026-05-18",
-                        "source": "客户需求文档",
-                        "requirement_type": "混合",
-                        "requirement_structure": "3 项（定制 2、Bug 1、BSP 0）",
-                        "completed_this_week": "1 项（定制 1、Bug 0）",
-                        "remaining": "2 项（定制 1、Bug 1）",
-                        "expected_finish": "预计下周完成整体收敛",
+                        "requirement_date": "2026-05-18",
+                        "requirement_source": "CR",
+                        "requirement_structure": "共 3 项：需求 1、移植 1、Bug 1",
+                        "completed_this_week": "本周完成 1 项：移植 1",
+                        "remaining": "当前剩余 2 项：需求 1、Bug 1",
                         "completed_items": ["完成基础接口适配"],
                         "remaining_items": ["状态栏策略修改", "修复亮度同步问题"],
+                        "key_points": ["无"],
                         "risks": ["无超过 3 天无进展事项。"],
                         "dependencies": ["无外部依赖事项。"],
                         "next_week_plan": ["完成状态栏和亮度问题收敛"],
@@ -1525,9 +1608,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertEqual(result.evidence["daily_package_keys"], ["20260610/member01/current-daily"])
         self.assertEqual(result.evidence["previous_weekly_package_keys"], ["20260607/member01/current-weekly"])
         self.assertEqual(result.evidence["missing_fields"], [])
-        self.assertEqual(row["requirement_structure_counts"], {"custom": 3, "bug": 1, "bsp": 0})
-        self.assertEqual(row["completed_this_week_counts"], {"custom": 2, "bug": 0, "bsp": 0})
-        self.assertEqual(row["remaining_counts"], {"custom": 0, "bug": 1, "bsp": 0})
+        self.assertEqual(row["requirement_structure_counts"], {"demand": 2, "migration": 1, "bug": 1, "bsp": 0})
+        self.assertEqual(row["completed_this_week_counts"], {"demand": 2, "migration": 0, "bug": 0, "bsp": 0})
+        self.assertEqual(row["remaining_counts"], {"demand": 0, "migration": 0, "bug": 1, "bsp": 0})
         self.assertEqual(row["completed_items"], ["状态栏策略修改", "新增开关功能"])
         self.assertEqual(row["remaining_items"], ["修复亮度同步问题"])
         self.assertTrue(any("超过 3 天无进展" in item for item in row["risks"]))
@@ -1639,6 +1722,54 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertEqual(set(items), {"TVE1086U", "TVA10A2R"})
         self.assertEqual(items["TVE1086U"][0][1], "已完成")
         self.assertEqual(items["TVA10A2R"][0][1], "处理中")
+
+    def test_daily_work_items_split_merge_and_use_fixed_status_values(self) -> None:
+        module = load_intake_module()
+        summary_module = importlib.import_module("akbs_intake.reports.session_summary")
+        first = module.SessionWork(
+            session_id="77777777-3333-3333-4444-555555555556",
+            project="TVE1086U",
+            latest_at="2026-06-03T10:00:00+08:00",
+            messages=[
+                "TVE1086U 青鸾云，1. 排查状态栏策略问题；2. 修改亮度同步逻辑。",
+            ],
+            outcomes=[
+                "TVE1086U 状态栏策略问题已解决并验证通过。",
+                "TVE1086U 亮度同步逻辑修改完成，待设备验证。",
+            ],
+            commands=["rg status_bar frameworks/base", "pytest tests/status_bar_test.py"],
+        )
+        second = module.SessionWork(
+            session_id="77777777-3333-3333-4444-555555555557",
+            project="TVE1086U",
+            latest_at="2026-06-03T16:00:00+08:00",
+            messages=["继续排查 TVE1086U 状态栏策略问题。"],
+            outcomes=["TVE1086U 状态栏策略问题已解决并验证通过。"],
+        )
+
+        work_items = summary_module.daily_work_items_by_project([first, second], [])["TVE1086U"]
+
+        self.assertEqual(len(work_items), 2)
+        self.assertEqual({item["status"] for item in work_items}, {"已完成", "待验证"})
+        self.assertTrue(any("检索并定位" in method for item in work_items for method in item["how"]))
+        self.assertTrue(any("自动化检查" in method for item in work_items for method in item["how"]))
+        self.assertFalse(any("rg status_bar" in method for item in work_items for method in item["how"]))
+
+    def test_daily_work_item_statuses_do_not_leak_between_independent_items(self) -> None:
+        module = load_intake_module()
+        summary_module = importlib.import_module("akbs_intake.reports.session_summary")
+        session = module.SessionWork(
+            session_id="77777777-3333-3333-4444-555555555558",
+            project="TVE1086U",
+            latest_at="2026-06-03T16:00:00+08:00",
+            messages=[
+                "TVE1086U 青鸾云，1. 状态栏策略已完成；2. 亮度同步问题仍在处理中。",
+            ],
+        )
+
+        work_items = summary_module.daily_work_items_by_project([session], [])["TVE1086U"]
+
+        self.assertEqual([item["status"] for item in work_items], ["已完成", "处理中"])
 
     def test_report_local_check_rejects_missing_customer_and_command_text_customer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2046,6 +2177,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "做了什么：",
                 "怎么做的：",
                 "结果：",
+                "状态：",
             ):
                 self.assertIn(text, daily_report)
             for old_text in (
@@ -2063,16 +2195,15 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "## 二、项目详情",
                 "## 三、下周计划",
                 "### **TVE8402M** 合成客户一",
-                "来源说明",
-                "需求类型",
-                "需求结构",
-                "BSP",
+                "项目角色",
+                "需求时间",
+                "需求来源",
                 "本周完成",
                 "当前剩余",
-                "预计完成",
                 "#### 1. 本周完成",
                 "#### 2. 当前剩余",
-                "#### 3. 风险 / 依赖",
+                "#### 3. 重点说明",
+                "#### 4. 风险 / 依赖",
             ):
                 self.assertIn(text, weekly_report)
             for old_text in ("#### 1. 基本信息", "来源类型", "上周一剩余", "当周完成情况", "移植适配"):
@@ -2101,8 +2232,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
             for field in ("today_topic", "current_result", "work_items", "tomorrow_focus"):
                 self.assertIn(field, daily_project)
             daily_item = daily_project["work_items"][0]
-            for field in ("name", "did", "how", "result"):
+            for field in ("name", "did", "how", "result", "status"):
                 self.assertIn(field, daily_item)
+            self.assertIn(daily_item["status"], {"已完成", "处理中", "待验证", "阻塞"})
             self.assertEqual(weekly_view["kind"], "report_view")
             self.assertEqual(weekly_view["payload"]["schema"], "akbs-report-view-human-v1")
             self.assertEqual(weekly_view["payload"]["report_type"], "weekly")
@@ -2129,23 +2261,23 @@ class MemberAutomationFlowTests(unittest.TestCase):
             for field in (
                 "project",
                 "customer",
+                "project_role",
                 "week_summary",
-                "received_date",
-                "source",
-                "requirement_type",
+                "requirement_date",
+                "requirement_source",
                 "requirement_structure",
                 "completed_this_week",
                 "remaining",
-                "expected_finish",
                 "completed_items",
                 "remaining_items",
+                "key_points",
                 "risks",
                 "dependencies",
                 "next_week_plan",
             ):
                 self.assertIn(field, ledger)
-            self.assertIn(ledger["source"], {"客户需求文档", "TL指派", "Buglist", "测试反馈", "BSP配合", "需成员确认"})
-            self.assertIn(ledger["requirement_type"], {"纯定制", "Buglist", "混合", "需成员确认"})
+            self.assertIn(ledger["project_role"], {"主责", "协作"})
+            self.assertIn(ledger["requirement_source"], {"CR", "TL", "PM", "TE", "BSP"})
 
             daily_manifest = json.loads((daily / "manifest.json").read_text(encoding="utf-8"))
             weekly_manifest = json.loads((weekly / "manifest.json").read_text(encoding="utf-8"))

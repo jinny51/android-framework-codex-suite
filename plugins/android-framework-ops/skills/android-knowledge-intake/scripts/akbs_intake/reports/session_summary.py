@@ -21,6 +21,8 @@ from akbs_intake.report_sessions import (
 
 GitRoot = Callable[[str], Path | None]
 GitBranchOrName = Callable[[str], str]
+DAILY_STATUS_VALUES = ("已完成", "处理中", "待验证", "阻塞")
+DAILY_METHOD_MISSING = "未从授权会话中提取到具体处理过程，需成员补充。"
 
 
 def summarize_session(work: SessionWork) -> str:
@@ -53,6 +55,18 @@ def summarize_session(work: SessionWork) -> str:
 
 
 def clean_work_summary(text: str, project: str) -> str:
+    if project:
+        customer_prefix = re.match(
+            rf"^\s*(?:今天|今日|本周)?\s*{re.escape(project)}\s+"
+            r"(?P<context>[^，,\n]{1,48})[，,]\s*",
+            text,
+            re.IGNORECASE,
+        )
+        if customer_prefix and not re.search(
+            r"完成|解决|修改|处理|排查|验证|测试|修复|实现|适配|移植|进行|阻塞|等待|提交|构建|编译",
+            customer_prefix.group("context"),
+        ):
+            text = text[customer_prefix.end() :]
     text = strip_project_anchor(text, project)
     text = re.sub(r"(?i)\b(?:today|daily|weekly)\b", " ", text)
     text = re.sub(r"^(?:今天|今日|本周|继续|主要|围绕|完成|处理|修复|排查|整理|在|通过)\s*", "", text)
@@ -63,6 +77,242 @@ def clean_work_summary(text: str, project: str) -> str:
     text = re.sub(r"在\s*/?\s*", "", text)
     text = re.sub(r"\s+", " ", text).strip(" ，,。；;")
     return text
+
+
+def split_work_clauses(text: str, project: str) -> list[str]:
+    normalized = re.sub(r"(?m)^\s*(?:[-*•]|\d+[.、])\s*", "\n", str(text or ""))
+    rows: list[str] = []
+    for part in re.split(r"\n+|[；;]+|(?<=。)", normalized):
+        raw = part.strip()
+        if not raw or should_skip_message(raw) or is_report_generation_request(raw):
+            continue
+        value = clean_work_summary(raw, project)
+        if not value or len(value) < 4:
+            continue
+        if re.match(r"^(?:项目客户|客户|合成测试)?(?:进度|状态|结果|说明)?\s*[:：]", value):
+            continue
+        if re.fullmatch(r"(?:好的?|收到|可以|继续|无|暂无)[。！!]?", value):
+            continue
+        if value not in rows:
+            rows.append(compact_text(value, 160))
+    return rows
+
+
+def daily_item_key(value: str) -> str:
+    text = re.sub(
+        r"^(?:今天|今日|本周|继续|主要|完成|处理|修复|排查|推进|已完成|已解决|正在|待验证)\s*",
+        "",
+        str(value or ""),
+    )
+    text = re.sub(r"(?:已完成|已解决|处理中|进行中|待验证|验证通过|修复完成)$", "", text)
+    return re.sub(r"[^A-Za-z0-9\u4e00-\u9fff]+", "", text).lower()
+
+
+def same_daily_item(left: str, right: str) -> bool:
+    a = daily_item_key(left)
+    b = daily_item_key(right)
+    if not a or not b:
+        return False
+    if a == b or (min(len(a), len(b)) >= 8 and (a in b or b in a)):
+        return True
+    if min(len(a), len(b)) < 4:
+        return False
+    a_pairs = {a[index : index + 2] for index in range(len(a) - 1)}
+    b_pairs = {b[index : index + 2] for index in range(len(b) - 1)}
+    return bool(a_pairs and b_pairs) and len(a_pairs & b_pairs) / max(1, len(a_pairs | b_pairs)) >= 0.55
+
+
+def text_similarity(left: str, right: str) -> float:
+    a = daily_item_key(left)
+    b = daily_item_key(right)
+    if not a or not b:
+        return 0.0
+    if a in b or b in a:
+        return min(len(a), len(b)) / max(len(a), len(b))
+    a_pairs = {a[index : index + 2] for index in range(len(a) - 1)}
+    b_pairs = {b[index : index + 2] for index in range(len(b) - 1)}
+    return len(a_pairs & b_pairs) / max(1, len(a_pairs | b_pairs))
+
+
+def daily_status(text: str, *, has_patch: bool = False) -> str:
+    value = str(text or "")
+    if any(token in value for token in ("阻塞", "blocked", "无法实现", "缺少环境", "等待提供", "依赖外部")):
+        return "阻塞"
+    if any(token in value for token in ("待验证", "验证中", "等待测试", "等待客户验证", "待设备验证", "待回归")):
+        return "待验证"
+    if any(token in value for token in ("处理中", "进行中", "未完成", "待处理", "继续排查", "修改中", "正在")):
+        return "处理中"
+    if any(token in value for token in ("已完成", "已解决", "修复完成", "验证通过", "测试通过", "成功", "完成")):
+        return "已完成"
+    if has_patch:
+        return "待验证"
+    return "处理中"
+
+
+def command_method(command: str) -> str:
+    value = str(command or "").lower()
+    if re.search(r"(?:pytest|unittest|\btest\b|verify|check)", value):
+        return "运行相关自动化检查或测试"
+    if re.search(r"(?:gradle|ninja|soong|make|m\s+|build)", value):
+        return "执行构建验证"
+    if "adb" in value and re.search(r"(?:install|push|sync)", value):
+        return "部署构建产物到设备"
+    if "adb" in value or "logcat" in value:
+        return "通过设备命令或日志核对现象"
+    if re.search(r"\b(?:rg|grep|find)\b", value):
+        return "检索并定位相关代码或日志"
+    if re.search(r"\bgit\s+(?:diff|show|status|log)\b", value):
+        return "核对代码变更和版本状态"
+    if re.search(r"\b(?:sed|cat|head|tail|nl)\b", value):
+        return "查看相关代码、配置或日志"
+    return "执行工程命令核对处理结果"
+
+
+def clause_methods(clauses: list[str]) -> list[str]:
+    text = " ".join(clauses)
+    methods: list[str] = []
+    mappings = (
+        (r"排查|定位|分析|复现|抓取", "排查并定位问题原因"),
+        (r"修改|调整|实现|适配|移植|合入", "修改或适配相关实现"),
+        (r"验证|测试|回归|确认", "执行相关验证或回归测试"),
+        (r"构建|编译", "执行构建验证"),
+        (r"提交|交付|推送", "整理并交付处理结果"),
+    )
+    for pattern, method in mappings:
+        if re.search(pattern, text) and method not in methods:
+            methods.append(method)
+    return methods
+
+
+def session_project_segments(session: SessionWork) -> list[SessionWork]:
+    groups: dict[str, list[str]] = {}
+    unanchored: list[str] = []
+    for message in session.messages:
+        projects = find_company_projects(message)
+        if not projects:
+            unanchored.append(message)
+            continue
+        for project in projects:
+            groups.setdefault(project, []).append(message)
+    fallback_project = find_company_project(session.project)
+    if not groups and fallback_project:
+        groups[fallback_project] = list(session.messages)
+    if len(groups) == 1:
+        groups[next(iter(groups))].extend(unanchored)
+    if not groups:
+        groups[session.project] = list(session.messages)
+
+    segments: list[SessionWork] = []
+    for project, messages in groups.items():
+        relevant_outcomes = [
+            outcome for outcome in session.outcomes if project in find_company_projects(outcome)
+        ]
+        relevant_commands = [
+            command for command in session.commands if project in find_company_projects(command)
+        ]
+        if len(groups) == 1:
+            if not relevant_outcomes:
+                relevant_outcomes = list(session.outcomes)
+            if not relevant_commands:
+                relevant_commands = list(session.commands)
+        segments.append(
+            SessionWork(
+                session_id=session.session_id,
+                thread_name=session.thread_name,
+                cwd=session.cwd,
+                project=project,
+                messages=messages,
+                outcomes=relevant_outcomes,
+                commands=relevant_commands,
+                latest_at=session.latest_at,
+            )
+        )
+    return segments
+
+
+def daily_work_items_by_project(
+    sessions: list[SessionWork],
+    patches: list[Any],
+) -> dict[str, list[dict[str, Any]]]:
+    valid_projects = sorted(
+        dict.fromkeys(project for session in sessions for project in [find_company_project(session.project)] if project)
+    )
+    fallback_project = valid_projects[0] if len(valid_projects) == 1 else ""
+    patch_projects = {find_company_project(patch.project) or fallback_project or patch.project for patch in patches}
+    result: dict[str, list[dict[str, Any]]] = {}
+
+    for session in sorted(sessions, key=lambda item: (item.latest_at, item.session_id)):
+        for segment in session_project_segments(session):
+            project = find_company_project(segment.project) or segment.project
+            tasks = [
+                clause
+                for message in segment.messages
+                if not is_report_generation_request(message)
+                for clause in split_work_clauses(message, project)
+            ]
+            if not tasks:
+                fallback = summarize_session(segment)
+                if fallback != "处理Codex对话中的开发问题":
+                    tasks = [fallback]
+            outcomes = [
+                clause
+                for outcome in segment.outcomes
+                for clause in split_work_clauses(outcome, project)
+            ]
+            methods = list(dict.fromkeys(command_method(command) for command in segment.commands))
+            methods.extend(method for method in clause_methods([*tasks, *outcomes]) if method not in methods)
+            methods = methods[:4] or [DAILY_METHOD_MISSING]
+            has_patch = project in patch_projects
+            for task in tasks:
+                ranked = sorted(
+                    ((text_similarity(task, outcome), outcome) for outcome in outcomes),
+                    reverse=True,
+                )
+                matched_outcome = ranked[0][1] if ranked and (ranked[0][0] >= 0.2 or len(tasks) == 1) else ""
+                status_basis = matched_outcome or task
+                status = daily_status(status_basis, has_patch=has_patch)
+                result_text = compact_text(matched_outcome, 160) if matched_outcome else progress_for_session(segment, has_patch)
+                row: dict[str, Any] = {
+                    "name": compact_text(task, 80),
+                    "did": [compact_text(task, 160)],
+                    "how": list(methods),
+                    "result": result_text or status,
+                    "status": status,
+                    "_latest_at": segment.latest_at,
+                }
+                existing = next(
+                    (item for item in result.setdefault(project, []) if same_daily_item(item["name"], row["name"])),
+                    None,
+                )
+                if existing is None:
+                    result[project].append(row)
+                    continue
+                for field in ("did", "how"):
+                    for value in row[field]:
+                        if value not in existing[field]:
+                            existing[field].append(value)
+                if row["_latest_at"] >= existing.get("_latest_at", ""):
+                    existing["result"] = row["result"]
+                    existing["status"] = row["status"]
+                    existing["_latest_at"] = row["_latest_at"]
+
+    for patch in patches:
+        project = find_company_project(patch.project) or fallback_project or patch.project
+        if not result.get(project):
+            result.setdefault(project, []).append(
+                {
+                    "name": "产出功能补丁",
+                    "did": ["产出功能补丁"],
+                    "how": ["整理代码改动并生成补丁"],
+                    "result": "补丁已生成，等待验证",
+                    "status": "待验证",
+                    "_latest_at": "",
+                }
+            )
+    for rows in result.values():
+        for row in rows:
+            row.pop("_latest_at", None)
+    return result
 
 
 def progress_phrase(text: str) -> str:
@@ -192,39 +442,8 @@ def items_by_project(sessions: list[SessionWork], patches: list[Any]) -> dict[st
     patch_projects = {find_company_project(patch.project) or fallback_project or patch.project for patch in patches}
     items: dict[str, list[tuple[str, str]]] = {}
     for session in sessions:
-        groups: dict[str, list[str]] = {}
-        unanchored: list[str] = []
-        for message in session.messages:
-            projects = find_company_projects(message)
-            if not projects:
-                unanchored.append(message)
-                continue
-            for project in projects:
-                groups.setdefault(project, []).append(message)
-        fallback_project = find_company_project(session.project)
-        if not groups and fallback_project:
-            groups[fallback_project] = list(session.messages)
-        if len(groups) == 1:
-            only_project = next(iter(groups))
-            groups[only_project].extend(unanchored)
-        if not groups:
-            groups[session.project] = list(session.messages)
-        for project, messages in groups.items():
-            relevant_outcomes = [
-                outcome
-                for outcome in session.outcomes
-                if project in find_company_projects(outcome)
-            ]
-            if not relevant_outcomes and len(groups) == 1:
-                relevant_outcomes = list(session.outcomes)
-            segment = SessionWork(
-                session_id=session.session_id,
-                thread_name=session.thread_name,
-                cwd=session.cwd,
-                project=project,
-                messages=messages,
-                outcomes=relevant_outcomes,
-            )
+        for segment in session_project_segments(session):
+            project = segment.project
             desc = summarize_session(segment)
             progress = progress_for_session(segment, project in patch_projects)
             entry = (desc, progress)

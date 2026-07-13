@@ -283,8 +283,10 @@ def test_synthetic_fixture_is_windowed_filtered_bounded_and_field_scoped(tmp_pat
     assert work.cwd == ""
     assert work.project == "TVE1086U"
     assert any("SystemUI 状态栏修复" in item for item in work.messages)
-    assert any(item.startswith("执行命令: curl") for item in work.messages)
+    assert any(item.startswith("curl") for item in work.commands)
+    assert all(not item.startswith("执行命令:") for item in work.messages)
     assert max(map(len, work.messages)) <= 180
+    assert max(map(len, work.commands)) <= 180
     rendered = json.dumps([item.__dict__ for item in sessions], ensure_ascii=False)
     for secret in SECRET_VALUES:
         assert secret not in rendered
@@ -298,6 +300,7 @@ def test_synthetic_fixture_is_windowed_filtered_bounded_and_field_scoped(tmp_pat
     work_only = report_sessions.parse_sessions(config, {date}, successful_command)
     assert work_only
     assert all(not message.startswith("执行命令:") for message in work_only[0].messages)
+    assert work_only[0].commands == []
     assert work_only[0].cwd == ""
 
 
