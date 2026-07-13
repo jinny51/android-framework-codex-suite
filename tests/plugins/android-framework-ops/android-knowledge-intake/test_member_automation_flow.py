@@ -394,7 +394,7 @@ def write_weekly_facts(path: Path, week_range: str = "20260601-20260607") -> Pat
                         "source": "客户需求文档",
                         "requirement_type": "混合",
                         "requirement_structure": {"custom": 8, "bug": 3, "bsp": 1},
-                        "completed_this_week": {"custom": 2, "bug": 1, "bsp": 0},
+                        "completed_this_week": {"custom": 2, "bug": 1},
                         "remaining": {"custom": 2, "bug": 0, "bsp": 1},
                         "expected_finish": "预计下周完成整体收敛",
                         "completed_items": ["状态栏策略修改", "设备验证", "修复亮度同步问题"],
@@ -1280,6 +1280,48 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(view["remaining"], "3 项（定制 2、Bug 0、BSP 1）")
             self.assertEqual(fact_sources["payload"]["source"], "explicit_weekly_facts")
             self.assertEqual(fact_sources["payload"]["missing_fields"], [])
+
+    def test_weekly_migration_is_an_implementation_method_and_bsp_cannot_be_completed(self) -> None:
+        load_intake_module()
+        weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+
+        self.assertEqual(
+            weekly_module.normalize_counts("39 项（移植 24、Bug 15）"),
+            {"custom": 24, "bug": 15, "bsp": 0},
+        )
+        self.assertEqual(
+            weekly_module.normalize_counts({"feature_port": 4, "bug": 14, "bsp": 0}),
+            {"custom": 4, "bug": 14, "bsp": 0},
+        )
+        self.assertEqual(weekly_module.item_category("完成客户功能补丁移植", completed=True), "custom")
+        self.assertEqual(weekly_module.item_category("完成壁纸崩溃修复移植", completed=True), "bug")
+        self.assertEqual(weekly_module.item_category("等待 BSP 提供新固件"), "bsp")
+        self.assertEqual(weekly_module.item_category("完成 BSP 联调", completed=True), "custom")
+
+        render_module = importlib.import_module("akbs_intake.reports.render")
+        self.assertEqual(
+            render_module.project_ledger_totals(
+                [
+                    ("等待 BSP 修复驱动问题", "进行中"),
+                    ("完成 BSP 联调", "已完成"),
+                    ("完成壁纸崩溃修复移植", "已完成"),
+                ]
+            ),
+            {"feature_add": 1, "bug": 1, "bsp": 1, "other": 0, "total": 3},
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            facts = write_weekly_facts(Path(tmp) / "weekly-facts.json")
+            payload = json.loads(facts.read_text(encoding="utf-8"))
+            payload["projects"][0]["completed_this_week"]["bsp"] = 1
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "completed_this_week.bsp 必须为 0"):
+                weekly_module.load_explicit_facts(facts, "20260601-20260607")
+
+            payload["projects"][0]["completed_this_week"]["bsp"] = "0"
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "completed_this_week.bsp 必须是非负整数"):
+                weekly_module.load_explicit_facts(facts, "20260601-20260607")
 
     def test_weekly_cross_day_session_uses_target_date_messages_and_assistant_outcome(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

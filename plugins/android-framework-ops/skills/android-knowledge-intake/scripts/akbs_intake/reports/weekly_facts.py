@@ -30,7 +30,10 @@ EMPTY_ITEM_VALUES = {
     "无超过 3 天无进展事项。",
     "无外部依赖事项。",
 }
-COUNT_PART_RE = re.compile(r"(定制|Bug|BSP)\s*(\d+)", re.IGNORECASE)
+COUNT_PART_RE = re.compile(
+    r"(定制(?:需求)?|新增功能|功能添加|移植|适配|Buglist|Bug|BSP)\s*(\d+)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -67,7 +70,21 @@ def zero_counts() -> dict[str, int]:
 def normalize_counts(value: Any) -> dict[str, int]:
     if isinstance(value, dict):
         result = zero_counts()
-        aliases = {"custom": "custom", "定制": "custom", "bug": "bug", "Bug": "bug", "bsp": "bsp", "BSP": "bsp"}
+        aliases = {
+            "custom": "custom",
+            "定制": "custom",
+            "定制需求": "custom",
+            "feature_add": "custom",
+            "移植": "custom",
+            "适配": "custom",
+            "feature_port": "custom",
+            "bug": "bug",
+            "Bug": "bug",
+            "buglist": "bug",
+            "Buglist": "bug",
+            "bsp": "bsp",
+            "BSP": "bsp",
+        }
         for raw_key, raw_value in value.items():
             key = aliases.get(str(raw_key))
             if not key:
@@ -80,8 +97,14 @@ def normalize_counts(value: Any) -> dict[str, int]:
     text = clean_text(value)
     result = zero_counts()
     for label, raw_count in COUNT_PART_RE.findall(text):
-        key = "custom" if label == "定制" else label.lower()
-        result[key] = int(raw_count)
+        normalized_label = label.lower()
+        if normalized_label in {"定制", "定制需求", "新增功能", "功能添加", "移植", "适配"}:
+            key = "custom"
+        elif normalized_label in {"bug", "buglist"}:
+            key = "bug"
+        else:
+            key = "bsp"
+        result[key] += int(raw_count)
     return result
 
 
@@ -89,9 +112,9 @@ def count_total(counts: dict[str, int]) -> int:
     return sum(int(counts.get(key, 0) or 0) for key in COUNT_KEYS)
 
 
-def item_category(text: str) -> str:
+def item_category(text: str, *, completed: bool = False) -> str:
     lowered = text.lower()
-    if re.search(r"\bBSP\b|固件|SDK|驱动|板级", text, re.IGNORECASE):
+    if not completed and re.search(r"\bBSP\b", text, re.IGNORECASE):
         return "bsp"
     if any(token in lowered for token in ("bug", "问题", "缺陷", "报错", "失败", "异常", "修复")):
         return "bug"
@@ -316,17 +339,25 @@ def load_explicit_facts(path: Path, week_key: str) -> list[dict[str, Any]]:
         }
         for field, counts in count_fields.items():
             raw = item.get(field)
-            if not isinstance(raw, dict) or any(key not in raw for key in COUNT_KEYS):
-                errors.append(f"{project}.{field} 必须包含 custom/bug/bsp")
+            required_keys = ("custom", "bug") if field == "completed_this_week" else COUNT_KEYS
+            if not isinstance(raw, dict) or any(key not in raw for key in required_keys):
+                required_label = "custom/bug" if field == "completed_this_week" else "custom/bug/bsp"
+                errors.append(f"{project}.{field} 必须包含 {required_label}")
             invalid_counts = isinstance(raw, dict) and any(
-                not isinstance(raw.get(key), int) or isinstance(raw.get(key), bool) or int(raw.get(key)) < 0
-                for key in COUNT_KEYS
+                not isinstance(raw.get(key, 0), int) or isinstance(raw.get(key, 0), bool) or int(raw.get(key, 0)) < 0
+                for key in required_keys
             )
             if invalid_counts:
                 errors.append(f"{project}.{field} 计数必须是非负整数")
+            if field == "completed_this_week" and isinstance(raw, dict) and "bsp" in raw:
+                raw_bsp = raw["bsp"]
+                if not isinstance(raw_bsp, int) or isinstance(raw_bsp, bool) or raw_bsp < 0:
+                    errors.append(f"{project}.{field}.bsp 必须是非负整数")
         total = count_fields["requirement_structure"]
         completed = count_fields["completed_this_week"]
         remaining = count_fields["remaining"]
+        if completed["bsp"]:
+            errors.append(f"{project}.completed_this_week.bsp 必须为 0；Android 定制组完成项只能归入 custom 或 bug")
         for key in COUNT_KEYS:
             if completed[key] + remaining[key] > total[key]:
                 errors.append(f"{project}.{key} 本周完成加当前剩余不能超过需求结构")
@@ -410,14 +441,21 @@ def _history_project_row(
 
     for record in sorted(daily_records, key=lambda item: item.get("date", "")):
         text = record["text"]
-        category = item_category(text)
+        is_completed = progress_completed(record.get("progress"))
+        category = item_category(text, completed=is_completed)
         matched = next((item for item in prior_remaining if same_item(text, item)), "")
-        if progress_completed(record.get("progress")):
+        if is_completed:
+            matched_category = item_category(matched) if matched else ""
+            if matched_category and matched_category != "bsp":
+                category = matched_category
             add_unique(completed_items, text)
             completed_counts[category] += 1
             if matched:
                 current_remaining = [item for item in current_remaining if not same_item(item, matched)]
-                matched_category = item_category(matched)
+                if matched_category == "bsp":
+                    if total_counts["bsp"] > 0:
+                        total_counts["bsp"] -= 1
+                    total_counts[category] += 1
                 if remaining_counts[matched_category] > 0:
                     remaining_counts[matched_category] -= 1
             else:
@@ -438,7 +476,7 @@ def _history_project_row(
         inferred_source = "客户需求文档"
     elif re.search(r"测试|回归|复现", all_current_text):
         inferred_source = "测试反馈"
-    elif re.search(r"\bBSP\b|固件|SDK|驱动|板级", all_current_text, re.IGNORECASE):
+    elif re.search(r"\bBSP\b", all_current_text, re.IGNORECASE):
         inferred_source = "BSP配合"
     elif re.search(r"TL|负责人|上级", all_current_text, re.IGNORECASE):
         inferred_source = "TL指派"
@@ -537,9 +575,10 @@ def _session_fallback_projects(
         completed_items: list[str] = []
         remaining_items: list[str] = []
         for description, progress in entries:
-            category = item_category(description)
+            is_completed = progress_completed(progress)
+            category = item_category(description, completed=is_completed)
             total_counts[category] += 1
-            if progress_completed(progress):
+            if is_completed:
                 completed_counts[category] += 1
                 add_unique(completed_items, description)
             else:

@@ -25,8 +25,8 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
       "source": "客户需求文档",
       "requirement_type": "混合",
       "requirement_structure": {"custom": 8, "bug": 8, "bsp": 2},
-      "completed_this_week": {"custom": 4, "bug": 1, "bsp": 0},
-      "remaining": {"custom": 3, "bug": 0, "bsp": 0},
+      "completed_this_week": {"custom": 4, "bug": 1},
+      "remaining": {"custom": 3, "bug": 0, "bsp": 2},
       "expected_finish": "预计下周完成整体收敛",
       "completed_items": ["完成系统接口联调", "修复状态同步问题"],
       "remaining_items": ["完成客户验收"],
@@ -45,7 +45,13 @@ Rules:
 - `source` is one of `客户需求文档`, `TL指派`, `Buglist`, `测试反馈`, or
   `BSP配合`.
 - `requirement_type` is one of `纯定制`, `Buglist`, or `混合`.
-- Count objects contain non-negative `custom`, `bug`, and `bsp` integers.
+- `requirement_structure` and `remaining` contain non-negative `custom`, `bug`,
+  and `bsp` integers. `completed_this_week` contains `custom` and `bug`; a
+  legacy `bsp` key is accepted only when its value is `0`.
+- `移植`, `适配`, and patch reuse describe implementation methods. Historical
+  `移植`/`适配` count keys are normalized to `custom`, never to `bsp`.
+- `bsp` is only for explicitly BSP-owned or BSP-dependent outstanding work.
+  Android customization-team completions must be counted as `custom` or `bug`.
 - `week_summary` describes this week's result; it must not repeat the next-week
   plan.
 - Markdown and `report_view.json` are regenerated from this same object. Do not

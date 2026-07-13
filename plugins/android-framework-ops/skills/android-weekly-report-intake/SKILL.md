@@ -40,6 +40,15 @@ with `--weekly-facts`. Read `../android-knowledge-intake/references/weekly-facts
 when this fact-completion path is needed. Do not ask the member to repair a
 large part of generated Markdown manually.
 
+Classify counts by requirement ownership, not implementation method. Customer
+requirements are `定制` even when completed by patch migration, adaptation, or
+reuse; Buglist or defect work is `Bug` even when its fix is migrated. Keep
+`移植`, `适配`, and `补丁复用` in completed-item wording only. `BSP` is reserved
+for explicitly BSP-owned or BSP-dependent outstanding work. It may be summarized
+in the requirement structure and remaining counts, but `本周完成` must never
+contain a BSP completion count; work completed by the Android customization team
+must be classified as `定制` or `Bug`.
+
 Generate `reports/weekly.md` with this required structure:
 
 - 本周概况
@@ -63,7 +72,7 @@ The weekly Markdown baseline is the project block format:
 - 需求类型：混合
 - 需求结构：18 项（定制 8、Bug 8、BSP 2）
 - 本周完成：5 项（定制 4、Bug 1）
-- 当前剩余：3 项（定制 3、Bug 0）
+- 当前剩余：5 项（定制 3、Bug 0、BSP 2）
 - 预计完成：下周完成整体收敛
 ```
 
