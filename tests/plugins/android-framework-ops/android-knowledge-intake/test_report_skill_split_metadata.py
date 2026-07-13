@@ -18,7 +18,7 @@ class ReportSkillSplitMetadataTests(unittest.TestCase):
         plugin_json = json.loads((REPO_ROOT / "plugins" / "android-framework-ops" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
         plugin_readme = (REPO_ROOT / "plugins" / "android-framework-ops" / "README.md").read_text(encoding="utf-8")
 
-        self.assertEqual(plugin_json["version"], "1.0.135")
+        self.assertEqual(plugin_json["version"], "1.0.136")
         for skill_name, business_label in expected.items():
             skill_dir = REPO_ROOT / "plugins" / "android-framework-ops" / "skills" / skill_name
             self.assertTrue((skill_dir / "SKILL.md").is_file(), skill_name)
@@ -38,3 +38,20 @@ class ReportSkillSplitMetadataTests(unittest.TestCase):
         self.assertIn("android-daily-report-intake", intake_text)
         self.assertIn("android-weekly-report-intake", intake_text)
         self.assertIn("android-framework-patch-intake", intake_text)
+
+    def test_weekly_skill_requires_inclusive_monday_to_sunday_period(self) -> None:
+        weekly_skill = " ".join(
+            (
+                REPO_ROOT
+                / "plugins"
+                / "android-framework-ops"
+                / "skills"
+                / "android-weekly-report-intake"
+                / "SKILL.md"
+            )
+            .read_text(encoding="utf-8")
+            .split()
+        )
+
+        self.assertIn("Monday through Sunday, inclusive", weekly_skill)
+        self.assertIn("does not redefine the reporting period or exclude Monday's report", weekly_skill)

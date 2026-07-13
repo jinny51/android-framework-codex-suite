@@ -22,6 +22,10 @@ current result. Weekly reports do not repeat daily execution details. They
 summarize the week around project progress: completed count, remaining count,
 risks, dependencies, and next-week closure plan.
 
+The weekly period is Monday through Sunday, inclusive. Include current
+effective daily reports on both boundary dates; a late upload date does not
+redefine the reporting period or exclude Monday's report.
+
 Weekly facts are resolved in this order:
 
 1. Current effective daily reports for the target week from the member AKBS API.

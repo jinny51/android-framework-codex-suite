@@ -1532,6 +1532,39 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertEqual(row["remaining_items"], ["修复亮度同步问题"])
         self.assertTrue(any("超过 3 天无进展" in item for item in row["risks"]))
 
+    def test_weekly_history_includes_monday_boundary(self) -> None:
+        load_intake_module()
+        weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+        monday = {
+            "package_key": "20260608/member01/current-monday",
+            "package_kind": "daily_trace",
+            "report_date": "2026-06-08",
+        }
+        previous_sunday = {
+            "package_key": "20260607/member01/previous-sunday",
+            "package_kind": "daily_trace",
+            "report_date": "2026-06-07",
+        }
+
+        def fake_fetch(_config: dict[str, str], package_kind: str, _month: str) -> list[dict]:
+            return [previous_sunday, monday] if package_kind == "daily_trace" else []
+
+        config = {
+            "member_alias": "member01",
+            "submission_api_base_url": "http://127.0.0.1:1/akbs/api",
+            "weekly_history_api_enabled": "true",
+        }
+        with patch.object(weekly_module, "fetch_current_report_items", side_effect=fake_fetch):
+            daily_items, weekly_items, provenance = weekly_module.load_history(
+                config,
+                dt.date(2026, 6, 8),
+                dt.date(2026, 6, 14),
+            )
+
+        self.assertEqual([item["report_date"] for item in daily_items], ["2026-06-08"])
+        self.assertEqual(weekly_items, [])
+        self.assertEqual(provenance["daily_package_keys"], ["20260608/member01/current-monday"])
+
     def test_weekly_local_history_fallback_selects_replacement_leaf(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

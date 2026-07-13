@@ -11,7 +11,7 @@
 - `materials/evidence/work_findings.json`
 - `materials/evidence/weekly_fact_sources.json`
 
-周报事实优先读取 AKBS 中本周当前有效日报和上一周当前有效周报；API 不可用时回退到本机 `submitted` 包，并按替换链只选补交后的叶节点。Codex session 只补充有效日报未覆盖的事项，不能再把“一段会话”统计成“一项需求”。跨日长会话按消息日期和文件活跃时间补扫，不只修补周一。
+周报统计周期固定为周一至周日，起止日期都纳入统计；补交日期不改变日报所属日期，也不能导致周一日报被漏掉。周报事实优先读取 AKBS 中本周当前有效日报和上一周当前有效周报；API 不可用时回退到本机 `submitted` 包，并按替换链只选补交后的叶节点。Codex session 只补充有效日报未覆盖的事项，不能再把“一段会话”统计成“一项需求”。跨日长会话按消息日期和文件活跃时间补扫。
 
 如果接到文档时间、需求来源、需求总量、剩余事项身份或预计完成时间仍缺失，本地检查会列出准确字段并阻止上传。成员只补这些事实，Codex 将其写入 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/` 下的 `akbs-weekly-project-facts-v1` JSON，再通过 `--weekly-facts <path>` 重新生成；不再要求成员大面积手改 Markdown。
 
