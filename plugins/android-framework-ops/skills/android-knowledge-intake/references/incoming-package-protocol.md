@@ -178,7 +178,12 @@ Real report generation requires explicit per-run consent before any session read
 }
 ```
 
-For `report_type=weekly`, `payload` must include `schema=akbs-report-view-human-v1`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row must contain `project`, `customer`, `week_summary`, `received_date`, `source`, `requirement_type`, `requirement_structure`, `completed_this_week`, `remaining`, `expected_finish`, `completed_items[]`, `remaining_items[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`. `display_date` is the last workday of the week range, not the upload day.
+`customer` is the direct customer. `downstream_customer` is optional and means
+the direct customer's customer. Thus `TVE1091U AOC 福建移动高清` is represented
+as `project=TVE1091U`, `customer=AOC`, and
+`downstream_customer=福建移动高清`; direct and downstream names are not aliases.
+
+For `report_type=weekly`, `payload` must include `schema=akbs-report-view-human-v1`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row must contain `project`, direct `customer`, optional `downstream_customer`, `week_summary`, `received_date`, `source`, `requirement_type`, `requirement_structure`, `completed_this_week`, `remaining`, `expected_finish`, `completed_items[]`, `remaining_items[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`. `display_date` is the last workday of the week range, not the upload day.
 
 Every new `weekly_trace` also carries `weekly_fact_sources` evidence with
 `schema=akbs-weekly-fact-sources-v1`, the exact `week_range`, source package
@@ -323,7 +328,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.133"
+    "plugin_version": "1.0.134"
   }
 }
 ```

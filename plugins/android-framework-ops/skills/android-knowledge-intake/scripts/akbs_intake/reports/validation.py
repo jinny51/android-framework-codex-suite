@@ -7,9 +7,10 @@ from typing import Any, Callable
 
 from android_framework_ops.knowledge_rules import find_company_project
 
+from ..report_sessions import clean_report_customer_name
+from ..session_privacy import session_evidence_errors
 from .render import REPORT_MISSING_CUSTOMER_VALUES, REPORT_MISSING_PROJECT_VALUES
 from .weekly_facts import WEEKLY_FACT_SOURCES_SCHEMA
-from ..session_privacy import session_evidence_errors
 
 
 RequireFile = Callable[[Any, str], Path | None]
@@ -54,12 +55,22 @@ def report_project_customer_errors(rel: str, rows: Any, label: str) -> list[str]
         project = str(row.get("project") or "").strip()
         if project in REPORT_MISSING_PROJECT_VALUES or not find_company_project(project):
             row_errors.append(
-                f"{rel} payload.{label}[{index}].project 未识别到公司项目名，请按“项目名 客户名”补充，例如：TVE1086U 青鸾云"
+                f"{rel} payload.{label}[{index}].project 未识别到公司项目名，请按“项目名 客户名”补充；可选第三段为客户的客户，例如：TVE1091U AOC 福建移动高清"
             )
         customer = str(row.get("customer_name") or row.get("customer") or "").strip()
-        if customer in REPORT_MISSING_CUSTOMER_VALUES:
+        if customer in REPORT_MISSING_CUSTOMER_VALUES or not clean_report_customer_name(customer):
             row_errors.append(
-                f"{rel} payload.{label}[{index}].customer 缺少客户名，请按“项目名 客户名”补充，例如：TVE1086U 青鸾云"
+                f"{rel} payload.{label}[{index}].customer 缺少客户名，请按“项目名 客户名”补充；可选第三段为客户的客户，例如：TVE1091U AOC 福建移动高清"
+            )
+        downstream_customer = str(
+            row.get("downstream_customer")
+            or row.get("customer_of_customer")
+            or row.get("end_customer")
+            or ""
+        ).strip()
+        if downstream_customer and not clean_report_customer_name(downstream_customer):
+            row_errors.append(
+                f"{rel} payload.{label}[{index}].downstream_customer 不是有效的客户名称"
             )
     return row_errors
 
@@ -79,7 +90,7 @@ def validate_daily_project_inference(
     if not project:
         errors.append("project_inference.project 必须提供")
     if project == "unknown":
-        errors.append("project_inference.project 未识别到公司项目名，请按“项目名 客户名”补充，例如：TVE1086U 青鸾云")
+        errors.append("project_inference.project 未识别到公司项目名，请按“项目名 客户名”补充；可选第三段为客户的客户，例如：TVE1091U AOC 福建移动高清")
         if not isinstance(project_payload.get("checked_sources"), list) or not project_payload.get("checked_sources"):
             errors.append("unknown project_inference 必须记录 checked_sources")
         if not isinstance(project_payload.get("limits"), list) or not project_payload.get("limits"):
@@ -87,8 +98,13 @@ def validate_daily_project_inference(
     elif manifest.get("project") != project:
         errors.append("daily_trace manifest.project 必须等于 project_inference.project")
     customer = str(project_payload.get("customer_name") or "").strip()
-    if project and project != "unknown" and customer in REPORT_MISSING_CUSTOMER_VALUES:
-        errors.append("project_inference.customer_name 缺少客户名，请按“项目名 客户名”补充，例如：TVE1086U 青鸾云")
+    if project and project != "unknown" and (
+        customer in REPORT_MISSING_CUSTOMER_VALUES or not clean_report_customer_name(customer)
+    ):
+        errors.append("project_inference.customer_name 缺少客户名，请按“项目名 客户名”补充；可选第三段为客户的客户，例如：TVE1091U AOC 福建移动高清")
+    downstream_customer = str(project_payload.get("downstream_customer") or "").strip()
+    if downstream_customer and not clean_report_customer_name(downstream_customer):
+        errors.append("project_inference.downstream_customer 不是有效的客户名称")
 
 
 def validate_work_findings(

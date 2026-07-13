@@ -143,17 +143,22 @@ def infer_report_project(
     project_customers, customer_basis = report_project_customers_from_clues(clues)
 
     def attach_customers(payload: dict[str, Any]) -> dict[str, Any]:
-        payload["project_customers"] = [
-            {"project": project, "customer_name": customer}
-            for project, customer in sorted(project_customers.items())
-        ]
+        payload["project_customers"] = []
+        for project, context in sorted(project_customers.items()):
+            row = {"project": project, "customer_name": context["customer_name"]}
+            if context.get("downstream_customer"):
+                row["downstream_customer"] = context["downstream_customer"]
+            payload["project_customers"].append(row)
         payload["customer_basis"] = {
             project: basis[:5]
             for project, basis in sorted(customer_basis.items())
         }
         project = str(payload.get("project") or "")
         if project and project not in REPORT_MISSING_PROJECT_VALUES:
-            payload["customer_name"] = project_customers.get(project, MISSING_REPORT_CUSTOMER)
+            context = project_customers.get(project, {})
+            payload["customer_name"] = context.get("customer_name", MISSING_REPORT_CUSTOMER)
+            if context.get("downstream_customer"):
+                payload["downstream_customer"] = context["downstream_customer"]
         return payload
 
     matched: list[tuple[str, str, str]] = []

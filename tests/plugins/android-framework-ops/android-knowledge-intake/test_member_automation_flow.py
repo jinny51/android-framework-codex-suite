@@ -1244,6 +1244,86 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(weekly_view["payload"]["projects"][0]["customer"], "青鸾云")
             self.assertEqual(project_inference["payload"]["customer_name"], "青鸾云")
 
+    def test_report_customer_hierarchy_is_preserved_in_daily_and_weekly_views(self) -> None:
+        load_intake_module()
+        sessions_module = importlib.import_module("akbs_intake.report_sessions")
+        validation_module = importlib.import_module("akbs_intake.reports.validation")
+        self.assertEqual(
+            sessions_module.project_customer_contexts_from_text("TVE1086U 青鸾云"),
+            [("TVE1086U", {"customer_name": "青鸾云"})],
+        )
+        self.assertEqual(
+            sessions_module.project_customer_contexts_from_text("TVE1067M1 韩福友 P"),
+            [("TVE1067M1", {"customer_name": "韩福友", "downstream_customer": "P"})],
+        )
+        self.assertEqual(
+            validation_module.report_project_customer_errors(
+                "report_view.json",
+                [{"project": "TVE1086U", "customer": "青鸾云"}],
+                "projects",
+            ),
+            [],
+        )
+        self.assertTrue(
+            validation_module.report_project_customer_errors(
+                "report_view.json",
+                [{"project": "TVE1086U", "customer": "日报"}],
+                "projects",
+            )
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            codex_home = Path(env["CODEX_HOME"])
+            source_root = create_framework_repo(root)
+            write_codex_session(
+                codex_home,
+                "44444444-3434-3333-4444-555555555555",
+                source_root,
+                dt.date(2026, 6, 3),
+                [
+                    "TVE1091U AOC 福建移动高清，帮我生成日报并提交。",
+                    "今天完成 TVE1091U 权限策略修改，进度100%。",
+                ],
+                thread_name="TVE1091U 日报",
+            )
+
+            daily = prepare_daily_package(env, "2026-06-03", "20260603-214500-daily")
+            daily_check = json.loads((daily / "local-check.json").read_text(encoding="utf-8"))
+            daily_report = read_package_report(daily)
+            daily_view = read_report_view(daily)["payload"]
+            project_inference = json.loads(
+                (daily / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8")
+            )["payload"]
+
+            self.assertEqual(daily_check["status"], "PASS")
+            self.assertIn("### TVE1091U AOC 福建移动高清", daily_report)
+            self.assertEqual(daily_view["material_name"], "TVE1091U（AOC → 福建移动高清）")
+            self.assertEqual(daily_view["projects"][0]["customer"], "AOC")
+            self.assertEqual(daily_view["projects"][0]["downstream_customer"], "福建移动高清")
+            self.assertEqual(project_inference["customer_name"], "AOC")
+            self.assertEqual(project_inference["downstream_customer"], "福建移动高清")
+
+            facts = write_weekly_facts(root / "artifacts" / "customer-hierarchy-weekly-facts.json")
+            facts_payload = json.loads(facts.read_text(encoding="utf-8"))
+            facts_payload["projects"][0]["project"] = "TVE1091U"
+            facts_payload["projects"][0]["customer"] = "AOC"
+            facts_payload["projects"][0]["downstream_customer"] = "福建移动高清"
+            facts.write_text(json.dumps(facts_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+            weekly = prepare_weekly_package(env, "2026-06-03", "20260603-224500-weekly", facts)
+            weekly_check = json.loads((weekly / "local-check.json").read_text(encoding="utf-8"))
+            weekly_report = read_package_report(weekly, "weekly")
+            weekly_view = read_report_view(weekly)["payload"]
+
+            self.assertEqual(weekly_check["status"], "PASS")
+            self.assertIn("### TVE1091U AOC 福建移动高清", weekly_report)
+            self.assertEqual(weekly_view["material_name"], "TVE1091U（AOC → 福建移动高清）")
+            self.assertEqual(weekly_view["projects"][0]["customer"], "AOC")
+            self.assertEqual(weekly_view["projects"][0]["downstream_customer"], "福建移动高清")
+
     def test_weekly_explicit_project_facts_render_exact_template_and_pass(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

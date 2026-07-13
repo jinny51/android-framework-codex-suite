@@ -8,7 +8,7 @@ from typing import Any
 
 
 AKBS_RULES_CONTRACT_VERSION = "2026-07-02.1"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.133"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.134"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -68,6 +68,10 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
     "weekly_requirement_taxonomy_v1": {
         "min_plugin_version": "1.0.133",
         "description": "weekly reports classify migration as an implementation method, reserve BSP for explicit outstanding ownership, and reject BSP completions",
+    },
+    "report_customer_hierarchy_v1": {
+        "min_plugin_version": "1.0.134",
+        "description": "daily and weekly report projects preserve direct customer and optional downstream customer as separate identity levels",
     },
 }
 DEFAULT_SOURCE_VERSION_CAPABILITIES = ("source_version_evidence",)

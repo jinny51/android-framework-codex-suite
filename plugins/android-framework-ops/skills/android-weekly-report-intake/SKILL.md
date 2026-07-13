@@ -79,23 +79,27 @@ The weekly Markdown baseline is the project block format:
 For multiple projects, repeat the same block per project. Do not use a large
 overview table in `本周概况`.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, `customer`, `week_summary`, `received_date`, `source`, `requirement_type`, `requirement_structure`, `completed_this_week`, `remaining`, `expected_finish`, `completed_items[]`, `remaining_items[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `week_summary`, `received_date`, `source`, `requirement_type`, `requirement_structure`, `completed_this_week`, `remaining`, `expected_finish`, `completed_items[]`, `remaining_items[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`.
 
-Weekly card identity is not the week range. `material_name` must be project +
-customer, such as `TVE1086U（青鸾云）`; multiple projects must keep each project
-paired with its own customer. `material_summary` must summarize each project's
+Weekly card identity is not the week range. `material_name` must preserve the
+customer chain, such as `TVE1086U（青鸾云）` or
+`TVE1091U（AOC → 福建移动高清）`; multiple projects must keep each project
+paired with its own customer chain. `material_summary` must summarize each project's
 weekly completed count, remaining count, and risk/dependency state. The current read model emits `material_name`, `material_summary`, and `projects`; it does not emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.
 
 Each project row must include both a recognized company project name
-and a customer name. The member can provide this in natural language as
-`TVE1086U 青鸾云，本周主要推进...`; parse it as project `TVE1086U` and
-customer `青鸾云`. If either value is missing, generate the package with
+and a direct customer. A third segment is optional and represents the direct
+customer's customer: parse `TVE1091U AOC 福建移动高清` into project
+`TVE1091U`, customer `AOC`, and downstream customer `福建移动高清`. Keep
+`TVE1086U 青鸾云` compatible as a two-segment identity. If project or direct
+customer is missing, generate the package with
 `需成员补充项目名` or `需成员补充客户名` so the member can edit it, but local
 submit must stop until both values are present. Do not repair Markdown alone.
 Complete the structured weekly facts and regenerate so `reports/weekly.md` and
 `report_view.json` remain the same-source views of one fact set. Any management-side
 aggregation happens outside the member workflow and should not be exposed as a
-member responsibility.
+member responsibility. Direct and downstream customer aliases must be resolved
+within their own levels, never across the customer chain.
 
 Before running `--prepare`, `--upload`, or `--submit-latest`, check the current
 member request and visible conversation context for a recognized project +
@@ -103,7 +107,7 @@ customer pair. If Codex cannot find both values, do not run the command yet.
 Reply in the conversation:
 
 ```text
-缺少项目名和客户名，请补充，例如：TVE1086U 青鸾云。
+缺少项目名和客户名，请补充，例如：TVE1086U 青鸾云；如有客户的客户，继续写第三段，例如：TVE1091U AOC 福建移动高清。
 ```
 
 The weekly display date is the last workday of the period. A late weekly submission still displays the weekly period date, not the upload day.

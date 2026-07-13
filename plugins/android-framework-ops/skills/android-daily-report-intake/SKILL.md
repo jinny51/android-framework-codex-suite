@@ -23,16 +23,16 @@ Generate `reports/daily.md` with the Codex office daily template:
 - 今日工作
 - 明日重点
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, `customer`, `today_topic`, `current_result`, `work_items[]`, and `tomorrow_focus[]`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, and `tomorrow_focus[]`.
 
-Daily card identity is not the date. `material_name` must be project + customer, such as `TVE1086U（青鸾云）`; multiple projects use `、` and keep each project paired with its own customer. `material_summary` must be a short daily topic summary, such as `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`. The current read model emits `material_name`, `material_summary`, and `projects`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
+Daily card identity is not the date. `material_name` must preserve the customer chain, such as `TVE1086U（青鸾云）` or `TVE1091U（AOC → 福建移动高清）`; multiple projects use `、`. `material_summary` must be a short daily topic summary, such as `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`. The current read model emits `material_name`, `material_summary`, and `projects`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
 
-Daily project rows must include both a recognized company project name and a customer name. The member can provide this in natural language as `TVE1086U 青鸾云，帮我生成日报并提交`; parse it as project `TVE1086U` and customer `青鸾云`. If either value is missing, generate the package with `需成员补充项目名` or `需成员补充客户名` so the member can edit it, but local submit must stop until both values are present.
+Daily project rows must include a recognized company project and direct customer. A third segment is optional and means the direct customer's customer: parse `TVE1091U AOC 福建移动高清` as project `TVE1091U`, customer `AOC`, and downstream customer `福建移动高清`. Keep `TVE1086U 青鸾云` compatible as a two-segment identity. If project or direct customer is missing, local submit must stop; never merge direct and downstream customers as aliases.
 
 Before running `--prepare`, `--upload`, or `--submit-latest`, check the current member request and visible conversation context for a recognized project + customer pair. If Codex cannot find both values, do not run the command yet. Reply in the conversation:
 
 ```text
-缺少项目名和客户名，请补充，例如：TVE1086U 青鸾云。
+缺少项目名和客户名，请补充，例如：TVE1086U 青鸾云；如有客户的客户，继续写第三段，例如：TVE1091U AOC 福建移动高清。
 ```
 
 Do not put raw commands, plugin cache paths, Codex session names, JSON fragments, shell output, package keys, case ids, or source paths into UI display fields. If evidence is missing, write clear human text such as `需补充`, not fabricated facts.

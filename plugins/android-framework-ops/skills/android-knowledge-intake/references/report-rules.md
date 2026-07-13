@@ -54,14 +54,14 @@
 
 ## 一、今日概况
 
-### 项目名 客户名
+### 项目名 客户名 [客户的客户]
 
 - 今日主题：今天主要处理了什么。
 - 当前结果：今天处理到什么程度。
 
 ## 二、今日工作
 
-### 项目名 客户名
+### 项目名 客户名 [客户的客户]
 
 #### 1. 事项名称
 
@@ -76,7 +76,7 @@
 
 ## 三、明日重点
 
-### 项目名 客户名
+### 项目名 客户名 [客户的客户]
 - 明天优先处理什么。
 ```
 
@@ -96,9 +96,9 @@ through the explicit `akbs-weekly-project-facts-v1` contract.
 
 ## 一、本周概况
 
-### 项目名 客户名
+### 项目名 客户名 [客户的客户]
 
-本周围绕 项目名 客户名 项目推进：简短说明本周主要处理的方向。
+本周围绕 项目名 客户名 [客户的客户] 项目推进：简短说明本周主要处理的方向。
 
 - 接到文档时间：2026-06-18
 - 来源说明：客户需求文档 / TL指派 / Buglist / 测试反馈 / BSP配合 中选择一个
@@ -117,7 +117,7 @@ through the explicit `akbs-weekly-project-facts-v1` contract.
 
 ## 二、项目详情
 
-### 项目编号 客户名称
+### 项目编号 客户名称 [客户的客户]
 
 #### 1. 本周完成
 
@@ -165,10 +165,16 @@ Daily and weekly reports are the primary human-readable product. The package als
 }
 ```
 
+`customer` is the direct customer. `downstream_customer` is optional and means
+the direct customer's customer. For example, `TVE1091U AOC 福建移动高清`
+becomes `project=TVE1091U`, `customer=AOC`, and
+`downstream_customer=福建移动高清`. Do not collapse the two customer levels
+into aliases. A two-segment identity such as `TVE1086U 青鸾云` remains valid.
+
 Report card fields are authoritative:
 
-- `material_name`：项目 + 客户。多项目写 `TVE1086U（青鸾云）、TVE8801M（未标注客户）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
+- `material_name`：项目 + 客户链路。多项目写 `TVE1086U（青鸾云）、TVE1091U（AOC → 福建移动高清）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
 - `material_summary`：日报写各项目“今日主题”；周报写各项目“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
-- Daily project rows contain `project/customer/today_topic/current_result/work_items/tomorrow_focus`.
-- Weekly project rows contain `project/customer/week_summary/received_date/source/requirement_type/requirement_structure/completed_this_week/remaining/expected_finish/completed_items/remaining_items/risks/dependencies/next_week_plan`.
+- Daily project rows contain `project/customer/[downstream_customer]/today_topic/current_result/work_items/tomorrow_focus`.
+- Weekly project rows contain `project/customer/[downstream_customer]/week_summary/received_date/source/requirement_type/requirement_structure/completed_this_week/remaining/expected_finish/completed_items/remaining_items/risks/dependencies/next_week_plan`.
 - The current read model does not emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.

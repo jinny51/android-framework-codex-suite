@@ -17,7 +17,10 @@ from akbs_intake.report_sessions import (
     MISSING_REPORT_PROJECT,
     REPORT_MISSING_CUSTOMER_VALUES,
     REPORT_MISSING_PROJECT_VALUES,
+    report_customer_chain_label,
+    report_customer_context_for_project,
     report_customer_for_project,
+    report_downstream_customer_for_project,
 )
 
 
@@ -26,6 +29,38 @@ def compact_text(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 1)].rstrip() + "…"
+
+
+def row_customer_context(row: dict[str, Any]) -> dict[str, str]:
+    customer = str(row.get("customer") or row.get("customer_name") or MISSING_REPORT_CUSTOMER)
+    downstream_customer = str(
+        row.get("downstream_customer")
+        or row.get("customer_of_customer")
+        or row.get("end_customer")
+        or ""
+    )
+    return {
+        "customer_name": customer,
+        "downstream_customer": downstream_customer,
+    }
+
+
+def project_customer_heading(project: Any, customer: Any, downstream_customer: Any = "") -> str:
+    return f"{project} {report_customer_chain_label(customer, downstream_customer)}"
+
+
+def project_customer_title_label(project: Any, customer: Any, downstream_customer: Any = "") -> str:
+    customer_text = str(customer or MISSING_REPORT_CUSTOMER)
+    downstream_text = str(downstream_customer or "")
+    chain = f"{customer_text} → {downstream_text}" if downstream_text else customer_text
+    return f"{project}（{chain}）"
+
+
+def add_downstream_customer(row: dict[str, Any], downstream_customer: Any) -> dict[str, Any]:
+    value = str(downstream_customer or "").strip()
+    if value:
+        row["downstream_customer"] = value
+    return row
 
 
 def materials_rel(*parts: str) -> str:
@@ -197,7 +232,7 @@ def normalized_report_items(items: dict[str, list[tuple[str, str]]]) -> dict[str
 
 def project_ledger_rows(
     items: dict[str, list[tuple[str, str]]],
-    project_customers: dict[str, str] | None = None,
+    project_customers: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     items = normalized_report_items(items)
@@ -211,6 +246,7 @@ def project_ledger_rows(
                 "start_date": "需成员确认",
                 "duration_label": "需成员确认",
                 "customer_name": MISSING_REPORT_CUSTOMER,
+                "downstream_customer": "",
                 "previous_week_remaining": 0,
                 "totals": {"feature_add": 0, "bug": 0, "bsp": 0, "other": 0, "total": 0},
                 "this_week_completed": 0,
@@ -235,6 +271,7 @@ def project_ledger_rows(
                 "start_date": "需成员确认",
                 "duration_label": "需成员确认",
                 "customer_name": report_customer_for_project(project, project_customers),
+                "downstream_customer": report_downstream_customer_for_project(project, project_customers),
                 "source_lists": project_sources,
                 "totals": totals,
                 "previous_week_remaining": remaining + stats["completed"],
@@ -250,15 +287,21 @@ def project_ledger_rows(
 
 def report_project_customer_title(
     items: dict[str, list[tuple[str, str]]],
-    project_customers: dict[str, str] | None = None,
+    project_customers: dict[str, Any] | None = None,
     *,
     max_projects: int = 3,
 ) -> str:
     normalized = normalized_report_items(items)
     labels: list[str] = []
     for project in sorted(normalized):
-        customer = report_customer_for_project(project, project_customers)
-        labels.append(f"{project}（{customer}）")
+        context = report_customer_context_for_project(project, project_customers)
+        labels.append(
+            project_customer_title_label(
+                project,
+                context["customer_name"],
+                context.get("downstream_customer", ""),
+            )
+        )
     if not labels:
         return f"{MISSING_REPORT_PROJECT}（{MISSING_REPORT_CUSTOMER}）"
     visible = labels[:max_projects]
@@ -283,7 +326,7 @@ def daily_material_summary(
 
 def weekly_material_summary(
     items: dict[str, list[tuple[str, str]]],
-    project_customers: dict[str, str] | None = None,
+    project_customers: dict[str, Any] | None = None,
     weekly_projects: list[dict[str, Any]] | None = None,
     *,
     max_projects: int = 3,
@@ -414,16 +457,16 @@ def write_daily_report(
     lines: list[str],
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
-    project_customers: dict[str, str] | None = None,
+    project_customers: dict[str, Any] | None = None,
 ) -> None:
     items = normalized_report_items(items)
     if not items:
         items = {MISSING_REPORT_PROJECT: [("未形成有效工作记录", "需补充真实工作记录")]}
     lines += ["## 一、今日概况", ""]
     for project, entries in sorted(items.items()):
-        customer = report_customer_for_project(project, project_customers)
+        context = report_customer_context_for_project(project, project_customers)
         lines += [
-            f"### {project} {customer}",
+            f"### {project_customer_heading(project, context['customer_name'], context.get('downstream_customer', ''))}",
             "",
             f"- 今日主题：{daily_topic_for_entries(entries)}",
             f"- 当前结果：{daily_result_for_entries(entries)}",
@@ -431,8 +474,8 @@ def write_daily_report(
         ]
     lines += ["## 二、今日工作", ""]
     for project, entries in sorted(items.items()):
-        customer = report_customer_for_project(project, project_customers)
-        lines += [f"### {project} {customer}", ""]
+        context = report_customer_context_for_project(project, project_customers)
+        lines += [f"### {project_customer_heading(project, context['customer_name'], context.get('downstream_customer', ''))}", ""]
         for index, (desc, progress) in enumerate(entries, start=1):
             lines += [
                 f"#### {index}. {report_item_name(desc)}",
@@ -449,9 +492,9 @@ def write_daily_report(
             ]
     lines += ["## 三、明日重点", ""]
     for project, entries in sorted(items.items()):
-        customer = report_customer_for_project(project, project_customers)
+        context = report_customer_context_for_project(project, project_customers)
         lines += [
-            f"### {project} {customer}",
+            f"### {project_customer_heading(project, context['customer_name'], context.get('downstream_customer', ''))}",
             "",
             f"- {next_step_for_entries(entries, 'daily')}",
             "",
@@ -461,7 +504,7 @@ def write_weekly_report(
     lines: list[str],
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
-    project_customers: dict[str, str] | None = None,
+    project_customers: dict[str, Any] | None = None,
     weekly_projects: list[dict[str, Any]] | None = None,
 ) -> None:
     items = normalized_report_items(items)
@@ -475,9 +518,9 @@ def write_weekly_report(
     if weekly_projects:
         for row in weekly_projects:
             project = str(row["project"])
-            customer = str(row.get("customer") or row.get("customer_name") or MISSING_REPORT_CUSTOMER)
+            context = row_customer_context(row)
             lines += [
-                f"### {project} {customer}",
+                f"### {project_customer_heading(project, context['customer_name'], context['downstream_customer'])}",
                 "",
                 str(row.get("week_summary") or "需补充真实工作记录。"),
                 "",
@@ -498,9 +541,9 @@ def write_weekly_report(
             completed_counts = weekly_requirement_counts(entries, buckets={"completed"})
             remaining_counts = weekly_requirement_counts(entries, buckets={"in_progress", "not_started", "blocked"})
             lines += [
-                f"### {project} {ledger['customer_name']}",
+                f"### {project_customer_heading(project, ledger['customer_name'], ledger.get('downstream_customer', ''))}",
                 "",
-                f"本周围绕 {project} {ledger['customer_name']} 项目推进：{next_step_for_entries(entries, 'weekly') if entries else '需补充真实工作记录。'}",
+                f"本周围绕 {project_customer_heading(project, ledger['customer_name'], ledger.get('downstream_customer', ''))} 项目推进：{next_step_for_entries(entries, 'weekly') if entries else '需补充真实工作记录。'}",
                 "",
                 f"- 接到文档时间：{ledger['start_date']}",
                 f"- 来源说明：{weekly_source_label(entries)}",
@@ -516,6 +559,7 @@ def write_weekly_report(
         {
             "project": ledger["project"],
             "customer": ledger["customer_name"],
+            "downstream_customer": ledger.get("downstream_customer", ""),
             "completed_items": [desc for desc, progress in items.get(str(ledger["project"]), []) if progress_bucket(progress) == "completed"],
             "remaining_items": [desc for desc, progress in items.get(str(ledger["project"]), []) if progress_bucket(progress) != "completed"],
             "risks": weekly_risks(items.get(str(ledger["project"]), [])),
@@ -525,13 +569,13 @@ def write_weekly_report(
     ]
     for row in detail_rows:
         project = str(row["project"])
-        customer = str(row.get("customer") or row.get("customer_name") or MISSING_REPORT_CUSTOMER)
+        context = row_customer_context(row)
         completed = meaningful_fact_list(row.get("completed_items"))
         unfinished = meaningful_fact_list(row.get("remaining_items"))
         risks = meaningful_fact_list(row.get("risks")) or ["无超过 3 天无进展事项。"]
         dependencies = meaningful_fact_list(row.get("dependencies")) or ["无外部依赖事项。"]
         lines += [
-            f"### {project} {customer}",
+            f"### {project_customer_heading(project, context['customer_name'], context['downstream_customer'])}",
             "",
             "#### 1. 本周完成",
             "",
@@ -557,16 +601,17 @@ def write_weekly_report(
         {
             "project": ledger["project"],
             "customer": ledger["customer_name"],
+            "downstream_customer": ledger.get("downstream_customer", ""),
             "next_week_plan": [next_step_for_entries(items.get(str(ledger["project"]), []), "weekly")],
         }
         for ledger in ledgers
     ]
     for row in plan_rows:
         project = str(row["project"])
-        customer = str(row.get("customer") or row.get("customer_name") or MISSING_REPORT_CUSTOMER)
+        context = row_customer_context(row)
         plans = meaningful_fact_list(row.get("next_week_plan")) or ["继续补充真实工作记录并推进未闭环事项。"]
         lines += [
-            f"### {project} {customer}",
+            f"### {project_customer_heading(project, context['customer_name'], context['downstream_customer'])}",
             "",
             *(f"- {plan}" for plan in plans),
             "",
@@ -580,7 +625,7 @@ def report_view_payload(
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
     summary: str,
-    project_customers: dict[str, str] | None = None,
+    project_customers: dict[str, Any] | None = None,
     weekly_projects: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     items = normalized_report_items(items)
@@ -606,7 +651,8 @@ def report_view_payload(
     if report_type == "daily":
         projects: list[dict[str, Any]] = []
         for project, entries in sorted(items.items()):
-            customer = report_customer_for_project(project, project_customers)
+            context = report_customer_context_for_project(project, project_customers)
+            customer = context["customer_name"]
             work_items = []
             for desc, progress in entries:
                 work_items.append(
@@ -618,7 +664,7 @@ def report_view_payload(
                     }
                 )
             projects.append(
-                {
+                add_downstream_customer({
                     "project": project,
                     "customer": customer,
                     "customer_name": customer,
@@ -626,7 +672,7 @@ def report_view_payload(
                     "current_result": daily_result_for_entries(entries),
                     "work_items": work_items,
                     "tomorrow_focus": [next_step_for_entries(entries, "daily")],
-                }
+                }, context.get("downstream_customer", ""))
             )
         payload.update(
             {
@@ -638,9 +684,10 @@ def report_view_payload(
     if weekly_projects:
         projects = []
         for row in weekly_projects:
-            customer = str(row.get("customer") or row.get("customer_name") or MISSING_REPORT_CUSTOMER)
+            context = row_customer_context(row)
+            customer = context["customer_name"]
             projects.append(
-                {
+                add_downstream_customer({
                     "project": str(row["project"]),
                     "customer": customer,
                     "customer_name": customer,
@@ -657,7 +704,7 @@ def report_view_payload(
                     "risks": meaningful_fact_list(row.get("risks")) or ["无超过 3 天无进展事项。"],
                     "dependencies": meaningful_fact_list(row.get("dependencies")) or ["无外部依赖事项。"],
                     "next_week_plan": meaningful_fact_list(row.get("next_week_plan")),
-                }
+                }, context["downstream_customer"])
             )
         payload.update({"projects": projects})
         return {"kind": "report_view", "payload": payload}
@@ -667,6 +714,7 @@ def report_view_payload(
     for ledger in ledgers:
         project = str(ledger["project"])
         customer = str(ledger["customer_name"])
+        downstream_customer = str(ledger.get("downstream_customer") or "")
         entries = items.get(project, [])
         all_counts = weekly_requirement_counts(entries)
         completed_counts = weekly_requirement_counts(entries, buckets={"completed"})
@@ -674,11 +722,11 @@ def report_view_payload(
         completed = [compact_text(desc, 120) for desc, progress in entries if progress_bucket(progress) == "completed"]
         remaining = [compact_text(desc, 120) for desc, progress in entries if progress_bucket(progress) != "completed"]
         projects.append(
-            {
+            add_downstream_customer({
                 "project": project,
                 "customer": customer,
                 "customer_name": customer,
-                "week_summary": f"本周围绕 {project} {customer} 项目推进：{next_step_for_entries(entries, 'weekly') if entries else '需补充真实工作记录。'}",
+                "week_summary": f"本周围绕 {project_customer_heading(project, customer, downstream_customer)} 项目推进：{next_step_for_entries(entries, 'weekly') if entries else '需补充真实工作记录。'}",
                 "received_date": str(ledger.get("start_date") or "需成员确认"),
                 "source": weekly_source_label(entries),
                 "requirement_type": weekly_requirement_type(entries),
@@ -691,7 +739,7 @@ def report_view_payload(
                 "risks": weekly_risks(entries),
                 "dependencies": weekly_dependencies(entries),
                 "next_week_plan": [next_step_for_entries(entries, "weekly")],
-            }
+            }, downstream_customer)
         )
     payload.update({"projects": projects})
     return {"kind": "report_view", "payload": payload}
@@ -704,7 +752,7 @@ def write_report(
     config: dict[str, str],
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
-    project_customers: dict[str, str] | None = None,
+    project_customers: dict[str, Any] | None = None,
     weekly_projects: list[dict[str, Any]] | None = None,
 ) -> Path:
     report_path = package_dir / f"{report_type}.md"
@@ -727,7 +775,7 @@ def write_report_view(
     items: dict[str, list[tuple[str, str]]],
     patches: list[PatchInfo],
     summary: str,
-    project_customers: dict[str, str] | None = None,
+    project_customers: dict[str, Any] | None = None,
     weekly_projects: list[dict[str, Any]] | None = None,
 ) -> str:
     rel = materials_rel("display", "report_view.json")

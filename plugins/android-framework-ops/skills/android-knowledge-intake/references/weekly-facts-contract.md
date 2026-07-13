@@ -44,6 +44,9 @@ Rules:
 - `project` must be a recognized TVD/TVE/TVA/TVI company project.
 - `source` is one of `客户需求文档`, `TL指派`, `Buglist`, `测试反馈`, or
   `BSP配合`.
+- `customer` is the required direct customer. Optional `downstream_customer`
+  means the direct customer's customer. Do not combine those levels into one
+  value or resolve aliases across levels.
 - `requirement_type` is one of `纯定制`, `Buglist`, or `混合`.
 - `requirement_structure` and `remaining` contain non-negative `custom`, `bug`,
   and `bsp` integers. `completed_this_week` contains `custom` and `bug`; a

@@ -15,6 +15,7 @@ from android_framework_ops.knowledge_rules import find_company_project
 
 from ..config import expanded_path, local_now, parse_bool, submission_api_base_url
 from ..io_utils import read_json_file
+from ..report_sessions import report_customer_context_for_project
 from .common import iter_local_manifests, replacement_run_id
 
 
@@ -281,10 +282,17 @@ def load_history(
 def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
     project = find_company_project(clean_text(value.get("project"))) or clean_text(value.get("project"), "需成员补充项目名")
     customer = clean_text(value.get("customer") or value.get("customer_name"), "需成员补充客户名")
+    downstream_customer = clean_text(
+        value.get("downstream_customer")
+        or value.get("customer_of_customer")
+        or value.get("end_customer")
+        or value.get("客户的客户")
+    )
     return {
         "project": project,
         "customer": customer,
         "customer_name": customer,
+        "downstream_customer": downstream_customer,
         "week_summary": clean_text(value.get("week_summary"), "需成员补充本周主要进展"),
         "received_date": clean_text(value.get("received_date"), "需成员确认"),
         "source": clean_text(value.get("source"), "需成员确认"),
@@ -322,6 +330,14 @@ def load_explicit_facts(path: Path, week_key: str) -> list[dict[str, Any]]:
         for field in ("customer", "week_summary", "received_date", "source", "requirement_type", "expected_finish"):
             if clean_text(item.get(field)) in MISSING_VALUES:
                 errors.append(f"{project}.{field} 必须提供")
+        downstream_value = (
+            item.get("downstream_customer")
+            or item.get("customer_of_customer")
+            or item.get("end_customer")
+            or item.get("客户的客户")
+        )
+        if downstream_value is not None and clean_text(downstream_value) in MISSING_VALUES:
+            errors.append(f"{project}.downstream_customer 如提供则必须是有效的客户名称")
         try:
             dt.date.fromisoformat(clean_text(item.get("received_date")))
         except ValueError:
@@ -384,6 +400,13 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
                 raw_project.get("customer") or raw_project.get("customer_name"),
                 metadata.get(project, {}).get("customer", ""),
             )
+            downstream_customer = clean_text(
+                raw_project.get("downstream_customer")
+                or raw_project.get("customer_of_customer")
+                or raw_project.get("end_customer")
+            )
+            if downstream_customer:
+                metadata[project]["downstream_customer"] = downstream_customer
             focuses = clean_list(raw_project.get("tomorrow_focus"))
             if focuses:
                 metadata[project]["latest_focus"] = focuses
@@ -485,6 +508,9 @@ def _history_project_row(
     has_bug = total_counts["bug"] > 0
     inferred_type = "混合" if has_custom and has_bug else "Buglist" if has_bug else "纯定制" if has_custom else "需成员确认"
     customer = clean_text(prior.get("customer") or daily_meta.get("customer"), "需成员补充客户名")
+    downstream_customer = clean_text(
+        prior.get("downstream_customer") or daily_meta.get("downstream_customer")
+    )
     if completed_items:
         summary = "本周完成" + "、".join(completed_items[:3]) + ("等事项。" if len(completed_items) > 3 else "。")
     elif current_remaining:
@@ -519,6 +545,7 @@ def _history_project_row(
         "project": project,
         "customer": customer,
         "customer_name": customer,
+        "downstream_customer": downstream_customer,
         "week_summary": summary,
         "received_date": clean_text(prior.get("received_date"), "需成员确认"),
         "source": prefer_fact(prior.get("source"), inferred_source),
@@ -559,7 +586,7 @@ def _project_missing_fields(row: dict[str, Any]) -> list[str]:
 def _session_fallback_projects(
     start: dt.date,
     items: dict[str, list[tuple[str, str]]],
-    project_customers: dict[str, str],
+    project_customers: dict[str, Any],
     *,
     synthetic: bool,
 ) -> tuple[list[dict[str, Any]], list[str]]:
@@ -591,10 +618,12 @@ def _session_fallback_projects(
             summary = "本周完成" + "、".join(completed_items[:3]) + ("等事项。" if len(completed_items) > 3 else "。")
         else:
             summary = "本周持续推进" + "、".join(remaining_items[:3]) + ("等事项。" if len(remaining_items) > 3 else "。")
+        customer_context = report_customer_context_for_project(project, project_customers)
         row = {
             "project": project,
-            "customer": clean_text(project_customers.get(project), "需成员补充客户名"),
-            "customer_name": clean_text(project_customers.get(project), "需成员补充客户名"),
+            "customer": customer_context["customer_name"],
+            "customer_name": customer_context["customer_name"],
+            "downstream_customer": customer_context.get("downstream_customer", ""),
             "week_summary": summary,
             "received_date": start.isoformat() if synthetic else "需成员确认",
             "source": "TL指派" if synthetic else "需成员确认",
@@ -642,7 +671,7 @@ def build_weekly_facts(
     explicit_path: str = "",
     synthetic: bool = False,
     fallback_items: dict[str, list[tuple[str, str]]] | None = None,
-    project_customers: dict[str, str] | None = None,
+    project_customers: dict[str, Any] | None = None,
 ) -> WeeklyFactsResult:
     missing_fields: list[str] = []
     if explicit_path:
@@ -673,9 +702,11 @@ def build_weekly_facts(
                 {"date": as_of.isoformat(), "text": description, "progress": progress}
                 for description, progress in entries
             ]
-            customer = clean_text((project_customers or {}).get(project))
-            if customer:
-                daily_meta.setdefault(project, {})["customer"] = customer
+            customer_context = report_customer_context_for_project(project, project_customers)
+            if customer_context["customer_name"] != "需成员补充客户名":
+                daily_meta.setdefault(project, {})["customer"] = customer_context["customer_name"]
+            if customer_context.get("downstream_customer"):
+                daily_meta.setdefault(project, {})["downstream_customer"] = customer_context["downstream_customer"]
             session_supplements.append(project)
         provenance["session_supplement_projects"] = session_supplements
         if not daily_items and not weekly_items and session_supplements:

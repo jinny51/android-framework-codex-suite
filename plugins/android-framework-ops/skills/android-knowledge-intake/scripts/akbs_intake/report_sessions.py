@@ -234,9 +234,24 @@ def clean_report_customer_name(value: Any) -> str:
     return customer
 
 
-def project_customer_pairs_from_text(text: Any) -> list[tuple[str, str]]:
+def split_report_customer_context(value: Any) -> dict[str, str]:
+    parts = re.split(r"\s+", str(value or "").strip())
+    if not parts or not parts[0]:
+        return {}
+    customer = clean_report_customer_name(parts[0])
+    if not customer:
+        return {}
+    context = {"customer_name": customer}
+    if len(parts) > 1:
+        downstream = clean_report_customer_name(" ".join(parts[1:]))
+        if downstream:
+            context["downstream_customer"] = downstream
+    return context
+
+
+def project_customer_contexts_from_text(text: Any) -> list[tuple[str, dict[str, str]]]:
     raw_text = str(text or "")
-    pairs: list[tuple[str, str]] = []
+    contexts: list[tuple[str, dict[str, str]]] = []
     for match in PROJECT_ANCHOR_RE.finditer(raw_text):
         project = find_company_project(match.group("base"))
         if not project:
@@ -246,30 +261,84 @@ def project_customer_pairs_from_text(text: Any) -> list[tuple[str, str]]:
             continue
         tail = tail.lstrip()
         customer_part = REPORT_CUSTOMER_STOP_RE.split(tail, 1)[0]
-        customer = clean_report_customer_name(customer_part)
-        if customer:
-            pair = (project, customer)
-            if pair not in pairs:
-                pairs.append(pair)
-    return pairs
+        context = split_report_customer_context(customer_part)
+        if context:
+            item = (project, context)
+            if item not in contexts:
+                contexts.append(item)
+    return contexts
 
 
-def report_project_customers_from_clues(clues: list[tuple[str, str]]) -> tuple[dict[str, str], dict[str, list[str]]]:
-    customers: dict[str, str] = {}
+def project_customer_pairs_from_text(text: Any) -> list[tuple[str, str]]:
+    return [
+        (project, context["customer_name"])
+        for project, context in project_customer_contexts_from_text(text)
+    ]
+
+
+def report_project_customers_from_clues(clues: list[tuple[str, str]]) -> tuple[dict[str, dict[str, str]], dict[str, list[str]]]:
+    customers: dict[str, dict[str, str]] = {}
     basis: dict[str, list[str]] = {}
     for label, value in clues:
-        for project, customer in project_customer_pairs_from_text(value):
-            customers.setdefault(project, customer)
-            basis.setdefault(project, []).append(f"{label}: {project} {customer}")
+        for project, context in project_customer_contexts_from_text(value):
+            current = customers.setdefault(project, dict(context))
+            if (
+                current.get("customer_name") == context.get("customer_name")
+                and not current.get("downstream_customer")
+                and context.get("downstream_customer")
+            ):
+                current["downstream_customer"] = context["downstream_customer"]
+            chain = " ".join(
+                item
+                for item in (context.get("customer_name", ""), context.get("downstream_customer", ""))
+                if item
+            )
+            basis.setdefault(project, []).append(f"{label}: {project} {chain}")
     return customers, basis
 
 
-def report_customer_for_project(project: Any, project_customers: dict[str, str] | None = None) -> str:
+def normalize_report_customer_context(value: Any) -> dict[str, str]:
+    if isinstance(value, dict):
+        customer = clean_report_customer_name(
+            value.get("customer_name") or value.get("customer")
+        )
+        downstream = clean_report_customer_name(
+            value.get("downstream_customer")
+            or value.get("customer_of_customer")
+            or value.get("end_customer")
+            or value.get("客户的客户")
+        )
+    else:
+        customer = clean_report_customer_name(value)
+        downstream = ""
+    context = {"customer_name": customer} if customer else {}
+    if downstream:
+        context["downstream_customer"] = downstream
+    return context
+
+
+def report_customer_context_for_project(project: Any, project_customers: dict[str, Any] | None = None) -> dict[str, str]:
     canonical = find_company_project(str(project or ""))
     if not canonical:
-        return MISSING_REPORT_CUSTOMER
-    customer = (project_customers or {}).get(canonical, "")
-    return customer or MISSING_REPORT_CUSTOMER
+        return {"customer_name": MISSING_REPORT_CUSTOMER}
+    context = normalize_report_customer_context((project_customers or {}).get(canonical, ""))
+    if not context.get("customer_name"):
+        context["customer_name"] = MISSING_REPORT_CUSTOMER
+    return context
+
+
+def report_customer_for_project(project: Any, project_customers: dict[str, Any] | None = None) -> str:
+    return report_customer_context_for_project(project, project_customers)["customer_name"]
+
+
+def report_downstream_customer_for_project(project: Any, project_customers: dict[str, Any] | None = None) -> str:
+    return report_customer_context_for_project(project, project_customers).get("downstream_customer", "")
+
+
+def report_customer_chain_label(customer: Any, downstream_customer: Any = "") -> str:
+    customer_text = clean_report_customer_name(customer) or MISSING_REPORT_CUSTOMER
+    downstream_text = clean_report_customer_name(downstream_customer)
+    return " ".join(item for item in (customer_text, downstream_text) if item)
 
 
 def is_report_generation_request(text: str) -> bool:

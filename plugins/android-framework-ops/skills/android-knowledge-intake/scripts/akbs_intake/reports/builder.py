@@ -117,11 +117,14 @@ def build_report_package(
     session_items = items_by_project(sessions, patches)
     preliminary_summary = overview_text(report_type, session_items, patches)
     report_project, project_payload = infer_report_project(report_type, preliminary_summary, session_items, sessions, patches)
-    project_customers = {
-        str(item.get("project")): str(item.get("customer_name"))
-        for item in project_payload.get("project_customers", [])
-        if isinstance(item, dict) and item.get("project") and item.get("customer_name")
-    }
+    project_customers: dict[str, dict[str, str]] = {}
+    for item in project_payload.get("project_customers", []):
+        if not isinstance(item, dict) or not item.get("project") or not item.get("customer_name"):
+            continue
+        context = {"customer_name": str(item["customer_name"])}
+        if item.get("downstream_customer"):
+            context["downstream_customer"] = str(item["downstream_customer"])
+        project_customers[str(item["project"])] = context
     weekly_projects: list[dict[str, Any]] = []
     weekly_fact_evidence_path = ""
     items = session_items
@@ -143,7 +146,10 @@ def build_report_package(
                 project = str(row.get("project") or "")
                 customer = str(row.get("customer") or row.get("customer_name") or "")
                 if project and customer:
-                    project_customers[project] = customer
+                    context = {"customer_name": customer}
+                    if row.get("downstream_customer"):
+                        context["downstream_customer"] = str(row["downstream_customer"])
+                    project_customers[project] = context
         weekly_fact_evidence_path = materials_rel("evidence", "weekly_fact_sources.json")
         package_dir.mkdir(parents=True)
         write_json(
@@ -153,11 +159,17 @@ def build_report_package(
     summary = overview_text(report_type, items, patches)
     report_project, project_payload = infer_report_project(report_type, summary, items, sessions, patches)
     if weekly_projects:
-        fact_customers = [
-            {"project": str(row.get("project") or ""), "customer_name": str(row.get("customer") or row.get("customer_name") or "")}
-            for row in weekly_projects
-            if row.get("project") and (row.get("customer") or row.get("customer_name"))
-        ]
+        fact_customers = []
+        for row in weekly_projects:
+            if not row.get("project") or not (row.get("customer") or row.get("customer_name")):
+                continue
+            customer_row = {
+                "project": str(row.get("project") or ""),
+                "customer_name": str(row.get("customer") or row.get("customer_name") or ""),
+            }
+            if row.get("downstream_customer"):
+                customer_row["downstream_customer"] = str(row["downstream_customer"])
+            fact_customers.append(customer_row)
         project_payload["project_customers"] = fact_customers
         project_payload["customer_basis"] = {
             row["project"]: ["weekly_fact_sources"]
@@ -165,6 +177,8 @@ def build_report_package(
         }
         if len(fact_customers) == 1 and report_project != "unknown":
             project_payload["customer_name"] = fact_customers[0]["customer_name"]
+            if fact_customers[0].get("downstream_customer"):
+                project_payload["downstream_customer"] = fact_customers[0]["downstream_customer"]
     package_dir.mkdir(parents=True, exist_ok=True)
     write_report(package_dir, report_type, date, week_key, config, items, patches, project_customers, weekly_projects)
     project_path = write_default_evidence(
