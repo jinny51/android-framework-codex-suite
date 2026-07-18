@@ -1,6 +1,6 @@
 # Patch Package Status Rules
 
-Daily work is always recorded. Framework change package status describes member-side evidence quality; it is not a curation decision and does not decide whether anything enters the knowledge repository. Member-side upload preparation and admin-side local promotion are stricter than local preservation: ordinary patch packages and evidence supplements must be `validated`.
+Daily work is always recorded. Framework change package status describes member-side evidence quality; it is not a curation decision and does not decide whether anything enters the knowledge repository. Member-side upload preparation and admin-side queue admission are stricter than local preservation: every uploaded patch package must be `validated`.
 
 ## Status
 
@@ -20,7 +20,7 @@ Daily work is always recorded. Framework change package status describes member-
 - Stop ordinary patch upload when status is not `validated`, or when sensitive material, mixed unrelated diffs, unclear task boundaries, high-risk misleading reuse hints, bad metadata, missing verification, or dirty patch assets are present.
 - New protocol framework change packages must include `materials/display/patch_view.json` for human-facing cards/details and `materials/evidence/patch_ai_facts.json` for admin/AI validation inputs. Missing either file means the package is not ready for ordinary upload.
 
-The user's local curation maintainer skill later reads AKBS active SQLite and generated knowledge projections to produce the curation decision.
+The management-side curation Skill reads admitted patch packages from AKBS and produces the new-knowledge or planned-merge decision. A queue information request may complete non-patch metadata or supporting files on the same package; it never changes the patch set.
 
 ## Evidence Keywords
 

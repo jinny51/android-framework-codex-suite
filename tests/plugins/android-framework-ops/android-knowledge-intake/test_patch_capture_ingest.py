@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib.util
+import hashlib
 import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -18,10 +20,14 @@ intake = importlib.util.module_from_spec(SPEC)
 sys.modules["android_knowledge_intake"] = intake
 SPEC.loader.exec_module(intake)
 
-
 def write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def prepare_patch_package(*args, **kwargs):
+    """Delegate current patch-package fixture setup to the public builder."""
+    return intake.prepare_patch_package(*args, **kwargs)
 
 
 def valid_patch_readme(title: str = "nav policy toggle") -> str:
@@ -127,6 +133,7 @@ def create_capture_package(
         "status": status,
         "implementation_origin": implementation_origin,
         "captured_by": "codex",
+        "created_at": "2026-07-15T12:00:00+08:00",
         "coding_standard_check": {
             "required": True,
             "mode": "capture_gate",
@@ -488,7 +495,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
     def test_capture_package_generates_framework_change_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-120000-patch",
@@ -509,7 +516,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             patch_view = json.loads((package / "materials" / "display" / "patch_view.json").read_text(encoding="utf-8"))
             ai_facts = json.loads((package / "materials" / "evidence" / "patch_ai_facts.json").read_text(encoding="utf-8"))
 
-            self.assertEqual(check["status"], "PASS")
+            self.assertEqual(check["status"], "PASS", check["errors"])
             self.assertEqual(manifest["schema"], "knowledge-incoming-package")
             self.assertEqual(manifest["schema_version"], "1")
             self.assertEqual(manifest["package_kind"], "framework_change")
@@ -541,7 +548,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("materials/evidence/patch_ai_facts.json", evidence_files)
             self.assertEqual(manifest["files"]["display"], ["materials/display/patch_view.json"])
             self.assertEqual(patch_view["kind"], "patch_view")
-            self.assertEqual(patch_view["payload"]["material_kind_label"], "原始包")
+            self.assertEqual(patch_view["payload"]["package_label"], "补丁包")
             self.assertEqual(patch_view["payload"]["display_title"], "Allow nav policy toggle")
             self.assertIn("ui_card", patch_view["payload"])
             self.assertGreaterEqual(len(patch_view["payload"]["detail_sections"]), 5)
@@ -555,31 +562,6 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertTrue(ai_facts["payload"]["code_anchors"]["files"])
             self.assertEqual(ai_facts["payload"]["merge_gate_inputs"]["project"], "TVE1067M")
             self.assertFalse(any(str(path).startswith("knowledge/") for path in manifest["files"]["evidence"]))
-
-    def test_patch_supplement_view_names_original_target(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            package = intake.prepare_patch_package(
-                dt.date(2026, 5, 26),
-                self.config(root),
-                run_id="20260526-120000-patch",
-                patch_paths=[],
-                patch_package_paths=[str(create_capture_package(root))],
-                project="TVE1067M",
-                summary="补充导航策略验证证据",
-                status="validated",
-                schema_version="1",
-                supplement_for_package_key="20260625/wangwei/20260625-221500-nav-policy",
-                supplement_reason="补充验证（verification）证据。",
-            )
-
-            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            patch_view = json.loads((package / "materials" / "display" / "patch_view.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(manifest["files"]["display"], ["materials/display/patch_view.json"])
-            self.assertEqual(patch_view["payload"]["material_kind_label"], "补证包")
-            self.assertEqual(patch_view["payload"]["supplement_for_package_key"], "20260625/wangwei/20260625-221500-nav-policy")
-            self.assertIn("20260625/wangwei/20260625-221500-nav-policy", patch_view["payload"]["ui_card"]["risk_or_gap"])
 
     def test_patch_ai_facts_treat_adapt_as_reference_not_merge_hint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -599,7 +581,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 },
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-121000-patch",
@@ -620,7 +602,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
     def test_framework_change_validation_requires_patch_view_and_ai_facts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-120000-patch",
@@ -654,7 +636,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "云外设 App 录屏投屏申请自动允许、云外设 App USB 权限自动获取。"
             )
             with self.assertRaises(SystemExit) as raised:
-                intake.prepare_patch_package(
+                prepare_patch_package(
                     dt.date(2026, 6, 12),
                     self.config(root),
                     run_id="20260612-233425-patch",
@@ -669,7 +651,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             message = str(raised.exception)
             self.assertIn("聚合包", message)
             self.assertIn("按功能拆分", message)
-            self.assertIn("新的原始包", message)
+            self.assertIn("新的补丁包", message)
             self.assertFalse((root / "out" / "pending" / "20260612" / "admin_alias" / "20260612-233425-patch").exists())
 
     def test_date_bundled_two_patch_package_fails_local_check(self) -> None:
@@ -677,7 +659,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             root = Path(tmp)
             summary = "TVE1086U 青鸾云 2026-06-12 今日补丁：HD 版本云电脑跳转逻辑、系统弹窗副屏显示。"
             with self.assertRaises(SystemExit) as raised:
-                intake.prepare_patch_package(
+                prepare_patch_package(
                     dt.date(2026, 6, 12),
                     self.config(root),
                     run_id="20260612-233426-patch",
@@ -732,7 +714,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 6, 23),
                 self.config(root),
                 run_id="20260623-195544-patch",
@@ -748,80 +730,9 @@ class PatchCaptureIngestTests(unittest.TestCase):
 
             self.assertEqual(check["status"], "FAIL")
             errors = "\n".join(check["errors"])
-            self.assertIn("补丁资产修正", errors)
+            self.assertIn("重新采集同一功能补丁包", errors)
             self.assertIn("proxy_tip", errors)
             self.assertNotIn("按日期聚合", errors)
-
-    def test_patch_asset_correction_supplement_rejects_unrelated_readme_anchor_lists(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            capture = create_capture_package(root, project="TVE1067M1")
-            summary = "Feature Settings 新增设备名称修改锁定项，并禁止 Client 端用户修改设备名称"
-            (capture / "README.md").write_text(
-                "# lock-device-name-change\n\n"
-                "## 功能描述\n\n"
-                f"{summary}\n\n"
-                "## 修改点\n\n"
-                "- 修改 DeviceNameFragment，增加设备名称修改锁定策略。\n\n"
-                "## 关键符号\n\n"
-                "- DeviceNameFragment\n"
-                "- UserManager.DISALLOW_CONFIG_DEVICE_NAME\n"
-                "- applied_policy_to_devices\n"
-                "- autorun_app_no_local_apk\n"
-                "- confirm_password_reset_init\n\n"
-                "### 字符串资源\n\n"
-                "- applied_policy_to_devices\n"
-                "- autorun_app_no_local_apk\n"
-                "- confirm_app_init\n"
-                "- confirm_device_init\n"
-                "- confirm_password_reset_init\n"
-                "- policy_autorun_missing_deploy_item\n\n"
-                "## 日志控制\n\n"
-                "无新增运行时日志。\n\n"
-                "## SystemProperties\n\n"
-                "无新增系统属性。\n\n"
-                "## 字符串国际化\n\n"
-                "新增设备名称修改锁定相关文案。\n\n"
-                "## 可回滚性\n\n"
-                "回滚该 patch 后恢复设备名称默认修改策略。\n",
-                encoding="utf-8",
-            )
-            patch_path = capture / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
-            patch_path.write_text(
-                "diff --git a/packages/apps/Settings/res/values/strings.xml b/packages/apps/Settings/res/values/strings.xml\n"
-                "--- a/packages/apps/Settings/res/values/strings.xml\n"
-                "+++ b/packages/apps/Settings/res/values/strings.xml\n"
-                "@@ -1,3 +1,20 @@\n"
-                "+<string name=\"applied_policy_to_devices\">Applied policy to devices</string>\n"
-                "+<string name=\"autorun_app_no_local_apk\">No local APK</string>\n"
-                "+<string name=\"confirm_app_init\">Confirm app init</string>\n"
-                "+<string name=\"confirm_device_init\">Confirm device init</string>\n"
-                "+<string name=\"confirm_password_reset_init\">Confirm password reset init</string>\n"
-                "+<string name=\"policy_autorun_missing_deploy_item\">Missing deploy item</string>\n",
-                encoding="utf-8",
-            )
-
-            package = intake.prepare_patch_package(
-                dt.date(2026, 6, 25),
-                self.config(root),
-                run_id="20260625-190443-patch",
-                patch_paths=[],
-                patch_package_paths=[str(capture)],
-                project="TVE1067M1",
-                summary=summary,
-                status="validated",
-                schema_version="1",
-                supplement_for_package_key="20260624/jared/20260624-220103-lock-device-name-change",
-                supplement_reason="补充补丁资产修正（patch asset correction）证据。",
-            )
-
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-            errors = "\n".join(check["errors"])
-
-            self.assertEqual(check["status"], "FAIL")
-            self.assertIn("补丁资产修正", errors)
-            self.assertIn("补证包", errors)
-            self.assertIn("autorun_app_no_local_apk", errors)
 
     def test_multiple_raw_patch_files_fail_before_package_generation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -843,7 +754,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 patches.append(str(patch))
 
             with self.assertRaises(SystemExit) as context:
-                intake.prepare_patch_package(
+                prepare_patch_package(
                     dt.date(2026, 6, 12),
                     self.config(root),
                     run_id="20260612-235900-raw-multi",
@@ -858,385 +769,10 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("直接 --patch 只允许单个独立补丁", str(context.exception))
             self.assertFalse((root / "pending" / "20260612" / "member1" / "20260612-235900-raw-multi").exists())
 
-    def test_patch_package_can_reference_original_needs_evidence_package(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            target = "20260612/lincong/20260612-172836-patch"
-            reason = "补充项目（project）证据，原包 project=unknown。"
-            package = intake.prepare_patch_package(
-                dt.date(2026, 6, 12),
-                self.config(root),
-                run_id="20260612-190000-patch",
-                patch_paths=[],
-                patch_package_paths=[str(create_capture_package(root, project="TVE1067M"))],
-                project="TVE1067M",
-                summary="Allow nav policy toggle",
-                status="validated",
-                schema_version="1",
-                supplement_for_package_key=target,
-                supplement_reason=reason,
-            )
-
-            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            supplement = json.loads((package / "materials" / "evidence" / "evidence_supplement.json").read_text(encoding="utf-8"))
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(check["status"], "PASS")
-            self.assertEqual(manifest["package_kind"], "framework_change")
-            self.assertEqual(manifest["supplement_for_package_key"], target)
-            self.assertEqual(manifest["supplement_reason"], reason)
-            self.assertIn("materials/evidence/evidence_supplement.json", manifest["files"]["evidence"])
-            self.assertEqual(supplement["kind"], "evidence_supplement")
-            self.assertEqual(supplement["payload"]["target_package_key"], target)
-            self.assertEqual(supplement["payload"]["reason"], reason)
-            self.assertEqual(supplement["payload"]["project"], "TVE1067M")
-
-    def test_patch_supplement_rejects_nested_supplement_target(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            package = intake.prepare_patch_package(
-                dt.date(2026, 6, 25),
-                self.config(root),
-                run_id="20260625-230000-patch",
-                patch_paths=[],
-                patch_package_paths=[str(create_capture_package(root, project="TVE1067M"))],
-                project="TVE1067M",
-                summary="Allow nav policy toggle",
-                status="validated",
-                schema_version="1",
-                supplement_for_package_key="20260625/wangwei/20260625-221500-verification-supplement",
-                supplement_reason="补充验证（verification）证据。",
-            )
-
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(check["status"], "FAIL")
-            self.assertIn("不能继续补证补证包", "\n".join(check["errors"]))
-
-    def test_patch_asset_correction_supplement_requires_patch_capture_package(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            patch = root / "mtk16-frameworks-base@nav-policy-toggle.patch"
-            patch.write_text(
-                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
-                "--- a/frameworks/base/services/core/java/X.java\n"
-                "+++ b/frameworks/base/services/core/java/X.java\n"
-                "@@ -1 +1,2 @@\n"
-                "+//gyf 20260625@ nav policy toggle\n",
-                encoding="utf-8",
-            )
-            (root / "mtk16-frameworks-base@nav-policy-toggle.readme.md").write_text(
-                valid_patch_readme(),
-                encoding="utf-8",
-            )
-
-            package = intake.prepare_patch_package(
-                dt.date(2026, 6, 25),
-                self.config(root),
-                run_id="20260625-230001-patch",
-                patch_paths=[str(patch)],
-                patch_package_paths=[],
-                project="TVE1067M",
-                summary="Allow nav policy toggle",
-                status="candidate",
-                schema_version="1",
-                supplement_for_package_key="20260625/wangwei/20260625-170000-patch",
-                supplement_reason="补充补丁资产修正（patch asset correction）证据。",
-                platform_override="mtk",
-                android_version_override="16",
-            )
-
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(check["status"], "FAIL")
-            errors = "\n".join(check["errors"])
-            self.assertIn("补丁资产修正", errors)
-            self.assertIn("android-framework-patch-capture", errors)
-            self.assertIn("不能用直接 --patch", errors)
-
-    def test_patch_asset_correction_supplement_accepts_patch_capture_package(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            package = intake.prepare_patch_package(
-                dt.date(2026, 6, 25),
-                self.config(root),
-                run_id="20260625-230002-patch",
-                patch_paths=[],
-                patch_package_paths=[str(create_capture_package(root, project="TVE1067M"))],
-                project="TVE1067M",
-                summary="Allow nav policy toggle",
-                status="validated",
-                schema_version="1",
-                supplement_for_package_key="20260625/wangwei/20260625-170000-patch",
-                supplement_reason="补充补丁资产修正（patch asset correction）证据。",
-            )
-
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(check["status"], "PASS")
-
-    def test_lightweight_field_correction_supplement_does_not_require_patch_capture(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            target = "20260702/lincong/20260702-193308-patch"
-            package = intake.prepare_patch_package(
-                dt.date(2026, 7, 2),
-                self.config(root),
-                run_id="20260702-204500-field-supplement",
-                patch_paths=[],
-                patch_package_paths=[],
-                project="TVI3315A",
-                summary="补充 TVI3315A 项目名和展示字段",
-                status="validated",
-                schema_version="1",
-                supplement_for_package_key=target,
-                supplement_reason="补充项目名（project）字段。",
-                supplement_mode="field_correction",
-                corrected_fields={
-                    "project": "TVI3315A",
-                    "platform": "rk",
-                    "android_version": "14",
-                },
-                correction_reason="管理端原包项目名识别为 unknown，需要补充可见字段。",
-                platform_override="rk",
-                android_version_override="14",
-            )
-
-            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            supplement = json.loads((package / "materials" / "evidence" / "evidence_supplement.json").read_text(encoding="utf-8"))
-            field_correction = json.loads((package / "materials" / "evidence" / "field_correction.json").read_text(encoding="utf-8"))
-            patch_view = json.loads((package / "materials" / "display" / "patch_view.json").read_text(encoding="utf-8"))
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(check["status"], "PASS")
-            self.assertEqual(manifest["supplement_mode"], "field_correction")
-            self.assertEqual(manifest["corrected_fields"]["project"], "TVI3315A")
-            self.assertEqual(manifest["correction_reason"], "管理端原包项目名识别为 unknown，需要补充可见字段。")
-            self.assertEqual(manifest["files"]["patches"], [])
-            self.assertIn("materials/evidence/field_correction.json", manifest["files"]["evidence"])
-            self.assertNotIn("materials/evidence/patch_diff_facts.json", manifest["files"]["evidence"])
-            self.assertNotIn("materials/evidence/patch_ai_facts.json", manifest["files"]["evidence"])
-            self.assertNotIn("materials/evidence/verification_result.json", manifest["files"]["evidence"])
-            self.assertEqual(supplement["payload"]["supplement_mode"], "field_correction")
-            self.assertEqual(supplement["payload"]["corrected_fields"]["project"], "TVI3315A")
-            self.assertEqual(field_correction["payload"]["target_package_key"], target)
-            self.assertEqual(field_correction["payload"]["corrected_by"]["member_alias"], "admin_alias")
-            self.assertEqual(patch_view["payload"]["material_kind_label"], "字段补证包")
-            self.assertIn("不包含补丁 diff", patch_view["payload"]["result_summary"])
-
-    def test_field_correction_supplement_rejects_material_identity_fields(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            with self.assertRaises(SystemExit) as raised:
-                intake.prepare_patch_package(
-                    dt.date(2026, 7, 2),
-                    self.config(root),
-                    run_id="20260702-204501-field-supplement",
-                    patch_paths=[],
-                    patch_package_paths=[],
-                    project="TVI3315A",
-                    summary="补充 TVI3315A 项目名和展示字段",
-                    status="validated",
-                    schema_version="1",
-                    supplement_for_package_key="20260702/lincong/20260702-193308-patch",
-                    supplement_reason="补充项目名（project）字段。",
-                    supplement_mode="field_correction",
-                    corrected_fields={
-                        "project": "TVI3315A",
-                        "material_name": "new-material-name",
-                    },
-                    correction_reason="材料名不应通过补证包改写。",
-                    platform_override="rk",
-                    android_version_override="14",
-                )
-
-            self.assertIn("不能修正材料身份字段", str(raised.exception))
-
-    def test_field_correction_supplement_declares_material_identity_inheritance(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            target = "20260702/lincong/20260702-193308-patch"
-            package = intake.prepare_patch_package(
-                dt.date(2026, 7, 2),
-                self.config(root),
-                run_id="20260702-204503-field-supplement",
-                patch_paths=[],
-                patch_package_paths=[],
-                project="TVI3315A",
-                summary="补充 TVI3315A 项目名字段",
-                status="validated",
-                schema_version="1",
-                supplement_for_package_key=target,
-                supplement_reason="补充项目名（project）字段。",
-                supplement_mode="field_correction",
-                corrected_fields={
-                    "project": "TVI3315A",
-                    "platform": "rk",
-                    "android_version": "14",
-                },
-                correction_reason="管理端原包项目名识别为 unknown，需要补充可追溯字段。",
-                platform_override="rk",
-                android_version_override="14",
-            )
-
-            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            patch_view = json.loads((package / "materials" / "display" / "patch_view.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(
-                manifest["material_identity"],
-                {
-                    "mode": "inherit_target_package",
-                    "target_package_key": target,
-                    "editable": False,
-                },
-            )
-            self.assertEqual(patch_view["payload"]["material_identity_mode"], "inherit_target_package")
-            self.assertEqual(patch_view["payload"]["material_identity_target_package_key"], target)
-
-    def test_asset_correction_mode_still_requires_patch_capture_package(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            patch = root / "mtk16-frameworks-base@nav-policy-toggle.patch"
-            patch.write_text(
-                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
-                "--- a/frameworks/base/services/core/java/X.java\n"
-                "+++ b/frameworks/base/services/core/java/X.java\n"
-                "@@ -1 +1,2 @@\n"
-                "+//gyf 20260702@ nav policy toggle\n",
-                encoding="utf-8",
-            )
-            (root / "mtk16-frameworks-base@nav-policy-toggle.readme.md").write_text(valid_patch_readme(), encoding="utf-8")
-
-            package = intake.prepare_patch_package(
-                dt.date(2026, 7, 2),
-                self.config(root),
-                run_id="20260702-204501-asset-supplement",
-                patch_paths=[str(patch)],
-                patch_package_paths=[],
-                project="TVE1067M",
-                summary="补充补丁资产",
-                status="candidate",
-                schema_version="1",
-                supplement_for_package_key="20260702/lincong/20260702-193308-patch",
-                supplement_reason="补充补丁资产。",
-                supplement_mode="asset_correction",
-                platform_override="mtk",
-                android_version_override="16",
-            )
-
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(check["status"], "FAIL")
-            errors = "\n".join(check["errors"])
-            self.assertIn("补丁资产修正", errors)
-            self.assertIn("android-framework-patch-capture", errors)
-
-    def test_field_correction_supplement_rejects_core_evidence_fields(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            package = intake.prepare_patch_package(
-                dt.date(2026, 7, 2),
-                self.config(root),
-                run_id="20260702-204502-field-supplement",
-                patch_paths=[],
-                patch_package_paths=[],
-                project="TVI3315A",
-                summary="错误补充验证结果",
-                status="validated",
-                schema_version="1",
-                supplement_for_package_key="20260702/lincong/20260702-193308-patch",
-                supplement_reason="补充验证（verification）字段。",
-                supplement_mode="field_correction",
-                corrected_fields={"verification_result": "PASS"},
-                correction_reason="试图用字段补证声明验证通过。",
-                platform_override="rk",
-                android_version_override="14",
-            )
-
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(check["status"], "FAIL")
-            self.assertIn("字段级补证不能补核心证据字段", "\n".join(check["errors"]))
-
-    def test_project_supplement_fails_when_project_is_still_unknown(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            target = "20260612/lincong/20260612-172836-patch"
-            reason = "补充项目（project）证据，原包 project=unknown。"
-            package = intake.prepare_patch_package(
-                dt.date(2026, 6, 12),
-                self.config(root),
-                run_id="20260612-190001-patch",
-                patch_paths=[],
-                patch_package_paths=[str(create_capture_package(root, project="unknown"))],
-                project="unknown",
-                summary="Allow nav policy toggle",
-                status="validated",
-                schema_version="1",
-                supplement_for_package_key=target,
-                supplement_reason=reason,
-            )
-
-            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(manifest["supplement_for_package_key"], target)
-            self.assertEqual(manifest["project"], "unknown")
-            self.assertEqual(check["status"], "FAIL")
-            self.assertIn(
-                "补项目（project）证据时，补证包 project 不能为 unknown",
-                "\n".join(check["errors"]),
-            )
-
-    def test_patch_supplement_accepts_explicit_platform_and_android_version(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            patch = root / "mtk16-frameworks-base@nav-policy-toggle.patch"
-            patch.write_text(
-                "diff --git a/frameworks/base/services/core/java/X.java b/frameworks/base/services/core/java/X.java\n"
-                "--- a/frameworks/base/services/core/java/X.java\n"
-                "+++ b/frameworks/base/services/core/java/X.java\n"
-                "@@ -1 +1,2 @@\n"
-                "+//gyf 20260526@ nav policy toggle\n",
-                encoding="utf-8",
-            )
-            (root / "mtk16-frameworks-base@nav-policy-toggle.readme.md").write_text(
-                valid_patch_readme(),
-                encoding="utf-8",
-            )
-            target = "20260612/lincong/20260612-172836-patch"
-            reason = "补充平台（platform）和 Android 版本（Android version）证据。"
-
-            package = intake.prepare_patch_package(
-                dt.date(2026, 6, 12),
-                self.config(root),
-                run_id="20260612-190002-patch",
-                patch_paths=[str(patch)],
-                patch_package_paths=[],
-                project="TVE1067M",
-                summary="Allow nav policy toggle",
-                status="candidate",
-                schema_version="1",
-                supplement_for_package_key=target,
-                supplement_reason=reason,
-                platform_override="mtk",
-                android_version_override="16",
-            )
-
-            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
-            supplement = json.loads((package / "materials" / "evidence" / "evidence_supplement.json").read_text(encoding="utf-8"))
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(check["status"], "PASS")
-            self.assertEqual(manifest["platform"], "mtk")
-            self.assertEqual(manifest["android_version"], "16")
-            self.assertEqual(supplement["payload"]["platform"], "mtk")
-            self.assertEqual(supplement["payload"]["android_version"], "16")
-
     def test_submit_blocks_ordinary_candidate_patch_package_before_server_upload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 6, 12),
                 self.config(root),
                 run_id="20260612-190003-patch",
@@ -1314,7 +850,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
     def test_conflicting_project_clues_keep_project_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-130000-patch",
@@ -1346,7 +882,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
     def test_framework_change_validation_rejects_fake_platform(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-120000-patch",
@@ -1374,7 +910,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
     def test_framework_change_validation_rejects_garbled_question_mark_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-120000-patch",
@@ -1403,7 +939,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
     def test_framework_change_validation_rejects_uncontrolled_app_patch_asset_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-120000-patch",
@@ -1488,7 +1024,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 config,
                 run_id="20260526-130000-patch",
@@ -1525,7 +1061,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 implementation_origin="codex",
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 config,
                 run_id="20260526-133000-patch",
@@ -1563,7 +1099,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 },
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 config,
                 run_id="20260526-134000-patch",
@@ -1599,7 +1135,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 },
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-134500-patch",
@@ -1633,7 +1169,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 implementation_origin="codex",
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-134800-patch",
@@ -1670,7 +1206,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 implementation_origin="manual",
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-134900-patch",
@@ -1693,78 +1229,6 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(source_evidence["payload"]["implementation_origins"], ["manual"])
             warnings = "\n".join(check["warnings"])
             self.assertIn("沉淀前重叠检索", warnings)
-
-    def test_verification_supplement_fails_when_verification_is_still_missing(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            capture_package = create_capture_package(root, status="candidate")
-            write_json(
-                capture_package / "evidence" / "verification-result.json",
-                {"result": "MISSING", "method": "not_provided", "summary": "验证证据仍缺失"},
-            )
-            capture_manifest_path = capture_package / "manifest.json"
-            capture_manifest = json.loads(capture_manifest_path.read_text(encoding="utf-8"))
-            for item in capture_manifest["evidence"]:
-                if item.get("kind") == "verification_result":
-                    item["result"] = "MISSING"
-            write_json(capture_manifest_path, capture_manifest)
-
-            package = intake.prepare_patch_package(
-                dt.date(2026, 6, 12),
-                self.config(root),
-                run_id="20260612-190003-patch",
-                patch_paths=[],
-                patch_package_paths=[str(capture_package)],
-                project="TVE1067M",
-                summary="Allow nav policy toggle",
-                status="candidate",
-                schema_version="1",
-                supplement_for_package_key="20260612/lincong/20260612-172836-patch",
-                supplement_reason="补充验证（verification）证据。",
-            )
-
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(check["status"], "FAIL")
-            self.assertIn(
-                "补验证（verification）证据时，补证包必须携带 PASS verification_result",
-                "\n".join(check["errors"]),
-            )
-
-    def test_verification_supplement_fails_when_pass_is_static_review(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            capture_package = create_capture_package(root, status="candidate")
-            write_json(
-                capture_package / "evidence" / "verification-result.json",
-                {
-                    "result": "PASS",
-                    "method": "patch_static_review",
-                    "summary": "仅完成静态补丁审查，未执行设备验证。",
-                },
-            )
-
-            package = intake.prepare_patch_package(
-                dt.date(2026, 6, 12),
-                self.config(root),
-                run_id="20260612-190004-patch",
-                patch_paths=[],
-                patch_package_paths=[str(capture_package)],
-                project="TVE1067M",
-                summary="Allow nav policy toggle",
-                status="candidate",
-                schema_version="1",
-                supplement_for_package_key="20260612/lincong/20260612-172836-patch",
-                supplement_reason="补充验证（verification）证据。",
-            )
-
-            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
-
-            self.assertEqual(check["status"], "FAIL")
-            self.assertIn(
-                "设备验证或可接受的等价验证",
-                "\n".join(check["errors"]),
-            )
 
     def test_patch_package_does_not_attach_unrelated_same_day_search_usage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1793,7 +1257,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 },
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 6, 18),
                 config,
                 run_id="20260618-204354-patch",
@@ -1813,7 +1277,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
     def test_capture_package_preserves_optional_build_result_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-120000-patch",
@@ -1844,7 +1308,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 source_root="/home/test35/work/mtk/TVA10A2R/android16",
                 git_branch="feature/TVA10A2R-camera2-reverseportrait",
             )
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 6, 4),
                 self.config(root),
                 run_id="20260604-120000-patch",
@@ -1878,7 +1342,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-130000-patch",
@@ -1909,7 +1373,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             )
             patch.with_suffix(".readme.md").write_text("", encoding="utf-8")
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-140000-patch",
@@ -1945,7 +1409,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-150000-patch",
@@ -1964,7 +1428,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
     def test_candidate_capture_package_does_not_become_validated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-120000-patch",
@@ -1982,7 +1446,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
     def test_validated_capture_with_unknown_project_is_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 6, 3),
                 self.config(root),
                 run_id="20260603-120000-patch",
@@ -2019,7 +1483,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 5, 26),
                 self.config(root),
                 run_id="20260526-120000-patch",
@@ -2053,7 +1517,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 )
                 patch.with_suffix(".readme.md").write_text(valid_patch_readme(patch.stem), encoding="utf-8")
 
-            first = intake.prepare_patch_package(
+            first = prepare_patch_package(
                 dt.date(2026, 6, 1),
                 self.config(root),
                 run_id="20260601-120000-first",
@@ -2064,7 +1528,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 status="candidate",
                 schema_version="1",
             )
-            second = intake.prepare_patch_package(
+            second = prepare_patch_package(
                 dt.date(2026, 6, 1),
                 self.config(root),
                 run_id="20260601-120000-second",
@@ -2100,7 +1564,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             )
             patch.with_suffix(".readme.md").write_text(valid_patch_readme(patch.stem), encoding="utf-8")
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 6, 3),
                 self.config(root),
                 run_id="20260603-120000-patch",
@@ -2150,7 +1614,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 },
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 6, 27),
                 self.config(root),
                 run_id="20260627-020909-patch",
@@ -2250,7 +1714,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
     def test_feature_capture_package_uses_one_feature_readme_for_multiple_patches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 6, 8),
                 self.config(root),
                 run_id="20260608-120000-feature",
@@ -2308,7 +1772,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 6, 8),
                 self.config(root),
                 run_id="20260608-121000-template-companion",
@@ -2534,7 +1998,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 related_report_run_ids=["20260604-210000-daily"],
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 6, 4),
                 config,
                 run_id="20260604-230000-patch",
@@ -2594,7 +2058,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 git_branch="master",
             )
 
-            package = intake.prepare_patch_package(
+            package = prepare_patch_package(
                 dt.date(2026, 6, 12),
                 config,
                 run_id="20260612-230000-patch",

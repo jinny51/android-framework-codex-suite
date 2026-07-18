@@ -40,15 +40,11 @@ from akbs_intake.patch.manifest import (
     write_variant_file,
 )
 from akbs_intake.patch.metadata import first_evidence_path, first_evidence_payload, infer_platform_metadata, repo_paths_from_files
-from akbs_intake.patch.supplement import (
+from akbs_intake.patch.package_quality import (
     downgrade_validated_patch_entries,
     framework_metadata_is_traceable,
     framework_package_status_from_patch_statuses,
-    infer_supplement_mode,
-    normalize_corrected_fields,
-    prepare_field_correction_package,
     write_default_evidence,
-    write_evidence_supplement,
 )
 
 ValidatePackage = Callable[[Path], dict[str, Any]]
@@ -90,17 +86,10 @@ def build_patch_package(
     status: str = "validated",
     schema_version: str = "",
     related_report_run_ids: list[str] | None = None,
-    supplement_for_package_key: str = "",
-    supplement_reason: str = "",
     platform_override: str = "",
     android_version_override: str = "",
-    supplement_mode: str = "",
-    corrected_fields: dict[str, Any] | None = None,
-    correction_reason: str = "",
     *,
     incoming_schema_version: str,
-    supplement_modes: set[str],
-    field_correction_material_identity_fields: set[str],
     framework_optional_evidence_kinds: set[str],
     validate_package_fn: ValidatePackage,
     write_package_source_fn: WritePackageSource,
@@ -110,43 +99,6 @@ def build_patch_package(
     schema_version = schema_version or incoming_schema_version
     if schema_version != incoming_schema_version:
         raise SystemExit(f"incoming 只支持 schema_version={incoming_schema_version}")
-    supplement_for_package_key = str(supplement_for_package_key or "").strip()
-    supplement_reason = str(supplement_reason or "").strip()
-    inferred_mode = infer_supplement_mode(supplement_mode, supplement_for_package_key, supplement_reason, corrected_fields)
-    if inferred_mode and inferred_mode not in supplement_modes:
-        raise SystemExit(f"supplement_mode 非法: {inferred_mode}")
-    if inferred_mode == "field_correction":
-        run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}-field-supplement"
-        platform, android_version = apply_platform_overrides(
-            "unknown",
-            "unknown",
-            platform_override=platform_override or str((corrected_fields or {}).get("platform") or ""),
-            android_version_override=android_version_override or str((corrected_fields or {}).get("android_version") or ""),
-        )
-        normalized_fields = normalize_corrected_fields(
-            corrected_fields,
-            project=project,
-            platform=platform,
-            android_version=android_version,
-            material_identity_fields=field_correction_material_identity_fields,
-        )
-        return prepare_field_correction_package(
-            date,
-            config,
-            run_id,
-            project=project if project else normalized_fields.get("project", "unknown"),
-            platform=platform,
-            android_version=android_version,
-            summary=summary,
-            schema_version=schema_version,
-            supplement_for_package_key=supplement_for_package_key,
-            supplement_reason=supplement_reason,
-            corrected_fields=normalized_fields,
-            correction_reason=correction_reason,
-            validate_package_fn=validate_package_fn,
-            bind_framework_evidence_fn=bind_framework_evidence,
-            write_package_source_fn=write_package_source_fn,
-        )
     if patch_paths and len(patch_paths) > 1:
         raise SystemExit(
             "直接 --patch 只允许单个独立补丁。多个补丁必须先用补丁采集技能（android-framework-patch-capture）"
@@ -220,7 +172,6 @@ def build_patch_package(
             "patch_count": len(patch_entries),
             "patches": patch_sources,
             "capture_package_count": len(patch_package_paths or []),
-            "supplement_mode": inferred_mode,
             "implementation_origins": unique_strings(
                 str(item.get("implementation_origin") or "")
                 for item in patch_entries
@@ -406,29 +357,6 @@ def build_patch_package(
         summary=summary,
     )
 
-    supplement_for_package_key = str(supplement_for_package_key or "").strip()
-    supplement_reason = str(supplement_reason or "").strip()
-    supplement_path = ""
-    if supplement_for_package_key:
-        if not supplement_reason:
-            supplement_reason = "补充原始上传包的沉淀证据。"
-        supplement_path = write_evidence_supplement(
-            package_dir,
-            date=date,
-            config=config,
-            run_id=run_id,
-            case_id=case_id,
-            variant_id=variant_id,
-            target_package_key=supplement_for_package_key,
-            reason=supplement_reason,
-            project=project,
-            platform=platform,
-            android_version=android_version,
-            package_status=package_status,
-            summary=summary,
-            supplement_mode=inferred_mode,
-        )
-
     manifest_context = {
         "summary": summary,
         "project": project,
@@ -447,8 +375,6 @@ def build_patch_package(
         verification_payload=verification_payload,
         risk_payload=first_evidence_payload(package_dir, capture_evidence_entries, "risk_surface"),
         patch_rel_paths=patch_rel_paths,
-        supplement_for_package_key=supplement_for_package_key,
-        supplement_reason=supplement_reason,
         patch_diff_payload=patch_diff_payload,
         search_payload=search_payload,
         plugin_version=plugin_install_metadata_fn().get("plugin_version", ""),
@@ -495,17 +421,12 @@ def build_patch_package(
             risk_path=required_generated["risk_surface"],
             verification_path=verification_path,
             search_path=search_path,
-            supplement_path=supplement_path,
             optional_evidence_paths=optional_evidence_paths,
         ),
         related_report_run_ids=all_related_report_run_ids,
-        supplement_for_package_key=supplement_for_package_key,
-        supplement_reason=supplement_reason,
-        supplement_mode=inferred_mode,
     )
     bind_framework_evidence_paths(package_dir, manifest["files"]["evidence"], case_id, variant_id)
     write_json(package_dir / "manifest.json", manifest)
     check = validate_package_fn(package_dir)
     write_json(package_dir / "local-check.json", check)
     return package_dir
-

@@ -11,7 +11,6 @@ from android_framework_ops.patch_analysis import (
     resource_keys_from_patch_text,
 )
 
-
 RequireFile = Callable[[Any, str], Path | None]
 ReadReferencedJson = Callable[[Path, str], dict[str, Any] | None]
 ReadJsonFile = Callable[[Path], dict[str, Any]]
@@ -26,9 +25,6 @@ TemplateLeakErrors = Callable[..., list[str]]
 AggregatePackageScopeErrors = Callable[[str, int], list[str]]
 ImplementationOriginsRequirePreChangeSearch = Callable[[list[str]], bool]
 SearchPayloadPredicate = Callable[[dict[str, Any]], bool]
-SupplementTargetRelationErrors = Callable[[str], list[str]]
-PatchAssetCorrectionSourceErrors = Callable[[dict[str, Any], Any], list[str]]
-SplitCompanyProject = Callable[[str], tuple[str, str]]
 
 
 SCOPE_POLLUTION_UNRELATED_ANCHOR_THRESHOLD = 4
@@ -83,10 +79,6 @@ class FrameworkChangeValidationContext:
     manifest_platform: str
     manifest_android_version: str
     package_status: str
-    supplement_target: str
-    supplement_mode: str
-    is_field_correction: bool
-    is_asset_correction: bool
     files: dict[str, Any]
     case_path: Path | None
     variant_path: Path | None
@@ -113,7 +105,6 @@ def validate_framework_change_manifest_and_files(
     package_dir: Path,
     manifest: dict[str, Any],
     package_status_values: set[str],
-    supplement_modes: set[str],
     run_id_re: Pattern[str],
     require_file: RequireFile,
     validate_patch_readme: ValidatePatchReadme,
@@ -139,15 +130,6 @@ def validate_framework_change_manifest_and_files(
     if package_status not in package_status_values:
         errors.append(f"package_status 非法: {package_status}")
 
-    supplement_target = str(manifest.get("supplement_for_package_key") or "").strip()
-    supplement_mode = str(manifest.get("supplement_mode") or "").strip()
-    if supplement_mode and supplement_mode not in supplement_modes:
-        errors.append(f"supplement_mode 非法: {supplement_mode}")
-    is_field_correction = supplement_mode == "field_correction"
-    is_asset_correction = supplement_mode == "asset_correction"
-    if is_field_correction and not supplement_target:
-        errors.append("字段级补证（field_correction）必须提供 supplement_for_package_key")
-
     if "related_report_run_ids" in manifest:
         related = manifest.get("related_report_run_ids")
         if not isinstance(related, list):
@@ -172,9 +154,7 @@ def validate_framework_change_manifest_and_files(
     if not isinstance(patch_paths, list):
         errors.append("files.patches 必须是数组")
         patch_paths = []
-    elif is_field_correction and patch_paths:
-        errors.append("字段级补证（field_correction）不能携带 patch/diff 补丁资产")
-    elif not is_field_correction and not patch_paths:
+    elif not patch_paths:
         errors.append("files.patches 必须是非空数组")
         patch_paths = []
 
@@ -195,20 +175,15 @@ def validate_framework_change_manifest_and_files(
                 "前缀必须是合法项目名（project）或 mtk/rk/unisoc 受控平台 Android 版本前缀。"
             )
 
-    if readme_path and not is_field_correction:
+    if readme_path:
         errors.extend(validate_patch_readme(readme_path))
-    if not is_field_correction:
-        for patch_readme_path in sorted((package_dir / "patches").glob("*.readme.md")):
-            errors.extend(validate_patch_readme(patch_readme_path))
+    for patch_readme_path in sorted((package_dir / "patches").glob("*.readme.md")):
+        errors.extend(validate_patch_readme(patch_readme_path))
 
     return FrameworkChangeValidationContext(
         manifest_platform=manifest_platform,
         manifest_android_version=manifest_android_version,
         package_status=package_status,
-        supplement_target=supplement_target,
-        supplement_mode=supplement_mode,
-        is_field_correction=is_field_correction,
-        is_asset_correction=is_asset_correction,
         files=files,
         case_path=case_path,
         variant_path=variant_path,
@@ -224,8 +199,6 @@ def validate_framework_change_structure(
     package_dir: Path,
     manifest: dict[str, Any],
     package_status: str,
-    is_field_correction: bool,
-    supplement_target: str,
     case_path: Path | None,
     variant_path: Path | None,
     evidence_paths: list[Any],
@@ -236,10 +209,6 @@ def validate_framework_change_structure(
     is_valid_platform_value: ValueValidator,
     is_valid_android_version_value: ValueValidator,
     framework_required_evidence_kinds: set[str],
-    field_correction_required_evidence_kinds: set[str],
-    field_correction_forbidden_evidence_kinds: set[str],
-    field_correction_allowed_fields: set[str],
-    field_correction_forbidden_fields: set[str],
     errors: list[str],
 ) -> FrameworkChangeStructureContext:
     case_problem = ""
@@ -271,11 +240,7 @@ def validate_framework_change_structure(
             errors.append("variant 不允许使用 status；请使用 package_status")
         if variant.get("package_status") != package_status:
             errors.append("variant.package_status 必须等于 manifest.package_status")
-        required_variant_fields = (
-            ("platform", "android_version", "project", "package_status")
-            if is_field_correction
-            else ("platform", "android_version", "project", "repo_paths", "package_status")
-        )
+        required_variant_fields = ("platform", "android_version", "project", "repo_paths", "package_status")
         for field in required_variant_fields:
             if not variant.get(field):
                 errors.append(f"variant 缺少 {field}")
@@ -314,56 +279,9 @@ def validate_framework_change_structure(
             if not isinstance(payload.get("limits"), list):
                 errors.append(f"{rel} limits 必须是数组")
 
-    required_evidence_kinds = (
-        field_correction_required_evidence_kinds
-        if is_field_correction
-        else framework_required_evidence_kinds
-    )
-    for kind in required_evidence_kinds:
+    for kind in framework_required_evidence_kinds:
         if kind not in evidence_by_kind:
             errors.append(f"framework_change 缺少 {kind} evidence")
-
-    if is_field_correction:
-        forbidden_evidence = sorted(field_correction_forbidden_evidence_kinds & set(evidence_by_kind))
-        if forbidden_evidence:
-            errors.append(
-                "字段级补证不能携带核心证据 evidence: "
-                + ", ".join(forbidden_evidence)
-                + "；缺这些内容时必须完整重采。"
-            )
-        corrected_fields = manifest.get("corrected_fields")
-        if not isinstance(corrected_fields, dict) or not corrected_fields:
-            errors.append("字段级补证必须提供非空 corrected_fields")
-            corrected_fields = {}
-        forbidden_fields = sorted(field_correction_forbidden_fields & {str(field) for field in corrected_fields})
-        if forbidden_fields:
-            errors.append(
-                "字段级补证不能补核心证据字段: "
-                + ", ".join(forbidden_fields)
-                + "；缺验证、补丁资产、patch_ai_facts 或搜索证据时必须完整重采。"
-            )
-        unknown_fields = sorted(
-            set(str(field) for field in corrected_fields)
-            - field_correction_allowed_fields
-            - field_correction_forbidden_fields
-        )
-        if unknown_fields:
-            errors.append("字段级补证 corrected_fields 包含未知字段: " + ", ".join(unknown_fields))
-        field_correction = evidence_by_kind.get("field_correction", {})
-        field_payload = field_correction.get("payload", field_correction) if isinstance(field_correction, dict) else {}
-        if not isinstance(field_payload, dict):
-            field_payload = {}
-        if field_payload.get("target_package_key") != supplement_target:
-            errors.append("field_correction.target_package_key 必须等于 manifest.supplement_for_package_key")
-        if field_payload.get("corrected_fields") != corrected_fields:
-            errors.append("field_correction.corrected_fields 必须等于 manifest.corrected_fields")
-        if field_payload.get("supplement_mode") != "field_correction":
-            errors.append("field_correction.supplement_mode 必须是 field_correction")
-        if not field_payload.get("correction_reason"):
-            errors.append("field_correction.correction_reason 必须提供")
-        corrected_by = field_payload.get("corrected_by")
-        if not isinstance(corrected_by, dict) or corrected_by.get("member_alias") != manifest.get("member_alias"):
-            errors.append("field_correction.corrected_by.member_alias 必须等于 manifest.member_alias")
 
     return FrameworkChangeStructureContext(
         case_problem=case_problem,
@@ -375,14 +293,13 @@ def validate_framework_change_structure(
 def validate_patch_ai_facts_and_diff(
     *,
     evidence_by_kind: dict[str, dict[str, Any]],
-    is_field_correction: bool,
     list_string_values: ListStringValues,
     unique_strings: UniqueStrings,
     errors: list[str],
 ) -> PatchAIFactsValidationContext:
     ai_facts = evidence_by_kind.get("patch_ai_facts", {})
     ai_payload = ai_facts.get("payload", {}) if isinstance(ai_facts, dict) else {}
-    if not is_field_correction and isinstance(ai_payload, dict):
+    if isinstance(ai_payload, dict):
         for field in (
             "module",
             "feature_domain",
@@ -539,11 +456,6 @@ def patch_scope_readme_text(readme_text: str) -> str:
     return "\n\n".join(section for section in sections if section)
 
 
-def supplement_requests_patch_asset_correction(manifest: dict[str, Any]) -> bool:
-    text = " ".join([str(manifest.get("supplement_reason") or ""), str(manifest.get("summary") or "")]).lower()
-    return "补丁资产修正" in text or "patch asset correction" in text
-
-
 def scope_anchor_tokens(value: str) -> set[str]:
     return {token for token in scope_words(value) if token not in SCOPE_ANCHOR_GENERIC_TOKENS}
 
@@ -599,7 +511,6 @@ def validate_framework_scope_pollution(
     patch_paths: list[Any],
     evidence_by_kind: dict[str, dict[str, Any]],
     list_string_values: ListStringValues,
-    strict_patch_asset_correction: bool = False,
 ) -> list[str]:
     semantic_tokens = scope_semantic_tokens(manifest.get("summary"), readme_text)
     if not semantic_tokens:
@@ -609,27 +520,18 @@ def validate_framework_scope_pollution(
     resource_keys = sorted(set([*file_resource_keys, *evidence_resource_keys]))
     anchors = [key for key in resource_keys if scope_anchor_tokens(key)]
     related = [key for key in anchors if scope_anchor_related(key, semantic_tokens)]
-    if not related and not strict_patch_asset_correction:
+    if not related:
         return []
     unrelated = [key for key in anchors if not scope_anchor_related(key, semantic_tokens)]
     if len(unrelated) < SCOPE_POLLUTION_UNRELATED_ANCHOR_THRESHOLD:
         return []
     sample = "、".join(unrelated[:SCOPE_POLLUTION_REPORT_LIMIT])
-    if strict_patch_asset_correction:
-        return [
-            (
-                "补丁资产修正（patch asset correction）补证包仍包含与功能目标不一致的补丁资源锚点，"
-                f"无关资源键示例：{sample}。"
-                "请回到干净工作树重新采集同一功能补丁包；"
-                "如果实际是多个独立功能，请按功能拆分（function split）为多个新的原始包（original package）。"
-            )
-        ]
     return [
         (
             "补丁包功能范围与补丁资源锚点不一致，疑似补丁资产污染。"
             f"无关资源键示例：{sample}。"
-            "请执行补丁资产修正（patch asset correction）：在干净工作树重新采集同一功能补丁包；"
-            "如果实际是多个独立功能，请按功能拆分（function split）为多个新的原始包（original package）。"
+            "请在干净工作树重新采集同一功能补丁包；"
+            "如果实际是多个独立功能，请按功能拆分（function split）为多个新的补丁包。"
         )
     ]
 
@@ -656,7 +558,6 @@ def validate_framework_function_scope(
             patch_paths,
             evidence_by_kind,
             list_string_values,
-            strict_patch_asset_correction=supplement_requests_patch_asset_correction(manifest),
         )
     )
     text = "\n".join([str(manifest.get("summary") or ""), readme_text])
@@ -668,19 +569,18 @@ def validate_patch_verification_result(
     *,
     evidence_by_kind: dict[str, dict[str, Any]],
     package_status: str,
-    is_field_correction: bool,
     errors: list[str],
 ) -> None:
     verification = evidence_by_kind.get("verification_result", {})
     verification_payload = verification.get("payload", verification) if isinstance(verification, dict) else {}
     result = str(verification_payload.get("result", "")).upper()
-    if not is_field_correction and result not in {"PASS", "FAIL", "MISSING"}:
+    if result not in {"PASS", "FAIL", "MISSING"}:
         errors.append("verification_result.result 必须是 PASS、FAIL 或 MISSING")
-    if not is_field_correction and not verification_payload.get("method"):
+    if not verification_payload.get("method"):
         errors.append("verification_result.method 必须提供")
-    if not is_field_correction and package_status == "validated" and result != "PASS":
+    if package_status == "validated" and result != "PASS":
         errors.append("validated 必须提供 PASS 验证")
-    if not is_field_correction and package_status == "failed" and result != "FAIL":
+    if package_status == "failed" and result != "FAIL":
         errors.append("failed 必须提供 FAIL 验证")
 
 
@@ -689,7 +589,6 @@ def validate_patch_pre_change_search(
     manifest: dict[str, Any],
     evidence_by_kind: dict[str, dict[str, Any]],
     package_status: str,
-    is_field_correction: bool,
     list_string_values: ListStringValues,
     implementation_origins_require_pre_change_search: ImplementationOriginsRequirePreChangeSearch,
     search_payload_missing_required_pre_change_search: SearchPayloadPredicate,
@@ -711,8 +610,7 @@ def validate_patch_pre_change_search(
     missing_pre_change_search = not bool(search_payload_body.get("searched"))
     requires_pre_change_search = implementation_origins_require_pre_change_search(implementation_origins)
     if (
-        not is_field_correction
-        and package_status == "validated"
+        package_status == "validated"
         and requires_pre_change_search
         and search_payload_missing_required_pre_change_search(search_payload)
     ):
@@ -721,15 +619,14 @@ def validate_patch_pre_change_search(
             "请改用手动实现（manual implementation）事实记录，或重新走开发前知识搜索后再开发。"
             "管理端后续会执行沉淀前重叠检索（post-change overlap check）。"
         )
-    elif not is_field_correction and package_status == "validated" and missing_pre_change_search:
+    elif package_status == "validated" and missing_pre_change_search:
         warnings.append(
             "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造；"
             "本包按手动实现（manual implementation）等事实保留，"
             "管理端后续会执行沉淀前重叠检索（post-change overlap check），且不获得搜索闭环加分。"
         )
     if (
-        not is_field_correction
-        and package_status == "validated"
+        package_status == "validated"
         and search_payload_needs_closed_decision(search_payload)
     ):
         errors.append(
@@ -738,142 +635,8 @@ def validate_patch_pre_change_search(
         )
 
 
-def has_pass_verification(package_dir: Path, manifest: dict[str, Any]) -> bool:
-    evidence = manifest.get("evidence", [])
-    if not isinstance(evidence, list):
-        return False
-    for item in evidence:
-        if not isinstance(item, dict):
-            continue
-        if item.get("kind") not in {"verification_result", "device_verification", "equivalent_verification"}:
-            continue
-        if item.get("result") != "PASS":
-            continue
-        rel = item.get("path")
-        if not isinstance(rel, str) or not rel:
-            continue
-        path = (package_dir / rel).resolve()
-        root = package_dir.resolve()
-        if path != root and root not in path.parents:
-            continue
-        if not path.is_file():
-            continue
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        if not isinstance(payload, dict) or payload.get("result") != "PASS":
-            continue
-        if payload.get("method") == "device":
-            return True
-        if payload.get("method") == "equivalent" and payload.get("reason") and payload.get("coverage") and "remaining_risk" in payload:
-            return True
-    return False
-
-
-def validate_patch_supplement_verification_closure(
-    *,
-    package_dir: Path,
-    manifest: dict[str, Any],
-    supplement_target: str,
-    is_field_correction: bool,
-    errors: list[str],
-) -> None:
-    if not supplement_target or is_field_correction:
-        return
-    supplement_text = " ".join([str(manifest.get("supplement_reason") or ""), str(manifest.get("summary") or "")]).lower()
-    if any(token in supplement_text for token in ("验证", "verification")) and not has_pass_verification(package_dir, manifest):
-        errors.append(
-            "补验证（verification）证据时，补证包必须携带 PASS verification_result，"
-            "且必须是设备验证或可接受的等价验证，不能只提供静态审查。"
-        )
-
-
-def validate_patch_supplement_basics(
-    *,
-    manifest: dict[str, Any],
-    evidence_by_kind: dict[str, dict[str, Any]],
-    supplement_target: str,
-    is_field_correction: bool,
-    is_asset_correction: bool,
-    manifest_platform: str,
-    manifest_android_version: str,
-    framework_change_summary: dict[str, Any] | None,
-    supplement_target_relation_errors: SupplementTargetRelationErrors,
-    patch_asset_correction_source_errors: PatchAssetCorrectionSourceErrors,
-    split_company_project: SplitCompanyProject,
-    errors: list[str],
-) -> None:
-    if not supplement_target:
-        return
-
-    errors.extend(supplement_target_relation_errors(supplement_target))
-    if is_asset_correction:
-        summary_for_asset = dict(framework_change_summary or {})
-        summary_for_asset.setdefault("capture_package_count", 0)
-        manifest_for_asset = dict(manifest)
-        manifest_for_asset["supplement_reason"] = (
-            str(manifest_for_asset.get("supplement_reason") or "")
-            + " 补丁资产修正（patch asset correction）"
-        )
-        errors.extend(patch_asset_correction_source_errors(manifest_for_asset, summary_for_asset))
-    else:
-        errors.extend(patch_asset_correction_source_errors(manifest, framework_change_summary))
-
-    supplement_reason = str(manifest.get("supplement_reason") or "").strip()
-    supplement = evidence_by_kind.get("evidence_supplement")
-    if not supplement:
-        errors.append("补证包必须包含 evidence_supplement evidence")
-        supplement_payload = {}
-    else:
-        supplement_payload = supplement.get("payload", supplement) if isinstance(supplement, dict) else {}
-    if isinstance(supplement_payload, dict):
-        expected_source_key = "/".join(
-            [
-                str(manifest.get("date") or "").replace("-", ""),
-                str(manifest.get("member_alias") or ""),
-                str(manifest.get("run_id") or ""),
-            ]
-        )
-        if supplement_payload.get("target_package_key") != supplement_target:
-            errors.append("evidence_supplement.target_package_key 必须等于 manifest.supplement_for_package_key")
-        if supplement_payload.get("reason") != supplement_reason:
-            errors.append("evidence_supplement.reason 必须等于 manifest.supplement_reason")
-        if supplement_payload.get("source_package_key") != expected_source_key:
-            errors.append("evidence_supplement.source_package_key 必须等于当前补证包 package key")
-        for field in ("project", "platform", "android_version", "package_status"):
-            if supplement_payload.get(field) != manifest.get(field):
-                errors.append(f"evidence_supplement.{field} 必须等于 manifest.{field}")
-        if is_field_correction:
-            if supplement_payload.get("supplement_mode") != "field_correction":
-                errors.append("evidence_supplement.supplement_mode 必须是 field_correction")
-            if supplement_payload.get("corrected_fields") != manifest.get("corrected_fields"):
-                errors.append("evidence_supplement.corrected_fields 必须等于 manifest.corrected_fields")
-
-    supplement_text = " ".join([supplement_reason, str(manifest.get("summary") or "")]).lower()
-    project_payload = {}
-    project_evidence = evidence_by_kind.get("project_inference")
-    if isinstance(project_evidence, dict):
-        project_payload = project_evidence.get("payload", project_evidence)
-        if not isinstance(project_payload, dict):
-            project_payload = {}
-    if any(token in supplement_text for token in ("项目", "project")):
-        project = str(manifest.get("project") or "").strip()
-        base_model, _suffix = split_company_project(project)
-        if project == "unknown" or not base_model:
-            errors.append("补项目（project）证据时，补证包 project 不能为 unknown，且必须是 TVD/TVE/TVA/TVI 项目型号")
-        if project_payload.get("recognized") is not True or project_payload.get("company_rule_match") is not True:
-            errors.append("补项目（project）证据时，project_inference 必须确认 recognized=true 且 company_rule_match=true")
-        if not project_payload.get("basis") or not project_payload.get("checked_sources"):
-            errors.append("补项目（project）证据时，project_inference 必须包含 basis 和 checked_sources")
-    if any(token in supplement_text for token in ("平台", "platform")) and manifest_platform == "unknown":
-        errors.append("补平台（platform）证据时，补证包 platform 不能为 unknown")
-    if any(token in supplement_text for token in ("android 版本", "android version", "android_version")) and manifest_android_version == "unknown":
-        errors.append("补 Android 版本（Android version）证据时，补证包 android_version 不能为 unknown")
-
-
 PATCH_VIEW_REQUIRED_FIELDS = (
-    "material_kind_label",
+    "package_label",
     "display_title",
     "problem_summary",
     "solution_summary",
@@ -900,7 +663,6 @@ def validate_patch_view_payload(
     rel: str,
     manifest: dict[str, Any],
     view: dict[str, Any],
-    supplement_target: str,
     errors: list[str],
 ) -> None:
     for field in PATCH_VIEW_REQUIRED_FIELDS:
@@ -912,12 +674,8 @@ def validate_patch_view_payload(
         errors.append(f"{rel} payload.platform 必须等于 manifest.platform")
     if view.get("android_version") != manifest.get("android_version"):
         errors.append(f"{rel} payload.android_version 必须等于 manifest.android_version")
-    if supplement_target and view.get("supplement_for_package_key") != supplement_target:
-        errors.append(f"{rel} payload.supplement_for_package_key 必须等于 manifest.supplement_for_package_key")
-    if manifest.get("supplement_mode") == "field_correction":
-        verification = view.get("verification") if isinstance(view.get("verification"), dict) else {}
-        if str(verification.get("result") or "").upper() != "INFO" or verification.get("method") != "field_correction":
-            errors.append(f"{rel} 字段级补证 verification 必须声明 result=INFO 且 method=field_correction")
+    if view.get("package_label") != "补丁包":
+        errors.append(f"{rel} payload.package_label 必须是补丁包")
     title_text = " ".join(
         [
             str(view.get("display_title") or ""),
@@ -934,7 +692,6 @@ def validate_patch_display_files(
     package_dir: Path,
     display_paths: list[Any],
     manifest: dict[str, Any],
-    supplement_target: str,
     require_file: RequireFile,
     read_referenced_json: ReadReferencedJson,
     errors: list[str],
@@ -957,6 +714,5 @@ def validate_patch_display_files(
             rel=rel,
             manifest=manifest,
             view=view,
-            supplement_target=supplement_target,
             errors=errors,
         )

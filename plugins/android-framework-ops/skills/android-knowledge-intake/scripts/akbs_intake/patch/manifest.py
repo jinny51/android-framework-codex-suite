@@ -128,7 +128,6 @@ def framework_change_evidence_paths(
     risk_path: str,
     verification_path: str,
     search_path: str,
-    supplement_path: str = "",
     optional_evidence_paths: list[str] | None = None,
 ) -> list[str]:
     paths = [
@@ -141,8 +140,6 @@ def framework_change_evidence_paths(
         verification_path,
         search_path,
     ]
-    if supplement_path:
-        paths.append(supplement_path)
     paths.extend(optional_evidence_paths or [])
     return paths
 
@@ -169,9 +166,6 @@ def framework_change_manifest(
     patch_view_path: str,
     evidence_paths: list[str],
     related_report_run_ids: list[str] | None = None,
-    supplement_for_package_key: str = "",
-    supplement_reason: str = "",
-    supplement_mode: str = "",
 ) -> dict[str, Any]:
     manifest: dict[str, Any] = {
         "schema": "knowledge-incoming-package",
@@ -202,14 +196,4 @@ def framework_change_manifest(
     }
     if related_report_run_ids:
         manifest["related_report_run_ids"] = related_report_run_ids
-    if supplement_for_package_key:
-        manifest["supplement_for_package_key"] = supplement_for_package_key
-        manifest["supplement_reason"] = supplement_reason
-        manifest["material_identity"] = {
-            "mode": "inherit_target_package",
-            "target_package_key": supplement_for_package_key,
-            "editable": False,
-        }
-        if supplement_mode:
-            manifest["supplement_mode"] = supplement_mode
     return manifest

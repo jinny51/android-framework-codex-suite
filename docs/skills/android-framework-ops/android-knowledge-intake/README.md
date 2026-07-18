@@ -6,7 +6,7 @@
 
 - 日报：`android-daily-report-intake`
 - 周报：`android-weekly-report-intake`
-- 补丁包、补证包和补丁资产修正：`android-framework-patch-intake`
+- 完整补丁包和同包队列资料补充：`android-framework-patch-intake`
 
 三个入口都调用本 skill 的同一套脚本，不各自复制上传实现。知识沉淀、新建/合并判断和知识有效度不属于成员插件。
 
@@ -74,7 +74,7 @@ python3 scripts/android_knowledge_intake.py --profile <member_alias> patch --pre
 
 日报和周报必须在生成阶段识别项目名和客户名。无法识别时，Codex 应在会话中提示成员补充，例如 `TVE1086U 青鸾云`；未补齐的包可以保留在本地，但上传前必须拒绝。
 
-普通补丁包和补证包上传必须为 `validated`，并具备功能边界、项目、平台、Android 版本、干净补丁资产和 PASS 验证。无共同目标的聚合包必须按功能重新采集，不能作为补证包继续包装。
+补丁上传必须是一个 `validated` 补丁包，并具备共同功能边界、项目、平台、Android 版本、干净不可变补丁和 PASS 验证。队列轻量缺口通过 `--inspect-information-request` 与 `--complete-information-request` 补到同一个包；需要改补丁或拆分功能时重新采集补丁包。
 
 ## 版本证据
 
@@ -89,7 +89,7 @@ python3 scripts/android_knowledge_intake.py --profile <member_alias> patch --pre
 
 ## 规则归属
 
-项目、平台、Android 版本、聚合包、开发前搜索、搜索使用决策、补证关系、文本质量和补丁资产基础规则只来自 `android_framework_ops.knowledge_rules`。本地 `akbs-curation-maintainer` 在沉淀前加载同一份规则，不再实现另一套。
+项目、平台、Android 版本、共同功能目标、开发前搜索、搜索使用决策、文本质量和补丁资产完整性规则来自 `android_framework_ops.knowledge_rules`。服务端按公开包合同做独立安全复核；本地 `akbs-curation-maintainer` 只负责入库后的沉淀判断。
 
 详细合同：
 

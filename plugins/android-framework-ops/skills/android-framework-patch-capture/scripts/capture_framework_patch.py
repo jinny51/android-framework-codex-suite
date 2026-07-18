@@ -530,7 +530,7 @@ def validate_search_decision_for_status(args: argparse.Namespace, search_payload
             "如果代码不是通过 Codex 闭环开发，请重新生成时显式使用 --implementation-origin manual、external 或 mixed。"
             "管理端后续会执行沉淀前重叠检索（post-change overlap check）。"
         ], []
-    if not bool(classification.get("member_can_supplement")):
+    if not bool(classification.get("member_can_complete_before_upload")):
         return [], []
     return [
         "已验证（validated）补丁包命中知识搜索结果时必须闭合搜索使用决策（search usage decision），"

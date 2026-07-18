@@ -255,7 +255,7 @@ def search_payload_needs_closed_decision(payload: dict[str, Any]) -> bool:
     if isinstance(payload.get("payload"), dict):
         payload = payload["payload"]
     classification = classify_pre_change_search(payload, implementation_origin="codex", package_status="validated")
-    return bool(classification.get("member_can_supplement"))
+    return bool(classification.get("member_can_complete_before_upload"))
 
 
 def search_payload_missing_required_pre_change_search(payload: dict[str, Any]) -> bool:

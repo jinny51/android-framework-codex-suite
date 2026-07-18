@@ -28,7 +28,13 @@
     "tool": {"type": "string", "minLength": 1},
     "summary": {"type": "string", "minLength": 1},
     "files": {"type": "object"},
-    "package_status": {"enum": ["validated", "candidate", "draft", "failed", "blocked"]}
+    "package_status": {"enum": ["validated", "candidate", "draft", "failed", "blocked"]},
+    "supplement_for_package_key": false,
+    "supplement_reason": false,
+    "supplement_intent": false,
+    "supplement_mode": false,
+    "supplement_delta": false,
+    "supplement_task": false
   },
   "allOf": [
     {

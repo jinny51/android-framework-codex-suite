@@ -3,13 +3,13 @@
   "schema_version": "1",
   "compatibility": "strict-content-hash-equality",
   "source_provenance": {
-    "commit": "b20fcd613fbb2dd26265d02cf3f6bfb2c0e76649",
+    "commit": "90b63d9a1f32e11c81620b32cee1bd563bf76162",
     "compatibility_condition": false
   },
   "public_contract": {
     "system_path": "contracts/incoming/v1/public-contract.json",
     "consumer_path": "plugins/android-framework-ops/skills/android-knowledge-intake/references/incoming-public-contract-v1.json",
-    "sha256": "286757f2ded64016bdb8f28a46c2a4db2fcc7f0f22536742bc2507ee1627c605"
+    "sha256": "0418fd578b9a502e5dd46b46f2ecaad50e5db001d11933227f32417cc81965f8"
   },
   "error_envelope": {
     "system_path": "contracts/http/error-envelope-v1.schema.json",
@@ -17,10 +17,9 @@
     "sha256": "82840edf68f219c52b3b031d3d789d22400bedbb1785dfa855722f30dec77c94"
   },
   "artifact_sha256": {
-    "knowledge-incoming-package.schema.json": "706c3c7a8b621cc2a392cdeb5561897728025bd9616ea0afab39dc3c3072541b",
+    "knowledge-incoming-package.schema.json": "65472e6fea5ebad7a0bc6f548986156d3c8135d4a903ea5f1d932b058bb198e2",
     "fixtures/daily.manifest.json": "b907189009b81dcc8874f19b472076ece943901be4d1afb53f9290ca18e588a6",
     "fixtures/patch.manifest.json": "0ee8eb63a8be866ea4a2e7053870f1e21a357db20caeb6848e860db9bc544bd9",
-    "fixtures/supplement.manifest.json": "bcf27d5ec70fb1587ec2650517c02797f91ae91f4013dc1c1429db155d63dfee",
     "fixtures/weekly.manifest.json": "980abda97a2ceaab54a13e7a6d3549846a0bf607612c3bba33e9b679ce03d4a3"
   },
   "success_reason_codes": [
@@ -43,13 +42,10 @@
     "case_binding_mismatch",
     "display_date_mismatch",
     "display_member_mismatch",
-    "display_target_mismatch",
     "display_trace_mismatch",
     "duplicate_evidence_kind",
-    "field_correction_has_patch",
     "files_not_object",
     "invalid_date",
-    "invalid_equivalent_verification",
     "invalid_file_list",
     "invalid_json_file",
     "invalid_patch_ai_facts",
@@ -75,11 +71,6 @@
     "project_trace_mismatch",
     "report_type_mismatch",
     "route_kind_mismatch",
-    "supplement_target_invalid",
-    "supplement_target_member_mismatch",
-    "supplement_target_missing",
-    "supplement_target_not_found",
-    "supplement_target_not_original",
     "unsupported_schema",
     "unsupported_schema_version",
     "variant_binding_mismatch",

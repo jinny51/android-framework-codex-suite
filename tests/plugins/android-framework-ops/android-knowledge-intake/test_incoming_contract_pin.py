@@ -15,7 +15,7 @@ class IncomingContractPinTests(unittest.TestCase):
         pin = json.loads((CONTRACT_ROOT / "contract-pin.json").read_text(encoding="utf-8"))
         self.assertEqual(pin["schema_version"], "1")
         self.assertEqual(pin["compatibility"], "strict-content-hash-equality")
-        self.assertEqual(pin["source_provenance"]["commit"], "b20fcd613fbb2dd26265d02cf3f6bfb2c0e76649")
+        self.assertEqual(pin["source_provenance"]["commit"], "90b63d9a1f32e11c81620b32cee1bd563bf76162")
         self.assertFalse(pin["source_provenance"]["compatibility_condition"])
         consumer_path = SUITE_ROOT / pin["public_contract"]["consumer_path"]
         consumer = json.loads(consumer_path.read_text(encoding="utf-8"))
@@ -38,8 +38,20 @@ class IncomingContractPinTests(unittest.TestCase):
             for code in codes
         )
         self.assertEqual(pin["reason_codes"], reason_codes)
-        self.assertEqual(len(reason_codes), 60)
+        self.assertEqual(len(reason_codes), 52)
         self.assertEqual(pin["success_reason_codes"], consumer["success_reason_codes"])
+        completion = consumer["patch_information_completion"]
+        self.assertEqual(
+            [item["id"] for item in completion["fields"]],
+            [
+                "project", "projects", "platform", "android_version", "title", "summary",
+                "feature_name", "problem", "solution", "result", "risk_or_gap", "code_anchors",
+                "verification", "applicability",
+            ],
+        )
+        self.assertEqual(completion["attachment"]["max_file_bytes"], 2 * 1024 * 1024)
+        self.assertEqual(completion["attachment"]["max_total_bytes"], 8 * 1024 * 1024)
+        self.assertTrue(completion["attachment"]["patch_assets_immutable"])
         error_contract = SUITE_ROOT / pin["error_envelope"]["consumer_path"]
         self.assertEqual(hashlib.sha256(error_contract.read_bytes()).hexdigest(), pin["error_envelope"]["sha256"])
 
@@ -54,20 +66,22 @@ class IncomingContractPinTests(unittest.TestCase):
         self.assertEqual(duplicate["different_file_tree_sha256"]["reason_code"], "package_already_exists")
         self.assertFalse(duplicate["different_file_tree_sha256"]["creates_new_fact"])
 
-    def test_four_golden_manifests_are_pinned_to_v1(self) -> None:
+    def test_three_current_golden_manifests_are_pinned_to_v1(self) -> None:
         expected = {
             "daily": "daily_trace",
             "weekly": "weekly_trace",
             "patch": "framework_change",
-            "supplement": "framework_change",
         }
         for name, package_kind in expected.items():
             manifest = json.loads((CONTRACT_ROOT / "fixtures" / f"{name}.manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["schema"], "knowledge-incoming-package")
             self.assertEqual(manifest["schema_version"], "1")
             self.assertEqual(manifest["package_kind"], package_kind)
-        supplement = json.loads((CONTRACT_ROOT / "fixtures" / "supplement.manifest.json").read_text(encoding="utf-8"))
-        self.assertTrue(supplement["supplement_for_package_key"])
+        consumer = json.loads(
+            (SUITE_ROOT / "plugins/android-framework-ops/skills/android-knowledge-intake/references/incoming-public-contract-v1.json")
+            .read_text(encoding="utf-8")
+        )
+        self.assertNotIn("retired_routes", consumer)
 
 
 if __name__ == "__main__":

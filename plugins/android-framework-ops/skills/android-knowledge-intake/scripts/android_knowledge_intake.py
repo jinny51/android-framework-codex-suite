@@ -33,10 +33,8 @@ from android_framework_ops.knowledge_rules import (
     parse_known_platform_token,
     parse_platform_token,
     parse_version_only_token,
-    patch_asset_correction_source_errors,
     patch_upload_gate_errors,
     split_company_project,
-    supplement_target_relation_errors,
     template_leak_errors,
     text_field_quality_errors,
 )
@@ -56,52 +54,6 @@ FRAMEWORK_REQUIRED_EVIDENCE_KINDS = {
     "patch_problem_summary",
     "risk_surface",
     "verification_result",
-    "search_before_change",
-}
-FIELD_CORRECTION_REQUIRED_EVIDENCE_KINDS = {"source", "project_inference", "evidence_supplement", "field_correction"}
-SUPPLEMENT_MODES = {"field_correction", "asset_correction"}
-FIELD_CORRECTION_ALLOWED_FIELDS = {
-    "project",
-    "platform",
-    "android_version",
-}
-FIELD_CORRECTION_MATERIAL_IDENTITY_FIELDS = {
-    "material_name",
-    "material_summary",
-    "feature",
-    "feature_name",
-    "function_name",
-    "display_title",
-    "summary",
-    "patch_view",
-    "report_view",
-}
-FIELD_CORRECTION_FORBIDDEN_FIELDS = {
-    "patch",
-    "patches",
-    "patch_assets",
-    "patch_diff",
-    "patch_diff_facts",
-    "patch_ai_facts",
-    "verification",
-    "verification_result",
-    "device_verification",
-    "equivalent_verification",
-    "build_result",
-    "deploy_result",
-    "search_before_change",
-    "search_usage",
-    "code_anchors",
-    *FIELD_CORRECTION_MATERIAL_IDENTITY_FIELDS,
-}
-FIELD_CORRECTION_FORBIDDEN_EVIDENCE_KINDS = {
-    "patch_diff_facts",
-    "patch_ai_facts",
-    "verification_result",
-    "device_verification",
-    "equivalent_verification",
-    "build_result",
-    "deploy_result",
     "search_before_change",
 }
 FRAMEWORK_OPTIONAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
@@ -261,10 +213,9 @@ from akbs_intake.patch.metadata import (  # noqa: E402
     evidence_text_values,
     infer_platform_metadata,
 )
-from akbs_intake.patch.supplement import (  # noqa: E402
-    normalize_corrected_fields as _normalize_corrected_fields,
-    parse_corrected_field_args,
-    write_default_evidence,
+from akbs_intake.patch.information_completion import (  # noqa: E402
+    complete_information_request,
+    inspect_information_request,
 )
 from akbs_intake.doctor import (  # noqa: E402
     doctor as _intake_doctor,
@@ -444,10 +395,28 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         text_field_quality_errors(
             {
                 "manifest.summary": manifest.get("summary"),
-                "manifest.supplement_reason": manifest.get("supplement_reason"),
             }
         )
     )
+    retired_patch_fields = sorted(
+        field
+        for field in (
+            "supplement_for_package_key",
+            "supplement_reason",
+            "supplement_intent",
+            "supplement_mode",
+            "supplement_delta",
+            "supplement_task",
+            "corrected_fields",
+            "material_identity",
+        )
+        if field in manifest
+    )
+    if retired_patch_fields:
+        errors.append(
+            "[legacy_patch_contract_not_supported] 当前补丁包不接受旧版字段: "
+            + ", ".join(retired_patch_fields)
+        )
     package_kind = manifest.get("package_kind")
     if package_kind not in INCOMING_KINDS:
         errors.append(f"package_kind 非法: {package_kind}")
@@ -469,7 +438,6 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             package_dir=package_dir,
             manifest=manifest,
             package_status_values=PACKAGE_STATUS_VALUES,
-            supplement_modes=SUPPLEMENT_MODES,
             run_id_re=RUN_ID_RE,
             require_file=require_file,
             validate_patch_readme=validate_patch_readme,
@@ -481,9 +449,6 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         manifest_platform = patch_context.manifest_platform
         manifest_android_version = patch_context.manifest_android_version
         package_status = patch_context.package_status
-        supplement_target = patch_context.supplement_target
-        is_field_correction = patch_context.is_field_correction
-        is_asset_correction = patch_context.is_asset_correction
         case_path = patch_context.case_path
         variant_path = patch_context.variant_path
         readme_path = patch_context.readme_path
@@ -494,7 +459,6 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             package_dir=package_dir,
             display_paths=display_paths,
             manifest=manifest,
-            supplement_target=supplement_target,
             require_file=require_file,
             read_referenced_json=read_referenced_json,
             errors=errors,
@@ -503,8 +467,6 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             package_dir=package_dir,
             manifest=manifest,
             package_status=package_status,
-            is_field_correction=is_field_correction,
-            supplement_target=supplement_target,
             case_path=case_path,
             variant_path=variant_path,
             evidence_paths=evidence_paths,
@@ -515,10 +477,6 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             is_valid_platform_value=is_valid_platform_value,
             is_valid_android_version_value=is_valid_android_version_value,
             framework_required_evidence_kinds=FRAMEWORK_REQUIRED_EVIDENCE_KINDS,
-            field_correction_required_evidence_kinds=FIELD_CORRECTION_REQUIRED_EVIDENCE_KINDS,
-            field_correction_forbidden_evidence_kinds=FIELD_CORRECTION_FORBIDDEN_EVIDENCE_KINDS,
-            field_correction_allowed_fields=FIELD_CORRECTION_ALLOWED_FIELDS,
-            field_correction_forbidden_fields=FIELD_CORRECTION_FORBIDDEN_FIELDS,
             errors=errors,
         )
         case_problem = structure_context.case_problem
@@ -526,75 +484,49 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
         evidence_by_kind = structure_context.evidence_by_kind
         ai_context = validate_patch_ai_facts_and_diff(
             evidence_by_kind=evidence_by_kind,
-            is_field_correction=is_field_correction,
             list_string_values=list_string_values,
             unique_strings=unique_strings,
             errors=errors,
         )
         modified_files = ai_context.modified_files
-        if not is_field_correction:
-            validate_patch_template_leaks(
+        validate_patch_template_leaks(
+            package_dir=package_dir,
+            manifest=manifest,
+            evidence_paths=evidence_paths,
+            case_problem=case_problem,
+            case_solution=case_solution,
+            patch_paths=patch_paths,
+            modified_files=modified_files,
+            read_referenced_json=read_referenced_json,
+            template_leak_errors=template_leak_errors,
+            errors=errors,
+        )
+        errors.extend(
+            validate_framework_function_scope(
                 package_dir=package_dir,
                 manifest=manifest,
-                evidence_paths=evidence_paths,
-                case_problem=case_problem,
-                case_solution=case_solution,
+                readme_path=readme_path,
                 patch_paths=patch_paths,
-                modified_files=modified_files,
-                read_referenced_json=read_referenced_json,
-                template_leak_errors=template_leak_errors,
-                errors=errors,
+                evidence_by_kind=evidence_by_kind,
+                list_string_values=list_string_values,
+                aggregate_package_scope_errors=aggregate_package_scope_errors,
             )
-            errors.extend(
-                validate_framework_function_scope(
-                    package_dir=package_dir,
-                    manifest=manifest,
-                    readme_path=readme_path,
-                    patch_paths=patch_paths,
-                    evidence_by_kind=evidence_by_kind,
-                    list_string_values=list_string_values,
-                    aggregate_package_scope_errors=aggregate_package_scope_errors,
-                )
-            )
-        framework_change_summary = read_optional_json_object(package_dir / materials_rel("evidence", "framework_change_summary.json"))
-        validate_patch_supplement_basics(
-            manifest=manifest,
-            evidence_by_kind=evidence_by_kind,
-            supplement_target=supplement_target,
-            is_field_correction=is_field_correction,
-            is_asset_correction=is_asset_correction,
-            manifest_platform=manifest_platform,
-            manifest_android_version=manifest_android_version,
-            framework_change_summary=framework_change_summary,
-            supplement_target_relation_errors=supplement_target_relation_errors,
-            patch_asset_correction_source_errors=patch_asset_correction_source_errors,
-            split_company_project=split_company_project,
-            errors=errors,
         )
         validate_patch_verification_result(
             evidence_by_kind=evidence_by_kind,
             package_status=package_status,
-            is_field_correction=is_field_correction,
             errors=errors,
         )
         validate_patch_pre_change_search(
             manifest=manifest,
             evidence_by_kind=evidence_by_kind,
             package_status=package_status,
-            is_field_correction=is_field_correction,
             list_string_values=list_string_values,
             implementation_origins_require_pre_change_search=implementation_origins_require_pre_change_search,
             search_payload_missing_required_pre_change_search=search_payload_missing_required_pre_change_search,
             search_payload_needs_closed_decision=search_payload_needs_closed_decision,
             errors=errors,
             warnings=warnings,
-        )
-        validate_patch_supplement_verification_closure(
-            package_dir=package_dir,
-            manifest=manifest,
-            supplement_target=supplement_target,
-            is_field_correction=is_field_correction,
-            errors=errors,
         )
     return {"status": "FAIL" if errors else "PASS", "errors": errors, "warnings": warnings}
 
@@ -608,8 +540,6 @@ from akbs_intake.patch.validation import (  # noqa: E402
     validate_patch_template_leaks,
     validate_patch_verification_result,
     validate_patch_pre_change_search,
-    validate_patch_supplement_basics,
-    validate_patch_supplement_verification_closure,
 )
 
 
@@ -638,22 +568,6 @@ def prepare_package(
     )
 
 
-def normalize_corrected_fields(
-    corrected_fields: dict[str, Any] | None,
-    *,
-    project: str = "",
-    platform: str = "",
-    android_version: str = "",
-) -> dict[str, str]:
-    return _normalize_corrected_fields(
-        corrected_fields,
-        project=project,
-        platform=platform,
-        android_version=android_version,
-        material_identity_fields=FIELD_CORRECTION_MATERIAL_IDENTITY_FIELDS,
-    )
-
-
 def prepare_patch_package(
     date: dt.date,
     config: dict[str, str],
@@ -665,13 +579,8 @@ def prepare_patch_package(
     status: str = "validated",
     schema_version: str = INCOMING_SCHEMA_VERSION,
     related_report_run_ids: list[str] | None = None,
-    supplement_for_package_key: str = "",
-    supplement_reason: str = "",
     platform_override: str = "",
     android_version_override: str = "",
-    supplement_mode: str = "",
-    corrected_fields: dict[str, Any] | None = None,
-    correction_reason: str = "",
 ) -> Path:
     return build_patch_package(
         date,
@@ -684,16 +593,9 @@ def prepare_patch_package(
         status=status,
         schema_version=schema_version,
         related_report_run_ids=related_report_run_ids,
-        supplement_for_package_key=supplement_for_package_key,
-        supplement_reason=supplement_reason,
         platform_override=platform_override,
         android_version_override=android_version_override,
-        supplement_mode=supplement_mode,
-        corrected_fields=corrected_fields,
-        correction_reason=correction_reason,
         incoming_schema_version=INCOMING_SCHEMA_VERSION,
-        supplement_modes=SUPPLEMENT_MODES,
-        field_correction_material_identity_fields=FIELD_CORRECTION_MATERIAL_IDENTITY_FIELDS,
         framework_optional_evidence_kinds=FRAMEWORK_OPTIONAL_EVIDENCE_KINDS,
         validate_package_fn=validate_package,
         write_package_source_fn=write_package_source,
@@ -783,11 +685,6 @@ def parse_args() -> argparse.Namespace:
             sub.add_argument("--android-version", default="", help="explicit Android version for framework_change incoming, for example 14, 16, or 9.0")
             sub.add_argument("--summary", default="Framework 修改沉淀", help="summary for framework_change incoming")
             sub.add_argument("--related-report-run-id", dest="related_report_run_ids", action="append", default=[], help="daily/weekly incoming run_id related to this framework_change; repeatable")
-            sub.add_argument("--supplement-for-package-key", default="", help="original incoming package key that this framework_change package supplements")
-            sub.add_argument("--supplement-reason", default="", help="why this package supplements the original incoming package")
-            sub.add_argument("--supplement-mode", choices=["field_correction", "asset_correction"], default="", help="field_correction for project/platform/Android version metadata supplements, asset_correction for full patch asset recapture")
-            sub.add_argument("--corrected-field", dest="corrected_fields", action="append", default=[], help="field=value correction for field_correction supplements; repeatable")
-            sub.add_argument("--correction-reason", default="", help="audit reason for field_correction supplements")
             sub.add_argument(
                 "--status",
                 choices=["draft", "candidate", "validated", "failed", "blocked"],
@@ -829,6 +726,17 @@ def parse_args() -> argparse.Namespace:
         action.add_argument("--submit-latest", action="store_true", help="submit latest pending package")
         action.add_argument("--upload", action="store_true", help="prepare then submit")
         action.add_argument("--validate", metavar="PACKAGE_DIR", help="validate an existing package")
+        if report_type == "patch":
+            action.add_argument(
+                "--inspect-information-request",
+                metavar="REQUEST_ID",
+                help="read one open queue information request for the existing patch package",
+            )
+            action.add_argument(
+                "--complete-information-request",
+                metavar="RESPONSE_JSON",
+                help="submit text, fields, or non-patch attachments to the existing patch package",
+            )
     return parser.parse_args()
 
 
@@ -837,6 +745,7 @@ def main() -> int:
 
     config, loaded = load_config(args.profile)
     date: dt.date | None = None
+    patch_submit_pending: Path | None = None
 
     if args.command == "doctor":
         result = doctor(config, loaded, args.strict, args.check_remote, args.allow_synthetic)
@@ -858,7 +767,14 @@ def main() -> int:
         pending_manifest = read_json_file(pending / "manifest.json")
         ensure_report_submit_allowed(pending, config, pending_manifest)
 
-    if args.command in PACKAGE_TYPES and not args.validate and (args.prepare or args.submit_latest or args.upload):
+    if args.command == "patch" and args.submit_latest:
+        patch_submit_pending = latest_pending("patch", config, parse_date_arg(args.date, config) if args.date else None)
+
+    patch_information_action = bool(
+        getattr(args, "inspect_information_request", "")
+        or getattr(args, "complete_information_request", "")
+    )
+    if args.command in PACKAGE_TYPES and not args.validate and (args.prepare or args.submit_latest or args.upload or patch_information_action):
         freshness = plugin_version_gate_check(config, fetch=True, require=True)
         if freshness.get("blocking"):
             reexec_error = reexec_latest_plugin_script_after_update(freshness)
@@ -876,6 +792,15 @@ def main() -> int:
                 )
             )
             return 1
+
+    if patch_information_action:
+        enforce_mode_allowed(config, "patch")
+        if getattr(args, "inspect_information_request", ""):
+            result = inspect_information_request(config, args.inspect_information_request)
+        else:
+            result = complete_information_request(config, Path(args.complete_information_request))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
 
     date = date or parse_date_arg(args.date, config)
     if args.validate:
@@ -898,13 +823,8 @@ def main() -> int:
                 args.status,
                 schema_version,
                 args.related_report_run_ids,
-                args.supplement_for_package_key,
-                args.supplement_reason,
                 args.platform,
                 args.android_version,
-                args.supplement_mode,
-                parse_corrected_field_args(args.corrected_fields),
-                args.correction_reason,
             )
         else:
             package_dir = prepare_package(
@@ -922,7 +842,7 @@ def main() -> int:
             return 0
         return 0 if result["status"] == "PASS" else 1
     if args.submit_latest:
-        package_dir = latest_pending(args.report_type, config, date if args.date else None)
+        package_dir = patch_submit_pending or latest_pending(args.report_type, config, date if args.date else None)
         result = submit_package(package_dir, config)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
@@ -940,13 +860,8 @@ def main() -> int:
                 args.status,
                 schema_version,
                 args.related_report_run_ids,
-                args.supplement_for_package_key,
-                args.supplement_reason,
                 args.platform,
                 args.android_version,
-                args.supplement_mode,
-                parse_corrected_field_args(args.corrected_fields),
-                args.correction_reason,
             )
         else:
             package_dir = prepare_package(

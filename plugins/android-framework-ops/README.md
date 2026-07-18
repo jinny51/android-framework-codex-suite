@@ -15,7 +15,7 @@ Android Framework Ops 是本套件的共享核心插件。它负责 Android Fram
 | Framework 工作流 | [android-framework-change-workflow](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-framework-change-workflow) | 统筹需求分析、问题诊断、源码修改、风险判断、验证验收和最终报告 |
 | Framework 工作流 | [android-framework-patch-capture](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-framework-patch-capture) | 将已完成或阶段性 Framework 功能整理成一个功能 README、多仓库 patch 和验证材料 |
 | 知识系统 | [android-knowledge-search](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-knowledge-search) | 默认搜索 AI 可复用案例、平台实现、补丁、检索锚点和验证记录；归档记录需显式查询 |
-| 知识系统 | [android-framework-patch-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-framework-patch-intake) | 生成原始补丁包、补证包、替换包和补丁资产修正 `framework_change` incoming |
+| 知识系统 | [android-framework-patch-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-framework-patch-intake) | 生成一个完整补丁包，并为同一个包完成队列资料补充 |
 | 知识系统 | [android-daily-report-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-daily-report-intake) | 生成个人日报正文、同源 `report_view.json` 和 `daily_trace` incoming |
 | 知识系统 | [android-weekly-report-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-weekly-report-intake) | 从当前有效日报和上一周项目台账生成个人周报、同源 `report_view.json` 和 `weekly_trace` incoming |
 | 知识系统 | [android-knowledge-intake](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-knowledge-intake) | 成员首次启用、插件更新、配置诊断和共享 incoming 内核 |
@@ -31,11 +31,11 @@ Android Framework Ops 是本套件的共享核心插件。它负责 Android Fram
 5. 本插件的 `android-remote-build-deploy` 负责服务器构建、产物定位和本地设备推送。
 6. `android-framework-change-workflow` 根据需求和设备证据给最终验收结论，并决定 `validated`、`candidate`、`draft`、`failed` 或 `blocked` 包状态（package status）。
 7. `android-framework-patch-capture` 把已完成、阶段性、失败或阻塞但有价值的 Framework 功能整理成一个功能 README、多个源码仓库 patch 和 evidence。
-8. 成员按材料类型选择入口：`android-framework-patch-intake` 生成补丁包和补证包，`android-daily-report-intake` 生成日报包，`android-weekly-report-intake` 生成周报包；三者共用 `android-knowledge-intake` 的上传协议、版本门禁、会话缓存门禁和本地预校验。日报记录当天做了什么、怎么做、结果是什么；周报优先汇总 AKBS 当前有效日报和上一周项目台账，补交替换后的当前版本优先，session 只作补充。后续是否沉淀由本机 `akbs-curation-maintainer` 和 AI 知识闭环决定。周报包只做进度归档。
+8. 成员按材料类型选择入口：`android-framework-patch-intake` 生成一个完整补丁包或补充同一个包的队列资料，`android-daily-report-intake` 生成日报包，`android-weekly-report-intake` 生成周报包；三者共用上传协议、版本门禁、会话缓存门禁和本地预校验。补丁文件不可通过队列补充修改；需要改补丁时重新采集。后续新建知识或计划合并由本机 `akbs-curation-maintainer` 和 AI 知识闭环决定。周报包只做进度归档。
 
 默认原则：成员端能自动保存材料就先保存材料，再按包状态（package status）排序和作为复用提示（reuse hint）。缺少显式确认不等于丢弃证据；只有敏感信息、混杂无关 diff、高风险误导或身份/配置不可用时才停止上传，并在最终报告中说明。是否沉淀进知识库仓库由管理端本地技能决定。
 
-成员端补丁采集、上传预检和管理端本地沉淀前检查共用插件规则模块（plugin rules module）：项目（project）规范化和校验、平台（platform）和 Android 版本（Android version）解析、无共同目标聚合包（aggregate package）判断、开发前知识搜索（pre-change knowledge search）状态分类、搜索使用决策（search usage decision）闭合、补丁资产污染（patch asset pollution）基础判断和补证包（evidence supplement package）关系判断都从同一份规则进入。AKBS 服务端只负责 HTTP API、active SQLite 和写侧事务，不加载成员 Codex 插件，也不保留规则副本。新建知识、合并知识、仅归档、不沉淀和知识有效度（knowledge validity）只属于管理端 AI 知识闭环。
+成员端补丁采集与上传预检共用插件规则模块：项目规范化、平台和 Android 版本解析、共同功能目标判断、开发前知识搜索、搜索使用决策、补丁资产污染和完整性门禁都从同一份规则进入。AKBS 服务端不加载成员 Codex 插件，而是按公开包合同做最终安全复核和事务写入。新建知识、计划合并和知识有效度只属于管理端 AI 知识闭环。
 
 公司项目型号必须写入规范项目名，例如 `TVE1213M` 或 `TVI3315A`。如果来源材料只写 7 位短型号，例如 `TVE1213`，插件规则模块（plugin rules module）只有在同一推断流程已经拿到可信平台证据时才会补齐第八位平台字母：`mtk -> M`、`rk -> R`、`unisoc -> U`。没有可信平台证据时，短型号不能自动写入结构化项目字段；补齐后的候选值仍必须通过公司项目型号规则。`TVI` 使用工控产品专门命名规则，需要从通用平台位补齐规则里单独处理：已有第八位时保持原样，`A` 和 `X` 都是合法 TVI 字段；缺第八位时优先按 TVI 芯片字段补 `A/X`，不能按 AKBS 平台（platform）补成 `R/M/U`。平台仍单独记录为 `rk`、`mtk` 或 `unisoc`。
 

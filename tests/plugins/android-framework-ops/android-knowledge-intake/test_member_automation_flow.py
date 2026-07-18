@@ -198,6 +198,48 @@ def fake_upload_server():
     received: list[dict[str, object]] = []
 
     class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            target = "20260601/member01/20260601-230000-patch"
+            if "/packages/" in self.path:
+                payload = {
+                    "package_key": target,
+                    "member_alias": "member01",
+                    "submitted_at": "2026-06-01T23:00:00+08:00",
+                }
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("X-Request-ID", "req_11111111111111111111111111111111")
+                self.end_headers()
+                self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+                return
+            payload = {
+                "total": 1,
+                "items": [
+                    {
+                        "notice_id": "akbs-archive-supplement:review-test",
+                        "review_id": "review-test",
+                        "member_alias": "member01",
+                        "state": "needs_evidence",
+                        "supplement_for_package_key": target,
+                        "lifecycle": {
+                            "facts": {
+                                "supplement_request": {
+                                    "request_id": "supplement-request-test",
+                                    "status": "open",
+                                    "mode": "field_correction",
+                                    "target_package_key": target,
+                                }
+                            }
+                        },
+                    }
+                ],
+            }
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("X-Request-ID", "req_0123456789abcdef0123456789abcdef")
+            self.end_headers()
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+
         def do_POST(self) -> None:  # noqa: N802
             length = int(self.headers.get("Content-Length") or "0")
             body = self.rfile.read(length)
@@ -210,6 +252,7 @@ def fake_upload_server():
             )
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("X-Request-ID", "req_fedcba9876543210fedcba9876543210")
             self.end_headers()
             self.wfile.write(json.dumps(successful_upload_payload(), ensure_ascii=False).encode("utf-8"))
 
@@ -740,21 +783,20 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertFalse(urlopen.called)
             self.assertIn("只支持 HTTP API", str(caught.exception))
 
-    def test_http_upload_type_uses_four_physical_package_kinds(self) -> None:
+    def test_http_upload_type_uses_three_current_package_routes(self) -> None:
         module = load_intake_module()
 
         self.assertEqual(module.upload_type_for_manifest({"package_kind": "daily_trace"}), "daily")
         self.assertEqual(module.upload_type_for_manifest({"package_kind": "weekly_trace"}), "weekly")
         self.assertEqual(module.upload_type_for_manifest({"package_kind": "framework_change"}), "patch")
-        self.assertEqual(
+        with self.assertRaises(SystemExit) as retired:
             module.upload_type_for_manifest(
                 {
                     "package_kind": "framework_change",
                     "supplement_for_package_key": "20260705/wick/20260705-091500-patch",
                 },
-            ),
-            "supplement",
-        )
+            )
+        self.assertIn("legacy_patch_contract_not_supported", str(retired.exception))
         with self.assertRaises(SystemExit):
             module.upload_type_for_manifest({"package_kind": "unknown"})
 
@@ -1970,7 +2012,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(payload["status"], "PASS")
             self.assertTrue(any("knowledge_repo_worktree 不存在" in item for item in payload["strict"]["warnings"]))
 
-    def test_daily_weekly_patch_and_supplement_upload_to_resolved_endpoint(self) -> None:
+    def test_daily_weekly_and_single_patch_upload_to_resolved_endpoint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             knowledge_remote = seed_knowledge_remote(root)
@@ -2069,49 +2111,12 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     SUITE_ROOT,
                     env,
                 )
-                supplement = run_json(
-                    [
-                        sys.executable,
-                        str(INTAKE_SCRIPT),
-                        "--profile",
-                        "member01",
-                        "patch",
-                        "--date",
-                        "2026-06-01",
-                        "--run-id",
-                        "20260601-231000-field-supplement",
-                        "--project",
-                        "TVE8402M",
-                        "--platform",
-                        "mtk",
-                        "--android-version",
-                        "15",
-                        "--summary",
-                        "补充项目展示字段",
-                        "--status",
-                        "validated",
-                        "--supplement-for-package-key",
-                        "20260601/member01/20260601-230000-patch",
-                        "--supplement-mode",
-                        "field_correction",
-                        "--corrected-field",
-                        "project=TVE8402M",
-                        "--correction-reason",
-                        "管理端要求补充项目字段。",
-                        "--upload",
-                    ],
-                    SUITE_ROOT,
-                    env,
-                )
-
             daily_package = Path(daily["package"])
             weekly_package = Path(weekly["package"])
             patch_package = Path(patch["package"])
-            supplement_package = Path(supplement["package"])
             daily_manifest = json.loads((daily_package / "manifest.json").read_text(encoding="utf-8"))
             weekly_manifest = json.loads((weekly_package / "manifest.json").read_text(encoding="utf-8"))
             patch_manifest = json.loads((patch_package / "manifest.json").read_text(encoding="utf-8"))
-            supplement_manifest = json.loads((supplement_package / "manifest.json").read_text(encoding="utf-8"))
             patch_project = json.loads((patch_package / "materials" / "evidence" / "project_inference.json").read_text(encoding="utf-8"))
             daily_findings = json.loads((daily_package / "materials" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
             weekly_findings = json.loads((weekly_package / "materials" / "evidence" / "work_findings.json").read_text(encoding="utf-8"))
@@ -2131,12 +2136,6 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(patch_manifest["project"], "TVE8402M")
             self.assertEqual(patch_project["payload"]["project"], "TVE8402M")
             self.assertTrue(patch_project["payload"]["company_rule_match"])
-            self.assertEqual(supplement_manifest["package_kind"], "framework_change")
-            self.assertEqual(supplement_manifest["supplement_mode"], "field_correction")
-            self.assertEqual(supplement_manifest["corrected_fields"]["project"], "TVE8402M")
-            supplement_view = read_report_view(supplement_package)
-            self.assertEqual(supplement_view["payload"]["verification"]["result"], "INFO")
-            self.assertEqual(supplement_view["payload"]["verification"]["method"], "field_correction")
             self.assertIn("TVE8402M", (daily_package / "reports" / "daily.md").read_text(encoding="utf-8"))
 
             self.assertEqual(
@@ -2145,7 +2144,6 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     "/akbs/api/member/me/uploads/daily",
                     "/akbs/api/member/me/uploads/weekly",
                     "/akbs/api/member/me/uploads/patch",
-                    "/akbs/api/member/me/uploads/supplement",
                 ],
             )
             self.assertTrue(all(int(item["body_length"]) > 0 for item in uploads))

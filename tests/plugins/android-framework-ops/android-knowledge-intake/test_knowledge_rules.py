@@ -106,7 +106,7 @@ class KnowledgeRulesTest(unittest.TestCase):
             implementation_origin="manual",
             package_status="validated",
         )
-        self.assertFalse(manual["member_can_supplement"])
+        self.assertFalse(manual["member_can_complete_before_upload"])
         self.assertTrue(manual["requires_post_change_overlap_check"])
         self.assertEqual(manual["validity_score_effect"], "no_search_loop_score")
 
@@ -115,7 +115,7 @@ class KnowledgeRulesTest(unittest.TestCase):
             implementation_origin="codex",
             package_status="validated",
         )
-        self.assertTrue(codex_unknown["member_can_supplement"])
+        self.assertTrue(codex_unknown["member_can_complete_before_upload"])
         self.assertEqual(codex_unknown["missing_field"], "search_usage")
 
         codex_closed = classify_pre_change_search(
@@ -123,7 +123,7 @@ class KnowledgeRulesTest(unittest.TestCase):
             implementation_origin="codex",
             package_status="validated",
         )
-        self.assertFalse(codex_closed["member_can_supplement"])
+        self.assertFalse(codex_closed["member_can_complete_before_upload"])
         self.assertFalse(codex_closed["requires_post_change_overlap_check"])
 
     def test_source_version_contract_uses_capability_matrix_not_current_version(self) -> None:
@@ -135,7 +135,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.137")
+        self.assertEqual(current, "1.0.139")
         self.assertEqual(AKBS_RULES_CONTRACT_VERSION, "2026-07-02.1")
         matrix = source_version_compatibility_matrix()
         self.assertEqual(matrix["source_version_evidence"]["min_plugin_version"], "1.0.60")
@@ -243,19 +243,6 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
         self.assertIn("source evidence plugin_version_check is blocking: SESSION_CACHE_STALE", errors)
 
-    def test_supplement_field_policy_contract(self) -> None:
-        from android_framework_ops.knowledge_rules import supplement_field_policy
-
-        project = supplement_field_policy("project")
-        self.assertTrue(project["member_can_supplement"])
-        self.assertFalse(project["historical_fact"])
-        self.assertIn("项目", project["member_label"])
-
-        search = supplement_field_policy("search_usage")
-        self.assertFalse(search["member_can_fabricate"])
-        self.assertTrue(search["historical_fact"])
-        self.assertIn("不能事后补造", search["guidance"])
-
     def test_patch_asset_name_classification_contract(self) -> None:
         from android_framework_ops.knowledge_rules import classify_patch_asset_names
 
@@ -323,16 +310,8 @@ class KnowledgeRulesTest(unittest.TestCase):
 
         self.assertEqual(validated_errors, [])
 
-    def test_supplement_target_relation_blocks_nested_supplement(self) -> None:
-        from android_framework_ops.knowledge_rules import patch_upload_gate_errors, supplement_target_relation_errors
-
-        relation_errors = supplement_target_relation_errors(
-            "20260625/wangwei/20260625-221500-verification-supplement"
-        )
-
-        self.assertTrue(relation_errors)
-        self.assertIn("不能继续补证补证包", relation_errors[0])
-        self.assertIn("原始包", relation_errors[0])
+    def test_legacy_supplement_upload_is_retired(self) -> None:
+        from android_framework_ops.knowledge_rules import patch_upload_gate_errors
 
         upload_errors = patch_upload_gate_errors(
             {
@@ -343,7 +322,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
 
         self.assertTrue(upload_errors)
-        self.assertIn("不能继续补证补证包", "\n".join(upload_errors))
+        self.assertIn("legacy_patch_contract_not_supported", "\n".join(upload_errors))
 
     def test_function_scope_classification_contract(self) -> None:
         from android_framework_ops.knowledge_rules import classify_function_scope
@@ -387,7 +366,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         text_errors = text_field_quality_errors(
             {
                 "manifest.summary": "?????????????",
-                "manifest.supplement_reason": "?????verification???",
+                "manifest.project": "?????verification???",
             }
         )
         self.assertEqual(len(text_errors), 2)

@@ -12,8 +12,7 @@ OPS_PLUGIN_LIB = Path(__file__).resolve().parents[4] / "lib"
 if OPS_PLUGIN_LIB.is_dir() and str(OPS_PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(OPS_PLUGIN_LIB))
 
-from android_framework_ops.http_client import HttpClientFailure, request_json
-
+from android_framework_ops.http_client import HttpClientFailure, request_json_with_metadata
 try:
     from .config import (
         submission_api_base_url,
@@ -50,18 +49,36 @@ def package_tar_gz_bytes(package_dir: Path) -> bytes:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         for path in sorted(package_dir.rglob("*")):
+            if path.name == ".akbs-upload-receipt.json":
+                continue
             archive.add(path, arcname=path.relative_to(package_dir).as_posix(), recursive=False)
     return buffer.getvalue()
 
 
-def server_submit_package(package_dir: Path, config: dict[str, str], method: str = "http") -> dict[str, Any]:
+def server_submit_package(
+    package_dir: Path,
+    config: dict[str, str],
+    method: str = "http",
+) -> dict[str, Any]:
     member = config.get("member_alias", "").strip()
     if not member or member == "unknown":
         raise SystemExit("member_alias 不能为空或不能使用 unknown")
     if method != "http":
         raise SystemExit("AKBS 成员上传只支持 HTTP API；SSH/local 上传字段已废弃，请先更新插件并执行配置迁移。")
+    manifest = read_json_file(package_dir / "manifest.json")
+    target = str(manifest.get("supplement_for_package_key") or "").strip()
+    if target:
+        raise SystemExit(
+            "[legacy_patch_contract_not_supported] 该目录使用旧版补丁包协议；"
+            "请升级插件并按当前补丁包合同重新检查。"
+        )
     payload = package_tar_gz_bytes(package_dir)
-    return http_submit_package(package_dir, config, member, payload)
+    return http_submit_package(
+        package_dir,
+        config,
+        member,
+        payload,
+    )
 
 
 def submit_package(
@@ -72,17 +89,27 @@ def submit_package(
     write_json_fn: JsonWriter,
     patch_upload_gate_errors_fn: PatchGate,
 ) -> dict[str, Any]:
+    manifest = read_json_file(package_dir / "manifest.json")
+    legacy_target = str(manifest.get("supplement_for_package_key") or "").strip()
+    if legacy_target:
+        raise SystemExit(
+            "[legacy_patch_contract_not_supported] 该目录使用旧版补丁包协议；"
+            "请升级插件并按当前补丁包合同重新检查。"
+        )
     check = validate_package_fn(package_dir)
     write_json_fn(package_dir / "local-check.json", check)
     if check["status"] != "PASS":
         raise SystemExit("本地工作包校验失败，已停止提交。请查看 local-check.json。")
-    manifest = read_json_file(package_dir / "manifest.json")
     ensure_report_submit_allowed(package_dir, config, manifest)
     gate_errors = patch_upload_gate_errors_fn(manifest)
     if gate_errors:
         raise SystemExit("\n".join(gate_errors))
 
-    result = server_submit_package(package_dir, config)
+    result = server_submit_package(
+        package_dir,
+        config,
+    )
+    manifest = read_json_file(package_dir / "manifest.json")
     if manifest.get("package_kind") in {"daily_trace", "weekly_trace"}:
         record_submitted_package(package_dir, config, manifest)
     return result
@@ -98,6 +125,12 @@ def http_submit_package(
     if not base_url:
         raise SystemExit("submission_api_base_url 不能为空")
     manifest = read_json_file(package_dir / "manifest.json")
+    target = str(manifest.get("supplement_for_package_key") or "").strip()
+    if target:
+        raise SystemExit(
+            "[legacy_patch_contract_not_supported] 该目录使用旧版补丁包协议；"
+            "请升级插件并按当前补丁包合同重新检查。"
+        )
     upload_type = upload_type_for_manifest(manifest)
     url = f"{base_url}/member/me/uploads/{upload_type}"
     request = urllib.request.Request(
@@ -110,7 +143,7 @@ def http_submit_package(
         },
     )
     try:
-        result = request_json(request, timeout=30, contract_codes=error_reason_codes())
+        result, metadata = request_json_with_metadata(request, timeout=30, contract_codes=error_reason_codes())
     except HttpClientFailure as error:
         raise SystemExit(error.result.safe_summary("HTTP 上传入口提交失败")) from None
     try:
@@ -118,6 +151,8 @@ def http_submit_package(
     except RuntimeError as error:
         raise SystemExit(f"HTTP 上传入口合同漂移: {error}") from error
     result.setdefault("submitted", True)
+    if target:
+        result.setdefault("request_id", metadata.get("request_id", ""))
     result.setdefault("method", "http")
     result.setdefault("package", str(package_dir))
     result.setdefault("upload_url", url)
@@ -132,6 +167,8 @@ def upload_type_for_manifest(manifest: dict[str, Any]) -> str:
         return "weekly"
     if package_kind == "framework_change":
         if str(manifest.get("supplement_for_package_key") or "").strip():
-            return "supplement"
+            raise SystemExit(
+                "[legacy_patch_contract_not_supported] framework_change 必须使用当前补丁包合同。"
+            )
         return "patch"
     raise SystemExit(f"无法根据 package_kind 判断上传类型: {package_kind}")

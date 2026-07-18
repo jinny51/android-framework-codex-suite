@@ -205,7 +205,6 @@ def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> t
         "daily",
         "weekly",
         "patch",
-        "supplement",
     }:
         raise AssertionError("system public contract artifact declarations are incomplete")
     declared_artifacts = [manifest_schema, *fixtures.values()]
@@ -377,38 +376,7 @@ def generate_real_packages(root: Path, env: dict[str, str]) -> dict[str, Path]:
         REPO_ROOT,
         env,
     )
-    supplement = run_json(
-        common
-        + [
-            "patch",
-            "--date",
-            "2026-07-11",
-            "--run-id",
-            "20260711-130000-field-supplement",
-            "--project",
-            "TVE8402M",
-            "--platform",
-            "mtk",
-            "--android-version",
-            "15",
-            "--summary",
-            "incoming v1 字段补证",
-            "--status",
-            "validated",
-            "--supplement-for-package-key",
-            "20260711/wick/20260711-120000-patch",
-            "--supplement-mode",
-            "field_correction",
-            "--corrected-field",
-            "project=TVE8402M",
-            "--correction-reason",
-            "跨仓合同门禁补证",
-            "--prepare",
-        ],
-        REPO_ROOT,
-        env,
-    )
-    return {name: Path(payload["package"]) for name, payload in (("daily", daily), ("weekly", weekly), ("patch", patch), ("supplement", supplement))}
+    return {name: Path(payload["package"]) for name, payload in (("daily", daily), ("weekly", weekly), ("patch", patch))}
 
 
 def tar_bytes(package_dir: Path) -> bytes:
@@ -711,44 +679,12 @@ def exercise_server(
         raise AssertionError("public contract different-tree duplicate semantics drifted")
     rejected += 1
 
-    supplement = packages["supplement"]
-    missing_target = mutate_package(
-        root,
-        supplement,
-        "supplement-target-missing",
-        lambda p, m: update_supplement_target(p, m, "20260711/wick/20260711-125959-missing"),
-    )
-    expect_reject(client, db_path, data_root, "supplement", missing_target, "supplement_target_not_found")
-    rejected += 1
-
     login_member(client, "jared")
     jared_patch = mutate_package(root, patch, "jared-original", lambda p, m: retarget_member(p, m, "jared", "20260711-120001-patch"))
     jared_result = plugin_submit_package(plugin_submit, client, jared_patch, "jared")
     if not jared_result.get("accepted"):
         raise AssertionError(f"cross-member setup patch rejected: {jared_result}")
     accepted += 1
-    login_member(client, "wick")
-    cross_member = mutate_package(
-        root,
-        supplement,
-        "supplement-cross-member",
-        lambda p, m: update_supplement_target(p, m, "20260711/jared/20260711-120001-patch"),
-    )
-    expect_reject(client, db_path, data_root, "supplement", cross_member, "supplement_target_member_mismatch")
-    rejected += 1
-
-    supplement_result = plugin_submit_package(plugin_submit, client, supplement, "wick")
-    if not supplement_result.get("accepted"):
-        raise AssertionError(f"same-member original supplement rejected: {supplement_result}")
-    accepted += 1
-    chained = mutate_package(
-        root,
-        supplement,
-        "supplement-target-is-supplement",
-        lambda p, m: (m.update(run_id="20260711-130001-field-supplement"), update_supplement_target(p, m, "20260711/wick/20260711-130000-field-supplement")),
-    )
-    expect_reject(client, db_path, data_root, "supplement", chained, "supplement_target_not_original")
-    rejected += 1
     return {"accepted": accepted, "rejected": rejected, "archive_errors": archive_errors}
 
 
@@ -793,12 +729,6 @@ def exercise_remote_server(packages: dict[str, Path], host: str, runtime_root: s
     }
 
 
-def update_supplement_target(package: Path, manifest: dict[str, Any], target: str) -> None:
-    manifest["supplement_for_package_key"] = target
-    display = manifest["files"]["display"][0]
-    set_nested_json(package, display, lambda value: value.setdefault("payload", {}).update(supplement_for_package_key=target))
-
-
 def retarget_member(package: Path, manifest: dict[str, Any], member: str, run_id: str) -> None:
     manifest["member_alias"] = member
     manifest["member_name"] = member
@@ -835,7 +765,7 @@ def main() -> int:
             if args.plugin_suite_root is None:
                 raise SystemExit("--plugin-suite-root is required with --server-packages-root")
             suite_root = args.plugin_suite_root.resolve()
-            packages = {name: package_root / name for name in ("daily", "weekly", "patch", "supplement")}
+            packages = {name: package_root / name for name in ("daily", "weekly", "patch")}
             public, public_contract = verify_public_contract(system_root, suite_root)
             runtime = exercise_server(system_root, package_root.parent, packages, suite_root, public_contract)
             print(json.dumps({"status": "PASS", **public, **runtime}, ensure_ascii=False, sort_keys=True))

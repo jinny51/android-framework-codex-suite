@@ -21,7 +21,7 @@ from akbs_intake.reports.session_summary import (
 from akbs_intake.reports.weekly_facts import build_weekly_facts, project_rows_to_items
 from akbs_intake.search_usage import search_usage_payload
 from akbs_intake.patch.assets import PatchInfo
-from akbs_intake.patch.supplement import write_default_evidence
+from akbs_intake.patch.package_quality import write_default_evidence
 
 ValidatePackage = Callable[[Path], dict[str, Any]]
 WritePackageSource = Callable[[Path, dict[str, str], str], dict[str, Any]]

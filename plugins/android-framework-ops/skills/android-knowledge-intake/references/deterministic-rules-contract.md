@@ -12,26 +12,27 @@
 | Patch asset names | `patch_asset_name_prefix`, `has_uncontrolled_patch_asset_prefix`, `classify_patch_asset_names` |
 | Function scope | `aggregate_package_scope_errors`, `classify_function_scope`, `curation_text_missing_fields` |
 | Pre-change search evidence | `classify_pre_change_search`, `normalize_reuse_decision`, `search_results_need_usage_decision` |
-| Supplement relationships | `supplement_target_relation_errors`, `supplement_field_policy`, `patch_asset_correction_source_errors` |
+| Patch package quality | `framework_metadata_is_traceable`, patch asset and verification validators |
 | Upload text quality | `text_field_quality_errors`, `template_leak_errors`, `future_run_id_errors` |
 
 Member generation, patch capture, and upload preflight import this module directly from `android-framework-ops`.
 
-The local `akbs-curation-maintainer` loads the same source module from `$AKBS_ROOT/plugin` when it needs deterministic boundary checks before AI curation. It must not reimplement project, platform, Android version, aggregate, search, supplement, or patch-asset rules.
+The local `akbs-curation-maintainer` loads the same source module from `$AKBS_ROOT/plugin` when it needs deterministic boundary checks before AI curation. It must not reimplement project, platform, Android version, aggregate, search, package-quality, or patch-asset rules.
 
 The Linux/test35 AKBS service owns HTTP authentication, storage, active SQLite transactions, queue state, and API validation. It neither loads the Codex plugin cache nor keeps a generated copy of this module.
 
 ## Member-Only Behavior
 
 - Plugin install/update and current-session cache gates.
-- Local report, patch, and supplement generation.
+- Local report and patch-package generation.
+- Read and complete server-owned non-patch information requests on the same patch package.
 - Evidence collection from Codex sessions and developer workspaces.
 - Platform source access and remote build/deploy orchestration.
 - Upload preflight and actionable member prompts.
 
 ## Maintainer-Only Behavior
 
-- AI decisions for new knowledge, merge, archive, reject, or evidence requests.
+- AI decisions for new knowledge or planned merge after queue admission.
 - Knowledge validity, applicability, confidence, and risk assessment.
 - Active SQLite read-only curation analysis and materialization plans.
 - Team aggregation and main-control operation.

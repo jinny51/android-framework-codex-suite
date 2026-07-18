@@ -6,7 +6,7 @@
   "manifest_schema": {
     "path": "knowledge-incoming-package.schema.json",
     "id": "https://akbs.internal/contracts/incoming/v1/knowledge-incoming-package.schema.json",
-    "sha256": "706c3c7a8b621cc2a392cdeb5561897728025bd9616ea0afab39dc3c3072541b"
+    "sha256": "65472e6fea5ebad7a0bc6f548986156d3c8135d4a903ea5f1d932b058bb198e2"
   },
   "golden_fixtures": {
     "daily": {
@@ -23,11 +23,6 @@
       "path": "fixtures/patch.manifest.json",
       "package_kind": "framework_change",
       "sha256": "0ee8eb63a8be866ea4a2e7053870f1e21a357db20caeb6848e860db9bc544bd9"
-    },
-    "supplement": {
-      "path": "fixtures/supplement.manifest.json",
-      "package_kind": "framework_change",
-      "sha256": "bcf27d5ec70fb1587ec2650517c02797f91ae91f4013dc1c1429db155d63dfee"
     }
   },
   "server_validator": "akbs_active/upload_domains/incoming_contract.py",
@@ -84,10 +79,7 @@
     "framework": [
       "ai_trace_mismatch",
       "case_binding_mismatch",
-      "display_target_mismatch",
       "display_trace_mismatch",
-      "field_correction_has_patch",
-      "invalid_equivalent_verification",
       "invalid_patch_ai_facts",
       "invalid_patch_asset",
       "invalid_patch_view",
@@ -99,13 +91,6 @@
       "variant_trace_mismatch",
       "verification_method_missing",
       "verification_not_pass"
-    ],
-    "supplement": [
-      "supplement_target_invalid",
-      "supplement_target_member_mismatch",
-      "supplement_target_missing",
-      "supplement_target_not_found",
-      "supplement_target_not_original"
     ]
   },
   "duplicate_package_identity": {
@@ -120,6 +105,30 @@
       "outcome": "reject_conflict",
       "reason_code": "package_already_exists",
       "creates_new_fact": false
+    }
+  },
+  "patch_information_completion": {
+    "schema": "akbs-patch-package-information-completion/v1",
+    "fields": [
+      {"id": "project", "label": "项目"},
+      {"id": "projects", "label": "适用项目"},
+      {"id": "platform", "label": "平台"},
+      {"id": "android_version", "label": "Android 版本"},
+      {"id": "title", "label": "标题"},
+      {"id": "summary", "label": "功能说明"},
+      {"id": "feature_name", "label": "功能名称"},
+      {"id": "problem", "label": "问题说明"},
+      {"id": "solution", "label": "解决办法"},
+      {"id": "result", "label": "验证结果"},
+      {"id": "risk_or_gap", "label": "风险或边界"},
+      {"id": "code_anchors", "label": "代码位置"},
+      {"id": "verification", "label": "验证说明"},
+      {"id": "applicability", "label": "适用边界"}
+    ],
+    "attachment": {
+      "max_file_bytes": 2097152,
+      "max_total_bytes": 8388608,
+      "patch_assets_immutable": true
     }
   }
 }

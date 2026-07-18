@@ -8,7 +8,7 @@ from typing import Any
 
 
 AKBS_RULES_CONTRACT_VERSION = "2026-07-02.1"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.137"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.139"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -76,6 +76,14 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
     "report_markdown_project_emphasis_v1": {
         "min_plugin_version": "1.0.135",
         "description": "daily and weekly Markdown bold every project-name occurrence while structured report fields remain plain text",
+    },
+    "patch_package_unification_v1": {
+        "min_plugin_version": "1.0.139",
+        "description": "framework changes upload as one patch package and never create a supplement package",
+    },
+    "queue_information_completion_v1": {
+        "min_plugin_version": "1.0.139",
+        "description": "lightweight queue gaps append metadata or non-patch assets to the existing patch package",
     },
 }
 DEFAULT_SOURCE_VERSION_CAPABILITIES = ("source_version_evidence",)
@@ -530,8 +538,8 @@ def aggregate_package_scope_errors(text: str, patch_count: int = 0) -> list[str]
     return [
         f"补丁包（patch package）不能是无共同目标的聚合包（aggregate package）。{count}"
         f"{detail}"
-        "请按功能拆分（function split）为多个新的原始包（original package）；"
-        "一个原始包只能对应一个共同功能目标。"
+        "请按功能拆分（function split）为多个新的补丁包；"
+        "一个补丁包只能对应一个共同功能目标。"
     ]
 
 
@@ -564,15 +572,15 @@ def classify_pre_change_search(
     results = payload.get("results")
     has_results = search_results_need_usage_decision(results)
     requires_search = implementation_requires_pre_change_search(implementation_origin)
-    can_supplement = requires_search and searched and has_results and decision == "unknown"
+    can_complete_before_upload = requires_search and searched and has_results and decision == "unknown"
     requires_overlap = not searched or not requires_search
     return {
         "searched": searched,
         "decision": decision,
         "has_results": has_results,
         "requires_pre_change_search": requires_search,
-        "member_can_supplement": can_supplement,
-        "missing_field": "search_usage" if can_supplement else "",
+        "member_can_complete_before_upload": can_complete_before_upload,
+        "missing_field": "search_usage" if can_complete_before_upload else "",
         "requires_post_change_overlap_check": requires_overlap,
         "validity_score_effect": "search_loop_score_possible" if searched and decision != "unknown" else "no_search_loop_score",
         "package_status": str(package_status or "").strip().lower(),
@@ -651,32 +659,6 @@ def source_version_errors(
     return errors
 
 
-def supplement_target_relation_errors(target_package_key: Any) -> list[str]:
-    target = str(target_package_key or "").strip()
-    if not target:
-        return []
-    run_id = target.split("/")[-1].strip().lower()
-    supplement_markers = (
-        "supplement",
-        "evidence-supplement",
-        "verification-supplement",
-        "project-supplement",
-        "platform-supplement",
-        "android-version-supplement",
-        "patch-asset-correction",
-        "补证",
-    )
-    if not any(marker in run_id for marker in supplement_markers):
-        return []
-    return [
-        "补证包（evidence supplement package）不能继续补证补证包。"
-        f"当前 target package key={target} 看起来是补证包；"
-        "请改为指向最初被打回的原始包（original package）package key。"
-        "如果原始包是无共同目标聚合包或功能边界过宽，不能继续补证；"
-        "请按功能重新上传新的原始补丁包。"
-    ]
-
-
 def patch_upload_gate_errors(manifest: dict[str, Any] | None, *, allow_incomplete: bool = False) -> list[str]:
     payload = manifest if isinstance(manifest, dict) else {}
     if payload.get("package_kind") != "framework_change":
@@ -684,19 +666,14 @@ def patch_upload_gate_errors(manifest: dict[str, Any] | None, *, allow_incomplet
     if allow_incomplete:
         return []
     package_status = str(payload.get("package_status") or "").strip().lower()
-    is_supplement = bool(str(payload.get("supplement_for_package_key") or "").strip())
+    has_legacy_patch_fields = bool(str(payload.get("supplement_for_package_key") or "").strip())
     errors: list[str] = []
-    if is_supplement:
-        errors.extend(supplement_target_relation_errors(payload.get("supplement_for_package_key")))
+    if has_legacy_patch_fields:
+        return [
+            "[legacy_patch_contract_not_supported] 该目录使用旧版补丁包协议；"
+            "请升级插件并按当前补丁包合同重新检查。"
+        ]
     if package_status == "validated":
-        return errors
-    if is_supplement:
-        errors.append(
-            "补证包（evidence supplement package）上传必须是已验证（validated）状态。"
-            f"当前 package_status={package_status or 'missing'}。"
-            "如果补证后仍未通过验证或证据仍不完整，请先在成员本机继续补齐；"
-            "不要把半成品补证包送入服务器上传队列。"
-        )
         return errors
     errors.append(
         "普通补丁包（patch package）上传必须是已验证（validated）状态。"
@@ -705,88 +682,6 @@ def patch_upload_gate_errors(manifest: dict[str, Any] | None, *, allow_incomplet
         "或继续在成员本机补齐证据；完成构建和设备/等价验证后再重新生成并上传补丁包。"
     )
     return errors
-
-
-SUPPLEMENT_FIELD_POLICIES = {
-    "project": {
-        "member_label": "项目（project）",
-        "member_can_supplement": True,
-        "member_can_fabricate": False,
-        "historical_fact": False,
-        "guidance": "请从源码路径、分支名、构建目录或需求上下文补充可追溯项目型号。",
-    },
-    "platform": {
-        "member_label": "平台（platform）",
-        "member_can_supplement": True,
-        "member_can_fabricate": False,
-        "historical_fact": False,
-        "guidance": "请补充 mtk、rk 或 unisoc，并提供来源依据。",
-    },
-    "android_version": {
-        "member_label": "Android 版本（Android version）",
-        "member_can_supplement": True,
-        "member_can_fabricate": False,
-        "historical_fact": False,
-        "guidance": "请补充数字 Android 版本，并提供构建或源码依据。",
-    },
-    "verification": {
-        "member_label": "验证（verification）",
-        "member_can_supplement": True,
-        "member_can_fabricate": False,
-        "historical_fact": False,
-        "guidance": "请补充远端构建、本机产物、adb 设备验证和验证结论。",
-    },
-    "function_split": {
-        "member_label": "按功能拆分补丁包（function split）",
-        "member_can_supplement": False,
-        "member_can_fabricate": False,
-        "historical_fact": False,
-        "guidance": "无共同目标聚合包不能补证，请按功能重新上传新的原始包（original package）。",
-    },
-    "patch_asset_correction": {
-        "member_label": "补丁资产修正（patch asset correction）",
-        "member_can_supplement": True,
-        "member_can_fabricate": False,
-        "historical_fact": False,
-        "guidance": "请在干净工作树重新采集同一功能补丁包，作为补证包关联原始包。",
-    },
-    "search_usage": {
-        "member_label": "开发前知识搜索（pre-change knowledge search）",
-        "member_can_supplement": False,
-        "member_can_fabricate": False,
-        "historical_fact": True,
-        "guidance": "开发前知识搜索不能事后补造；缺失时由管理端执行沉淀前重叠检索。",
-    },
-    "package_status": {
-        "member_label": "包状态（package status）",
-        "member_can_supplement": True,
-        "member_can_fabricate": False,
-        "historical_fact": False,
-        "guidance": "请根据验证结论重新生成 candidate、validated、failed 或 blocked 状态。",
-    },
-    "patch_companion_readme": {
-        "member_label": "模板化补丁配套说明（templated patch companion readme）",
-        "member_can_supplement": True,
-        "member_can_fabricate": False,
-        "historical_fact": False,
-        "guidance": "请删除空模板 patches/*.readme.md，或补成有效事实说明。",
-    },
-}
-
-
-def supplement_field_policy(field: str) -> dict[str, Any]:
-    key = str(field or "").strip()
-    policy = SUPPLEMENT_FIELD_POLICIES.get(key)
-    if policy:
-        return {"field": key, **policy}
-    return {
-        "field": key,
-        "member_label": key,
-        "member_can_supplement": True,
-        "member_can_fabricate": False,
-        "historical_fact": False,
-        "guidance": "请补充可追溯事实证据。",
-    }
 
 
 def classify_patch_asset_names(paths: list[Any]) -> dict[str, Any]:
@@ -820,33 +715,6 @@ def classify_function_scope(text: str, patch_count: int = 0) -> dict[str, Any]:
 def curation_text_requires_patch_asset_correction(text: str) -> bool:
     normalized = str(text or "").lower()
     return any(marker in normalized for marker in PATCH_ASSET_CORRECTION_MARKERS)
-
-
-def patch_asset_correction_source_errors(
-    manifest: dict[str, Any] | None,
-    framework_change_summary: dict[str, Any] | None,
-) -> list[str]:
-    payload = manifest if isinstance(manifest, dict) else {}
-    if payload.get("package_kind") != "framework_change":
-        return []
-    if not str(payload.get("supplement_for_package_key") or "").strip():
-        return []
-    text = " ".join([str(payload.get("supplement_reason") or ""), str(payload.get("summary") or "")])
-    if not curation_text_requires_patch_asset_correction(text):
-        return []
-    summary = framework_change_summary if isinstance(framework_change_summary, dict) else {}
-    try:
-        capture_package_count = int(summary.get("capture_package_count") or 0)
-    except (TypeError, ValueError):
-        capture_package_count = 0
-    if capture_package_count > 0:
-        return []
-    return [
-        "补丁资产修正（patch asset correction）补证包必须使用 android-framework-patch-capture "
-        "从干净源码工作树重新采集同一功能补丁包；当前未检测到 patch-capture 工作包 "
-        f"（capture_package_count={capture_package_count}）。"
-        "不能用直接 --patch、手写说明或复制旧补丁伪造补丁资产修正证据。"
-    ]
 
 
 def curation_text_requires_function_split(text: str) -> bool:

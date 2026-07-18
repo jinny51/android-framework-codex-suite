@@ -1,29 +1,42 @@
 ---
 name: android-framework-patch-intake
-description: "Use when generating, replacing, checking, or submitting Android Framework original patch packages, evidence supplement packages, or patch asset correction packages through AKBS incoming. Do not use for daily reports, weekly reports, or knowledge curation decisions."
+description: "Use when generating, checking, submitting, or completing queue information for one validated Android Framework patch package through AKBS incoming. Do not use for daily reports, weekly reports, or knowledge curation decisions."
 ---
 
 # Android Framework Patch Intake
 
-Use this member-facing skill for 原始补丁包、补证包、替换包 and 补丁资产修正 package submission. It takes a real Framework change or an `android-framework-patch-capture` package and produces a `framework_change` incoming package.
+Use this member-facing skill for one complete Android Framework 补丁包. It takes a real Framework change or an `android-framework-patch-capture` result and produces one `framework_change` incoming package.
 
-This skill is an entrypoint, not a separate upload implementation. It routes to the shared member intake kernel in `android-knowledge-intake/scripts/android_knowledge_intake.py` with `patch` mode, so member identity, server submission, manifest protocol, replacement metadata, plugin version gate, session cache gate, local validation, project/platform/Android version checks, and supplement relationship checks remain shared with daily and weekly intake.
+This skill calls the shared member intake kernel in `android-knowledge-intake/scripts/android_knowledge_intake.py` with `patch` mode. Member identity, endpoint resolution, source-version evidence, package validation and upload remain shared with daily and weekly intake.
 
-## Boundary
+## Responsibility
 
-- Owns member-side `framework_change` incoming generation, original patch package upload, evidence supplement package upload, replacement metadata, `materials/display/patch_view.json`, and `materials/evidence/patch_ai_facts.json`.
-- Uses `android-framework-patch-capture` for real feature capture when there are source changes or patch asset corrections.
-- Does not generate daily reports, weekly reports, administrator summaries, curation decisions, database writes, knowledge repository writes, or UI changes.
+The member-side Skill is the primary completeness gate. Before upload it must collect and validate:
 
-## Rules
+- one common functional goal;
+- traceable project, platform and Android version;
+- clean, immutable patch assets;
+- problem, solution, code anchors and applicability;
+- PASS build plus device or accepted equivalent verification;
+- honest knowledge-search usage facts.
 
-Ordinary patch packages and evidence supplements must be `validated`: function boundary is clear, project/platform/Android version are traceable, patch assets are clean, and build plus device or accepted equivalent verification passed.
+Only a `validated` package enters the server queue. `candidate`, `draft`, `failed` and `blocked` work stays local or in report context until it becomes a complete patch package.
 
-补证包（evidence supplement package） must link to the original package with `--supplement-for-package-key`. Do not wrap a supplement around another supplement. If the original package is a no-common-target aggregate package or date-bundled patch set, split and upload new function-level original packages instead.
+AKBS no longer creates or uploads 原始包、补证包 or 逻辑包. The patch package is the only current business identity.
 
-`adapt` and `reference_only` search decisions are reference evidence only. They must not imply a merge decision. Curation decisions belong to the admin-side local skill.
+## Queue fallback
+
+The administrator-side intake Skill independently checks the queued package as a safety fallback:
+
+- complete: admit the same patch package;
+- metadata, explanation, log, screenshot or other non-patch evidence missing: ask the member to complete the existing patch package;
+- patch bytes must change, the functional goal must split, or the package cannot be trusted: reject intake and ask for a newly generated patch package.
+
+Queue completion never creates another package key. The patch file set and its hash are immutable. Codex may add text, fields or non-patch attachments only after reading the exact open request. Curation starts only after intake admission and decides `new knowledge` or `planned merge`.
 
 ## Commands
+
+Generate or submit one complete patch package:
 
 ```bash
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare \
@@ -35,32 +48,27 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch --submit-latest
 ```
 
-Evidence supplement example:
+Read an open queue information request:
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare \
-  --patch-package /path/to/.codex/patch-packages/<run-id> \
-  --project "TVE1067M" \
-  --platform mtk \
-  --android-version 16 \
-  --summary "补充验证证据" \
-  --status validated \
-  --supplement-for-package-key 20260612/lincong/20260612-172836-patch \
-  --supplement-reason "补充验证证据"
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch \
+  --inspect-information-request <request-id>
 ```
 
-Lightweight field correction example for project/platform/Android version gaps:
+Submit a reviewed response for the same patch package:
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare \
-  --supplement-for-package-key 20260702/lincong/20260702-193308-patch \
-  --supplement-mode field_correction \
-  --corrected-field project=TVI3315A \
-  --corrected-field platform=rk \
-  --corrected-field android_version=14 \
-  --correction-reason "管理端提示项目名缺失，按成员可追溯字段补证" \
-  --summary "补充 TVI3315A 项目字段" \
-  --status validated
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch \
+  --complete-information-request /path/to/response.json
 ```
 
-Field correction packages do not include patch diff, verification, search evidence, `patch_ai_facts`, material name, or material summary. Supplements inherit the target original package material identity. If the material name or material summary is wrong, regenerate a replacement original package instead of using field correction. If the missing item is verification, patch asset, local-check, `patch_ai_facts`, or polluted diff, rerun `android-framework-patch-capture` from a clean source tree and submit an asset correction supplement.
+The response uses `schema=akbs-patch-package-information-completion/v1`, the exact `request_id`, optional human `statement`, optional allowed `fields`, and optional non-patch attachments with `relative_path` plus local `source_path`. The client reads the server request again and binds the authoritative patch-set hash itself; callers cannot override it.
+
+## Boundaries
+
+- Use `android-framework-patch-capture` when source changes or patch recapture are required.
+- Do not turn an incomplete or mixed-function change into an upload merely by adding prose.
+- Do not create a second package to add evidence.
+- Do not modify patch files during queue completion.
+- Do not decide knowledge merge/new-case outcomes; those belong to administrator curation after intake.
+- `adapt` and `reference_only` search decisions are reference evidence, not merge decisions.

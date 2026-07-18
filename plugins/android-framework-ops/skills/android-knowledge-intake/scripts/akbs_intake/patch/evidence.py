@@ -403,22 +403,11 @@ def patch_view_payload(
     verification_payload: dict[str, Any],
     risk_payload: dict[str, Any],
     patch_rel_paths: list[str],
-    supplement_for_package_key: str,
-    supplement_reason: str,
-    supplement_mode: str = "",
-    corrected_fields: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     summary = str(manifest_like.get("summary") or "").strip() or "Framework 补丁包"
-    material_kind_label = "字段补证包" if supplement_mode == "field_correction" else ("补证包" if supplement_for_package_key else "原始包")
-    material_identity_mode = "inherit_target_package" if supplement_for_package_key else "self"
     result_summary = str(verification_payload.get("summary") or verification_payload.get("result") or "验证结果未提供")
-    if supplement_mode == "field_correction":
-        result_summary = "字段级补证，不包含补丁 diff、验证结论或代码证据。"
     risks = list_string_values(risk_payload.get("risk_areas")) or list_string_values(risk_payload.get("limits"))
     risk_or_gap = "；".join(risks[:2]) if risks else "暂无明确遗留风险"
-    if supplement_for_package_key:
-        risk_or_gap = f"补证目标：{supplement_for_package_key}；{supplement_reason or risk_or_gap}"
-    corrected_items = [f"{key}: {value}" for key, value in sorted((corrected_fields or {}).items())]
     detail_sections = [
         {"title": "问题", "items": [case_problem or summary]},
         {"title": "修改内容", "items": [case_solution or summary, *patch_rel_paths]},
@@ -426,25 +415,10 @@ def patch_view_payload(
         {"title": "遗留风险", "items": risks or ["暂无明确遗留风险"]},
         {"title": "下一步", "items": ["按管理端入库校验和沉淀判断继续处理。"]},
     ]
-    if supplement_mode == "field_correction":
-        detail_sections[1] = {
-            "title": "字段修正",
-            "items": corrected_items or ["未列出字段修正内容。"],
-        }
-    if supplement_for_package_key:
-        detail_sections.insert(
-            1,
-            {
-                "title": "补证关系",
-                "items": [f"补证包补充原始包：{supplement_for_package_key}", supplement_reason or "补充原始包证据。"],
-            },
-        )
     return {
         "kind": "patch_view",
         "payload": {
-            "material_kind_label": material_kind_label,
-            "material_identity_mode": material_identity_mode,
-            "material_identity_target_package_key": supplement_for_package_key,
+            "package_label": "补丁包",
             "display_title": compact_text(summary, 80),
             "problem_summary": case_problem or summary,
             "solution_summary": case_solution or summary,
@@ -454,7 +428,6 @@ def patch_view_payload(
             "android_version": manifest_like.get("android_version", "unknown"),
             "member_alias": manifest_like.get("member_alias", ""),
             "member_name": manifest_like.get("member_name", ""),
-            "supplement_for_package_key": supplement_for_package_key,
             "verification": {
                 "result": str(verification_payload.get("result") or ""),
                 "method": str(verification_payload.get("method") or ""),
@@ -552,8 +525,6 @@ def write_patch_view_and_ai_facts(
     verification_payload: dict[str, Any],
     risk_payload: dict[str, Any],
     patch_rel_paths: list[str],
-    supplement_for_package_key: str,
-    supplement_reason: str,
     patch_diff_payload: dict[str, Any],
     search_payload: dict[str, Any],
     plugin_version: str,
@@ -569,8 +540,6 @@ def write_patch_view_and_ai_facts(
             verification_payload=verification_payload,
             risk_payload=normalized_risk_payload,
             patch_rel_paths=patch_rel_paths,
-            supplement_for_package_key=supplement_for_package_key,
-            supplement_reason=supplement_reason,
         ),
     )
     patch_ai_facts_path = materials_rel("evidence", "patch_ai_facts.json")

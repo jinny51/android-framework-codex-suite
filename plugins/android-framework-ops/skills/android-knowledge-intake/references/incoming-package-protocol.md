@@ -2,7 +2,7 @@
 
 ## Public v1 compatibility gate
 
-The member plugin and the authoritative server share the same incoming v1 schema, four golden manifests, public reason-code contract, and `akbs-error-envelope-v1` schema. The plugin mirror and its exact content-digest compatibility pin live in `contracts/incoming/v1/` at the marketplace repository root. The recorded system Git commit is audit provenance only: an unrelated server commit with identical contract/schema/fixture bytes remains compatible, while any public-contract, reason-code, schema, fixture, or error-envelope digest drift fails closed. Production plugin code and server runtime code do not import each other.
+The member Skill and the server share the same incoming v1 schema, three golden manifests, public reason-code contract, and `akbs-error-envelope-v1` schema. The member Skill owns package completeness before upload; the server independently repeats the deterministic contract only as a final safety boundary and never repairs or re-authors a package. The plugin mirror and its exact content-digest compatibility pin live in `contracts/incoming/v1/` at the marketplace repository root. The recorded system Git commit is audit provenance only: an unrelated server commit with identical contract/schema/fixture bytes remains compatible, while any public-contract, reason-code, schema, fixture, or error-envelope digest drift fails closed. Production plugin code and server runtime code do not import each other.
 
 Before publishing an incoming-contract change on WSL, run:
 
@@ -11,7 +11,7 @@ python3 scripts/validate_incoming_contract_gate.py \
   --system-root /home/jinny/akbs/linux/system
 ```
 
-The gate uses the real member CLI to build daily, weekly, patch, and field-correction supplement packages. It submits them to an isolated server SQLite/data root through the authoritative test35 Python runtime, checks the positive path, exercises the rejection matrix, and verifies that every rejection leaves all package/type/queue/asset/material-identity tables and upload storage unchanged. Temporary files and processes are removed when the command exits. The server remains the upload authority; this compatibility gate does not turn the local member check into an acceptance claim.
+The gate uses the real member CLI to build daily, weekly and one complete patch package, plus an isolated same-package queue information completion. It checks positive paths, rejects legacy package shapes, and proves rejected requests leave package, queue, asset, envelope and upload storage unchanged. Local completeness is the primary packaging decision; the server acceptance check is an independent fail-safe, not a second package-authoring pipeline.
 
 Upload, search, and merge clients consume the shared error envelope by stable `code`, `request_id`, optional sanitized `details`, typed category, and safe message. Legacy free-text errors are explicitly marked and cannot drive retry or business decisions. Client errors and logs must not expose credentials, cookies, request bodies, session text, paths, or underlying exception text.
 
@@ -85,7 +85,7 @@ rank by package status later
 
 Daily and weekly incoming automation should run even when no patch is complete. It must preserve session facts, git activity, discovered patch files, build or verification signals, WIP state, failed paths, blocked paths, and missing evidence.
 
-Patch package status is evidence-quality based. Member-side upload preparation and admin-side local promotion are stricter than local preservation: ordinary patch packages and evidence supplements must be `validated`; other statuses stay local or in daily/weekly context unless a separate archive-only path is explicitly designed.
+Patch package status is evidence-quality based. A framework change must be `validated` before upload; other statuses stay local or in daily/weekly context.
 
 ```text
 validated
@@ -108,7 +108,7 @@ blocked
 
 Non-`validated` patch packages stop ordinary upload. Daily or weekly trace should still record what happened, why it is incomplete, failed, or blocked, and what evidence remains missing.
 
-Patch package project inference may use a same-member same-day daily package only when no explicit `related_report_run_ids` were provided and the daily context exposes exactly one TVD/TVE/TVA/TVI project candidate. This is a member-side generation convenience, not a server-side guess. Ambiguous daily context, multiple projects, or missing daily packages must keep `project=unknown` and rely on a later evidence supplement package.
+Patch package project inference may use a same-member same-day daily package only when no explicit `related_report_run_ids` were provided and the daily context exposes exactly one TVD/TVE/TVA/TVI project candidate. This is a member-side generation convenience, not a server-side guess. Ambiguous daily context, multiple projects, or missing daily packages keep `project=unknown` and prevent validated upload until the member-side Skill collects a traceable value.
 
 ## Daily Or Weekly Trace
 
@@ -244,13 +244,11 @@ Manifest excerpt:
   "package_kind": "framework_change",
   "case_id": "case-...",
   "variant_id": "variant-...",
-  "package_status": "candidate",
+  "package_status": "validated",
   "platform": "mtk",
   "android_version": "15",
   "project": "TVE8402M",
   "related_report_run_ids": ["20260601-210000-daily"],
-  "supplement_for_package_key": "20260612/lincong/20260612-172836-patch",
-  "supplement_reason": "补充项目（project）证据",
   "files": {
     "case": "materials/case.json",
     "variant": "materials/variant.json",
@@ -266,8 +264,7 @@ Manifest excerpt:
       "materials/evidence/patch_problem_summary.json",
       "materials/evidence/risk_surface.json",
       "materials/evidence/verification_result.json",
-      "materials/evidence/search_before_change.json",
-      "materials/evidence/evidence_supplement.json"
+      "materials/evidence/search_before_change.json"
     ]
   }
 }
@@ -279,7 +276,7 @@ Manifest excerpt:
 {
   "kind": "patch_view",
   "payload": {
-    "material_kind_label": "原始包",
+    "material_kind_label": "补丁包",
     "display_title": "导航策略适配",
     "problem_summary": "要解决什么问题",
     "solution_summary": "补丁如何解决",
@@ -289,7 +286,6 @@ Manifest excerpt:
     "android_version": "15",
     "member_alias": "member01",
     "member_name": "成员",
-    "supplement_for_package_key": "",
     "ui_card": {
       "title": "导航策略适配",
       "subtitle": "TVE8402M / mtk / Android 15",
@@ -330,7 +326,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.137"
+    "plugin_version": "1.0.139"
   }
 }
 ```
@@ -361,51 +357,44 @@ patch_view_v1 = 1.0.62
 patch_ai_facts_v1 = 1.0.62
 split_report_skills = 1.0.63
 report_view_v2 = 1.0.63
-lightweight_supplement_v1 = 1.0.65
+patch_package_unification_v1 = 1.0.139
+queue_information_completion_v1 = 1.0.139
 ```
 
-The required capabilities come from package contents, not from the current plugin release. For example, a package that only needs source version evidence requires at least `1.0.60`; a patch package with `patch_view.json` and `patch_ai_facts.json` requires `1.0.62`; a package using split report skills or report view v2 requires `1.0.63`; a field correction supplement requires `1.0.65`.
+The required capabilities come from package contents, not from the current plugin release. Historical packages retain their generation-time capability evidence. A current patch package requires the unified package capability; queue information completion requires the same-package completion capability.
 
 Codex normal development should carry pre-change knowledge search evidence in `materials/evidence/search_before_change.json`. If no reusable knowledge was found, record the explicit search result as `not_found` instead of omitting the evidence. When pre-change search did not really happen, `validated` still means the verification evidence passed; preserve `payload.searched = false`, warn locally, and let admin-side curation perform post-change overlap check without awarding search-loop reuse score. Manual, external, historical, mixed, or unknown implementation origin must not fabricate pre-change search and can still carry verification and patch facts for later admin-side curation.
 
 `candidate`, `draft`, `failed`, and `blocked` are local/report-context states by default. They must not be uploaded as ordinary patch packages, and they must not be presented as knowledge entries or reuse-ready validated solutions by member-side tooling.
 
-If a previous `framework_change` package is marked 需补证据（needs_evidence）, the supplement remains a normal `framework_change` package. Set `supplement_for_package_key` to the original incoming package key and include `materials/evidence/evidence_supplement.json`:
+After upload, intake has only three outcomes:
+
+```text
+admitted
+information_requested
+rejected
+```
+
+An open lightweight request is read with `--inspect-information-request`. A response uses:
 
 ```json
 {
-  "kind": "evidence_supplement",
-  "case_id": "case-...",
-  "variant_id": "variant-...",
-  "payload": {
-    "target_package_key": "20260612/lincong/20260612-172836-patch",
-    "reason": "补充项目（project）证据",
-    "project": "TVE1067M",
-    "platform": "mtk",
-    "android_version": "16",
-    "package_status": "validated"
-  }
+  "schema": "akbs-patch-package-information-completion/v1",
+  "request_id": "information-request-...",
+  "statement": "成员确认的补充说明",
+  "fields": {
+    "applicability": "TVE1086U / unisoc / Android 14 / default_display"
+  },
+  "attachments": [
+    {
+      "relative_path": "materials/requirements/display-mode-boundary.txt",
+      "source_path": "./display-mode-boundary.txt"
+    }
+  ]
 }
 ```
 
-This association only says the new patch package supplements evidence for an earlier package. It is not a curation decision and does not create another allowed `package_kind`.
-
-Supplement packages use `supplement_mode` to distinguish lightweight metadata correction from asset recapture:
-
-```text
-field_correction
-  Corrects project, platform, or Android version metadata.
-  Must not change material name, material summary, feature name, patch_view/report_view display title, or equivalent material identity fields.
-  Supplements inherit the target original package material identity. If material identity is wrong, regenerate a replacement original package.
-  Must include corrected_fields, correction_reason, evidence_supplement, and field_correction evidence.
-  Must not include patch diff, verification_result, search_before_change, patch_ai_facts, build/deploy evidence, or patch assets.
-
-asset_correction
-  Corrects patch diff, polluted patch assets, local-check, verification, or patch_ai_facts.
-  Must come from a fresh android-framework-patch-capture package for the same feature.
-```
-
-The member-side local check treats supplement packages as evidence closure attempts. If `supplement_reason` says the package补项目（project）, the new package must carry a traceable TVD/TVE/TVA/TVI project in `manifest.project` and `project_inference` must confirm `recognized=true`, `company_rule_match=true`, `basis`, and `checked_sources`. If it补平台（platform） or Android 版本（Android version）, the new package cannot keep the requested field as `unknown`; when capture evidence cannot prove those fields, `android_knowledge_intake.py patch` may use explicit `--platform mtk|rk|unisoc|unknown` and `--android-version <number>` to write the corrected boundary into `manifest.json`, `materials/variant.json`, and `materials/evidence/evidence_supplement.json`. If it补验证（verification）, `verification_result` must be `PASS`. If it补补丁资产修正（patch asset correction）, patch filenames must use a legal project（project）prefix or controlled platform prefixes such as `TVE1067M1-`, `mtk15-`, `rk14-`, or `unisoc16-`; other uncontrolled prefixes remain invalid because they cannot prove the project/platform boundary. If the old gap is pre-change knowledge search but the search did not happen before development, the member must not fabricate it; record the implementation origin and let admin-side curation perform post-change overlap check.
+The completion client reads the server request again and inserts the authoritative patch-set hash. The response file cannot define or override that hash. Text, allowed metadata and non-patch attachments may extend the current envelope; `.patch` files and `patches/` paths are rejected. If patch bytes or feature scope must change, reject intake and generate a new complete patch package instead. After admission, curation only decides new knowledge or planned merge.
 
 `materials/evidence/search_before_change.json` records member-side knowledge use before or during the change. It can come from an explicit patch capture package, or from same-day `android-knowledge-search` usage records only when those records match the current patch feature anchors. Same member and same day are not enough:
 

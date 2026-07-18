@@ -320,14 +320,15 @@ def invalid_success_response(message: str = "server response did not match the e
     )
 
 
-def request_json(
+def request_json_with_metadata(
     request: urllib.request.Request,
     *,
     timeout: float,
     contract_codes: frozenset[str] = frozenset(),
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, str]]:
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
+            headers = getattr(response, "headers", None)
             try:
                 raw = response.read(MAX_RESPONSE_BYTES + 1)
             except TypeError:
@@ -344,4 +345,24 @@ def request_json(
         raise invalid_success_response("server response was not UTF-8 JSON") from None
     if not isinstance(payload, dict):
         raise invalid_success_response("server response was not a JSON object")
+    request_id = ""
+    if headers is not None:
+        try:
+            request_id = str(headers.get("X-Request-ID") or "").strip()
+        except Exception:
+            request_id = ""
+    return payload, {"request_id": request_id if REQUEST_ID_RE.fullmatch(request_id) else ""}
+
+
+def request_json(
+    request: urllib.request.Request,
+    *,
+    timeout: float,
+    contract_codes: frozenset[str] = frozenset(),
+) -> dict[str, Any]:
+    payload, _metadata = request_json_with_metadata(
+        request,
+        timeout=timeout,
+        contract_codes=contract_codes,
+    )
     return payload
