@@ -91,6 +91,39 @@
       "variant_trace_mismatch",
       "verification_method_missing",
       "verification_not_pass"
+    ],
+    "patch_queue": [
+      "envelope_revision_missing",
+      "idempotency_conflict",
+      "idempotency_key_missing",
+      "information_attachment_duplicate",
+      "information_attachment_hash_mismatch",
+      "information_attachment_integrity",
+      "information_attachment_invalid",
+      "information_attachment_not_found",
+      "information_attachment_path_invalid",
+      "information_attachment_size",
+      "information_attachments_invalid",
+      "information_attachments_too_large",
+      "information_completion_empty",
+      "information_field_value_invalid",
+      "information_fields_invalid",
+      "information_fields_unsupported",
+      "information_request_closed",
+      "information_request_incomplete",
+      "information_request_member_mismatch",
+      "information_request_not_found",
+      "information_request_open",
+      "patch_asset_immutable",
+      "patch_package_head_missing",
+      "patch_package_contract_unavailable",
+      "patch_package_not_found",
+      "patch_package_not_in_queue",
+      "patch_set_changed",
+      "patch_set_missing",
+      "patch_set_proof_mismatch",
+      "queue_state_closed",
+      "queue_state_not_reviewable"
     ]
   },
   "duplicate_package_identity": {
@@ -130,5 +163,86 @@
       "max_total_bytes": 8388608,
       "patch_assets_immutable": true
     }
+  },
+  "patch_package_contract": {
+    "schema": "akbs-patch-package-contract/v1",
+    "business_identity": {
+      "visible_package_type": "patch_package",
+      "queue_identity": "patch_package_heads.package_key",
+      "main_branch_identity": "curation_units.unit_id",
+      "patch_assets_immutable": true,
+      "non_patch_envelope_append_only": true
+    },
+    "patch_set": {
+      "algorithm": "sha256-canonical-json-v1",
+      "source": "package_assets[asset_type=patch]",
+      "sort": ["relative_path", "sha256"],
+      "fields": ["relative_path", "sha256", "size_bytes"]
+    },
+    "queue": {
+      "states": [
+        "received",
+        "information_requested",
+        "information_submitted",
+        "admitted",
+        "rejected"
+      ],
+      "transitions": [
+        {"from": "received", "action": "request_information", "to": "information_requested"},
+        {"from": "information_submitted", "action": "request_information", "to": "information_requested"},
+        {"from": "information_requested", "action": "complete_information", "to": "information_submitted"},
+        {"from": "received", "action": "admit", "to": "admitted"},
+        {"from": "information_submitted", "action": "admit", "to": "admitted"},
+        {"from": "received", "action": "reject", "to": "rejected"},
+        {"from": "information_requested", "action": "reject", "to": "rejected"},
+        {"from": "information_submitted", "action": "reject", "to": "rejected"}
+      ],
+      "terminal_states": ["admitted", "rejected"],
+      "idempotency": "same-actor-and-key-replays-only-identical-canonical-payload"
+    },
+    "curation": {
+      "allowed_decisions": ["new_case", "merge_existing"],
+      "member_actions": ["confirm_merge", "submit_merge_dispute"],
+      "forbidden_decisions": ["needs_evidence", "supplement_review"],
+      "forbidden_actions": [
+        "submit_supplement",
+        "close_supplement_chain",
+        "upload_replacement_original"
+      ]
+    },
+    "retired_business_fields": [
+      "logical_package_key",
+      "logical_root_package_key",
+      "original_package_key",
+      "root_original_package_key",
+      "supplement_delta",
+      "supplement_for",
+      "supplement_for_package_key",
+      "supplement_intent",
+      "supplement_mode",
+      "supplement_package_key",
+      "supplement_reason",
+      "supplement_task"
+    ],
+    "retired_business_values": [
+      "original_package",
+      "supplement_package",
+      "logical_package",
+      "needs_evidence",
+      "supplement_review",
+      "close_supplement_chain"
+    ],
+    "history": {
+      "raw_rows": "immutable_audit_only",
+      "public_source_roles": ["source"],
+      "missing_parent_projection": "history_compatible_patch_package",
+      "inferred_relation_requires_audit_marker": true
+    },
+    "regenerate_when": [
+      "patch_bytes_change",
+      "patch_path_change",
+      "patch_set_change",
+      "functional_split_required"
+    ]
   }
 }

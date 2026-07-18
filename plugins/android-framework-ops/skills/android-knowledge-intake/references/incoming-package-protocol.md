@@ -375,6 +375,15 @@ information_requested
 rejected
 ```
 
+The exact machine state graph is not duplicated in Skill prose. It is consumed
+from `patch_package_contract.queue` in the pinned incoming public contract. Its
+current transient states are `received`, `information_requested`, and
+`information_submitted`; its terminal states are `admitted` and `rejected`.
+The same contract publishes the `patch_queue` reason-code family, so a modern
+queue rejection remains a typed contract failure instead of degrading to an
+unknown client error. The public contract content hash is the compatibility
+condition; the recorded system commit is provenance for audit only.
+
 An open lightweight request is read with `--inspect-information-request`. A response uses:
 
 ```json
