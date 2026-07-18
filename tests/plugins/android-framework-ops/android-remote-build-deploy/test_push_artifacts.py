@@ -25,6 +25,16 @@ FRAME_SCRIPT = (
     / "scripts"
     / "extract_video_frames.py"
 )
+DIAGNOSTICS_SCRIPT = (
+    REPO_ROOT
+    / "plugins"
+    / "android-framework-ops"
+    / "skills"
+    / "android-framework-change-workflow"
+    / "scripts"
+    / "collect_diagnostics.sh"
+)
+CANONICAL_OUTPUT_HELPER = REPO_ROOT.parent / "maintainer" / "scripts" / "akbs_outputs.py"
 
 
 def parse_shell_output(text: str) -> dict[str, str]:
@@ -38,6 +48,102 @@ def parse_shell_output(text: str) -> dict[str, str]:
 
 
 class PushArtifactsEvidenceTests(unittest.TestCase):
+    def test_default_diagnostics_promote_with_manifest_and_catalog(self) -> None:
+        if not CANONICAL_OUTPUT_HELPER.is_file():
+            self.skipTest("aggregate AKBS canonical outputs helper is not available")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            akbs_root = root / "akbs"
+            outputs = akbs_root / "outputs"
+            akbs_root.mkdir()
+
+            fake_adb = root / "adb"
+            fake_adb.write_text("#!/usr/bin/env bash\nprintf 'adb %s\\n' \"$*\"\n", encoding="utf-8")
+            fake_adb.chmod(0o755)
+            env = os.environ.copy()
+            env["AKBS_ROOT"] = str(akbs_root)
+            env["AKBS_OUTPUTS_HELPER"] = str(CANONICAL_OUTPUT_HELPER)
+            env["PATH"] = f"{root}:{env.get('PATH', '')}"
+
+            result = subprocess.run(
+                [str(DIAGNOSTICS_SCRIPT)],
+                env=env,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            manifests = list((outputs / "diagnostics" / "android-framework-change-workflow").glob("*/_manifest.json"))
+            self.assertEqual(len(manifests), 1)
+            payload = json.loads(manifests[0].read_text(encoding="utf-8"))
+            self.assertEqual(payload["schema"], "akbs-output-item-manifest-v1")
+            self.assertEqual(payload["category"], "diagnostics")
+            self.assertEqual(payload["retention"], {"mode": "ttl", "days": 14})
+            self.assertEqual(payload["authority_root"], str(akbs_root.resolve()))
+            self.assertFalse((manifests[0].parent / ".akbs-plugin-owner.json").exists())
+            self.assertEqual(list((outputs / "tmp").iterdir()), [])
+            catalog = [
+                json.loads(line)
+                for line in (outputs / "manifests" / "catalog.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            self.assertEqual(len(catalog), 1)
+            self.assertEqual(catalog[0]["item_id"], payload["item_id"])
+            self.assertEqual(catalog[0]["tree_sha256"], payload["tree_sha256"])
+
+    def test_diagnostics_guard_success_and_interruption_cleanup(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="akbs-external-diagnostics-") as tmp:
+            root = Path(tmp)
+            fake_adb = root / "adb"
+            fake_adb.write_text("#!/usr/bin/env bash\nprintf 'adb %s\\n' \"$*\"\n", encoding="utf-8")
+            fake_adb.chmod(0o755)
+            env = os.environ.copy()
+            env["PATH"] = f"{root}:{env.get('PATH', '')}"
+
+            forbidden = REPO_ROOT / "forbidden-diagnostics"
+            result = subprocess.run(
+                [str(DIAGNOSTICS_SCRIPT), "--out", str(forbidden)],
+                env=env,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("不能写入", result.stderr)
+            self.assertFalse(forbidden.exists())
+
+            completed = root / "completed-diagnostics"
+            result = subprocess.run(
+                [str(DIAGNOSTICS_SCRIPT), "--out", str(completed)],
+                env=env,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            self.assertTrue((completed / "getprop.txt").is_file())
+            self.assertFalse((completed / ".akbs-plugin-owner.json").exists())
+
+            fake_adb.write_text(
+                "#!/usr/bin/env bash\nkill -TERM \"$PPID\"\nsleep 0.1\nexit 143\n",
+                encoding="utf-8",
+            )
+            interrupted = root / "interrupted-diagnostics"
+            result = subprocess.run(
+                [str(DIAGNOSTICS_SCRIPT), "--out", str(interrupted)],
+                env=env,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse(interrupted.exists())
+
     def test_explicit_outputs_reject_plugin_source_and_cache_targets_before_writing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             targets = [
@@ -68,6 +174,126 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn("不能写入", result.stderr)
                     self.assertFalse(target.exists())
+
+    def test_akbs_output_symlink_escape_is_rejected_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            akbs_root = root / "akbs"
+            outputs = akbs_root / "outputs"
+            outside = root / "outside"
+            outputs.mkdir(parents=True)
+            outside.mkdir()
+            (outputs / "artifacts").symlink_to(outside, target_is_directory=True)
+            target = outputs / "artifacts" / "task-a" / "run-a" / "delivery.json"
+            artifact = root / "services.jar"
+            artifact.write_text("jar", encoding="utf-8")
+            fake_adb = root / "adb"
+            fake_adb.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            fake_adb.chmod(0o755)
+            env = os.environ.copy()
+            env["AKBS_ROOT"] = str(akbs_root)
+            env["ADB"] = str(fake_adb)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(PUSH_SCRIPT),
+                    "--artifact",
+                    str(artifact),
+                    "--dest",
+                    "/system/framework/services.jar",
+                    "--dry-run",
+                    "--evidence-out",
+                    str(target),
+                ],
+                env=env,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("符号链接", result.stderr)
+            self.assertFalse((outside / "task-a" / "run-a" / "delivery.json").exists())
+
+    def test_direct_akbs_output_write_requires_the_canonical_lifecycle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            akbs_root = root / "akbs"
+            target = akbs_root / "outputs" / "artifacts" / "task-a" / "run-a" / "delivery.json"
+            artifact = root / "services.jar"
+            artifact.write_text("jar", encoding="utf-8")
+            fake_adb = root / "adb"
+            fake_adb.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            fake_adb.chmod(0o755)
+            env = os.environ.copy()
+            env["AKBS_ROOT"] = str(akbs_root)
+            env["ADB"] = str(fake_adb)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(PUSH_SCRIPT),
+                    "--artifact",
+                    str(artifact),
+                    "--dest",
+                    "/system/framework/services.jar",
+                    "--dry-run",
+                    "--evidence-out",
+                    str(target),
+                ],
+                env=env,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("默认受控输出流程", result.stderr)
+            self.assertFalse(target.exists())
+
+    def test_akbs_outputs_root_symlink_is_rejected_before_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            akbs_root = root / "akbs"
+            outside = root / "outside"
+            akbs_root.mkdir()
+            outside.mkdir()
+            (akbs_root / "outputs").symlink_to(outside, target_is_directory=True)
+            target = akbs_root / "outputs" / "artifacts" / "task-a" / "run-a" / "delivery.json"
+            artifact = root / "services.jar"
+            artifact.write_text("jar", encoding="utf-8")
+            fake_adb = root / "adb"
+            fake_adb.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            fake_adb.chmod(0o755)
+            env = os.environ.copy()
+            env["AKBS_ROOT"] = str(akbs_root)
+            env["ADB"] = str(fake_adb)
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(PUSH_SCRIPT),
+                    "--artifact",
+                    str(artifact),
+                    "--dest",
+                    "/system/framework/services.jar",
+                    "--dry-run",
+                    "--evidence-out",
+                    str(target),
+                ],
+                env=env,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("符号链接", result.stderr)
+            self.assertFalse((outside / "artifacts" / "task-a" / "run-a" / "delivery.json").exists())
 
     def test_shell_and_frame_output_flags_reject_plugin_source_before_external_work(self) -> None:
         target = REPO_ROOT / "forbidden-output.txt"

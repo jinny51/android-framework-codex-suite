@@ -31,8 +31,6 @@ SCRIPTS_ROOT = Path(__file__).resolve().parent
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
-from validator_hygiene import repository_cleanup
-
 INTAKE_SCRIPT = (
     REPO_ROOT
     / "plugins"
@@ -758,15 +756,16 @@ def exercise_remote_server(packages: dict[str, Path], host: str, runtime_root: s
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         archive.add(Path(__file__), arcname="gate.py")
-        archive.add(SCRIPTS_ROOT / "validator_hygiene.py", arcname="validator_hygiene.py")
         archive.add(REPO_ROOT / "contracts", arcname="suite/contracts")
         archive.add(REPO_ROOT / "plugins" / "android-framework-ops", arcname="suite/plugins/android-framework-ops")
         for name, package in sorted(packages.items()):
             archive.add(package, arcname=f"packages/{name}")
     command = (
         "set -euo pipefail; "
-        "tmp=$(mktemp -d /tmp/akbs-contract-gate.XXXXXX); "
-        "trap 'rm -rf \"$tmp\"' EXIT; "
+        f"AKBS_SYSTEM={shlex.quote(runtime_root)}; export AKBS_SYSTEM; "
+        f"source {shlex.quote(runtime_root + '/scripts/lib/controlled-validation-output.sh')}; "
+        "akbs_validation_output_init; "
+        "tmp=\"$AKBS_VALIDATION_OUTPUT_ROOT/harness\"; mkdir -p -- \"$tmp\"; "
         "tar -xzf - -C \"$tmp\"; "
         f"PYTHONDONTWRITEBYTECODE=1 PYTHONPATH={shlex.quote(python_path)} python3 \"$tmp/gate.py\" "
         f"--system-root {shlex.quote(runtime_root)} --server-packages-root \"$tmp/packages\" "
@@ -821,7 +820,12 @@ def main() -> int:
     parser.add_argument("--server-packages-root", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--plugin-suite-root", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
-    cleanup = repository_cleanup(REPO_ROOT) if (REPO_ROOT / ".git").exists() else contextlib.nullcontext()
+    if (REPO_ROOT / ".git").exists():
+        from validator_hygiene import repository_cleanup
+
+        cleanup = repository_cleanup(REPO_ROOT)
+    else:
+        cleanup = contextlib.nullcontext()
     with cleanup:
         system_root = args.system_root.resolve()
         if not (system_root / "akbs_active" / "app.py").is_file():

@@ -6,14 +6,38 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$repo_root/scripts/validator_cleanup.sh"
 validator_cleanup_install "$repo_root"
 
-remote_tmp="$(ssh -o BatchMode=yes "$host" 'mktemp -d "${TMPDIR:-/tmp}/android-mac-ops-verify.XXXXXX"')"
+path_guard="$repo_root/scripts/validator_path_guard.py"
+remote_authority="$(ssh -o BatchMode=yes "$host" 'printf "%s\n" "${TMPDIR:-/private/tmp}"')"
+remote_akbs_root="${AKBS_REMOTE_MAC_ROOT:-/Users/jinny/Work/AKBS}"
+remote_claim="$(
+  ssh -o BatchMode=yes "$host" /usr/bin/python3 - create-private \
+    --authority "$remote_authority" \
+    --prefix android-mac-ops-verify. \
+    --purpose android-mac-ops-validator \
+    --allow-shared-authority \
+    --akbs-root "$remote_akbs_root" <"$path_guard"
+)"
+IFS=$'\t' read -r remote_tmp remote_token <<<"$remote_claim"
+[[ -n "$remote_tmp" && -n "$remote_token" ]] || {
+  echo "remote validator path guard did not return an owned directory" >&2
+  exit 78
+}
 cleanup_remote() {
-  ssh -o BatchMode=yes "$host" /bin/rm -rf -- "$remote_tmp" >/dev/null 2>&1 || true
+  ssh -o BatchMode=yes "$host" /usr/bin/python3 - cleanup-private \
+    --authority "$remote_authority" \
+    --path "$remote_tmp" \
+    --token "$remote_token" \
+    --purpose android-mac-ops-validator \
+    --allow-shared-authority \
+    --akbs-root "$remote_akbs_root" <"$path_guard" >/dev/null 2>&1
 }
 cleanup_all() {
   local status="${1:-1}"
   trap - EXIT
-  cleanup_remote
+  if ! cleanup_remote; then
+    echo "remote validator owned-directory cleanup failed" >&2
+    status=78
+  fi
   validator_cleanup__exit "$status"
 }
 trap 'cleanup_all "$?"' EXIT

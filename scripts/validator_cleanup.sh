@@ -5,12 +5,11 @@ validator_cleanup__exit() {
   local cleanup_status=0
   trap - EXIT INT TERM HUP
   set +e
-  if [[ -f "${VALIDATOR_CLEANUP_STATE_FILE:-}" ]]; then
+  if [[ -n "${VALIDATOR_CLEANUP_STATE_FILE:-}" ]]; then
     PYTHONDONTWRITEBYTECODE=1 python3 "$VALIDATOR_CLEANUP_HELPER" cleanup \
       --state-file "$VALIDATOR_CLEANUP_STATE_FILE"
     cleanup_status=$?
   fi
-  rm -rf -- "${VALIDATOR_CLEANUP_STATE_DIR:-}"
   if [[ "$status" == "0" && "$cleanup_status" != "0" ]]; then
     status="$cleanup_status"
   fi
@@ -24,14 +23,25 @@ validator_cleanup_install() {
   fi
   VALIDATOR_CLEANUP_ACTIVE=1
   VALIDATOR_CLEANUP_REPO_ROOT="$(cd "$repo_root" && pwd)"
-  VALIDATOR_CLEANUP_HELPER="$VALIDATOR_CLEANUP_REPO_ROOT/scripts/validator_hygiene.py"
-  VALIDATOR_CLEANUP_STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/akbs-plugin-validator.XXXXXX")"
-  VALIDATOR_CLEANUP_STATE_FILE="$VALIDATOR_CLEANUP_STATE_DIR/snapshot.json"
-  VALIDATOR_CLEANUP_TMPDIR="$VALIDATOR_CLEANUP_STATE_DIR/tmp"
-  mkdir -p "$VALIDATOR_CLEANUP_TMPDIR"
+  VALIDATOR_CLEANUP_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/validator_hygiene.py"
+  local -a cleanup_paths=()
+  mapfile -t cleanup_paths < <(
+    PYTHONDONTWRITEBYTECODE=1 python3 "$VALIDATOR_CLEANUP_HELPER" create \
+      --repo-root "$VALIDATOR_CLEANUP_REPO_ROOT"
+  )
+  if [[ "${#cleanup_paths[@]}" != "3" ]]; then
+    echo "validator cleanup helper returned an invalid invocation" >&2
+    return 1
+  fi
+  VALIDATOR_CLEANUP_STATE_DIR="${cleanup_paths[0]}"
+  VALIDATOR_CLEANUP_STATE_FILE="${cleanup_paths[1]}"
+  VALIDATOR_CLEANUP_TMPDIR="${cleanup_paths[2]}"
   export VALIDATOR_CLEANUP_REPO_ROOT VALIDATOR_CLEANUP_HELPER
   export VALIDATOR_CLEANUP_STATE_DIR VALIDATOR_CLEANUP_STATE_FILE VALIDATOR_CLEANUP_TMPDIR
+  TMPDIR="$VALIDATOR_CLEANUP_TMPDIR"
+  export TMPDIR
   export PYTHONDONTWRITEBYTECODE=1
+  export PYTHONPYCACHEPREFIX="$VALIDATOR_CLEANUP_TMPDIR/pycache"
   case " ${PYTEST_ADDOPTS:-} " in
     *" -p no:cacheprovider "*) ;;
     *) PYTEST_ADDOPTS="${PYTEST_ADDOPTS:+$PYTEST_ADDOPTS }-p no:cacheprovider" ;;
@@ -41,8 +51,5 @@ validator_cleanup_install() {
   trap 'exit 130' INT
   trap 'exit 143' TERM
   trap 'exit 129' HUP
-  python3 "$VALIDATOR_CLEANUP_HELPER" snapshot \
-    --repo-root "$VALIDATOR_CLEANUP_REPO_ROOT" \
-    --state-file "$VALIDATOR_CLEANUP_STATE_FILE"
   python3 "$VALIDATOR_CLEANUP_HELPER" assert-pristine --repo-root "$VALIDATOR_CLEANUP_REPO_ROOT"
 }

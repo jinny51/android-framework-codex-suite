@@ -74,7 +74,7 @@ def script_env(root: Path, fake_bin: Path) -> Dict[str, str]:
 
 class MacSourceAccessScriptsTests(unittest.TestCase):
     def test_mount_share_saves_verified_credentials_with_real_script_name(self) -> None:
-        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+        with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             fake_bin = make_fake_bin(root)
             env = script_env(root, fake_bin)
@@ -109,7 +109,7 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
             self.assertIn("add-generic-password", Path(env["FAKE_SECURITY_LOG"]).read_text(encoding="utf-8"))
 
     def test_local_keychain_reference_is_private(self) -> None:
-        with tempfile.TemporaryDirectory(dir="/tmp") as tmp:
+        with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             fake_bin = make_fake_bin(root)
             env = script_env(root, fake_bin)

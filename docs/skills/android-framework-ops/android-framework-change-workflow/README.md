@@ -20,6 +20,8 @@ Android Framework 开发、问题分析和验证主流程 skill。
 - 设备上出现 SystemUI、WindowManager、PackageManager、ActivityTaskManager 等 Framework 问题，需要基于源码、logcat、dumpsys 和复现现象定位根因。
 - 构建和推送已经完成，但还需要判断目标行为是否真的满足需求、是否引入附近回归。
 
+`scripts/collect_diagnostics.sh` 要求 AKBS 根已安装 outputs 合同。默认采集先写入受控 `outputs/tmp`，成功后原子晋升到 `$AKBS_ROOT/outputs/diagnostics/android-framework-change-workflow/<run-id>`，生成 `_manifest.json` 并重建 `outputs/manifests/catalog.jsonl`。显式输出也必须位于插件源码和缓存之外的新目录。脚本只在所有权标记与 canonical path 一致时清理本次调用目录；失败或受控中断会删除半成品，成功则保留诊断结果并移除标记。
+
 ## 典型配合
 
 - WSL/macOS 场景：`android-knowledge-search` -> 平台 `android-source-access` -> `android-framework-change-workflow` -> 核心 `android-remote-build-deploy`

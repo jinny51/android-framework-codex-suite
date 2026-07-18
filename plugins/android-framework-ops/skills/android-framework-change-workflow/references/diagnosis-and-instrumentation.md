@@ -62,6 +62,8 @@ Use `scripts/collect_diagnostics.sh` or direct `adb shell dumpsys` for targeted 
 
 Capture before and after when the behavior depends on a state transition.
 
+`collect_diagnostics.sh` requires an initialized AKBS outputs contract. Its default capture starts in controlled `outputs/tmp`, then atomically promotes a successful run to `$AKBS_ROOT/outputs/diagnostics/android-framework-change-workflow/<run-id>`, writes `_manifest.json`, and rebuilds `outputs/manifests/catalog.jsonl`. Any explicit output must be a new directory outside plugin source and cache paths. It removes only a marker-owned invocation on failure or a controlled interrupt. An existing directory, missing/mismatched marker, or canonical/symlink path change fails closed.
+
 ## Temporary Diagnostic Lifecycle
 
 Mark temporary logs with a searchable token such as `TODO_DIAG`, `TEMP_DIAG`, or a unique issue keyword.

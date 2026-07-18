@@ -218,6 +218,7 @@ validate_guarded_output_entrypoints() {
   local entry file marker
   local -a entries=(
     "plugins/android-framework-ops/skills/android-framework-patch-capture/scripts/capture_framework_patch.py|require_safe_artifact_path"
+    "plugins/android-framework-ops/skills/android-framework-change-workflow/scripts/collect_diagnostics.sh|--owned-create"
     "plugins/android-framework-ops/skills/android-framework-change-workflow/scripts/extract_video_frames.py|require_safe_artifact_path"
     "plugins/android-framework-ops/skills/android-remote-build-deploy/scripts/push_artifacts.py|require_safe_artifact_path"
     "plugins/android-framework-ops/skills/android-remote-build-deploy/scripts/create-checkpoint.sh|guard_output_path"
@@ -227,7 +228,7 @@ validate_guarded_output_entrypoints() {
   for entry in "${entries[@]}"; do
     file="${entry%%|*}"
     marker="${entry#*|}"
-    if ! grep -Fq "$marker" "$repo_root/$file"; then
+    if ! grep -Fq -- "$marker" "$repo_root/$file"; then
       echo "explicit output entrypoint does not call the path guard: $file" >&2
       failed=1
     fi
