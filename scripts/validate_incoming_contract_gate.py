@@ -55,9 +55,23 @@ RESIDUE_TABLES = (
     "daily_reports",
     "weekly_reports",
     "patch_packages",
-    "supplement_packages",
+    "patch_package_aliases",
+    "patch_package_sources",
+    "patch_package_asset_memberships",
+    "patch_package_revisions",
+    "patch_package_events",
+    "patch_package_case_links",
     "package_assets",
     "package_material_identity",
+)
+
+MANUAL_CONTRACT_MIGRATIONS = (
+    ("024_retired_schema_artifacts.sql", ("PREPARE", "FINALIZE")),
+    ("025_origin_aware_legacy_review.sql", ("FORWARD",)),
+    ("026_patch_package_unification.sql", ("FORWARD",)),
+    ("027_patch_package_history_governance.sql", ("FORWARD",)),
+    ("028_patch_package_subject_migration.sql", ("FORWARD",)),
+    ("029_patch_package_legacy_retirement.sql", ("FORWARD",)),
 )
 
 
@@ -242,6 +256,44 @@ def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> t
     if pin.get("success_reason_codes") != success_codes:
         raise AssertionError("plugin success reason-code pin is not exactly derived from the system public contract")
 
+    patch_contract = system_public.get("patch_package_contract")
+    if not isinstance(patch_contract, dict) or patch_contract.get("schema") != "akbs-patch-package-contract/v2":
+        raise AssertionError("system public contract is missing patch package subject v2")
+    patch_identity = patch_contract.get("business_identity")
+    if not isinstance(patch_identity, dict) or {
+        "identity_field": patch_identity.get("identity_field"),
+        "canonical_identity": patch_identity.get("canonical_identity"),
+        "queue_identity": patch_identity.get("queue_identity"),
+        "main_branch_identity": patch_identity.get("main_branch_identity"),
+        "source_identity_field": patch_identity.get("source_identity_field"),
+        "source_identity_role": patch_identity.get("source_identity_role"),
+    } != {
+        "identity_field": "patch_package_id",
+        "canonical_identity": "patch_packages.patch_package_id",
+        "queue_identity": "patch_packages.patch_package_id",
+        "main_branch_identity": "patch_packages.patch_package_id",
+        "source_identity_field": "package_key",
+        "source_identity_role": "source_only",
+    }:
+        raise AssertionError("patch package business and source identities drifted")
+    queue = patch_contract.get("queue")
+    curation = patch_contract.get("curation")
+    if not isinstance(queue, dict) or queue.get("states") != [
+        "received",
+        "under_review",
+        "information_required",
+        "information_review",
+        "closed",
+    ] or queue.get("terminal_states") != ["closed"]:
+        raise AssertionError("patch package queue stage contract drifted")
+    if not isinstance(curation, dict) or curation.get("stages") != [
+        "under_review",
+        "pending_merge_confirmation",
+        "dispute_open",
+        "closed",
+    ]:
+        raise AssertionError("patch package main-branch stage contract drifted")
+
     schema_relative = _relative_contract_path(manifest_schema.get("path"), label="manifest schema path")
     schema = load_json(plugin_contract_root / schema_relative)
     for name, declaration in fixtures.items():
@@ -416,6 +468,24 @@ def runtime_snapshot(db_path: Path, data_root: Path) -> tuple[dict[str, int], tu
     return counts, paths
 
 
+def apply_isolated_current_contract_schema(system_root: Path, db_path: Path) -> None:
+    """Advance a new validation-only database through the guarded current schema."""
+    migration_root = system_root / "migration_plans"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("pragma foreign_keys = on")
+        for filename, sections in MANUAL_CONTRACT_MIGRATIONS:
+            source = (migration_root / filename).read_text(encoding="utf-8")
+            for section in sections:
+                begin = f"-- AKBS_{section}_BEGIN"
+                end = f"-- AKBS_{section}_END"
+                if source.count(begin) != 1 or source.count(end) != 1:
+                    raise AssertionError(
+                        f"manual contract migration markers are invalid: {filename}:{section}"
+                    )
+                conn.executescript(source.split(begin, 1)[1].split(end, 1)[0])
+        conn.commit()
+
+
 def expect_reject(client: Any, db_path: Path, data_root: Path, route: str, package: Path, code: str) -> None:
     before = runtime_snapshot(db_path, data_root)
     response = client.post(f"/akbs/api/member/me/uploads/{route}", content=tar_bytes(package))
@@ -553,6 +623,7 @@ def exercise_server(
     data_root = root / "runtime" / "data"
     db_path.parent.mkdir(parents=True)
     apply_migrations(db_path)
+    apply_isolated_current_contract_schema(system_root, db_path)
     client = TestClient(create_app(db_path, data_root=data_root))
     login_member(client, "wick")
     plugin_submit = load_plugin_submit(suite_root)
@@ -565,6 +636,7 @@ def exercise_server(
     limited_data = root / "limited-runtime" / "data"
     limited_db.parent.mkdir(parents=True)
     apply_migrations(limited_db)
+    apply_isolated_current_contract_schema(system_root, limited_db)
     limited_client = TestClient(
         create_app(
             limited_db,
@@ -680,7 +752,7 @@ def exercise_server(
     rejected += 1
 
     login_member(client, "jared")
-    jared_patch = mutate_package(root, patch, "jared-original", lambda p, m: retarget_member(p, m, "jared", "20260711-120001-patch"))
+    jared_patch = mutate_package(root, patch, "jared-patch", lambda p, m: retarget_member(p, m, "jared", "20260711-120001-patch"))
     jared_result = plugin_submit_package(plugin_submit, client, jared_patch, "jared")
     if not jared_result.get("accepted"):
         raise AssertionError(f"cross-member setup patch rejected: {jared_result}")
@@ -708,14 +780,19 @@ def exercise_remote_server(packages: dict[str, Path], host: str, runtime_root: s
         "--plugin-suite-root \"$tmp/suite\""
     )
     result = subprocess.run(
-        ["ssh", "-o", "BatchMode=yes", host, "bash", "-lc", shlex.quote(command)],
+        ["ssh", "-o", "BatchMode=yes", host, "bash", "-c", shlex.quote(command)],
         input=buffer.getvalue(),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
     )
     if result.returncode:
-        raise AssertionError(result.stderr.decode("utf-8", errors="replace") or result.stdout.decode("utf-8", errors="replace"))
+        stdout = result.stdout.decode("utf-8", errors="replace")
+        stderr = result.stderr.decode("utf-8", errors="replace")
+        raise AssertionError(
+            f"remote server contract harness exited {result.returncode}\n"
+            f"stdout:\n{stdout}\nstderr:\n{stderr}"
+        )
     try:
         payload = json.loads(result.stdout.decode("utf-8"))
     except json.JSONDecodeError as exc:

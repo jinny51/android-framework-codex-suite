@@ -53,8 +53,8 @@ SESSION_CONSENT_ARGS = [
 ]
 
 
-def successful_upload_payload() -> dict[str, object]:
-    return {
+def successful_upload_payload(*, patch: bool = False) -> dict[str, object]:
+    payload: dict[str, object] = {
         "submitted": True,
         "accepted": True,
         "agent_context": {
@@ -67,6 +67,12 @@ def successful_upload_payload() -> dict[str, object]:
             }
         },
     }
+    if patch:
+        payload["package"] = {
+            "patch_package_id": "patch-package-01234567-89ab-5cde-8fab-0123456789ab",
+            "package_key": "20260601/member01/20260601-230000-patch",
+        }
+    return payload
 
 
 def load_intake_module():
@@ -216,18 +222,17 @@ def fake_upload_server():
                 "total": 1,
                 "items": [
                     {
-                        "notice_id": "akbs-archive-supplement:review-test",
-                        "review_id": "review-test",
+                        "notification_id": "notification-information-request-test",
+                        "patch_package_id": "patch-package-01234567-89ab-5cde-8fab-0123456789ab",
+                        "package_key": target,
                         "member_alias": "member01",
-                        "state": "needs_evidence",
-                        "supplement_for_package_key": target,
+                        "state": "information_required",
                         "lifecycle": {
                             "facts": {
-                                "supplement_request": {
-                                    "request_id": "supplement-request-test",
+                                "information_request": {
+                                    "request_id": "information-request-test",
                                     "status": "open",
-                                    "mode": "field_correction",
-                                    "target_package_key": target,
+                                    "patch_package_id": "patch-package-01234567-89ab-5cde-8fab-0123456789ab",
                                 }
                             }
                         },
@@ -254,7 +259,12 @@ def fake_upload_server():
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("X-Request-ID", "req_fedcba9876543210fedcba9876543210")
             self.end_headers()
-            self.wfile.write(json.dumps(successful_upload_payload(), ensure_ascii=False).encode("utf-8"))
+            self.wfile.write(
+                json.dumps(
+                    successful_upload_payload(patch=self.path.endswith("/uploads/patch")),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            )
 
         def log_message(self, format: str, *args) -> None:  # noqa: A002
             return

@@ -8,7 +8,8 @@ from typing import Any
 
 PUBLIC_CONTRACT_PATH = Path(__file__).resolve().parents[2] / "references" / "incoming-public-contract-v1.json"
 
-PATCH_PACKAGE_CONTRACT_SCHEMA = "akbs-patch-package-contract/v1"
+PATCH_PACKAGE_CONTRACT_SCHEMA = "akbs-patch-package-contract/v2"
+LEGACY_PATCH_CONTRACT_ERROR_CODE = "legacy_patch_contract_not_supported"
 
 
 @lru_cache(maxsize=1)
@@ -67,8 +68,13 @@ def _validate_patch_package_contract(value: Any, reason_families: dict[str, Any]
     if (
         not isinstance(identity, dict)
         or identity.get("visible_package_type") != "patch_package"
-        or identity.get("queue_identity") != "patch_package_heads.package_key"
-        or identity.get("main_branch_identity") != "curation_units.unit_id"
+        or identity.get("identity_field") != "patch_package_id"
+        or identity.get("canonical_identity") != "patch_packages.patch_package_id"
+        or identity.get("queue_identity") != "patch_packages.patch_package_id"
+        or identity.get("main_branch_identity") != "patch_packages.patch_package_id"
+        or identity.get("source_identity_field") != "package_key"
+        or identity.get("source_identity_authority") != "packages.package_key"
+        or identity.get("source_identity_role") != "source_only"
         or identity.get("patch_assets_immutable") is not True
         or identity.get("non_patch_envelope_append_only") is not True
     ):
@@ -85,36 +91,81 @@ def _validate_patch_package_contract(value: Any, reason_families: dict[str, Any]
         raise RuntimeError("packaged patch-set identity contract is invalid")
 
     queue = value.get("queue")
-    if not isinstance(queue, dict):
+    if not isinstance(queue, dict) or queue.get("branch") != "queue":
         raise RuntimeError("packaged patch queue contract is missing")
     states = _validate_string_list(queue.get("states"), label="queue states")
     expected_states = (
         "received",
-        "information_requested",
-        "information_submitted",
-        "admitted",
-        "rejected",
+        "under_review",
+        "information_required",
+        "information_review",
+        "closed",
     )
     if states != expected_states:
         raise RuntimeError("packaged patch queue states drifted")
     terminal_states = _validate_string_list(queue.get("terminal_states"), label="terminal states")
-    if terminal_states != ("admitted", "rejected"):
+    if terminal_states != ("closed",):
         raise RuntimeError("packaged patch queue terminal states drifted")
+    if queue.get("admission_target") != {"branch": "main", "stage": "under_review"}:
+        raise RuntimeError("packaged patch queue admission target drifted")
+    if queue.get("rejection_target") != {
+        "branch": "queue",
+        "stage": "closed",
+        "final_decision": "rejected",
+    }:
+        raise RuntimeError("packaged patch queue rejection target drifted")
     transitions = queue.get("transitions")
     if not isinstance(transitions, list) or not transitions:
         raise RuntimeError("packaged patch queue transitions are missing")
-    normalized_transitions: list[tuple[str, str, str]] = []
+    normalized_transitions: list[tuple[str, str, str, str, str, str]] = []
     for transition in transitions:
-        if not isinstance(transition, dict) or set(transition) != {"from", "action", "to"}:
+        required_transition_fields = {"from_branch", "from", "action", "to_branch", "to"}
+        allowed_transition_fields = {*required_transition_fields, "final_decision"}
+        if (
+            not isinstance(transition, dict)
+            or not required_transition_fields.issubset(transition)
+            or set(transition) - allowed_transition_fields
+        ):
             raise RuntimeError("packaged patch queue transition is invalid")
+        source_branch = transition.get("from_branch")
         source = transition.get("from")
         action = transition.get("action")
+        target_branch = transition.get("to_branch")
         target = transition.get("to")
-        if source not in states or target not in states or not isinstance(action, str) or not action:
+        final_decision = str(transition.get("final_decision") or "")
+        if (
+            source_branch != "queue"
+            or source not in states
+            or target_branch not in {"queue", "main"}
+            or (target_branch == "queue" and target not in states)
+            or (target_branch == "main" and target != "under_review")
+            or not isinstance(action, str)
+            or not action
+            or (final_decision and target != "closed")
+        ):
             raise RuntimeError("packaged patch queue transition references an invalid state or action")
-        normalized_transitions.append((source, action, target))
+        normalized_transitions.append(
+            (str(source_branch), str(source), action, str(target_branch), str(target), final_decision)
+        )
     if len(normalized_transitions) != len(set(normalized_transitions)):
         raise RuntimeError("packaged patch queue transitions must be unique")
+    expected_transitions = [
+        ("queue", "received", "review_started", "queue", "under_review", ""),
+        ("queue", "received", "information_requested", "queue", "information_required", ""),
+        ("queue", "under_review", "information_requested", "queue", "information_required", ""),
+        ("queue", "information_review", "information_requested", "queue", "information_required", ""),
+        ("queue", "information_required", "information_submitted", "queue", "information_review", ""),
+        ("queue", "received", "admitted", "main", "under_review", ""),
+        ("queue", "under_review", "admitted", "main", "under_review", ""),
+        ("queue", "information_review", "admitted", "main", "under_review", ""),
+        ("queue", "received", "rejected", "queue", "closed", "rejected"),
+        ("queue", "under_review", "rejected", "queue", "closed", "rejected"),
+        ("queue", "information_required", "rejected", "queue", "closed", "rejected"),
+        ("queue", "information_review", "rejected", "queue", "closed", "rejected"),
+        ("queue", "received", "withdrawn", "queue", "closed", "cancelled"),
+    ]
+    if normalized_transitions != expected_transitions:
+        raise RuntimeError("packaged patch queue transition graph drifted")
     if not isinstance(queue.get("idempotency"), str) or not queue["idempotency"]:
         raise RuntimeError("packaged patch queue idempotency contract is missing")
 
@@ -131,16 +182,33 @@ def _validate_patch_package_contract(value: Any, reason_families: dict[str, Any]
         raise RuntimeError("packaged patch queue reason codes are incomplete")
 
     curation = value.get("curation")
-    if not isinstance(curation, dict):
+    if not isinstance(curation, dict) or curation.get("branch") != "main":
         raise RuntimeError("packaged patch curation contract is missing")
+    stages = _validate_string_list(curation.get("stages"), label="curation stages")
+    if stages != ("under_review", "pending_merge_confirmation", "dispute_open", "closed"):
+        raise RuntimeError("packaged patch curation stages drifted")
     allowed_decisions = _validate_string_list(curation.get("allowed_decisions"), label="curation decisions")
     forbidden_decisions = _validate_string_list(
         curation.get("forbidden_decisions"), label="forbidden curation decisions"
     )
     if set(allowed_decisions) & set(forbidden_decisions):
         raise RuntimeError("packaged patch curation decisions overlap")
-    _validate_string_list(curation.get("member_actions"), label="member actions")
-    _validate_string_list(curation.get("forbidden_actions"), label="forbidden member actions")
+    if allowed_decisions != ("new_case", "merge_existing"):
+        raise RuntimeError("packaged patch curation decisions drifted")
+    if forbidden_decisions != ("needs_evidence", "supplement_review"):
+        raise RuntimeError("packaged patch forbidden curation decisions drifted")
+    member_actions = _validate_string_list(curation.get("member_actions"), label="member actions")
+    if member_actions != ("confirm_merge", "submit_merge_dispute"):
+        raise RuntimeError("packaged patch member actions drifted")
+    forbidden_actions = _validate_string_list(
+        curation.get("forbidden_actions"), label="forbidden member actions"
+    )
+    if forbidden_actions != (
+        "submit_supplement",
+        "close_supplement_chain",
+        "upload_replacement_original",
+    ):
+        raise RuntimeError("packaged patch forbidden member actions drifted")
     _validate_string_list(value.get("retired_business_fields"), label="retired fields")
     _validate_string_list(value.get("retired_business_values"), label="retired values")
     _validate_string_list(value.get("regenerate_when"), label="regeneration reasons")
@@ -149,6 +217,7 @@ def _validate_patch_package_contract(value: Any, reason_families: dict[str, Any]
     if (
         not isinstance(history, dict)
         or history.get("raw_rows") != "immutable_audit_only"
+        or history.get("retired_business_vocabulary") != "history_audit_only"
         or history.get("missing_parent_projection") != "history_compatible_patch_package"
         or history.get("inferred_relation_requires_audit_marker") is not True
     ):
@@ -192,6 +261,104 @@ def patch_information_completion_fields() -> frozenset[str]:
 def patch_information_attachment_limits() -> tuple[int, int]:
     attachment = public_contract()["patch_information_completion"]["attachment"]
     return int(attachment["max_file_bytes"]), int(attachment["max_total_bytes"])
+
+
+def retired_patch_business_fields() -> frozenset[str]:
+    return frozenset(public_contract()["patch_package_contract"]["retired_business_fields"])
+
+
+def retired_patch_business_values() -> frozenset[str]:
+    return frozenset(public_contract()["patch_package_contract"]["retired_business_values"])
+
+
+_PATCH_BUSINESS_SEMANTIC_FIELDS = frozenset(
+    {
+        "schema",
+        "package_type",
+        "physical_package_type",
+        "material_unit_type",
+        "unit_type",
+        "business_state",
+        "branch",
+        "stage",
+        "state",
+        "status",
+        "queue_state",
+        "gate_status",
+        "event_type",
+        "action",
+        "next_action",
+        "notification_type",
+    }
+)
+
+
+def legacy_patch_contract_error(payload: dict[str, Any]) -> str:
+    """Reject retired business protocol only at this centralized boundary.
+
+    The check is intentionally structural: ordinary prose may still use words
+    such as "supplementary" for daily or weekly evidence without becoming a
+    retired patch-package workflow.
+    """
+    fields: set[str] = set()
+    values: set[str] = set()
+
+    def visit(value: object) -> None:
+        if isinstance(value, dict):
+            for raw_key, child in value.items():
+                key = str(raw_key)
+                folded_key = key.casefold()
+                if folded_key in retired_patch_business_fields():
+                    fields.add(key)
+                    continue
+                if (
+                    folded_key in _PATCH_BUSINESS_SEMANTIC_FIELDS
+                    and isinstance(child, str)
+                    and child.casefold() in retired_patch_business_values()
+                ):
+                    values.add(child)
+                    continue
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    if payload.get("package_kind") == "framework_change" or set(payload) & retired_patch_business_fields():
+        visit(payload)
+    fields = sorted(fields)
+    values = sorted(values)
+    if not fields and not values:
+        return ""
+    parts: list[str] = []
+    if fields:
+        parts.append("fields=" + ",".join(fields))
+    if values:
+        parts.append("values=" + ",".join(values))
+    return (
+        f"[{LEGACY_PATCH_CONTRACT_ERROR_CODE}] 当前补丁包只接受 patch_package_id 业务主体合同；"
+        "旧版补丁链字段或值仅保留历史审计，不能提交：" + "; ".join(parts)
+    )
+
+
+def require_current_patch_contract(payload: dict[str, Any]) -> None:
+    error = legacy_patch_contract_error(payload)
+    if error:
+        raise SystemExit(error)
+
+
+def patch_package_id_from_upload_response(payload: dict[str, Any]) -> str:
+    package = payload.get("package")
+    if not isinstance(package, dict):
+        raise RuntimeError("server patch upload response is missing package identity")
+    patch_package_id = str(package.get("patch_package_id") or "").strip()
+    if not patch_package_id:
+        raise RuntimeError("server patch upload response is missing patch_package_id")
+    source_package_key = str(package.get("package_key") or "").strip()
+    if not source_package_key:
+        raise RuntimeError("server patch upload response is missing source package_key")
+    if source_package_key == patch_package_id:
+        raise RuntimeError("server patch upload response conflates subject and source identity")
+    return patch_package_id
 
 
 def validate_success_response(payload: dict[str, Any]) -> None:

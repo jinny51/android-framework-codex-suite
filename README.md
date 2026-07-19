@@ -44,14 +44,14 @@
 | 编译 / 产物定位 / 推送 | `android-remote-build-deploy` | 调用服务器编译 Android，定位 jar/apk 等产物，并推送到设备 |
 | 功能验证 / 验收结论 | `android-framework-change-workflow` | 根据需求、日志、设备行为、风险矩阵判断任务是否完成，并决定包状态（package status） |
 | 补丁资料整理 | `android-framework-patch-capture` | 把已完成、阶段性、失败或阻塞但有价值的 Framework 功能整理成一个功能 README、多源码仓库 patch、修改文件证据、符号事实和验证材料 |
-| 补丁包上传材料 | `android-framework-patch-intake` | 生成一个完整 `framework_change` 补丁包，并为同一个包完成队列资料补充 |
+| 补丁包上传材料 | `android-framework-patch-intake` | 生成一个完整 `framework_change` 补丁包；服务端以 `patch_package_id` 贯穿队列和主分支，并按 `request_id` 为同包补充资料 |
 | 日报上传材料 | `android-daily-report-intake` | 生成个人日报正文、同源 UI 读模型和 `daily_trace` incoming |
 | 周报上传材料 | `android-weekly-report-intake` | 汇总当前有效日报和上一周项目台账，生成个人周报、同源 UI 读模型和 `weekly_trace` incoming |
 | 共享内核 / 配置诊断 | `android-knowledge-intake` | 提供成员配置、doctor、插件更新、版本门禁、会话缓存门禁和 manifest 协议 |
 
 `android-remote-build-deploy` 只证明产物是否编出、是否推上设备；最终能不能算需求完成，由 `android-framework-change-workflow` 结合需求和验证证据判断。
 
-Framework 需求默认闭环是：开工前查 AKBS，开发和验证后通过 `patch-capture` 与 `android-framework-patch-intake` 生成一个 `validated` 补丁包，并由 AKBS HTTP API 写入上传队列。成员 Skill 负责功能边界、项目/平台/Android 版本、不可变补丁和真实验证的主要完整性检查；管理端队列检查只作安全兜底。轻量文字、字段或非补丁附件缺口补到同一个补丁包，需要改补丁或拆分功能则退回重新生成。`candidate`、`draft`、失败或阻塞路径保留在本地材料或报告上下文，不进入队列。日报和周报只归档，不进入知识沉淀候选；新建知识或计划合并由管理端沉淀流程决定。
+Framework 需求默认闭环是：开工前查 AKBS，开发和验证后通过 `patch-capture` 与 `android-framework-patch-intake` 生成一个 `validated` 补丁包，并由 AKBS HTTP API 写入上传队列。服务端生成的 `patch_package_id` 是队列和主分支唯一业务身份；上传目录的 `package_key` 只标识不可变物理来源。成员 Skill 负责功能边界、项目/平台/Android 版本、不可变补丁和真实验证的主要完整性检查；管理端队列检查只作安全兜底。轻量文字、字段或非补丁附件缺口通过事件 `request_id` 补到同一个补丁包，需要改补丁或拆分功能则退回重新生成。通知、资料请求和合并确认分别继续用自身事件 ID 追溯因果，不替代 `patch_package_id`。`candidate`、`draft`、失败或阻塞路径保留在本地材料或报告上下文，不进入队列。日报和周报只归档，不进入知识沉淀候选；新建知识或计划合并由管理端沉淀流程决定。
 
 按环境选择对应平台层插件：WSL 环境安装 `android-wsl-ops`，macOS 环境安装 `android-mac-ops`。
 

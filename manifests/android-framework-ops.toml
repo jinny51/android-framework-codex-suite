@@ -13,7 +13,7 @@ summary = "将已完成、阶段性、失败或阻塞但有价值的 Framework �
 [[skills]]
 name = "android-framework-patch-intake"
 category = "Knowledge System"
-summary = "生成、检查和提交单一完整补丁包，并为同一个补丁包完成队列资料补充"
+summary = "生成、检查和提交单一完整补丁包；全流程以 patch_package_id 为业务身份，并按 request_id 完成同包队列资料补充"
 
 [[skills]]
 name = "android-daily-report-intake"

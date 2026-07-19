@@ -16,12 +16,14 @@ for root in (SCRIPTS_ROOT, PLUGIN_LIB):
         sys.path.insert(0, str(root))
 
 from android_framework_ops.knowledge_rules import patch_upload_gate_errors, source_version_compatibility_matrix
-from akbs_intake import submit
+from akbs_intake import incoming_contract, submit
 from akbs_intake.patch import information_completion
 
 
 REQUEST_ID = "information-request-0123456789ab"
 PATCH_SHA = "a" * 64
+PATCH_PACKAGE_ID = "patch-package-01234567-89ab-5cde-8fab-0123456789ab"
+SOURCE_PACKAGE_KEY = "20260701/wick/20260701-120000-patch"
 
 
 def config() -> dict[str, str]:
@@ -33,6 +35,10 @@ def config() -> dict[str, str]:
 
 def detail_payload() -> dict:
     return {
+        "request_id": REQUEST_ID,
+        "patch_package_id": PATCH_PACKAGE_ID,
+        "package_key": SOURCE_PACKAGE_KEY,
+        "queue_state": "information_required",
         "information_request": {
             "request_id": REQUEST_ID,
             "patch_set_sha256": PATCH_SHA,
@@ -47,8 +53,9 @@ class PatchPackageUnificationTests(unittest.TestCase):
         matrix = source_version_compatibility_matrix()
         self.assertEqual(matrix["patch_package_unification_v1"]["min_plugin_version"], "1.0.139")
         self.assertEqual(matrix["queue_information_completion_v1"]["min_plugin_version"], "1.0.139")
+        self.assertEqual(matrix["patch_package_subject_v2"]["min_plugin_version"], "1.0.140")
 
-    def test_framework_change_always_uses_patch_route_and_legacy_supplement_fails_closed(self) -> None:
+    def test_framework_change_uses_patch_route_and_retired_protocol_has_one_boundary(self) -> None:
         self.assertEqual(submit.upload_type_for_manifest({"package_kind": "framework_change"}), "patch")
         legacy = {
             "package_kind": "framework_change",
@@ -58,8 +65,44 @@ class PatchPackageUnificationTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as raised:
             submit.upload_type_for_manifest(legacy)
         self.assertIn("legacy_patch_contract_not_supported", str(raised.exception))
-        self.assertEqual(len(patch_upload_gate_errors(legacy)), 1)
-        self.assertIn("legacy_patch_contract_not_supported", patch_upload_gate_errors(legacy)[0])
+        self.assertEqual(patch_upload_gate_errors(legacy), [])
+        self.assertIn("legacy_patch_contract_not_supported", incoming_contract.legacy_patch_contract_error(legacy))
+
+        for field in incoming_contract.retired_patch_business_fields():
+            error = incoming_contract.legacy_patch_contract_error(
+                {"package_kind": "framework_change", field: "legacy"}
+            )
+            self.assertIn(field, error)
+        for value in incoming_contract.retired_patch_business_values():
+            error = incoming_contract.legacy_patch_contract_error(
+                {"package_kind": "framework_change", "business_state": value}
+            )
+            self.assertIn(value, error)
+
+        nested = incoming_contract.legacy_patch_contract_error(
+            {
+                "package_kind": "framework_change",
+                "metadata": {"logical_package_key": "legacy", "queue_state": "needs_evidence"},
+            }
+        )
+        self.assertIn("logical_package_key", nested)
+        self.assertIn("needs_evidence", nested)
+
+        human_text = incoming_contract.legacy_patch_contract_error(
+            {
+                "package_kind": "framework_change",
+                "summary": "supplement_package",
+                "notes": "历史说明可以出现补证包一词。",
+            }
+        )
+        self.assertEqual(human_text, "")
+
+        ordinary_report = {
+            "package_kind": "weekly_trace",
+            "summary": "supplement_package",
+            "notes": "Sessions are supplementary evidence only / session 只作补充证据",
+        }
+        self.assertEqual(incoming_contract.legacy_patch_contract_error(ordinary_report), "")
 
     def test_completion_reloads_authoritative_patch_hash_and_sends_only_same_package_envelope(self) -> None:
         calls: list[object] = []
@@ -75,8 +118,15 @@ class PatchPackageUnificationTests(unittest.TestCase):
             self.assertEqual(len(body["attachments"]), 1)
             self.assertEqual(body["attachments"][0]["relative_path"], "materials/requirements/boundary.txt")
             self.assertNotIn("package_key", body)
+            self.assertNotIn("patch_package_id", body)
             self.assertNotIn("supplement_for_package_key", body)
-            return {"queue_state": "information_submitted", "envelope_revision": 2}, {"request_id": "submit-request"}
+            return {
+                "request_id": REQUEST_ID,
+                "patch_package_id": PATCH_PACKAGE_ID,
+                "package_key": SOURCE_PACKAGE_KEY,
+                "queue_state": "information_review",
+                "envelope_revision": 2,
+            }, {"request_id": "submit-request"}
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -103,8 +153,40 @@ class PatchPackageUnificationTests(unittest.TestCase):
             )
             with patch.object(information_completion, "request_json_with_metadata", side_effect=request_fn):
                 result = information_completion.complete_information_request(config(), response)
-        self.assertEqual(result["queue_state"], "information_submitted")
+        self.assertEqual(result["patch_package_id"], PATCH_PACKAGE_ID)
+        self.assertEqual(result["queue_state"], "information_review")
         self.assertEqual([call.get_method() for call in calls], ["GET", "POST"])
+
+    def test_completion_rejects_subject_identity_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            response = Path(tmp) / "response.json"
+            response.write_text(
+                json.dumps(
+                    {
+                        "schema": information_completion.COMPLETION_SCHEMA,
+                        "request_id": REQUEST_ID,
+                        "statement": "补充边界",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            responses = [
+                (detail_payload(), {"request_id": "lookup-request"}),
+                (
+                    {
+                        "request_id": REQUEST_ID,
+                        "patch_package_id": "patch-package-drift",
+                        "queue_state": "information_review",
+                    },
+                    {"request_id": "submit-request"},
+                ),
+            ]
+            with patch.object(information_completion, "request_json_with_metadata", side_effect=responses):
+                with self.assertRaises(SystemExit) as raised:
+                    information_completion.complete_information_request(config(), response)
+        self.assertIn("patch_package_identity_mismatch", str(raised.exception))
 
     def test_completion_rejects_patch_attachment_before_http(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -162,6 +244,22 @@ class PatchPackageUnificationTests(unittest.TestCase):
         with self.assertRaises(SystemExit) as empty_error:
             information_completion.safe_relative_path(".")
         self.assertIn("路径不安全", str(empty_error.exception))
+
+    def test_patch_upload_response_requires_business_subject_identity(self) -> None:
+        payload = {"package": {"patch_package_id": PATCH_PACKAGE_ID, "package_key": SOURCE_PACKAGE_KEY}}
+        self.assertEqual(incoming_contract.patch_package_id_from_upload_response(payload), PATCH_PACKAGE_ID)
+        with self.assertRaises(RuntimeError):
+            incoming_contract.patch_package_id_from_upload_response(
+                {"package": {"package_key": SOURCE_PACKAGE_KEY}}
+            )
+        with self.assertRaises(RuntimeError):
+            incoming_contract.patch_package_id_from_upload_response(
+                {"package": {"patch_package_id": PATCH_PACKAGE_ID}}
+            )
+        with self.assertRaises(RuntimeError):
+            incoming_contract.patch_package_id_from_upload_response(
+                {"package": {"patch_package_id": PATCH_PACKAGE_ID, "package_key": PATCH_PACKAGE_ID}}
+            )
 
 
 if __name__ == "__main__":

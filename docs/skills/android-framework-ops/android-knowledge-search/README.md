@@ -22,7 +22,7 @@
 - 看到一个类名、属性、Settings key、资源 key，想知道以前哪个补丁改过。
 - 管理员需要追溯日报、周报、incoming 事件或原始来源时，使用显式 `--type report`、`--type event` 或 `--type evidence`。
 - 想确认某个 incoming 是否留下了可复用验证证据。
-- 成员收到“等待确认合并”时，让 Codex 读取目标知识、合并依据和 compare 结果，生成是否需要提出异议的分析摘要。
+- 成员收到“等待确认合并”时，让 Codex 按通知中的 `confirmation_id` 读取目标知识、合并依据和 compare 结果，生成是否需要提出异议的分析摘要；`patch_package_id` 仍是业务主体，`package_key` 只表示来源。
 - `android-framework-change-workflow` 在进入源码分析前，先查知识库作为参考材料。
 
 ## 常用命令
@@ -100,15 +100,15 @@ python3 "scripts/android_knowledge_search.py" \
 
 python3 "scripts/android_knowledge_search.py" \
   --merge-confirmation analyze \
-  --merge-confirmation-id review-20260703-member-patch
+  --merge-confirmation-id merge-confirmation-20260703-member-patch
 ```
 
-`list`、`detail`、`target`、`compare` 和 `analyze` 都是只读动作。`analyze` 会区分人看摘要和 Codex 分析证据；服务端不可用时会明确失败，不会伪造合并依据。只有成员明确要求发送异议时，才使用：
+`--merge-confirmation-id` 只接受列表/通知返回的因果 `confirmation_id`，不接受来源 `package_key`。`list`、`detail`、`target`、`compare` 和 `analyze` 都是只读动作。`analyze` 会区分人看摘要和 Codex 分析证据；服务端不可用时会明确失败，不会伪造合并依据。只有成员明确要求发送异议时，才使用：
 
 ```bash
 python3 "scripts/android_knowledge_search.py" \
   --merge-confirmation dispute \
-  --merge-confirmation-id review-20260703-member-patch \
+  --merge-confirmation-id merge-confirmation-20260703-member-patch \
   --send-dispute \
   --dispute-reason "目标知识没有覆盖当前补丁的功能目标"
 ```

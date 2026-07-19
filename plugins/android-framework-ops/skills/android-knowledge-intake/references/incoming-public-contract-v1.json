@@ -6,7 +6,7 @@
   "manifest_schema": {
     "path": "knowledge-incoming-package.schema.json",
     "id": "https://akbs.internal/contracts/incoming/v1/knowledge-incoming-package.schema.json",
-    "sha256": "65472e6fea5ebad7a0bc6f548986156d3c8135d4a903ea5f1d932b058bb198e2"
+    "sha256": "4b39a576414a147bbdca9d4e76f691bbeeea0653b055a56db29ec10e3e36907c"
   },
   "golden_fixtures": {
     "daily": {
@@ -93,6 +93,7 @@
       "verification_not_pass"
     ],
     "patch_queue": [
+      "curation_decision_outside_patch_contract",
       "envelope_revision_missing",
       "idempotency_conflict",
       "idempotency_key_missing",
@@ -117,12 +118,16 @@
       "patch_asset_immutable",
       "patch_package_head_missing",
       "patch_package_contract_unavailable",
+      "patch_package_identity_mismatch",
       "patch_package_not_found",
       "patch_package_not_in_queue",
+      "patch_package_source_missing",
+      "patch_package_subject_write_rejected",
       "patch_set_changed",
       "patch_set_missing",
       "patch_set_proof_mismatch",
       "queue_state_closed",
+      "queue_state_not_admitted",
       "queue_state_not_reviewable"
     ]
   },
@@ -165,11 +170,16 @@
     }
   },
   "patch_package_contract": {
-    "schema": "akbs-patch-package-contract/v1",
+    "schema": "akbs-patch-package-contract/v2",
     "business_identity": {
       "visible_package_type": "patch_package",
-      "queue_identity": "patch_package_heads.package_key",
-      "main_branch_identity": "curation_units.unit_id",
+      "identity_field": "patch_package_id",
+      "canonical_identity": "patch_packages.patch_package_id",
+      "queue_identity": "patch_packages.patch_package_id",
+      "main_branch_identity": "patch_packages.patch_package_id",
+      "source_identity_field": "package_key",
+      "source_identity_authority": "packages.package_key",
+      "source_identity_role": "source_only",
       "patch_assets_immutable": true,
       "non_patch_envelope_append_only": true
     },
@@ -180,27 +190,37 @@
       "fields": ["relative_path", "sha256", "size_bytes"]
     },
     "queue": {
+      "branch": "queue",
       "states": [
         "received",
-        "information_requested",
-        "information_submitted",
-        "admitted",
-        "rejected"
+        "under_review",
+        "information_required",
+        "information_review",
+        "closed"
       ],
       "transitions": [
-        {"from": "received", "action": "request_information", "to": "information_requested"},
-        {"from": "information_submitted", "action": "request_information", "to": "information_requested"},
-        {"from": "information_requested", "action": "complete_information", "to": "information_submitted"},
-        {"from": "received", "action": "admit", "to": "admitted"},
-        {"from": "information_submitted", "action": "admit", "to": "admitted"},
-        {"from": "received", "action": "reject", "to": "rejected"},
-        {"from": "information_requested", "action": "reject", "to": "rejected"},
-        {"from": "information_submitted", "action": "reject", "to": "rejected"}
+        {"from_branch": "queue", "from": "received", "action": "review_started", "to_branch": "queue", "to": "under_review"},
+        {"from_branch": "queue", "from": "received", "action": "information_requested", "to_branch": "queue", "to": "information_required"},
+        {"from_branch": "queue", "from": "under_review", "action": "information_requested", "to_branch": "queue", "to": "information_required"},
+        {"from_branch": "queue", "from": "information_review", "action": "information_requested", "to_branch": "queue", "to": "information_required"},
+        {"from_branch": "queue", "from": "information_required", "action": "information_submitted", "to_branch": "queue", "to": "information_review"},
+        {"from_branch": "queue", "from": "received", "action": "admitted", "to_branch": "main", "to": "under_review"},
+        {"from_branch": "queue", "from": "under_review", "action": "admitted", "to_branch": "main", "to": "under_review"},
+        {"from_branch": "queue", "from": "information_review", "action": "admitted", "to_branch": "main", "to": "under_review"},
+        {"from_branch": "queue", "from": "received", "action": "rejected", "to_branch": "queue", "to": "closed", "final_decision": "rejected"},
+        {"from_branch": "queue", "from": "under_review", "action": "rejected", "to_branch": "queue", "to": "closed", "final_decision": "rejected"},
+        {"from_branch": "queue", "from": "information_required", "action": "rejected", "to_branch": "queue", "to": "closed", "final_decision": "rejected"},
+        {"from_branch": "queue", "from": "information_review", "action": "rejected", "to_branch": "queue", "to": "closed", "final_decision": "rejected"},
+        {"from_branch": "queue", "from": "received", "action": "withdrawn", "to_branch": "queue", "to": "closed", "final_decision": "cancelled"}
       ],
-      "terminal_states": ["admitted", "rejected"],
+      "terminal_states": ["closed"],
+      "admission_target": {"branch": "main", "stage": "under_review"},
+      "rejection_target": {"branch": "queue", "stage": "closed", "final_decision": "rejected"},
       "idempotency": "same-actor-and-key-replays-only-identical-canonical-payload"
     },
     "curation": {
+      "branch": "main",
+      "stages": ["under_review", "pending_merge_confirmation", "dispute_open", "closed"],
       "allowed_decisions": ["new_case", "merge_existing"],
       "member_actions": ["confirm_merge", "submit_merge_dispute"],
       "forbidden_decisions": ["needs_evidence", "supplement_review"],
@@ -234,6 +254,7 @@
     ],
     "history": {
       "raw_rows": "immutable_audit_only",
+      "retired_business_vocabulary": "history_audit_only",
       "public_source_roles": ["source"],
       "missing_parent_projection": "history_compatible_patch_package",
       "inferred_relation_requires_audit_marker": true

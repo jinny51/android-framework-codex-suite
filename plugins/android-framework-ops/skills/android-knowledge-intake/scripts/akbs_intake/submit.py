@@ -17,7 +17,12 @@ try:
     from .config import (
         submission_api_base_url,
     )
-    from .incoming_contract import error_reason_codes, validate_success_response
+    from .incoming_contract import (
+        error_reason_codes,
+        patch_package_id_from_upload_response,
+        require_current_patch_contract,
+        validate_success_response,
+    )
     from .reports.common import ensure_report_submit_allowed, record_submitted_package
 except ImportError:  # pragma: no cover - direct script import fallback
     scripts_root = Path(__file__).resolve().parents[1]
@@ -26,7 +31,12 @@ except ImportError:  # pragma: no cover - direct script import fallback
     from akbs_intake.config import (
         submission_api_base_url,
     )
-    from akbs_intake.incoming_contract import error_reason_codes, validate_success_response
+    from akbs_intake.incoming_contract import (
+        error_reason_codes,
+        patch_package_id_from_upload_response,
+        require_current_patch_contract,
+        validate_success_response,
+    )
     from akbs_intake.reports.common import ensure_report_submit_allowed, record_submitted_package
 
 
@@ -66,12 +76,7 @@ def server_submit_package(
     if method != "http":
         raise SystemExit("AKBS 成员上传只支持 HTTP API；SSH/local 上传字段已废弃，请先更新插件并执行配置迁移。")
     manifest = read_json_file(package_dir / "manifest.json")
-    target = str(manifest.get("supplement_for_package_key") or "").strip()
-    if target:
-        raise SystemExit(
-            "[legacy_patch_contract_not_supported] 该目录使用旧版补丁包协议；"
-            "请升级插件并按当前补丁包合同重新检查。"
-        )
+    require_current_patch_contract(manifest)
     payload = package_tar_gz_bytes(package_dir)
     return http_submit_package(
         package_dir,
@@ -90,12 +95,7 @@ def submit_package(
     patch_upload_gate_errors_fn: PatchGate,
 ) -> dict[str, Any]:
     manifest = read_json_file(package_dir / "manifest.json")
-    legacy_target = str(manifest.get("supplement_for_package_key") or "").strip()
-    if legacy_target:
-        raise SystemExit(
-            "[legacy_patch_contract_not_supported] 该目录使用旧版补丁包协议；"
-            "请升级插件并按当前补丁包合同重新检查。"
-        )
+    require_current_patch_contract(manifest)
     check = validate_package_fn(package_dir)
     write_json_fn(package_dir / "local-check.json", check)
     if check["status"] != "PASS":
@@ -125,12 +125,7 @@ def http_submit_package(
     if not base_url:
         raise SystemExit("submission_api_base_url 不能为空")
     manifest = read_json_file(package_dir / "manifest.json")
-    target = str(manifest.get("supplement_for_package_key") or "").strip()
-    if target:
-        raise SystemExit(
-            "[legacy_patch_contract_not_supported] 该目录使用旧版补丁包协议；"
-            "请升级插件并按当前补丁包合同重新检查。"
-        )
+    require_current_patch_contract(manifest)
     upload_type = upload_type_for_manifest(manifest)
     url = f"{base_url}/member/me/uploads/{upload_type}"
     request = urllib.request.Request(
@@ -150,9 +145,13 @@ def http_submit_package(
         validate_success_response(result)
     except RuntimeError as error:
         raise SystemExit(f"HTTP 上传入口合同漂移: {error}") from error
+    if manifest.get("package_kind") == "framework_change":
+        try:
+            result.setdefault("patch_package_id", patch_package_id_from_upload_response(result))
+        except RuntimeError as error:
+            raise SystemExit(f"HTTP 补丁上传业务身份合同漂移: {error}") from error
     result.setdefault("submitted", True)
-    if target:
-        result.setdefault("request_id", metadata.get("request_id", ""))
+    result.setdefault("server_request_id", metadata.get("request_id", ""))
     result.setdefault("method", "http")
     result.setdefault("package", str(package_dir))
     result.setdefault("upload_url", url)
@@ -160,15 +159,12 @@ def http_submit_package(
 
 
 def upload_type_for_manifest(manifest: dict[str, Any]) -> str:
+    require_current_patch_contract(manifest)
     package_kind = str(manifest.get("package_kind") or "").strip()
     if package_kind == "daily_trace":
         return "daily"
     if package_kind == "weekly_trace":
         return "weekly"
     if package_kind == "framework_change":
-        if str(manifest.get("supplement_for_package_key") or "").strip():
-            raise SystemExit(
-                "[legacy_patch_contract_not_supported] framework_change 必须使用当前补丁包合同。"
-            )
         return "patch"
     raise SystemExit(f"无法根据 package_kind 判断上传类型: {package_kind}")

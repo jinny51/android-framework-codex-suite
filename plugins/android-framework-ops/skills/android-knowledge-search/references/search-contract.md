@@ -29,15 +29,17 @@ Merge confirmation review is a separate member API path and must remain server-b
 
 ```text
 GET /akbs/api/member/me/merge-confirmations
-GET /akbs/api/member/me/merge-confirmations/{review_id_or_package_key}
-GET /akbs/api/member/me/merge-confirmations/{review_id_or_package_key}/target
-GET /akbs/api/member/me/merge-confirmations/{review_id_or_package_key}/compare
+GET /akbs/api/member/me/merge-confirmations/{confirmation_id}
+GET /akbs/api/member/me/merge-confirmations/{confirmation_id}/target
+GET /akbs/api/member/me/merge-confirmations/{confirmation_id}/compare
 ```
+
+The path identifier is the causal `confirmation_id` returned by the list or notification. `patch_package_id` remains the patch-package business subject across queue and main, while any returned `package_key` is source provenance only. The client must not fall back from `confirmation_id` to a review or source-package identifier.
 
 These reads do not fall back to local JSONL and must not fabricate merge basis when the API is unavailable. Dispute submission is the only write action and requires an explicit send command:
 
 ```text
-POST /akbs/api/member/me/merge-confirmations/{review_id_or_package_key}/dispute
+POST /akbs/api/member/me/merge-confirmations/{confirmation_id}/dispute
 ```
 
 Read-only analysis must not call the dispute endpoint.
@@ -129,11 +131,11 @@ The same script also supports merge confirmation review:
 
 ```text
 android_knowledge_search.py --merge-confirmation list
-android_knowledge_search.py --merge-confirmation detail --merge-confirmation-id <review_id_or_package_key>
-android_knowledge_search.py --merge-confirmation target --merge-confirmation-id <review_id_or_package_key>
-android_knowledge_search.py --merge-confirmation compare --merge-confirmation-id <review_id_or_package_key>
-android_knowledge_search.py --merge-confirmation analyze --merge-confirmation-id <review_id_or_package_key>
-android_knowledge_search.py --merge-confirmation dispute --merge-confirmation-id <review_id_or_package_key> --send-dispute --dispute-reason <reason>
+android_knowledge_search.py --merge-confirmation detail --merge-confirmation-id <confirmation_id>
+android_knowledge_search.py --merge-confirmation target --merge-confirmation-id <confirmation_id>
+android_knowledge_search.py --merge-confirmation compare --merge-confirmation-id <confirmation_id>
+android_knowledge_search.py --merge-confirmation analyze --merge-confirmation-id <confirmation_id>
+android_knowledge_search.py --merge-confirmation dispute --merge-confirmation-id <confirmation_id> --send-dispute --dispute-reason <reason>
 ```
 
 `analyze` output must separate human summary from Codex evidence and include target knowledge, merge basis, matched anchors, counter evidence, recommendation, and a dispute reason draft when the backend says dispute is allowed.

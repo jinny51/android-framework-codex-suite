@@ -3,13 +3,13 @@
   "schema_version": "1",
   "compatibility": "strict-content-hash-equality",
   "source_provenance": {
-    "commit": "d3f7b66d6cb0425b027e45f7907e9a371a65a934",
+    "commit": "449d17417e58acac6e2b0b2f0e18cbf793e72268",
     "compatibility_condition": false
   },
   "public_contract": {
     "system_path": "contracts/incoming/v1/public-contract.json",
     "consumer_path": "plugins/android-framework-ops/skills/android-knowledge-intake/references/incoming-public-contract-v1.json",
-    "sha256": "9b16cea66f730d23cbcd43a32734647d9dacd1487bf52af9533731f6d9056983"
+    "sha256": "9b327b470ab10c2e4d44860f4ce17605d448979f7b0e2841ab3f8a5e0ac1834f"
   },
   "error_envelope": {
     "system_path": "contracts/http/error-envelope-v1.schema.json",
@@ -17,7 +17,7 @@
     "sha256": "82840edf68f219c52b3b031d3d789d22400bedbb1785dfa855722f30dec77c94"
   },
   "artifact_sha256": {
-    "knowledge-incoming-package.schema.json": "65472e6fea5ebad7a0bc6f548986156d3c8135d4a903ea5f1d932b058bb198e2",
+    "knowledge-incoming-package.schema.json": "4b39a576414a147bbdca9d4e76f691bbeeea0653b055a56db29ec10e3e36907c",
     "fixtures/daily.manifest.json": "b907189009b81dcc8874f19b472076ece943901be4d1afb53f9290ca18e588a6",
     "fixtures/patch.manifest.json": "0ee8eb63a8be866ea4a2e7053870f1e21a357db20caeb6848e860db9bc544bd9",
     "fixtures/weekly.manifest.json": "980abda97a2ceaab54a13e7a6d3549846a0bf607612c3bba33e9b679ce03d4a3"
@@ -40,6 +40,7 @@
     "archive_unsafe_path",
     "archive_unsupported_entry",
     "case_binding_mismatch",
+    "curation_decision_outside_patch_contract",
     "display_date_mismatch",
     "display_member_mismatch",
     "display_trace_mismatch",
@@ -92,13 +93,17 @@
     "patch_asset_trace_mismatch",
     "patch_package_contract_unavailable",
     "patch_package_head_missing",
+    "patch_package_identity_mismatch",
     "patch_package_not_found",
     "patch_package_not_in_queue",
+    "patch_package_source_missing",
+    "patch_package_subject_write_rejected",
     "patch_set_changed",
     "patch_set_missing",
     "patch_set_proof_mismatch",
     "project_trace_mismatch",
     "queue_state_closed",
+    "queue_state_not_admitted",
     "queue_state_not_reviewable",
     "report_type_mismatch",
     "route_kind_mismatch",

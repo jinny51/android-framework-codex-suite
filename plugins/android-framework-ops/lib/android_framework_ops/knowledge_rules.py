@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 
-AKBS_RULES_CONTRACT_VERSION = "2026-07-02.1"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.139"
+AKBS_RULES_CONTRACT_VERSION = "2026-07-19.1"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.140"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -41,14 +41,6 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
         "min_plugin_version": "1.0.71",
         "description": "weekly report_view contains member-maintained project ledgers for personal weekly report structure and management aggregation",
     },
-    "lightweight_supplement_v1": {
-        "min_plugin_version": "1.0.65",
-        "description": "field_correction supplements can correct project/platform/Android version metadata without patch asset recapture",
-    },
-    "supplement_material_identity_inheritance_v1": {
-        "min_plugin_version": "1.0.76",
-        "description": "supplement packages inherit target material_name/material_summary and cannot redefine material identity",
-    },
     "report_project_identity_v1": {
         "min_plugin_version": "1.0.77",
         "description": "daily and weekly reports use company project identity rules instead of source directory or branch names as project conclusions",
@@ -79,11 +71,15 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
     },
     "patch_package_unification_v1": {
         "min_plugin_version": "1.0.139",
-        "description": "framework changes upload as one patch package and never create a supplement package",
+        "description": "framework changes upload as one immutable patch package",
     },
     "queue_information_completion_v1": {
         "min_plugin_version": "1.0.139",
         "description": "lightweight queue gaps append metadata or non-patch assets to the existing patch package",
+    },
+    "patch_package_subject_v2": {
+        "min_plugin_version": "1.0.140",
+        "description": "patch_package_id remains the sole business subject across queue and main while package_key is source-only",
     },
 }
 DEFAULT_SOURCE_VERSION_CAPABILITIES = ("source_version_evidence",)
@@ -666,13 +662,7 @@ def patch_upload_gate_errors(manifest: dict[str, Any] | None, *, allow_incomplet
     if allow_incomplete:
         return []
     package_status = str(payload.get("package_status") or "").strip().lower()
-    has_legacy_patch_fields = bool(str(payload.get("supplement_for_package_key") or "").strip())
     errors: list[str] = []
-    if has_legacy_patch_fields:
-        return [
-            "[legacy_patch_contract_not_supported] 该目录使用旧版补丁包协议；"
-            "请升级插件并按当前补丁包合同重新检查。"
-        ]
     if package_status == "validated":
         return errors
     errors.append(

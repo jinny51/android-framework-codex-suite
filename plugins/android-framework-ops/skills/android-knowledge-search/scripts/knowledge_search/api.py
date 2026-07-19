@@ -105,17 +105,21 @@ def merge_api_error(exc: BaseException) -> str:
     return failure_result(exc).safe_summary("merge confirmation API unavailable")
 
 
-def fetch_merge_confirmation_payload(identifier: str = "", action: str = "", *, timeout: float = 3.0) -> dict[str, Any]:
+def fetch_merge_confirmation_payload(confirmation_id: str = "", action: str = "", *, timeout: float = 3.0) -> dict[str, Any]:
     request = urllib.request.Request(
-        member_merge_confirmations_url(identifier, action),
+        member_merge_confirmations_url(confirmation_id, action),
         headers=member_request_headers(),
         method="GET",
     )
-    return request_json(request, timeout=timeout)
+    payload = request_json(request, timeout=timeout)
+    returned_id = str(payload.get("confirmation_id") or "").strip()
+    if confirmation_id and returned_id and returned_id != confirmation_id:
+        raise invalid_success_response("merge confirmation response identity mismatch")
+    return payload
 
 
 def post_merge_dispute(
-    identifier: str,
+    confirmation_id: str,
     *,
     reason: str,
     member_assessment: str,
@@ -133,9 +137,13 @@ def post_merge_dispute(
     headers = member_request_headers()
     headers["Content-Type"] = "application/json"
     request = urllib.request.Request(
-        member_merge_confirmations_url(identifier, "dispute"),
+        member_merge_confirmations_url(confirmation_id, "dispute"),
         data=data,
         headers=headers,
         method="POST",
     )
-    return request_json(request, timeout=timeout)
+    result = request_json(request, timeout=timeout)
+    returned_id = str(result.get("confirmation_id") or "").strip()
+    if returned_id and returned_id != confirmation_id:
+        raise invalid_success_response("merge dispute response confirmation identity mismatch")
+    return result

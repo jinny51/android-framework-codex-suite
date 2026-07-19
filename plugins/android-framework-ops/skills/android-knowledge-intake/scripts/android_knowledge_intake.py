@@ -271,6 +271,7 @@ from akbs_intake.search_usage import (  # noqa: E402
 
 
 from akbs_intake import source_metadata as _source_metadata  # noqa: E402
+from akbs_intake.incoming_contract import legacy_patch_contract_error  # noqa: E402
 
 
 def source_metadata(config: dict[str, str], skill: str) -> dict[str, Any]:
@@ -398,25 +399,9 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             }
         )
     )
-    retired_patch_fields = sorted(
-        field
-        for field in (
-            "supplement_for_package_key",
-            "supplement_reason",
-            "supplement_intent",
-            "supplement_mode",
-            "supplement_delta",
-            "supplement_task",
-            "corrected_fields",
-            "material_identity",
-        )
-        if field in manifest
-    )
-    if retired_patch_fields:
-        errors.append(
-            "[legacy_patch_contract_not_supported] 当前补丁包不接受旧版字段: "
-            + ", ".join(retired_patch_fields)
-        )
+    retired_patch_error = legacy_patch_contract_error(manifest)
+    if retired_patch_error:
+        errors.append(retired_patch_error)
     package_kind = manifest.get("package_kind")
     if package_kind not in INCOMING_KINDS:
         errors.append(f"package_kind 非法: {package_kind}")

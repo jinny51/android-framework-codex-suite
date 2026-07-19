@@ -41,8 +41,14 @@ def inspect_information_request(config: dict[str, str], request_id: str) -> dict
     except HttpClientFailure as error:
         raise SystemExit(error.result.safe_summary("补丁包补充资料请求读取失败")) from None
     information = payload.get("information_request") if isinstance(payload.get("information_request"), dict) else {}
-    if str(information.get("request_id") or "") != request_id:
+    if str(payload.get("request_id") or "") != request_id or str(information.get("request_id") or "") != request_id:
         raise SystemExit("[information_request_identity_mismatch] 服务端返回了不同的补充资料请求。")
+    patch_package_id = require_text(payload.get("patch_package_id"), "patch_package_id")
+    source_package_key = require_text(payload.get("package_key"), "source package_key")
+    if patch_package_id == source_package_key:
+        raise SystemExit("[patch_package_identity_mismatch] package_key 只能标识物理来源，不能充当补丁包业务身份。")
+    if str(payload.get("queue_state") or "") != "information_required":
+        raise SystemExit("[queue_state_not_reviewable] 补充资料请求不在 information_required 阶段。")
     patch_sha = str(information.get("patch_set_sha256") or "")
     if len(patch_sha) != 64:
         raise SystemExit("[patch_set_proof_missing] 补充资料请求没有绑定不可变补丁集合。")
@@ -55,6 +61,7 @@ def complete_information_request(config: dict[str, str], response_path: Path) ->
     request_id = require_text(response.get("request_id"), "request_id")
     detail = inspect_information_request(config, request_id)
     information = detail["information_request"]
+    patch_package_id = str(detail["patch_package_id"])
     body = {
         "statement": str(response.get("statement") or "").strip(),
         "fields": completion_fields(response.get("fields")),
@@ -91,6 +98,12 @@ def complete_information_request(config: dict[str, str], response_path: Path) ->
         )
     except HttpClientFailure as error:
         raise SystemExit(error.result.safe_summary("补丁包补充资料提交失败")) from None
+    if str(result.get("request_id") or "") != request_id:
+        raise SystemExit("[information_request_identity_mismatch] 服务端补充结果没有绑定原请求。")
+    if str(result.get("patch_package_id") or "") != patch_package_id:
+        raise SystemExit("[patch_package_identity_mismatch] 服务端补充结果改变了补丁包业务身份。")
+    if str(result.get("queue_state") or "") != "information_review":
+        raise SystemExit("[queue_state_not_reviewable] 补充资料提交后未进入 information_review 阶段。")
     result.setdefault("request_id", request_id)
     result.setdefault("server_request_id", str(metadata.get("request_id") or ""))
     return result

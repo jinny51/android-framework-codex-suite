@@ -29,11 +29,17 @@
     "summary": {"type": "string", "minLength": 1},
     "files": {"type": "object"},
     "package_status": {"enum": ["validated", "candidate", "draft", "failed", "blocked"]},
+    "logical_package_key": false,
+    "logical_root_package_key": false,
+    "original_package_key": false,
+    "root_original_package_key": false,
+    "supplement_delta": false,
+    "supplement_for": false,
     "supplement_for_package_key": false,
     "supplement_reason": false,
     "supplement_intent": false,
     "supplement_mode": false,
-    "supplement_delta": false,
+    "supplement_package_key": false,
     "supplement_task": false
   },
   "allOf": [

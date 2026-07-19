@@ -968,6 +968,8 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             "total": 1,
             "items": [
                 {
+                    "confirmation_id": "merge-confirmation-pending",
+                    "patch_package_id": "patch-package-01234567-89ab-5cde-8fab-0123456789ab",
                     "review_id": "review-pending-merge",
                     "package_key": "20260703/wick/pending-patch",
                     "material_display_title": "副屏 RecentView 入口调整",
@@ -1008,10 +1010,14 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         self.assertEqual(seen["user"], "member01")
         self.assertIn("副屏 RecentView 入口调整", stdout.getvalue())
         self.assertIn("case-hdmi-recentview", stdout.getvalue())
+        self.assertIn("merge-confirmation-pending", stdout.getvalue())
+        self.assertIn("patch-package-01234567-89ab-5cde-8fab-0123456789ab", stdout.getvalue())
 
     def test_merge_confirmation_analyze_reads_detail_target_compare_without_dispute(self):
         responses = {
-            "http://akbs.invalid/akbs/api/member/me/merge-confirmations/review-pending-merge": {
+            "http://akbs.invalid/akbs/api/member/me/merge-confirmations/merge-confirmation-pending": {
+                "confirmation_id": "merge-confirmation-pending",
+                "patch_package_id": "patch-package-01234567-89ab-5cde-8fab-0123456789ab",
                 "review_id": "review-pending-merge",
                 "package_key": "20260703/wick/pending-patch",
                 "material_display_title": "副屏 RecentView 入口调整",
@@ -1023,11 +1029,15 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                     "reuse_grade": "merge_candidate",
                 },
             },
-            "http://akbs.invalid/akbs/api/member/me/merge-confirmations/review-pending-merge/target": {
+            "http://akbs.invalid/akbs/api/member/me/merge-confirmations/merge-confirmation-pending/target": {
+                "confirmation_id": "merge-confirmation-pending",
+                "patch_package_id": "patch-package-01234567-89ab-5cde-8fab-0123456789ab",
                 "review_id": "review-pending-merge",
                 "target_knowledge": {"case_id": "case-hdmi", "title": "HDMI 副屏知识", "summary": "目标知识摘要"},
             },
-            "http://akbs.invalid/akbs/api/member/me/merge-confirmations/review-pending-merge/compare": {
+            "http://akbs.invalid/akbs/api/member/me/merge-confirmations/merge-confirmation-pending/compare": {
+                "confirmation_id": "merge-confirmation-pending",
+                "patch_package_id": "patch-package-01234567-89ab-5cde-8fab-0123456789ab",
                 "review_id": "review-pending-merge",
                 "source_material": {"title": "副屏 RecentView 入口调整", "package_key": "20260703/wick/pending-patch"},
                 "target_knowledge": {"case_id": "case-hdmi", "title": "HDMI 副屏知识"},
@@ -1056,7 +1066,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         ):
             stdout = io.StringIO()
             with patch("urllib.request.urlopen", fake_urlopen), patch("sys.stdout", new=stdout):
-                code = search.main(["--merge-confirmation", "analyze", "--merge-confirmation-id", "review-pending-merge"])
+                code = search.main(["--merge-confirmation", "analyze", "--merge-confirmation-id", "merge-confirmation-pending"])
 
         self.assertEqual(code, 0)
         self.assertEqual([method for method, _url, _headers in requests], ["GET", "GET", "GET"])
@@ -1072,6 +1082,8 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         self.assertIn("代码锚点同为 RecentView", text)
         self.assertIn("目标知识未覆盖副屏入口差异", text)
         self.assertIn("异议理由草稿", text)
+        self.assertIn("confirmation_id: merge-confirmation-pending", text)
+        self.assertIn("patch_package_id: patch-package-01234567-89ab-5cde-8fab-0123456789ab", text)
 
     def test_merge_confirmation_api_failure_does_not_fabricate_basis(self):
         with patch.dict(
@@ -1084,11 +1096,36 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         ):
             with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("offline")):
                 with self.assertRaises(SystemExit) as raised:
-                    search.main(["--merge-confirmation", "detail", "--merge-confirmation-id", "review-missing"])
+                    search.main(["--merge-confirmation", "detail", "--merge-confirmation-id", "merge-confirmation-missing"])
 
         self.assertIn("merge confirmation API unavailable", str(raised.exception))
         self.assertIn("code=transport_unavailable", str(raised.exception))
         self.assertNotIn("offline", str(raised.exception))
+
+    def test_merge_confirmation_response_identity_drift_fails_closed(self):
+        with patch.dict(
+            os.environ,
+            {
+                "CODEX_HOME": str(Path(tempfile.mkdtemp()) / "codex-home"),
+                "CODEX_REPORT_AKBS_ENDPOINT_API_BASE_URL": "http://akbs.invalid",
+                "CODEX_REPORT_MEMBER_ALIAS": "member01",
+            },
+        ):
+            with patch(
+                "urllib.request.urlopen",
+                return_value=FakeHttpResponse({"confirmation_id": "merge-confirmation-other"}),
+            ):
+                with self.assertRaises(SystemExit) as raised:
+                    search.main(
+                        [
+                            "--merge-confirmation",
+                            "detail",
+                            "--merge-confirmation-id",
+                            "merge-confirmation-expected",
+                        ]
+                    )
+        self.assertIn("merge confirmation API unavailable", str(raised.exception))
+        self.assertIn("code=invalid_success_response", str(raised.exception))
 
     def test_merge_confirmation_dispute_requires_explicit_send_flag(self):
         with patch.dict(
@@ -1106,7 +1143,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                             "--merge-confirmation",
                             "dispute",
                             "--merge-confirmation-id",
-                            "review-pending-merge",
+                            "merge-confirmation-pending",
                             "--dispute-reason",
                             "目标知识不一致",
                         ]
@@ -1123,7 +1160,14 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             seen["method"] = request.get_method()
             seen["body"] = json.loads(request.data.decode("utf-8"))
             seen["headers"] = {key.lower(): value for key, value in request.header_items()}
-            return FakeHttpResponse({"dispute_id": "merge-dispute-abc", "state": "dispute_open"})
+            return FakeHttpResponse(
+                {
+                    "confirmation_id": "merge-confirmation-pending",
+                    "patch_package_id": "patch-package-01234567-89ab-5cde-8fab-0123456789ab",
+                    "dispute_id": "merge-dispute-abc",
+                    "state": "dispute_open",
+                }
+            )
 
         with patch.dict(
             os.environ,
@@ -1140,7 +1184,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                         "--merge-confirmation",
                         "dispute",
                         "--merge-confirmation-id",
-                        "review-pending-merge",
+                        "merge-confirmation-pending",
                         "--send-dispute",
                         "--dispute-reason",
                         "目标知识不一致",
@@ -1152,7 +1196,7 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
                 )
 
         self.assertEqual(code, 0)
-        self.assertEqual(seen["url"], "http://akbs.invalid/akbs/api/member/me/merge-confirmations/review-pending-merge/dispute")
+        self.assertEqual(seen["url"], "http://akbs.invalid/akbs/api/member/me/merge-confirmations/merge-confirmation-pending/dispute")
         self.assertEqual(seen["method"], "POST")
         self.assertEqual(seen["body"]["reason"], "目标知识不一致")
         self.assertEqual(seen["body"]["member_assessment"], "建议新建知识")
@@ -1161,6 +1205,20 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
         self.assertNotIn("x-akbs-role", seen["headers"])
         self.assertNotIn("x-akbs-token", seen["headers"])
         self.assertIn("merge-dispute-abc", stdout.getvalue())
+
+    def test_merge_confirmation_rejects_source_package_key_as_event_identifier(self):
+        with patch("urllib.request.urlopen") as urlopen:
+            with self.assertRaises(SystemExit) as raised:
+                search.main(
+                    [
+                        "--merge-confirmation",
+                        "detail",
+                        "--merge-confirmation-id",
+                        "20260703/wick/pending-patch",
+                    ]
+                )
+        urlopen.assert_not_called()
+        self.assertIn("confirmation_id event identifier", str(raised.exception))
 
 
 if __name__ == "__main__":

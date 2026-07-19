@@ -221,11 +221,7 @@ def find_root(explicit_root: str | None) -> Path:
 
 
 def merge_identifier_from_payload(payload: dict[str, Any]) -> str:
-    for key in ("review_id", "package_key", "id"):
-        value = str(payload.get(key) or "").strip()
-        if value:
-            return value
-    return ""
+    return str(payload.get("confirmation_id") or "").strip()
 
 
 def text_or_unknown(value: Any) -> str:
@@ -286,8 +282,10 @@ def build_merge_analysis(detail: dict[str, Any], target: dict[str, Any], compare
             draft += " 反向证据：" + "；".join(counter[:3])
     return {
         "schema": "akbs-member-merge-confirmation-analysis-v1",
+        "confirmation_id": str(combined.get("confirmation_id") or ""),
+        "patch_package_id": str(combined.get("patch_package_id") or ""),
         "review_id": str(combined.get("review_id") or ""),
-        "package_key": str(combined.get("package_key") or ""),
+        "source_package_key": str(combined.get("package_key") or ""),
         "confirmation_status": str(combined.get("confirmation_status") or context.get("merge_status") or ""),
         "material_title": str(combined.get("material_display_title") or ""),
         "target_knowledge": target_knowledge,
@@ -320,8 +318,9 @@ def format_merge_list(payload: dict[str, Any]) -> str:
         lines.extend(
             [
                 f"{index}. {text_or_unknown(item.get('material_display_title'))}",
-                f"   - review_id: {text_or_unknown(item.get('review_id'))}",
-                f"   - package_key: {text_or_unknown(item.get('package_key'))}",
+                f"   - confirmation_id: {text_or_unknown(item.get('confirmation_id'))}",
+                f"   - patch_package_id: {text_or_unknown(item.get('patch_package_id'))}",
+                f"   - source package_key: {text_or_unknown(item.get('package_key'))}",
                 f"   - 状态: {text_or_unknown(item.get('confirmation_status_label') or item.get('confirmation_status'))}",
                 f"   - 目标知识: {text_or_unknown(target.get('case_id'))} / {text_or_unknown(target.get('title'))}",
                 f"   - 可提交异议: {'yes' if actions.get('can_submit_dispute') else 'no'}",
@@ -337,8 +336,9 @@ def format_merge_payload(title: str, payload: dict[str, Any]) -> str:
     lines = [
         f"# {title}",
         "",
-        f"- review_id: {text_or_unknown(payload.get('review_id'))}",
-        f"- package_key: {text_or_unknown(payload.get('package_key'))}",
+        f"- confirmation_id: {text_or_unknown(payload.get('confirmation_id'))}",
+        f"- patch_package_id: {text_or_unknown(payload.get('patch_package_id'))}",
+        f"- source package_key: {text_or_unknown(payload.get('package_key'))}",
     ]
     if payload.get("dispute_id") or payload.get("state"):
         lines.append(f"- dispute/state: {text_or_unknown(payload.get('dispute_id'))} / {text_or_unknown(payload.get('state'))}")
@@ -370,7 +370,9 @@ def format_merge_analysis(analysis: dict[str, Any]) -> str:
         "## 人看摘要",
         "",
         f"- 材料: {text_or_unknown(analysis.get('material_title'))}",
-        f"- review_id/package_key: {text_or_unknown(analysis.get('review_id'))} / {text_or_unknown(analysis.get('package_key'))}",
+        f"- confirmation_id: {text_or_unknown(analysis.get('confirmation_id'))}",
+        f"- patch_package_id: {text_or_unknown(analysis.get('patch_package_id'))}",
+        f"- source package_key: {text_or_unknown(analysis.get('source_package_key'))}",
         f"- 当前状态: {text_or_unknown(analysis.get('confirmation_status'))}",
         f"- 目标知识: {text_or_unknown(target.get('case_id'))} / {text_or_unknown(target.get('title'))}",
         f"- 是否可提交异议: {'yes' if analysis.get('can_submit_dispute') else 'no'}",
@@ -424,7 +426,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["list", "detail", "target", "compare", "analyze", "dispute"],
         help="Read or explicitly dispute member merge confirmations instead of running knowledge search.",
     )
-    parser.add_argument("--merge-confirmation-id", help="review_id or package_key for merge confirmation detail, target, compare, analyze, or dispute.")
+    parser.add_argument("--merge-confirmation-id", help="confirmation_id event identifier for merge confirmation detail, target, compare, analyze, or dispute.")
     parser.add_argument("--send-dispute", action="store_true", help="Actually POST a member merge dispute. Required with --merge-confirmation dispute.")
     parser.add_argument("--dispute-reason", default="", help="Human reason for a merge dispute. Only sent with --send-dispute.")
     parser.add_argument("--member-assessment", default="", help="Member/Codex assessment for a merge dispute. Only sent with --send-dispute.")
@@ -452,6 +454,8 @@ def handle_merge_confirmation_command(args: argparse.Namespace) -> int:
     identifier = (args.merge_confirmation_id or " ".join(args.query)).strip()
     if action != "list" and not identifier:
         raise SystemExit("--merge-confirmation-id is required for this merge confirmation action")
+    if action != "list" and "/" in identifier:
+        raise SystemExit("--merge-confirmation-id requires the confirmation_id event identifier, not a source package_key")
     try:
         if action == "list":
             payload = fetch_merge_confirmation_payload(timeout=args.server_timeout)

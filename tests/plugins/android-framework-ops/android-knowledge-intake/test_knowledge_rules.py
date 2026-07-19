@@ -135,15 +135,13 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.139")
-        self.assertEqual(AKBS_RULES_CONTRACT_VERSION, "2026-07-02.1")
+        self.assertEqual(current, "1.0.140")
+        self.assertEqual(AKBS_RULES_CONTRACT_VERSION, "2026-07-19.1")
         matrix = source_version_compatibility_matrix()
         self.assertEqual(matrix["source_version_evidence"]["min_plugin_version"], "1.0.60")
         self.assertEqual(matrix["report_view_v1"]["min_plugin_version"], "1.0.61")
         self.assertEqual(matrix["patch_view_v1"]["min_plugin_version"], "1.0.62")
         self.assertEqual(matrix["report_view_v2"]["min_plugin_version"], "1.0.63")
-        self.assertEqual(matrix["lightweight_supplement_v1"]["min_plugin_version"], "1.0.65")
-        self.assertEqual(matrix["supplement_material_identity_inheritance_v1"]["min_plugin_version"], "1.0.76")
         self.assertEqual(matrix["report_project_identity_v1"]["min_plugin_version"], "1.0.77")
         self.assertEqual(matrix["report_project_customer_required_v1"]["min_plugin_version"], "1.0.79")
         self.assertEqual(matrix["report_view_human_v1"]["min_plugin_version"], "1.0.79")
@@ -151,6 +149,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertEqual(matrix["weekly_requirement_taxonomy_v1"]["min_plugin_version"], "1.0.133")
         self.assertEqual(matrix["report_customer_hierarchy_v1"]["min_plugin_version"], "1.0.134")
         self.assertEqual(matrix["report_markdown_project_emphasis_v1"]["min_plugin_version"], "1.0.135")
+        self.assertEqual(matrix["patch_package_subject_v2"]["min_plugin_version"], "1.0.140")
 
         self.assertEqual(
             source_version_errors(
@@ -204,11 +203,11 @@ class KnowledgeRulesTest(unittest.TestCase):
             source_version_errors(
                 {
                     "plugin_name": "android-framework-ops",
-                    "plugin_version": "1.0.65",
-                    "skill_version": "1.0.65",
+                    "plugin_version": "1.0.140",
+                    "skill_version": "1.0.140",
                 },
                 expected_version=current,
-                required_capabilities=["lightweight_supplement_v1"],
+                required_capabilities=["patch_package_subject_v2"],
             ),
             [],
         )
@@ -309,20 +308,6 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
 
         self.assertEqual(validated_errors, [])
-
-    def test_legacy_supplement_upload_is_retired(self) -> None:
-        from android_framework_ops.knowledge_rules import patch_upload_gate_errors
-
-        upload_errors = patch_upload_gate_errors(
-            {
-                "package_kind": "framework_change",
-                "package_status": "validated",
-                "supplement_for_package_key": "20260625/wangwei/20260625-221500-verification-supplement",
-            }
-        )
-
-        self.assertTrue(upload_errors)
-        self.assertIn("legacy_patch_contract_not_supported", "\n".join(upload_errors))
 
     def test_function_scope_classification_contract(self) -> None:
         from android_framework_ops.knowledge_rules import classify_function_scope

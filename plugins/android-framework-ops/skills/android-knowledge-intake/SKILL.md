@@ -11,7 +11,7 @@ The skill does not write final knowledge reports, curated patches, index, or sit
 
 The member-side Codex agent is the material producer. It should collect session context, git activity, patch diff, build results, verification records, failed paths, blocked paths, and optional human notes, then generate incoming. The only member upload channel is the AKBS HTTP API; it receives the package, validates it, and stores it in active SQLite. Knowledge projections and curation decisions are produced later by the AKBS curation flow, not by the member-side plugin.
 
-Ordinary members use `android-daily-report-intake` for daily reports, `android-weekly-report-intake` for weekly reports, and `android-framework-patch-intake` for one complete patch package or a queue information completion for that same package. Those skills invoke the `daily`, `weekly`, and `patch` commands in this shared kernel. Weekly packages are progress archives only; they do not become knowledge materialization candidates. Non-member profiles are only for protocol and server-chain tests; they must not be confused with the user's local `akbs-curation-maintainer` skill.
+Ordinary members use `android-daily-report-intake` for daily reports, `android-weekly-report-intake` for weekly reports, and `android-framework-patch-intake` for one complete patch package or a queue information completion for that same package. Those skills invoke the `daily`, `weekly`, and `patch` commands in this shared kernel. For patches, the server-assigned `patch_package_id` is the sole business subject across queue and main; `package_key` is only the immutable upload-source identity. Request, notification, and confirmation IDs remain causal event identifiers. Weekly packages are progress archives only; they do not become knowledge materialization candidates. Non-member profiles are only for protocol and server-chain tests; they must not be confused with the user's local `akbs-curation-maintainer` skill.
 
 Default policy: preserve work facts locally first, then upload only packages that pass the member-side upload gate. Daily traces must preserve `work_findings`; weekly traces preserve progress summaries for database archive and member view only. A framework-change upload must be one `validated` patch package: clear function boundary, traceable project/platform/Android version, clean immutable patch assets, and PASS build plus device or accepted equivalent verification. `candidate`, `draft`, `failed`, and `blocked` are local or report-context states; they do not enter the server upload queue. These values are not curation decisions.
 
@@ -106,7 +106,7 @@ When the patch was packaged by `android-framework-patch-capture`, submit the cap
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare --patch-package /path/to/.codex/patch-packages/20260526-120000-patch --project "TVE8402M" --summary "功能补丁摘要" --status validated
 ```
 
-When the queue asks for lightweight information, read the exact request and complete the same patch package. This creates no package key and cannot change patch bytes:
+When the queue reaches `information_required`, read the exact causal `request_id` and complete the same `patch_package_id`. This creates no new business subject or physical source, cannot change patch bytes, and must return the subject in `information_review`:
 
 ```bash
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> patch \

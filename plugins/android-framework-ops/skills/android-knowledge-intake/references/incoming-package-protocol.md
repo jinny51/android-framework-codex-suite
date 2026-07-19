@@ -326,7 +326,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.139"
+    "plugin_version": "1.0.140"
   }
 }
 ```
@@ -359,26 +359,34 @@ split_report_skills = 1.0.63
 report_view_v2 = 1.0.63
 patch_package_unification_v1 = 1.0.139
 queue_information_completion_v1 = 1.0.139
+patch_package_subject_v2 = 1.0.140
 ```
 
-The required capabilities come from package contents, not from the current plugin release. Historical packages retain their generation-time capability evidence. A current patch package requires the unified package capability; queue information completion requires the same-package completion capability.
+The required capabilities come from package contents, not from the current plugin release. Historical packages retain their generation-time capability evidence. A current patch package requires the unified package and v2 subject capabilities; queue information completion requires the same-package completion capability.
+
+`patch_packages.patch_package_id` is the only patch-package business identity in both queue and main. `packages.package_key` identifies an immutable physical upload source only. Notification, information-request, and merge-confirmation IDs remain causal event IDs and must not be used as replacement package subjects.
 
 Codex normal development should carry pre-change knowledge search evidence in `materials/evidence/search_before_change.json`. If no reusable knowledge was found, record the explicit search result as `not_found` instead of omitting the evidence. When pre-change search did not really happen, `validated` still means the verification evidence passed; preserve `payload.searched = false`, warn locally, and let admin-side curation perform post-change overlap check without awarding search-loop reuse score. Manual, external, historical, mixed, or unknown implementation origin must not fabricate pre-change search and can still carry verification and patch facts for later admin-side curation.
 
 `candidate`, `draft`, `failed`, and `blocked` are local/report-context states by default. They must not be uploaded as ordinary patch packages, and they must not be presented as knowledge entries or reuse-ready validated solutions by member-side tooling.
 
-After upload, intake has only three outcomes:
+The queue branch has these current stages:
 
 ```text
-admitted
-information_requested
-rejected
+received
+under_review
+information_required
+information_review
+closed
 ```
 
 The exact machine state graph is not duplicated in Skill prose. It is consumed
 from `patch_package_contract.queue` in the pinned incoming public contract. Its
-current transient states are `received`, `information_requested`, and
-`information_submitted`; its terminal states are `admitted` and `rejected`.
+current non-terminal states are `received`, `under_review`,
+`information_required`, and `information_review`; its terminal state is
+`closed`. Admission moves the same `patch_package_id` to main stage
+`under_review`; the main branch continues through `pending_merge_confirmation`,
+`dispute_open`, and `closed`.
 The same contract publishes the `patch_queue` reason-code family, so a modern
 queue rejection remains a typed contract failure instead of degrading to an
 unknown client error. The public contract content hash is the compatibility
@@ -403,7 +411,7 @@ An open lightweight request is read with `--inspect-information-request`. A resp
 }
 ```
 
-The completion client reads the server request again and inserts the authoritative patch-set hash. The response file cannot define or override that hash. Text, allowed metadata and non-patch attachments may extend the current envelope; `.patch` files and `patches/` paths are rejected. If patch bytes or feature scope must change, reject intake and generate a new complete patch package instead. After admission, curation only decides new knowledge or planned merge.
+The completion client reads the server request again, verifies the same `patch_package_id`, and inserts the authoritative patch-set hash. The response file cannot define or override either identity. Text, allowed metadata and non-patch attachments may extend the current envelope; `.patch` files and `patches/` paths are rejected. Completion is addressed only by the causal `request_id` and must move the subject from `information_required` to `information_review`. If patch bytes or feature scope must change, reject intake and generate a new complete patch package instead. After admission, curation only decides new knowledge or planned merge.
 
 `materials/evidence/search_before_change.json` records member-side knowledge use before or during the change. It can come from an explicit patch capture package, or from same-day `android-knowledge-search` usage records only when those records match the current patch feature anchors. Same member and same day are not enough:
 

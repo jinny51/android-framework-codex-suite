@@ -22,7 +22,7 @@ The member-side Skill is the primary completeness gate. Before upload it must co
 
 Only a `validated` package enters the server queue. `candidate`, `draft`, `failed` and `blocked` work stays local or in report context until it becomes a complete patch package.
 
-AKBS no longer creates or uploads 原始包、补证包 or 逻辑包. The patch package is the only current business identity.
+The server-assigned `patch_package_id` is the patch package's only business identity from queue entry through the main curation branch. The uploaded `package_key` identifies an immutable physical source only; never use it as a second queue, curation, request, or confirmation identity. Retired chain fields fail closed at the shared contract boundary and cannot select another processing path.
 
 ## Queue fallback
 
@@ -32,7 +32,9 @@ The administrator-side intake Skill independently checks the queued package as a
 - metadata, explanation, log, screenshot or other non-patch evidence missing: ask the member to complete the existing patch package;
 - patch bytes must change, the functional goal must split, or the package cannot be trusted: reject intake and ask for a newly generated patch package.
 
-Queue completion never creates another package key. The patch file set and its hash are immutable. Codex may add text, fields or non-patch attachments only after reading the exact open request. Curation starts only after intake admission and decides `new knowledge` or `planned merge`.
+Queue completion never creates another patch-package subject or physical source. The patch file set and its hash are immutable. Codex may add text, fields or non-patch attachments only after reading the exact open request. Curation starts only after intake admission and decides `new knowledge` or `planned merge`.
+
+The queue stages are `received`, `under_review`, `information_required`, `information_review`, and `closed`. Admission moves the same `patch_package_id` to main stage `under_review`; the main stages are `under_review`, `pending_merge_confirmation`, `dispute_open`, and `closed`. A lightweight completion is addressed by its causal `request_id`, not by `package_key` or `patch_package_id`. Notification and merge-confirmation actions likewise keep their own causal event IDs.
 
 ## Commands
 
@@ -62,7 +64,7 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
   --complete-information-request /path/to/response.json
 ```
 
-The response uses `schema=akbs-patch-package-information-completion/v1`, the exact `request_id`, optional human `statement`, optional allowed `fields`, and optional non-patch attachments with `relative_path` plus local `source_path`. The client reads the server request again and binds the authoritative patch-set hash itself; callers cannot override it.
+The response uses `schema=akbs-patch-package-information-completion/v1`, the exact causal `request_id`, optional human `statement`, optional allowed `fields`, and optional non-patch attachments with `relative_path` plus local `source_path`. The client reads the server request again, verifies its `patch_package_id`, and binds the authoritative patch-set hash itself; callers cannot override any of those identities.
 
 ## Boundaries
 

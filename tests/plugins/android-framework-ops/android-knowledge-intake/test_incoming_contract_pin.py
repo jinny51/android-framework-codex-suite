@@ -35,7 +35,7 @@ class IncomingContractPinTests(unittest.TestCase):
         pin = json.loads((CONTRACT_ROOT / "contract-pin.json").read_text(encoding="utf-8"))
         self.assertEqual(pin["schema_version"], "1")
         self.assertEqual(pin["compatibility"], "strict-content-hash-equality")
-        self.assertEqual(pin["source_provenance"]["commit"], "d3f7b66d6cb0425b027e45f7907e9a371a65a934")
+        self.assertEqual(pin["source_provenance"]["commit"], "449d17417e58acac6e2b0b2f0e18cbf793e72268")
         self.assertFalse(pin["source_provenance"]["compatibility_condition"])
         consumer_path = SUITE_ROOT / pin["public_contract"]["consumer_path"]
         consumer = json.loads(consumer_path.read_text(encoding="utf-8"))
@@ -58,7 +58,7 @@ class IncomingContractPinTests(unittest.TestCase):
             for code in codes
         )
         self.assertEqual(pin["reason_codes"], reason_codes)
-        self.assertEqual(len(reason_codes), 83)
+        self.assertEqual(len(reason_codes), 88)
         self.assertEqual(pin["success_reason_codes"], consumer["success_reason_codes"])
         completion = consumer["patch_information_completion"]
         self.assertEqual(
@@ -73,16 +73,43 @@ class IncomingContractPinTests(unittest.TestCase):
         self.assertEqual(completion["attachment"]["max_total_bytes"], 8 * 1024 * 1024)
         self.assertTrue(completion["attachment"]["patch_assets_immutable"])
         patch_contract = consumer["patch_package_contract"]
-        self.assertEqual(patch_contract["schema"], "akbs-patch-package-contract/v1")
+        self.assertEqual(patch_contract["schema"], "akbs-patch-package-contract/v2")
         self.assertEqual(patch_contract["business_identity"]["visible_package_type"], "patch_package")
-        self.assertEqual(patch_contract["business_identity"]["queue_identity"], "patch_package_heads.package_key")
-        self.assertEqual(patch_contract["business_identity"]["main_branch_identity"], "curation_units.unit_id")
+        self.assertEqual(patch_contract["business_identity"]["identity_field"], "patch_package_id")
+        self.assertEqual(
+            patch_contract["business_identity"]["canonical_identity"],
+            "patch_packages.patch_package_id",
+        )
+        self.assertEqual(
+            patch_contract["business_identity"]["queue_identity"],
+            "patch_packages.patch_package_id",
+        )
+        self.assertEqual(
+            patch_contract["business_identity"]["main_branch_identity"],
+            "patch_packages.patch_package_id",
+        )
+        self.assertEqual(patch_contract["business_identity"]["source_identity_field"], "package_key")
+        self.assertEqual(patch_contract["business_identity"]["source_identity_role"], "source_only")
         self.assertTrue(patch_contract["business_identity"]["patch_assets_immutable"])
         self.assertEqual(
             patch_queue_states(),
-            ("received", "information_requested", "information_submitted", "admitted", "rejected"),
+            ("received", "under_review", "information_required", "information_review", "closed"),
         )
-        self.assertEqual(patch_queue_terminal_states(), {"admitted", "rejected"})
+        self.assertEqual(patch_queue_terminal_states(), {"closed"})
+        self.assertEqual(patch_contract["queue"]["branch"], "queue")
+        self.assertEqual(
+            patch_contract["queue"]["admission_target"],
+            {"branch": "main", "stage": "under_review"},
+        )
+        self.assertEqual(patch_contract["curation"]["branch"], "main")
+        self.assertEqual(
+            patch_contract["curation"]["stages"],
+            ["under_review", "pending_merge_confirmation", "dispute_open", "closed"],
+        )
+        self.assertEqual(
+            patch_contract["history"]["retired_business_vocabulary"],
+            "history_audit_only",
+        )
         self.assertEqual(patch_queue_reason_codes(), set(consumer["reason_code_families"]["patch_queue"]))
         error_contract = SUITE_ROOT / pin["error_envelope"]["consumer_path"]
         self.assertEqual(hashlib.sha256(error_contract.read_bytes()).hexdigest(), pin["error_envelope"]["sha256"])
@@ -116,6 +143,17 @@ class IncomingContractPinTests(unittest.TestCase):
         incomplete_codes = json.loads(json.dumps(baseline))
         incomplete_codes["reason_code_families"]["patch_queue"].remove("patch_asset_immutable")
         mutations.append(incomplete_codes)
+        extra_transition = json.loads(json.dumps(baseline))
+        extra_transition["patch_package_contract"]["queue"]["transitions"].append(
+            {
+                "from_branch": "queue",
+                "from": "under_review",
+                "action": "review_restarted",
+                "to_branch": "queue",
+                "to": "under_review",
+            }
+        )
+        mutations.append(extra_transition)
 
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "public-contract.json"
