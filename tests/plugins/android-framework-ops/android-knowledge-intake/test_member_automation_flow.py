@@ -2294,6 +2294,59 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertTrue((daily / "materials" / "evidence" / "work_findings.json").is_file())
             self.assertTrue((weekly / "materials" / "evidence" / "work_findings.json").is_file())
 
+    def test_daily_and_weekly_submit_latest_use_canonical_submission_for_ordinary_and_replacement_packages(self) -> None:
+        cases = (
+            ("daily", "2026-06-29", "20260629-210000-daily", "20260629-210001-daily"),
+            ("weekly", "2026-06-18", "20260618-090102", "20260618-090103"),
+        )
+        for report_type, date, original_run_id, replacement_run_id in cases:
+            for replace in (False, True):
+                with self.subTest(report_type=report_type, replacement=replace), tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    knowledge_remote = seed_knowledge_remote(root)
+                    env = write_member_config(root, knowledge_remote)
+                    prepare = prepare_daily_package if report_type == "daily" else prepare_weekly_package
+                    package = prepare(env, date, original_run_id)
+                    if replace:
+                        package = prepare_replacement_package(
+                            env,
+                            report_type,
+                            date,
+                            replacement_run_id,
+                            original_run_id,
+                        )
+
+                    with fake_upload_server() as (api_base_url, uploads):
+                        env["CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL"] = api_base_url
+                        result = run_json(
+                            [
+                                sys.executable,
+                                str(INTAKE_SCRIPT),
+                                "--profile",
+                                "member01",
+                                report_type,
+                                "--date",
+                                date,
+                                "--submit-latest",
+                            ],
+                            SUITE_ROOT,
+                            env,
+                        )
+
+                    self.assertTrue(result["submitted"])
+                    self.assertEqual(Path(result["package"]).resolve(), package.resolve())
+                    self.assertEqual(
+                        [item["path"] for item in uploads],
+                        [f"/akbs/api/member/me/uploads/{report_type}"],
+                    )
+                    manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+                    if replace:
+                        self.assertEqual(manifest["replacement_for_run_id"], original_run_id)
+                        self.assertEqual(manifest["supersedes"]["run_id"], original_run_id)
+                    else:
+                        self.assertNotIn("replacement_for_run_id", manifest)
+                        self.assertNotIn("supersedes", manifest)
+
     def test_daily_future_date_blocks_late_submission_allows_and_duplicate_requires_choice(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

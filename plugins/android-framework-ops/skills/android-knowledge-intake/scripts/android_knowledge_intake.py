@@ -747,11 +747,6 @@ def main() -> int:
             fields=list(args.session_field),
         )
         require_report_session_consent(config, dates, synthetic=synthetic_mode(config))
-    if args.command in {"daily", "weekly"} and args.submit_latest:
-        pending = latest_pending(args.command, config, parse_date_arg(args.date, config) if args.date else None)
-        pending_manifest = read_json_file(pending / "manifest.json")
-        ensure_report_submit_allowed(pending, config, pending_manifest)
-
     if args.command == "patch" and args.submit_latest:
         patch_submit_pending = latest_pending("patch", config, parse_date_arg(args.date, config) if args.date else None)
 
