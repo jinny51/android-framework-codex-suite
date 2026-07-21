@@ -6,6 +6,12 @@ validator="${CODEX_HOME:-$HOME/.codex}/skills/.system/plugin-creator/scripts/val
 source "$repo_root/scripts/validator_cleanup.sh"
 validator_cleanup_install "$repo_root"
 
+if [[ "$(uname -s)" == "Linux" ]]; then
+  test_tmp="${AKBS_TEST_TMPDIR:-/tmp}"
+  [[ -d "$test_tmp" ]] || { echo "AKBS test temp directory not found: $test_tmp" >&2; exit 1; }
+  export TMPDIR="$test_tmp" TMP="$test_tmp" TEMP="$test_tmp"
+fi
+
 if [[ ! -f "$validator" ]]; then
   echo "Plugin validator not found: $validator" >&2
   exit 1
