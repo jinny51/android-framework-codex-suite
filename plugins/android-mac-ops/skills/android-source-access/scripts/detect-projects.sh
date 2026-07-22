@@ -82,102 +82,21 @@ is_android_project() {
 inspect_remote() {
   local remote_root="$1"
   [ -n "$ssh_host" ] || { echo "SDK_NAME_REQUIRED"; echo "no_ssh_host" >&2; return; }
-
-  ssh -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 "$ssh_host" bash -s <<REMOTE
-set -euo pipefail
-root="$remote_root"
-[ -d "\$root" ] || { printf "REMOTE_ROOT_MISSING\n" >&2; exit 3; }
-
-score_rk=0 score_unisoc=0 score_mtk=0
-
-has_dir() { local p; for p in "\$@"; do [ -d "\$root/\$p" ] && return 0; done; return 1; }
-
-first_assignment() {
-  local pattern="\$1"; shift; local base file value
-  for base in "\$@"; do
-    [ -d "\$base" ] || continue
-    while IFS= read -r -d "" file; do
-      value="\$(grep -hsE "\$pattern" "\$file" 2>/dev/null | head -n1 | sed -E 's/.*:?=[[:space:]]*//; s/[[:space:]]+.*//' || true)"
-      [ -n "\$value" ] && { printf "%s" "\$value"; return 0; }
-    done < <(find "\$base" -maxdepth 4 -type f \( -name "*.mk" -o -name "*.bp" \) -print0 2>/dev/null)
-  done
-  return 0
-}
-
-# 平台打分
-has_dir device/rockchip vendor/rockchip hardware/rockchip && score_rk=\$((score_rk+20))
-has_dir device/sprd vendor/sprd vendor/unisoc hardware/sprd hardware/unisoc && score_unisoc=\$((score_unisoc+20))
-has_dir device/mediatek vendor/mediatek hardware/mediatek && score_mtk=\$((score_mtk+20))
-
-pv_rk="\$(first_assignment '^[[:space:]]*TARGET_BOARD_PLATFORM[[:space:]]*:?=' "\$root/device/rockchip" "\$root/vendor/rockchip")"
-pv_un="\$(first_assignment '^[[:space:]]*TARGET_BOARD_PLATFORM[[:space:]]*:?=' "\$root/device/sprd" "\$root/vendor/sprd" "\$root/vendor/unisoc")"
-pv_mt="\$(first_assignment '^[[:space:]]*TARGET_BOARD_PLATFORM[[:space:]]*:?=' "\$root/device/mediatek" "\$root/vendor/mediatek")"
-
-case "\$pv_rk" in rk*|RK*) score_rk=\$((score_rk+20)) ;; esac
-case "\$pv_un" in ums*|uis*|udx*|sc*|sp*|shark*|qogir*|pike*) score_unisoc=\$((score_unisoc+20)) ;; esac
-case "\$pv_mt" in mt[0-9]*|MT[0-9]*) score_mtk=\$((score_mtk+20)) ;; esac
-
-source_platform=""; score=0
-if [ "\$score_unisoc" -ge "\$score_rk" ] && [ "\$score_unisoc" -ge "\$score_mtk" ] && [ "\$score_unisoc" -gt 0 ]; then
-  source_platform=unisoc; score=\$score_unisoc; platform_value="\$pv_un"
-elif [ "\$score_mtk" -ge "\$score_rk" ] && [ "\$score_mtk" -ge "\$score_unisoc" ] && [ "\$score_mtk" -gt 0 ]; then
-  source_platform=mtk; score=\$score_mtk; platform_value="\$pv_mt"
-elif [ "\$score_rk" -gt 0 ]; then
-  source_platform=rk; score=\$score_rk; platform_value="\$pv_rk"
-fi
-
-# SDK 名：先查 git branch
-branch_for_repo() { [ -d "\$1/.git" ] || return 0; git -C "\$1" branch --show-current 2>/dev/null || true; }
-useful_branch() {
-  [ -n "\$1" ] || return 1
-  case "\$1" in HEAD|master|main|develop|development|dev|release|stable) return 1;; android-*|refs/tags/*) return 1;; esac
-  return 0
-}
-
-platform="\${source_platform:-unknown}"
-case "\$platform" in
-  rk)    product_roots=("\$root/device/rockchip" "\$root/vendor/rockchip") ;;
-  unisoc) product_roots=("\$root/device/sprd" "\$root/vendor/sprd" "\$root/vendor/unisoc") ;;
-  mtk)   product_roots=("\$root/device/mediatek" "\$root/vendor/mediatek") ;;
-  *)     product_roots=() ;;
-esac
-
-project_branch=""
-branch_dirs=("\$root/frameworks/base")
-case "\$platform" in
-  rk) [ -n "\$platform_value" ] && branch_dirs+=("\$root/device/rockchip/\$platform_value")
-      branch_dirs+=("\$root/vendor/rockchip/common" "\$root/kernel" "\$root/u-boot") ;;
-  unisoc) branch_dirs+=("\$root/device/sprd" "\$root/vendor/sprd" "\$root/vendor/unisoc" "\$root/kernel" "\$root/u-boot") ;;
-  mtk) branch_dirs+=("\$root/device/mediatek" "\$root/vendor/mediatek" "\$root/kernel" "\$root/u-boot") ;;
-esac
-
-for dir in "\${branch_dirs[@]}"; do
-  branch="\$(branch_for_repo "\$dir")"
-  if useful_branch "\$branch"; then project_branch="\$branch"; break; fi
-done
-
-# SDK 名回退：BRANCH_BUILDTYPE
-branch_buildtype=""
-[ \${#product_roots[@]} -gt 0 ] && branch_buildtype="\$(first_assignment '^[[:space:]]*BRANCH_BUILDTYPE[[:space:]]*:?=' "\${product_roots[@]}")"
-
-sdk_name=""; sdk_source=""
-if [ -n "\$project_branch" ]; then
-  sdk_name="\${project_branch##*/}"; sdk_source=project_branch
-elif [ -n "\$branch_buildtype" ]; then
-  sdk_name="\$branch_buildtype"; sdk_source=BRANCH_BUILDTYPE
-else
-  sdk_name="SDK_NAME_REQUIRED"; sdk_source=none
-fi
-
-printf "PLATFORM=%q\n" "\$platform"
-printf "SDK_NAME=%q\n" "\$sdk_name"
-printf "SDK_SOURCE=%q\n" "\$sdk_source"
-printf "PROJECT_BRANCH=%q\n" "\${project_branch:-}"
-printf "BRANCH_BUILDTYPE=%q\n" "\${branch_buildtype:-}"
-printf "PLATFORM_SCORE_RK=%s\n" "\$score_rk"
-printf "PLATFORM_SCORE_UNISOC=%s\n" "\$score_unisoc"
-printf "PLATFORM_SCORE_MTK=%s\n" "\$score_mtk"
-REMOTE
+  local script_dir remote_inspector remote_command
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  remote_inspector="$script_dir/../../../lib/android_source_access/remote_inspector.sh"
+  [ -r "$remote_inspector" ] || {
+    echo "remote SDK inspector is missing: $remote_inspector" >&2
+    return 3
+  }
+  remote_command="bash -s -- $(printf '%q' "$remote_root") '' '' 0 0 discovery"
+  ssh \
+    -o BatchMode=yes \
+    -o ConnectTimeout=10 \
+    -o ServerAliveInterval=15 \
+    "$ssh_host" \
+    "$remote_command" \
+    <"$remote_inspector"
 }
 
 # BSD find 不支持 -maxdepth/-mindepth；用 Python 做本地有界遍历。
@@ -210,6 +129,11 @@ while IFS= read -r -d '' dir; do
       inspect_result="$(inspect_remote "$remote_root" 2>/dev/null)" || true
       if [ -n "$inspect_result" ]; then
         eval "$inspect_result"
+        SDK_SOURCE="${SOURCE_SDK_SOURCE:-none}"
+        BRANCH_BUILDTYPE=""
+        if [ "$SDK_SOURCE" = "BRANCH_BUILDTYPE" ]; then
+          BRANCH_BUILDTYPE="${SOURCE_SDK_NAME:-}"
+        fi
       else
         PLATFORM="unknown"
         SDK_NAME="SDK_NAME_REQUIRED"
