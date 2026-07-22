@@ -113,12 +113,15 @@ mkdir -p "$registry_dir"
 chmod 700 "$registry_dir"
 
 registry_file="$registry_dir/${server}.json"
-status="created"
-[ -f "$registry_file" ] && status="updated"
+plugin_lib="$(cd "$(dirname "$0")/../../../lib" && pwd)"
 
-python3 - "$registry_file" "$server" "$server_ip" "$smb_user" "$share" "$smb_path" "$mount_point" \
+status="$(PYTHONPATH="$plugin_lib${PYTHONPATH:+:$PYTHONPATH}" python3 - "$registry_file" "$server" "$server_ip" "$smb_user" "$share" "$smb_path" "$mount_point" \
   "$remote_share_path" "$project" "$project_path" "$platform" "$remote_project_path" <<'PY'
-import json, sys, os
+import os
+import sys
+from pathlib import Path
+
+from akbs_plugin_state.atomic import update_json
 
 f, srv, ip, smb_user, sh, smb_path, mp, rsp, proj, pp, plat, rpp = sys.argv[1:]
 
@@ -131,35 +134,32 @@ def portable_home_path(value):
         return "$HOME/" + value[len(home) + 1 :]
     return value
 
-data = {}
-if os.path.exists(f):
-    with open(f) as fh:
-        data = json.load(fh)
+def update_registry(data):
+    data["server"] = srv
+    data["server_ip"] = ip
+    data["smb_user"] = smb_user
+    data.setdefault("shares", {}).setdefault(sh, {
+        "mount_point": mp,
+        "remote_path": rsp,
+        "smb_user": smb_user,
+        "projects": {}
+    })
+    data["shares"][sh]["mount_point"] = mp
+    data["shares"][sh]["smb_path"] = smb_path
+    data["shares"][sh]["remote_path"] = rsp
+    data["shares"][sh]["smb_user"] = smb_user
+    data["shares"][sh]["projects"][proj] = {
+        "platform": plat,
+        "local_path": portable_home_path(pp),
+        "remote_path": rpp
+    }
+    data["shares"][sh]["mount_point"] = portable_home_path(mp)
 
-data["server"] = srv
-data["server_ip"] = ip
-data["smb_user"] = smb_user
-data.setdefault("shares", {}).setdefault(sh, {
-    "mount_point": mp,
-    "remote_path": rsp,
-    "smb_user": smb_user,
-    "projects": {}
-})
-data["shares"][sh]["mount_point"] = mp
-data["shares"][sh]["smb_path"] = smb_path
-data["shares"][sh]["remote_path"] = rsp
-data["shares"][sh]["smb_user"] = smb_user
-data["shares"][sh]["projects"][proj] = {
-    "platform": plat,
-    "local_path": portable_home_path(pp),
-    "remote_path": rpp
-}
-data["shares"][sh]["mount_point"] = portable_home_path(mp)
 
-with open(f, "w") as fh:
-    json.dump(data, fh, indent=2, ensure_ascii=False)
-    fh.write("\n")
+existed = update_json(Path(f), update_registry)
+print("updated" if existed else "created")
 PY
+)"
 
 chmod 600 "$registry_file"
 

@@ -65,7 +65,7 @@ The channel prefers `SAVED_REMOTE_SUDO_PASSWORD`, then `SAVED_SSH_PASSWORD`, the
 
 ## Locking
 
-The `busy` file prevents concurrent command dispatch through the same channel. The `project.lock` file is an additional `flock` used when a command is run with `exclusive`.
+The `busy` file prevents concurrent command dispatch through the same channel. It is claimed atomically before the command is sent to `tmux`; an existing claim returns `SESSION_BUSY` with exit code 3. Dispatch failure and command completion remove only the marker owned by that command. The `project.lock` file is an additional `flock` used when a command is run with `exclusive`.
 
 Use exclusive lock for:
 

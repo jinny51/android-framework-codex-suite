@@ -172,6 +172,11 @@ if [ -z "$remote_root" ]; then
 fi
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+atomic_state="$(cd "$script_dir/../../../lib" && pwd)/akbs_plugin_state/atomic.py"
+atomic_state_write_private() {
+  local file="$1"
+  python3 "$atomic_state" write --path "$file" --mode 600
+}
 plan_env="$(mktemp /tmp/codex-source-plan.XXXXXX)"
 cifs_env="$(mktemp /tmp/codex-source-cifs.XXXXXX)"
 resolve_env="$(mktemp /tmp/codex-source-ssh.XXXXXX)"
@@ -277,7 +282,7 @@ save_all_passwords() {
     printf "SAVED_SSH_PASSWORD=%q\n" "$ssh_to_save"
     printf "SAVED_SAMBA_PASSWORD=%q\n" "$samba_to_save"
     printf "SAVED_REMOTE_SUDO_PASSWORD=%q\n" "$remote_sudo_to_save"
-  } >"$file"
+  } | atomic_state_write_private "$file"
   chmod 600 "$file"
 }
 
@@ -292,7 +297,7 @@ save_local_sudo_password() {
   echo "NOTICE: storing local WSL sudo password locally at $file" >&2
   {
     printf "SAVED_LOCAL_SUDO_PASSWORD=%q\n" "$local_sudo_password"
-  } >"$file"
+  } | atomic_state_write_private "$file"
   chmod 600 "$file"
 }
 

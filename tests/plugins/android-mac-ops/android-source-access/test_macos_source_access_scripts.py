@@ -5,6 +5,7 @@ import os
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -72,7 +73,185 @@ def script_env(root: Path, fake_bin: Path) -> Dict[str, str]:
     }
 
 
+def install_python_instrumentation(fake_bin: Path, prelude: str) -> None:
+    python = fake_bin / "python3"
+    python.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "script_arg = sys.argv[1]\n"
+        "sys.argv = sys.argv[1:]\n"
+        "if script_arg == '-':\n"
+        "    source = sys.stdin.read()\n"
+        "    filename = '<stdin>'\n"
+        "else:\n"
+        "    with open(script_arg, encoding='utf-8') as handle:\n"
+        "        source = handle.read()\n"
+        "    filename = script_arg\n"
+        f"{prelude}\n"
+        "namespace = {'__name__': '__main__', '__file__': filename}\n"
+        "exec(compile(source, filename, 'exec'), namespace)\n",
+        encoding="utf-8",
+    )
+    python.chmod(python.stat().st_mode | stat.S_IXUSR)
+
+
+def register_args(
+    env: Dict[str, str],
+    registry_dir: Path,
+    *,
+    share: str,
+    project: str,
+) -> list[str]:
+    mount_point = Path(env["ANDROID_WORK_ROOT"]) / "unisoc" / share
+    return [
+        "--server",
+        "test61",
+        "--server-ip",
+        "192.168.100.23",
+        "--smb-user",
+        "test61",
+        "--share",
+        share,
+        "--mount-point",
+        str(mount_point),
+        "--remote-share-path",
+        f"/home/test61/unisoc/{share}",
+        "--project",
+        project,
+        "--project-path",
+        str(mount_point),
+        "--platform",
+        "unisoc",
+        "--remote-project-path",
+        f"/home/test61/unisoc/{share}",
+        "--registry-dir",
+        str(registry_dir),
+    ]
+
+
 class MacSourceAccessScriptsTests(unittest.TestCase):
+    def test_register_failure_before_replace_preserves_previous_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = make_fake_bin(root)
+            install_python_instrumentation(
+                fake_bin,
+                "import os\n"
+                "def injected_replace_failure(*_args, **_kwargs):\n"
+                "    raise OSError('injected replace failure')\n"
+                "os.replace = injected_replace_failure",
+            )
+            env = script_env(root, fake_bin)
+            registry_dir = root / "home" / ".servers" / "projects"
+            registry_dir.mkdir(parents=True)
+            registry_file = registry_dir / "test61.json"
+            original = b'{"server":"test61","shares":{}}\n'
+            registry_file.write_bytes(original)
+
+            result = run_script(
+                "register-project.sh",
+                *register_args(env, registry_dir, share="TVE1088U", project="TVE1088U"),
+                env=env,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(registry_file.read_bytes(), original)
+            self.assertEqual(list(registry_dir.glob(".test61.json.tmp.*")), [])
+
+    def test_concurrent_registers_do_not_lose_distinct_shares(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = make_fake_bin(root)
+            install_python_instrumentation(
+                fake_bin,
+                "import json, os, time\n"
+                "from pathlib import Path\n"
+                "original_json_load = json.load\n"
+                "def barrier_json_load(*args, **kwargs):\n"
+                "    value = original_json_load(*args, **kwargs)\n"
+                "    barrier = Path(os.environ['AKBS_STATE_TEST_BARRIER'])\n"
+                "    barrier.mkdir(parents=True, exist_ok=True)\n"
+                "    (barrier / str(os.getpid())).touch()\n"
+                "    deadline = time.monotonic() + 1.0\n"
+                "    while len(list(barrier.iterdir())) < 2 and time.monotonic() < deadline:\n"
+                "        time.sleep(0.01)\n"
+                "    return value\n"
+                "json.load = barrier_json_load",
+            )
+            env = script_env(root, fake_bin)
+            env["AKBS_STATE_TEST_BARRIER"] = str(root / "barrier")
+            registry_dir = root / "home" / ".servers" / "projects"
+            registry_dir.mkdir(parents=True)
+            registry_file = registry_dir / "test61.json"
+            registry_file.write_text(
+                json.dumps(
+                    {
+                        "server": "test61",
+                        "server_ip": "192.168.100.23",
+                        "smb_user": "test61",
+                        "shares": {},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            merged_env = os.environ.copy()
+            merged_env.update(env)
+            commands = [
+                [
+                    str(SCRIPT_DIR / "register-project.sh"),
+                    *register_args(env, registry_dir, share=share, project=share),
+                ]
+                for share in ("TVE1088U", "TVA10A2R")
+            ]
+
+            processes = [
+                subprocess.Popen(
+                    command,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    env=merged_env,
+                )
+                for command in commands
+            ]
+            results = [process.communicate(timeout=10) for process in processes]
+
+            self.assertEqual([process.returncode for process in processes], [0, 0], results)
+            registry = json.loads(registry_file.read_text(encoding="utf-8"))
+            self.assertEqual(set(registry["shares"]), {"TVE1088U", "TVA10A2R"})
+
+    def test_keychain_reference_replace_failure_keeps_previous_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = make_fake_bin(root)
+            install_python_instrumentation(
+                fake_bin,
+                "import os\n"
+                "def injected_replace_failure(*_args, **_kwargs):\n"
+                "    raise OSError('injected replace failure')\n"
+                "os.replace = injected_replace_failure",
+            )
+            env = script_env(root, fake_bin)
+            env["CODEX_TARGET_PASSWORD"] = "do-not-log-this-secret"
+            reference = Path(env["CODEX_CREDENTIALS_DIR"]) / "local.keychain.env"
+            reference.parent.mkdir(parents=True)
+            original = b"LOCAL_USER=jinny\nLOCAL_SUDO_PASSWORD_STATE=stored\n"
+            reference.write_bytes(original)
+
+            result = run_script(
+                "keychain-store.sh",
+                "--role",
+                "local",
+                "--local-user",
+                "jinny",
+                env=env,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(reference.read_bytes(), original)
+            self.assertNotIn("do-not-log-this-secret", result.stdout + result.stderr)
+
     def test_mount_share_saves_verified_credentials_with_real_script_name(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

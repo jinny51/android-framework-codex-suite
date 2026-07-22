@@ -125,6 +125,43 @@ remote_state_path() {
   printf "\$HOME/%s" "$STATE_DIR"
 }
 
+claim_busy() {
+  local marker marker_q status
+  marker="$COMMAND_ID remote=$REMOTE_ROOT"
+  marker_q="$(single_quote "$marker")"
+  set +e
+  ssh_run "
+set -e
+state_dir=\"\$HOME/$STATE_DIR\"
+mkdir -p \"\$state_dir\"
+claim_tmp=\$(mktemp \"\$state_dir/.busy.claim.XXXXXX\")
+trap 'rm -f \"\$claim_tmp\"' EXIT
+printf '%s\n' $marker_q > \"\$claim_tmp\"
+if ln \"\$claim_tmp\" \"\$state_dir/busy\" 2>/dev/null; then
+  exit 0
+fi
+exit 3
+"
+  status=$?
+  set -e
+  if [[ "$status" -eq 3 ]]; then
+    echo "SESSION_BUSY name=$SESSION_NAME state=$(remote_state_path)" >&2
+  fi
+  return "$status"
+}
+
+release_busy_claim() {
+  local marker marker_q
+  marker="$COMMAND_ID remote=$REMOTE_ROOT"
+  marker_q="$(single_quote "$marker")"
+  ssh_run "
+busy=\"\$HOME/$STATE_DIR/busy\"
+if [ -f \"\$busy\" ] && [ \"\$(cat \"\$busy\" 2>/dev/null)\" = $marker_q ]; then
+  rm -f \"\$busy\"
+fi
+"
+}
+
 tmux_install_body() {
   cat <<'REMOTE'
 set -e
@@ -504,14 +541,7 @@ run_command() {
 
   ensure_session >/dev/null
 
-  local state_q busy_q
-  state_q="$(single_quote "$(remote_state_path)")"
-  busy_q="$(single_quote "$(remote_state_path)/busy")"
-
-  if ssh_run "test -f $busy_q"; then
-    echo "SESSION_BUSY name=$SESSION_NAME state=$(remote_state_path)" >&2
-    exit 3
-  fi
+  claim_busy || exit "$?"
 
   local line_file="\$HOME/$STATE_DIR/commands/$COMMAND_ID.line"
   local log_file="\$HOME/$STATE_DIR/commands/$COMMAND_ID.log"
@@ -521,17 +551,28 @@ run_command() {
   remote_root_q="$(single_quote "$REMOTE_ROOT")"
 
   local lock_prefix=""
-  local lock_suffix=""
+  local lock_cleanup=""
   if [[ "$LOCK_MODE" == "exclusive" ]]; then
     lock_prefix="exec 9>\"$lock_file\"; flock 9; "
-    lock_suffix="; flock -u 9"
+    lock_cleanup="flock -u 9 2>/dev/null || true; "
   fi
 
-  local command_line
-  command_line="__codex_cmd_id=$(single_quote "$COMMAND_ID"); __codex_log=\"$log_file\"; __codex_exit=\"$exit_file\"; __codex_busy=\"\$HOME/$STATE_DIR/busy\"; rm -f \"\$__codex_exit\"; mkdir -p \"\$HOME/$STATE_DIR/commands\"; printf '%s remote=$REMOTE_ROOT\n' \"\$__codex_cmd_id\" > \"\$__codex_busy\"; ln -sfn \"\$__codex_log\" \"\$HOME/$STATE_DIR/current.log\"; { cd $remote_root_q; $lock_prefix{ $user_cmd; }; __codex_rc=\$?$lock_suffix; } > \"\$__codex_log\" 2>&1; printf '%s\n' \"\$__codex_rc\" > \"\$__codex_exit\"; rm -f \"\$__codex_busy\"; printf '__CODEX_CMD_DONE id=%s rc=%s\n' \"\$__codex_cmd_id\" \"\$__codex_rc\" >> \"\$__codex_log\""
+  local command_line claim_q dispatch_status
+  claim_q="$(single_quote "$COMMAND_ID remote=$REMOTE_ROOT")"
+  command_line="__codex_cmd_id=$(single_quote "$COMMAND_ID"); __codex_log=\"$log_file\"; __codex_exit=\"$exit_file\"; __codex_busy=\"\$HOME/$STATE_DIR/busy\"; __codex_claim=$claim_q; rm -f \"\$__codex_exit\"; mkdir -p \"\$HOME/$STATE_DIR/commands\"; ln -sfn \"\$__codex_log\" \"\$HOME/$STATE_DIR/current.log\"; ( __codex_finish() { __codex_rc=\$?; trap - EXIT HUP INT TERM; $lock_cleanup printf '%s\n' \"\$__codex_rc\" > \"\$__codex_exit\"; if [ -f \"\$__codex_busy\" ] && [ \"\$(cat \"\$__codex_busy\" 2>/dev/null)\" = \"\$__codex_claim\" ]; then rm -f \"\$__codex_busy\"; fi; printf '__CODEX_CMD_DONE id=%s rc=%s\n' \"\$__codex_cmd_id\" \"\$__codex_rc\"; exit \"\$__codex_rc\"; }; trap __codex_finish EXIT HUP INT TERM; cd $remote_root_q; $lock_prefix{ $user_cmd; }; ) > \"\$__codex_log\" 2>&1"
 
+  set +e
   printf "%s" "$command_line" | ssh_run "cat > \"$line_file\""
-  ssh_run "tmux send-keys -t $(single_quote "$SESSION_NAME") -l \"\$(cat \"$line_file\")\" && tmux send-keys -t $(single_quote "$SESSION_NAME") C-m"
+  dispatch_status=$?
+  if [[ "$dispatch_status" -eq 0 ]]; then
+    ssh_run "tmux send-keys -t $(single_quote "$SESSION_NAME") -l \"\$(cat \"$line_file\")\" && tmux send-keys -t $(single_quote "$SESSION_NAME") C-m"
+    dispatch_status=$?
+  fi
+  set -e
+  if [[ "$dispatch_status" -ne 0 ]]; then
+    release_busy_claim >/dev/null 2>&1 || true
+    exit "$dispatch_status"
+  fi
 
   echo "COMMAND_STARTED id=$COMMAND_ID session=$SESSION_NAME log=$(remote_state_path)/commands/$COMMAND_ID.log"
 

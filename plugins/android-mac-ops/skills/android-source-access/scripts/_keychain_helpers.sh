@@ -9,6 +9,18 @@
 #    - 不在 shell history 中记录（set +o history）
 #    - 用完后立即 unset 密码变量
 
+_keychain_helpers_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_keychain_atomic_state="$(cd "$_keychain_helpers_dir/../../../lib" && pwd)/akbs_plugin_state/atomic.py"
+
+atomic_state_write_private() {
+  local file="$1"
+  python3 "$_keychain_atomic_state" write --path "$file" --mode 600
+}
+
+atomic_state_update_env() {
+  python3 "$_keychain_atomic_state" update-env "$@"
+}
+
 # 计算 account_key = sha256("<remote-user>@<server>")
 account_key() {
   local user="$1" server="$2"
@@ -79,18 +91,8 @@ keychain_check() {
 # 更新 .keychain.env 中的字段
 keychain_env_set() {
   local file="$1" key="$2" value="$3"
-  if [ -f "$file" ]; then
-    if grep -q "^${key}=" "$file"; then
-      local tmp_file="${file}.tmp.$$"
-      awk -v key="$key" -v value="$value" '
-        index($0, key "=") == 1 { print key "=" value; next }
-        { print }
-      ' "$file" > "$tmp_file"
-      mv "$tmp_file" "$file"
-    else
-      printf "\n%s=%s\n" "$key" "$value" >> "$file"
-    fi
-  fi
+  [ -f "$file" ] || return 0
+  atomic_state_update_env --path "$file" --mode 600 --set "$key=$value"
 }
 
 password_state_key() {
@@ -121,24 +123,25 @@ credential_save() {
   credential_dir=$(dirname "$env_file")
   mkdir -p "$credential_dir"
   chmod 700 "$credential_dir"
-  if [ ! -f "$env_file" ]; then
-    cat > "$env_file" <<-EOF
-ACCOUNT_KEY=${hash}
-REMOTE_USER=${remote_user}
-SERVER=${server}
-SSH_KEYCHAIN_SERVICE=$(keychain_service "ssh" "$hash")
-SMB_KEYCHAIN_SERVICE=$(keychain_service "smb" "$hash")
-REMOTE_SUDO_KEYCHAIN_SERVICE=$(keychain_service "remote-sudo" "$hash")
-SSH_PASSWORD_STATE=missing
-SMB_PASSWORD_STATE=missing
-REMOTE_SUDO_PASSWORD_STATE=missing
-UPDATED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-EOF
-  fi
   local state_key
   state_key=$(password_state_key "$role")
-  keychain_env_set "$env_file" "$state_key" "stored"
-  keychain_env_set "$env_file" "UPDATED_AT" "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  local updated_at
+  updated_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  atomic_state_update_env \
+    --path "$env_file" \
+    --mode 600 \
+    --default "ACCOUNT_KEY=${hash}" \
+    --default "REMOTE_USER=${remote_user}" \
+    --default "SERVER=${server}" \
+    --default "SSH_KEYCHAIN_SERVICE=$(keychain_service "ssh" "$hash")" \
+    --default "SMB_KEYCHAIN_SERVICE=$(keychain_service "smb" "$hash")" \
+    --default "REMOTE_SUDO_KEYCHAIN_SERVICE=$(keychain_service "remote-sudo" "$hash")" \
+    --default "SSH_PASSWORD_STATE=missing" \
+    --default "SMB_PASSWORD_STATE=missing" \
+    --default "REMOTE_SUDO_PASSWORD_STATE=missing" \
+    --default "UPDATED_AT=${updated_at}" \
+    --set "${state_key}=stored" \
+    --set "UPDATED_AT=${updated_at}"
   chmod 600 "$env_file"
 }
 
@@ -182,7 +185,7 @@ local_credential_save() {
   credential_dir=$(dirname "$env_file")
   mkdir -p "$credential_dir"
   chmod 700 "$credential_dir"
-  cat > "$env_file" <<-EOF
+  cat <<-EOF | atomic_state_write_private "$env_file"
 LOCAL_USER=${local_user}
 LOCAL_USER_HASH=${hash}
 LOCAL_SUDO_KEYCHAIN_SERVICE=${service}

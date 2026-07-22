@@ -66,6 +66,13 @@ LIST=false
 REMEMBER_PASSWORD=false
 REGISTRY_DIR="$HOME/.servers/projects"
 CREDENTIALS_DIR="$HOME/.servers/credentials"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ATOMIC_STATE="$(cd "$SCRIPT_DIR/../../../lib" && pwd)/akbs_plugin_state/atomic.py"
+
+atomic_state_write_private() {
+  local file="$1"
+  python3 "$ATOMIC_STATE" write --path "$file" --mode 600
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -216,6 +223,11 @@ remember_current_mount() {
   mkdir -p "$REGISTRY_DIR"
   registry_file="$(registry_file_for_account "$SMB_USER" "$project_share")"
   samba_server="$(server_for_share "$project_share")"
+  command -v flock >/dev/null 2>&1 || die "flock is required to update remembered mount state safely"
+  local transaction_lock="${registry_file}.transaction.lock"
+  exec 8>"$transaction_lock"
+  chmod 600 "$transaction_lock"
+  flock 8
 
   existing_credentials=""
   if [[ -f "$registry_file" ]]; then
@@ -286,7 +298,7 @@ remember_current_mount() {
     {
       printf "username=%s\n" "$SMB_USER"
       printf "password=%s\n" "$SMB_PASSWORD"
-    } >"$credentials_file"
+    } | atomic_state_write_private "$credentials_file"
     chmod 600 "$credentials_file"
   fi
 
@@ -327,7 +339,7 @@ remember_current_mount() {
     print_array_assignment REMOTE_ROOTS "${remote_roots[@]}"
     print_array_assignment PLATFORMS "${platforms[@]}"
     print_array_assignment SDK_NAMES "${sdk_names[@]}"
-  } >"$registry_file"
+  } | atomic_state_write_private "$registry_file"
   chmod 600 "$registry_file"
 
   if [[ -n "$credentials_file" && -f "$credentials_file" ]]; then
