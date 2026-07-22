@@ -18,6 +18,7 @@ from akbs_intake.config import (
     resolve_akbs_endpoint,
     submission_api_base_url,
 )
+from akbs_intake.diagnostics import warn_local_input
 
 
 MEMBER_ALIAS_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
@@ -28,10 +29,19 @@ PluginGateCheck = Callable[..., dict[str, Any]]
 def latest_pending(report_type: str, config: dict[str, str], date: dt.date | None = None) -> Path:
     out_dir = expanded_path(config["out_dir"]) / "pending"
     candidates: list[Path] = []
-    for manifest_path in out_dir.glob("*/*/*/manifest.json"):
+    for manifest_path in sorted(out_dir.glob("*/*/*/manifest.json")):
         try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except Exception:
+            raw = manifest_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            warn_local_input("pending_manifest_unreadable", manifest_path)
+            continue
+        try:
+            manifest = json.loads(raw)
+        except json.JSONDecodeError:
+            warn_local_input("pending_manifest_invalid_json", manifest_path)
+            continue
+        if not isinstance(manifest, dict):
+            warn_local_input("pending_manifest_invalid_object", manifest_path)
             continue
         kind = str(manifest.get("package_kind", ""))
         manifest_type = (

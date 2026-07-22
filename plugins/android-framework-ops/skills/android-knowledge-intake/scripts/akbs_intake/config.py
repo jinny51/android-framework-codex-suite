@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from zoneinfo import ZoneInfo
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 except ImportError:  # pragma: no cover
     ZoneInfo = None
+    ZoneInfoNotFoundError = KeyError
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +28,7 @@ from android_framework_ops.member_config import (
     parse_simple_toml,
     parse_toml_scalar,
 )
+from akbs_intake.diagnostics import warn_local_input
 
 INCOMING_SCHEMA_VERSION = "1"
 ENV_PREFIXES = ("CODEX_REPORT_", "CODEX_WORK_REPORT_")
@@ -258,8 +260,12 @@ def local_now(config: dict[str, str]) -> dt.datetime:
     if ZoneInfo is not None:
         try:
             return dt.datetime.now(ZoneInfo(tz_name))
-        except Exception:
-            pass
+        except (ZoneInfoNotFoundError, TypeError, ValueError):
+            warn_local_input("timezone_invalid", "config.timezone")
+            try:
+                return dt.datetime.now(ZoneInfo(CONFIG_DEFAULTS["timezone"]))
+            except (ZoneInfoNotFoundError, TypeError, ValueError):
+                warn_local_input("timezone_default_unavailable", "config.default_timezone")
     return dt.datetime.now()
 
 

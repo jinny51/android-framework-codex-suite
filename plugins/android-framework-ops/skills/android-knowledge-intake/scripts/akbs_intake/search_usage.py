@@ -17,6 +17,7 @@ from android_framework_ops.knowledge_rules import (
 )
 
 from akbs_intake.config import CONFIG_DEFAULTS, expanded_path
+from akbs_intake.diagnostics import warn_local_input
 from akbs_intake.io_utils import list_string_values, unique_strings
 from akbs_intake.patch.validation import SCOPE_ANCHOR_GENERIC_TOKENS, scope_semantic_tokens
 from akbs_intake.reports.common import ymd
@@ -67,12 +68,20 @@ def load_search_usage_records(config: dict[str, str], date: dt.date) -> list[dic
                 continue
             seen.add(resolved)
             try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except Exception:
+                raw = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                warn_local_input("search_usage_unreadable", path)
+                continue
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                warn_local_input("search_usage_invalid_json", path)
                 continue
             if not isinstance(payload, dict):
+                warn_local_input("search_usage_invalid_object", path)
                 continue
             if payload.get("schema") != "android-knowledge-search-usage":
+                warn_local_input("search_usage_unsupported_schema", path)
                 continue
             record_date = str(payload.get("date") or "").strip()
             if record_date and record_date not in valid_dates:
