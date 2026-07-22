@@ -79,6 +79,47 @@ def test_delete_not_in_keep_preserves_spawn_children(tmp_path: Path) -> None:
     }
 
 
+def test_selection_plan_is_pure_and_keeps_cross_db_order() -> None:
+    parent = "019e0000-0000-7000-8000-000000000001"
+    child = "019e0000-0000-7000-8000-000000000002"
+    old_a = "019e0000-0000-7000-8000-000000000003"
+    old_b = "019e0000-0000-7000-8000-000000000004"
+    db_a = Path("state_a.sqlite")
+    db_b = Path("state_b.sqlite")
+    rows_by_db = {
+        db_a: [
+            clean_codex_history.ThreadRow(parent, "parent", 0, ""),
+            clean_codex_history.ThreadRow(child, "child", 0, ""),
+            clean_codex_history.ThreadRow(old_a, "old a", 0, ""),
+        ],
+        db_b: [clean_codex_history.ThreadRow(old_b, "old b", 0, "")],
+    }
+    edges_by_db = {db_a: [(parent, child)], db_b: []}
+    args = SimpleNamespace(
+        ids=[],
+        allow_ambiguous_ids=False,
+        delete_not_in_keep=True,
+        keep_ids=[parent],
+        no_keep_spawn_children=False,
+    )
+    original_rows = {db_path: list(rows) for db_path, rows in rows_by_db.items()}
+    original_edges = {db_path: list(edges) for db_path, edges in edges_by_db.items()}
+
+    plan = clean_codex_history.build_selection_plan(rows_by_db, edges_by_db, args)
+
+    assert plan.keep_ids == {parent, child}
+    assert plan.keep_ids_by_db == {
+        db_a: frozenset({parent, child}),
+        db_b: frozenset({parent}),
+    }
+    assert [row.id for row in plan.selected_by_db[db_a]] == [old_a]
+    assert [row.id for row in plan.selected_by_db[db_b]] == [old_b]
+    assert [row.id for row in plan.selected] == [old_a, old_b]
+    assert plan.parent_by_child == {child: parent}
+    assert rows_by_db == original_rows
+    assert edges_by_db == original_edges
+
+
 def test_clean_session_index_delete_not_in_keep(tmp_path: Path) -> None:
     keep_parent = "019e0000-0000-7000-8000-000000000001"
     keep_child = "019e0000-0000-7000-8000-000000000002"
@@ -482,3 +523,106 @@ def test_clean_global_state_for_ids_noops_when_selected_thread_absent(tmp_path: 
 
     assert report["would_modify"] is False
     assert cleaned == state
+
+
+def test_keep_set_dry_run_cli_plan_is_stable(tmp_path: Path, monkeypatch, capsys) -> None:
+    db_path = tmp_path / "state_5.sqlite"
+    make_state_db(db_path)
+    db_before = db_path.read_bytes()
+    keep_parent = "019e0000-0000-7000-8000-000000000001"
+    keep_child = "019e0000-0000-7000-8000-000000000002"
+    old_parent = "019e0000-0000-7000-8000-000000000003"
+    old_child = "019e0000-0000-7000-8000-000000000004"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(SCRIPT),
+            "--codex-home",
+            str(tmp_path),
+            "--delete-not-in-keep",
+            "--keep-ids",
+            keep_parent,
+            "--dry-run",
+            "--skip-health-check",
+        ],
+    )
+
+    assert clean_codex_history.main() == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    golden_plan = {
+        "mode": payload["mode"],
+        "actions_requested": payload["actions_requested"],
+        "keep_ids": [item["id"] for item in payload["keep_set"]["keep_samples"]],
+        "spawn_children_preserved": payload["keep_set"]["spawn_children_preserved"],
+        "databases": [
+            {
+                "db": item["db"],
+                "thread_count": item["thread_count"],
+                "selected_ids": [sample["id"] for sample in item["selected_samples"]],
+                "keep_count": item["keep_count"],
+                "selected_existing_session_files": item["selected_existing_session_files"],
+                "write_result_keys": sorted(
+                    key
+                    for key in item
+                    if key in {"backups", "removed_thread_rows", "removed_thread_fk_orphans"}
+                ),
+            }
+            for item in payload["databases"]
+        ],
+        "session_index": payload["session_index"],
+        "global_state": {
+            key: payload["global_state_keep_cleanup"][key]
+            for key in ("exists", "keep_thread_count", "would_modify", "modified")
+        },
+        "archived_files": payload["archived_files"],
+    }
+    assert golden_plan == {
+        "mode": "dry-run",
+        "actions_requested": {
+            "archived_sqlite_cleanup": False,
+            "delete_not_in_keep": True,
+            "selectors_used": True,
+            "clean_archived_files": True,
+            "repair_thread_orphans": False,
+            "clean_stale_index": False,
+            "clean_global_state": False,
+            "scrub_file": False,
+        },
+        "keep_ids": [keep_parent, keep_child],
+        "spawn_children_preserved": True,
+        "databases": [
+            {
+                "db": "state_5.sqlite",
+                "thread_count": 4,
+                "selected_ids": [old_parent, old_child],
+                "keep_count": 2,
+                "selected_existing_session_files": 0,
+                "write_result_keys": [],
+            }
+        ],
+        "session_index": {
+            "exists": False,
+            "lines": 0,
+            "parse_errors": 0,
+            "selected_records_removed": 0,
+            "stale_records_removed": 0,
+            "not_in_keep_records_removed": 0,
+        },
+        "global_state": {
+            "exists": False,
+            "keep_thread_count": 2,
+            "would_modify": False,
+            "modified": False,
+        },
+        "archived_files": {
+            "archived_transcript_files": 0,
+            "unreferenced_archived_transcript_files": 0,
+            "directly_referenced_files_skipped": 0,
+            "protected_archived_transcript_files_skipped": 0,
+            "deleted_archived_transcript_files": 0,
+        },
+    }
+    assert db_path.read_bytes() == db_before
+    assert not list(tmp_path.glob("*.bak-*"))

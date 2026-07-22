@@ -24,6 +24,14 @@ if PLUGIN_LIB.is_dir() and str(PLUGIN_LIB) not in sys.path:
     sys.path.insert(0, str(PLUGIN_LIB))
 
 from codex_workspace_care.history import ThreadRow, resolve_rollout_path, rollout_files, state_dbs
+from codex_workspace_care.history_cleanup_plan import (
+    build_selection_plan,
+    expand_keep_ids_with_spawn_children as expand_keep_ids,
+    resolve_id_terms,
+    select_threads,
+    spawn_parent_map as parent_map_from_spawn_edges,
+    validate_id_selectors,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -118,46 +126,6 @@ def fetch_threads(db_path: Path) -> list[ThreadRow]:
     return with_readonly_db(db_path, query)
 
 
-def validate_id_selectors(rows: list[ThreadRow], args: argparse.Namespace) -> None:
-    if not args.ids or args.allow_ambiguous_ids:
-        return
-    for term in args.ids:
-        lowered = term.lower()
-        matches = [row for row in rows if row.id.lower() == lowered or row.id.lower().startswith(lowered)]
-        if len(matches) != 1:
-            raise SystemExit(
-                f"--ids term {term!r} matched {len(matches)} threads. Use a longer prefix or --allow-ambiguous-ids."
-            )
-
-
-def resolve_id_terms(
-    rows: list[ThreadRow],
-    terms: list[str],
-    *,
-    allow_ambiguous_ids: bool = False,
-    allow_missing_full_ids: bool = False,
-) -> set[str]:
-    resolved: set[str] = set()
-    for term in terms:
-        lowered = term.lower()
-        matches = [row.id for row in rows if row.id.lower() == lowered or row.id.lower().startswith(lowered)]
-        if not matches:
-            if allow_missing_full_ids and re.fullmatch(
-                r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
-                lowered,
-                re.IGNORECASE,
-            ):
-                resolved.add(term)
-                continue
-            raise SystemExit(f"--keep-ids term {term!r} matched 0 threads. Use a full visible thread ID.")
-        if len(matches) > 1 and not allow_ambiguous_ids:
-            raise SystemExit(
-                f"--keep-ids term {term!r} matched {len(matches)} threads. Use a longer prefix or --allow-ambiguous-ids."
-            )
-        resolved.update(matches)
-    return resolved
-
-
 def fetch_spawn_edges(db_path: Path) -> list[tuple[str, str]]:
     def query(conn: sqlite3.Connection) -> list[tuple[str, str]]:
         tables = {
@@ -176,51 +144,11 @@ def fetch_spawn_edges(db_path: Path) -> list[tuple[str, str]]:
 
 
 def expand_keep_ids_with_spawn_children(db_path: Path, keep_ids: set[str]) -> set[str]:
-    expanded = set(keep_ids)
-    edges = fetch_spawn_edges(db_path)
-    changed = True
-    while changed:
-        changed = False
-        for parent, child in edges:
-            if parent in expanded and child not in expanded:
-                expanded.add(child)
-                changed = True
-    return expanded
+    return expand_keep_ids(keep_ids, fetch_spawn_edges(db_path))
 
 
 def spawn_parent_map(db_paths: list[Path]) -> dict[str, str]:
-    parents: dict[str, str] = {}
-    for db_path in db_paths:
-        for parent, child in fetch_spawn_edges(db_path):
-            parents.setdefault(child, parent)
-    return parents
-
-
-def select_threads(rows: list[ThreadRow], args: argparse.Namespace, keep_ids: set[str] | None = None) -> list[ThreadRow]:
-    if args.delete_not_in_keep:
-        keep = keep_ids or set()
-        return [row for row in rows if row.id not in keep]
-
-    selected: list[ThreadRow] = []
-    id_terms = [term.lower() for term in args.ids]
-    title_terms = [term.lower() for term in args.title_contains]
-    current_id = (args.current_thread_id or "").lower()
-
-    for row in rows:
-        row_id = row.id.lower()
-        title = row.title.lower()
-        match = False
-        if args.all_archived and row.archived:
-            match = True
-        if args.all_except_current and row_id != current_id:
-            match = True
-        if id_terms and any(row_id.startswith(term) or row_id == term for term in id_terms):
-            match = True
-        if title_terms and any(term in title for term in title_terms):
-            match = True
-        if match:
-            selected.append(row)
-    return selected
+    return parent_map_from_spawn_edges({db_path: fetch_spawn_edges(db_path) for db_path in db_paths})
 
 
 def backup(path: Path) -> Path:
@@ -1867,27 +1795,16 @@ def main() -> int:
         raise SystemExit(f"No state_*.sqlite databases found in {codex_home}")
 
     db_rows = {db_path: fetch_threads(db_path) for db_path in dbs}
-    all_rows = [row for rows in db_rows.values() for row in rows]
-    parent_by_child = spawn_parent_map(dbs)
-    validate_id_selectors(all_rows, args)
-
-    keep_ids_all: set[str] = set()
-    keep_ids_by_db: dict[Path, set[str]] = {}
+    spawn_edges_by_db = {db_path: fetch_spawn_edges(db_path) for db_path in dbs}
+    selection_plan = build_selection_plan(db_rows, spawn_edges_by_db, args)
+    all_rows = list(selection_plan.all_rows)
+    parent_by_child = selection_plan.parent_by_child
+    keep_ids_all = set(selection_plan.keep_ids)
+    keep_ids_by_db = {
+        db_path: set(keep_ids)
+        for db_path, keep_ids in selection_plan.keep_ids_by_db.items()
+    }
     keep_labels = parse_keep_labels(args.keep_label)
-    if args.delete_not_in_keep:
-        base_keep_ids = resolve_id_terms(
-            all_rows,
-            args.keep_ids,
-            allow_ambiguous_ids=args.allow_ambiguous_ids,
-            allow_missing_full_ids=True,
-        )
-        keep_ids_all.update(base_keep_ids)
-        for db_path in dbs:
-            keep_ids = set(base_keep_ids)
-            if not args.no_keep_spawn_children:
-                keep_ids = expand_keep_ids_with_spawn_children(db_path, keep_ids)
-            keep_ids_by_db[db_path] = keep_ids
-            keep_ids_all.update(keep_ids)
 
     clean_archived_files = args.clean_archived_files or args.all_archived or args.delete_not_in_keep
     selectors_used = args.all_archived or args.all_except_current or args.ids or args.title_contains or args.delete_not_in_keep
@@ -1935,7 +1852,7 @@ def main() -> int:
     backup_done: set[Path] = set()
     selected_all: list[ThreadRow] = []
     for db_path, rows in db_rows.items():
-        selected = select_threads(rows, args, keep_ids_by_db.get(db_path))
+        selected = list(selection_plan.selected_by_db[db_path])
         selected_all.extend(selected)
         db_report: dict[str, Any] = {
             "db": db_path.name,
