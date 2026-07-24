@@ -19,6 +19,7 @@ if str(PLUGIN_LIB) not in sys.path:
 
 from android_framework_ops.json_io import write_json
 from android_framework_ops.artifact_paths import require_safe_artifact_path
+from android_framework_ops.verification_evidence import build_delivery_contract_fields
 
 
 def parse_args() -> argparse.Namespace:
@@ -143,6 +144,7 @@ def delivery_evidence(
     if args.wait_boot:
         device_restarts.append(f"{adb_prefix} wait-for-device")
     return {
+        **build_delivery_contract_fields(),
         "kind": "verification_result",
         "result": "INFO" if args.dry_run else "PASS",
         "method": "device",

@@ -290,6 +290,9 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertEqual(verification["result"], "PASS")
             self.assertEqual(verification["method"], "device")
             self.assertEqual(verification["device"], "rk3576")
+            self.assertEqual(verification["contract_version"], "akbs-verification-evidence/v2")
+            self.assertEqual(verification["scope"], "feature")
+            self.assertEqual(verification["requirement_acceptance"], "accepted")
             self.assertEqual(build_result["kind"], "build_result")
             self.assertEqual(build_result["result"], "PASS")
             self.assertEqual(search["result"], "INFO")
@@ -733,7 +736,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "--summary",
                     "Allow navigation policy toggle",
                     "--status",
-                    "validated",
+                    "candidate",
                     "--search-query",
                     "navigation policy toggle",
                     "--search-result",
@@ -751,6 +754,9 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
 
             self.assertEqual(verification["result"], "PASS")
             self.assertEqual(verification["method"], "device")
+            self.assertEqual(verification["contract_version"], "akbs-verification-evidence/v2")
+            self.assertEqual(verification["scope"], "build_delivery")
+            self.assertEqual(verification["requirement_acceptance"], "unverified")
             self.assertEqual(verification["remote_build"]["host"], "builder01")
             self.assertEqual(verification["local_delivery"]["adb_serial"], "ABC123")
             self.assertIn("remote_build", manifest["verification_chain"])
@@ -760,6 +766,23 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("0123456789abcdef0123456789abcdef01234567", readme)
             self.assertIn("ABC123", readme)
             self.assertIn("adb -s ABC123 push services.jar /system/framework/services.jar", readme)
+
+    def test_validated_status_rejects_delivery_only_evidence(self) -> None:
+        module = load_patch_capture_module()
+        args = type("Args", (), {"status": "validated"})()
+        payload = {
+            "contract_version": "akbs-verification-evidence/v2",
+            "scope": "build_delivery",
+            "requirement_acceptance": "unverified",
+            "result": "PASS",
+            "method": "device",
+            "build": ["framework-services build PASS"],
+            "steps": ["adb push services.jar /system/framework/services.jar"],
+        }
+
+        errors = module.validate_verification_for_status(args, payload)
+
+        self.assertTrue(any("需求级验收" in error for error in errors), errors)
 
     def test_common_framework_paths_produce_specific_patch_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

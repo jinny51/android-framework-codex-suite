@@ -10,6 +10,7 @@ from android_framework_ops.patch_analysis import (
     changed_lines as patch_changed_lines,
     resource_keys_from_patch_text,
 )
+from android_framework_ops.verification_evidence import has_authoritative_requirement_result
 
 RequireFile = Callable[[Any, str], Path | None]
 ReadReferencedJson = Callable[[Path, str], dict[str, Any] | None]
@@ -580,6 +581,14 @@ def validate_patch_verification_result(
         errors.append("verification_result.method 必须提供")
     if package_status == "validated" and result != "PASS":
         errors.append("validated 必须提供 PASS 验证")
+    elif package_status == "validated" and not has_authoritative_requirement_result(
+        verification_payload,
+        expected_result="PASS",
+    ):
+        errors.append(
+            "validated 必须提供明确的需求级验收 PASS；"
+            "build delivery、adb push 或旧版无作用域 verification_result 只能保留为非 validated evidence"
+        )
     if package_status == "failed" and result != "FAIL":
         errors.append("failed 必须提供 FAIL 验证")
 

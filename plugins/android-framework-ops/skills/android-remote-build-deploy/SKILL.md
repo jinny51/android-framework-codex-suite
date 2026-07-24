@@ -166,7 +166,7 @@ python3 "<skill>/scripts/push_artifacts.py" \
 
 Set `ADB` when the executable is not on `PATH`. WSL may point it at `adb.exe`; macOS uses the native `adb` executable. The executor handles path conversion only when Windows `adb.exe` is selected.
 
-Reboot or restart only as required by the caller, artifact type, or established project memory. `adb root`, remount, push, reboot, boot wait, and immediate device health are delivery evidence, not final requirement verification.
+Reboot or restart only as required by the caller, artifact type, or established project memory. `adb root`, remount, push, reboot, boot wait, and immediate device health are delivery evidence, not final requirement verification. The generated evidence uses `contract_version=akbs-verification-evidence/v2`, `scope=build_delivery`, and `requirement_acceptance=unverified`; a delivery `result=PASS` must not be promoted to requirement acceptance.
 
 ## Output
 

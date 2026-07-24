@@ -46,6 +46,11 @@ from android_framework_ops.patch_analysis import (
     symbols_from_diff,
 )
 from android_framework_ops.project_registry import source_access_registry_clues as registry_source_access_registry_clues
+from android_framework_ops.verification_evidence import (
+    build_delivery_contract_fields,
+    has_authoritative_requirement_result,
+    requirement_contract_fields,
+)
 
 
 SCHEMA_VERSION = "2.0"
@@ -358,6 +363,7 @@ def load_auto_verification_payload(args: argparse.Namespace) -> dict[str, Any]:
             kind = evidence_kind_from_file(path, item)
             if kind != "verification_result":
                 continue
+            item.update(build_delivery_contract_fields())
             payload = merge_auto_verification_payload(payload, item)
     return payload
 
@@ -489,6 +495,24 @@ def verification_result(args: argparse.Namespace, auto_payload: dict[str, Any] |
                 "remaining_risk": args.remaining_risk or "",
             }
         )
+    explicit_requirement_verification = (
+        method == "device"
+        and bool(args.device_verification)
+        and bool(payload.get("build"))
+        and bool(payload.get("steps"))
+    ) or (
+        method == "equivalent"
+        and bool(payload.get("equivalent_type"))
+        and bool(payload.get("reason"))
+        and bool(payload.get("coverage"))
+        and bool(payload.get("remaining_risk"))
+    )
+    if explicit_requirement_verification:
+        payload.update(requirement_contract_fields(result))
+    elif auto_payload:
+        payload.update(build_delivery_contract_fields())
+    else:
+        payload.update(requirement_contract_fields("INFO"))
     return payload
 
 
@@ -564,6 +588,11 @@ def validate_verification_for_status(args: argparse.Namespace, payload: dict[str
     method = payload.get("method")
     if payload.get("result") != "PASS":
         errors.append("status 是 validated 时 verification-result.result 必须是 PASS")
+    elif not has_authoritative_requirement_result(payload, expected_result="PASS"):
+        errors.append(
+            "status 是 validated 时必须提供明确的需求级验收 PASS；"
+            "构建、artifact delivery、adb push、重启或旧版无作用域 evidence 不能替代需求行为验收"
+        )
 
     if method == "device":
         if not payload.get("build"):

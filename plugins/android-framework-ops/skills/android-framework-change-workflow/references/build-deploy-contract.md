@@ -46,6 +46,11 @@ Ask for concise evidence:
 - Basic health result after delivery.
 - Skipped steps and reason.
 
+Build/deploy evidence uses `akbs-verification-evidence/v2` with `scope=build_delivery` and
+`requirement_acceptance=unverified`. Keep that scope when handing control back. Only the
+requirement-specific verification gate may produce `scope=feature` with
+`requirement_acceptance=accepted`.
+
 ## Artifact Hints
 
 Common framework artifacts:

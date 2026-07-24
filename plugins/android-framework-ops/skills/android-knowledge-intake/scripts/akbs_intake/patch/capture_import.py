@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from android_framework_ops.knowledge_rules import aggregate_package_scope_errors
+from android_framework_ops.verification_evidence import has_authoritative_requirement_result
 
 from akbs_intake.io_utils import (
     MATERIALS_DIR,
@@ -39,7 +40,7 @@ def verification_payload_passes(package_root: Path, evidence_item: dict[str, Any
     if not isinstance(rel, str) or not rel:
         return False
     payload = read_json_file(package_root / rel)
-    if payload.get("result") != "PASS":
+    if not has_authoritative_requirement_result(payload, expected_result="PASS"):
         return False
     if payload.get("method") == "device":
         return True

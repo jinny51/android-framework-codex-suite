@@ -223,6 +223,9 @@ When Android work is built on a remote server and delivered to a local USB devic
 
 ```json
 {
+  "contract_version": "akbs-verification-evidence/v2",
+  "scope": "build_delivery",
+  "requirement_acceptance": "unverified",
   "kind": "verification_result",
   "result": "PASS",
   "method": "device",
@@ -248,7 +251,11 @@ When Android work is built on a remote server and delivered to a local USB devic
 }
 ```
 
-Manual capture arguments can still override or supplement the automatic file for historical or exceptional packages.
+The top-level `PASS` in this automatic file means the build/delivery operation passed. It is not
+requirement acceptance. `capture_framework_patch.py` preserves this fail-closed scope, including
+for older delivery files that lack the v2 fields. Manual capture arguments can still supplement
+the automatic file for historical or exceptional packages, but only explicit device-behavior or
+qualified equivalent verification can produce requirement acceptance.
 
 ## Coding Standard Check
 
@@ -316,6 +323,9 @@ Runtime behavior changes in the modified module should use device verification. 
 
 ```json
 {
+  "contract_version": "akbs-verification-evidence/v2",
+  "scope": "feature",
+  "requirement_acceptance": "accepted",
   "result": "PASS",
   "method": "device",
   "device": "rk3576",
@@ -349,11 +359,17 @@ Equivalent verification must be explicit:
 
 ```json
 {
+  "contract_version": "akbs-verification-evidence/v2",
+  "scope": "feature",
+  "requirement_acceptance": "accepted",
   "result": "PASS",
   "method": "equivalent",
   "equivalent_type": "artifact_static_check",
   "reason": "资源/配置类变更不涉及被修改模块运行时行为",
   "coverage": [],
-  "remaining_risk": ""
+  "remaining_risk": "未覆盖真机运行时行为；该变更不涉及被修改模块的运行时路径"
 }
 ```
+
+Legacy unscoped verification records remain readable as historical evidence, but they cannot
+upgrade a package to `validated`.

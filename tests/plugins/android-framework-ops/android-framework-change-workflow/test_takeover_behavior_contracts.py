@@ -107,13 +107,6 @@ def test_missing_adb_fails_before_delivery_evidence_is_written(tmp_path: Path) -
     assert not evidence.exists()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "AKBS-BUG-04-PLUGIN-001: delivery evidence is currently indistinguishable "
-        "from final device acceptance"
-    ),
-)
 def test_build_delivery_evidence_cannot_claim_unscoped_final_acceptance() -> None:
     module = load_push_module()
     args = argparse.Namespace(

@@ -333,7 +333,15 @@ Manifest excerpt:
 
 `package_status` must match `materials/variant.json` `package_status`.
 
-`validated` requires `verification_result.payload.result = PASS`.
+`validated` requires all of:
+
+- `verification_result.payload.contract_version = akbs-verification-evidence/v2`
+- `verification_result.payload.scope = feature`
+- `verification_result.payload.requirement_acceptance = accepted`
+- `verification_result.payload.result = PASS`
+
+Build delivery, adb push/restart, and legacy unscoped verification records remain evidence but
+cannot upgrade a package to `validated`.
 
 ## Source Capability Versions
 

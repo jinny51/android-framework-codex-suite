@@ -73,7 +73,19 @@ def create_capture_package(
         encoding="utf-8",
     )
     readme.write_text(valid_patch_readme(), encoding="utf-8")
-    write_json(package / "evidence" / "verification-result.json", {"result": "PASS", "method": "device", "summary": "device pass"})
+    write_json(
+        package / "evidence" / "verification-result.json",
+        {
+            "contract_version": "akbs-verification-evidence/v2",
+            "scope": "feature",
+            "requirement_acceptance": "accepted",
+            "result": "PASS",
+            "method": "device",
+            "build": ["framework-services build PASS"],
+            "steps": ["navigation policy behavior matched expectation"],
+            "summary": "device pass",
+        },
+    )
     write_json(
         package / "evidence" / "search-before-change.json",
         search_payload
@@ -212,7 +224,19 @@ def create_feature_capture_package(root: Path) -> Path:
         "+//gyf 20260608@ settings entry\n",
         encoding="utf-8",
     )
-    write_json(package / "evidence" / "verification-result.json", {"result": "PASS", "method": "device", "summary": "device pass"})
+    write_json(
+        package / "evidence" / "verification-result.json",
+        {
+            "contract_version": "akbs-verification-evidence/v2",
+            "scope": "feature",
+            "requirement_acceptance": "accepted",
+            "result": "PASS",
+            "method": "device",
+            "build": ["framework-services build PASS"],
+            "steps": ["cross-repository display policy behavior matched expectation"],
+            "summary": "device pass",
+        },
+    )
     write_json(
         package / "evidence" / "search-before-change.json",
         {
@@ -515,6 +539,9 @@ class PatchCaptureIngestTests(unittest.TestCase):
             risk = json.loads((package / "materials" / "evidence" / "capture" / "capture-risk-surface.json").read_text(encoding="utf-8"))
             patch_view = json.loads((package / "materials" / "display" / "patch_view.json").read_text(encoding="utf-8"))
             ai_facts = json.loads((package / "materials" / "evidence" / "patch_ai_facts.json").read_text(encoding="utf-8"))
+            verification = json.loads(
+                (package / "materials" / "evidence" / "verification_result.json").read_text(encoding="utf-8")
+            )
 
             self.assertEqual(check["status"], "PASS", check["errors"])
             self.assertEqual(manifest["schema"], "knowledge-incoming-package")
@@ -522,6 +549,8 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertEqual(manifest["package_kind"], "framework_change")
             self.assertEqual(manifest["member_alias"], "admin_alias")
             self.assertEqual(manifest["package_status"], "validated")
+            self.assertEqual(verification["payload"]["scope"], "feature")
+            self.assertEqual(verification["payload"]["requirement_acceptance"], "accepted")
             self.assertNotIn("maturity", manifest)
             self.assertFalse((package / "knowledge").exists())
             self.assertEqual(manifest["platform"], "rk")
@@ -562,6 +591,55 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertTrue(ai_facts["payload"]["code_anchors"]["files"])
             self.assertEqual(ai_facts["payload"]["merge_gate_inputs"]["project"], "TVE1067M")
             self.assertFalse(any(str(path).startswith("knowledge/") for path in manifest["files"]["evidence"]))
+
+    def test_delivery_only_and_legacy_unscoped_evidence_do_not_upgrade_to_validated(self) -> None:
+        variants = {
+            "delivery-only": {
+                "contract_version": "akbs-verification-evidence/v2",
+                "scope": "build_delivery",
+                "requirement_acceptance": "unverified",
+                "result": "PASS",
+                "method": "device",
+                "summary": "artifact delivery passed",
+            },
+            "legacy-unscoped": {
+                "result": "PASS",
+                "method": "device",
+                "summary": "legacy device result without an acceptance scope",
+            },
+            "incomplete-feature-acceptance": {
+                "contract_version": "akbs-verification-evidence/v2",
+                "scope": "feature",
+                "requirement_acceptance": "accepted",
+                "result": "PASS",
+                "method": "device",
+                "summary": "acceptance marker without build or behavior steps",
+            },
+        }
+        for label, verification_payload in variants.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                capture = create_capture_package(root)
+                write_json(capture / "evidence" / "verification-result.json", verification_payload)
+
+                package = prepare_patch_package(
+                    dt.date(2026, 5, 26),
+                    self.config(root),
+                    run_id="20260526-120500-patch",
+                    patch_paths=[],
+                    patch_package_paths=[str(capture)],
+                    project="TVE1067M",
+                    summary="Allow nav policy toggle",
+                    status="validated",
+                    schema_version="1",
+                )
+
+                manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+                stored = json.loads(
+                    (package / "materials" / "evidence" / "verification_result.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(manifest["package_status"], "candidate")
+                self.assertEqual(stored["payload"], verification_payload)
 
     def test_patch_ai_facts_treat_adapt_as_reference_not_merge_hint(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
