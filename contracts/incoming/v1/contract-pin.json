@@ -3,13 +3,13 @@
   "schema_version": "1",
   "compatibility": "strict-content-hash-equality",
   "source_provenance": {
-    "commit": "bff913b71618704eac068d1c394852e10e0103d5",
+    "commit": "e6cbf765b29360cf257b7f7f307d55a0275eff02",
     "compatibility_condition": false
   },
   "public_contract": {
     "system_path": "contracts/incoming/v1/public-contract.json",
     "consumer_path": "plugins/android-framework-ops/skills/android-knowledge-intake/references/incoming-public-contract-v1.json",
-    "sha256": "3ef6555208cb068e5006979a9ead61e2e639b247d241a0f3d34dbfbfa945c36d"
+    "sha256": "c1f22f93e4e7fe4ba6d888a32a7a48ef768141c1009fcbc40b483909410ef036"
   },
   "verification_reference_evaluator": {
     "source_path": "plugins/android-framework-ops/lib/android_framework_ops/verification_acceptance.py",
@@ -26,7 +26,7 @@
     "fixtures/daily.manifest.json": "b907189009b81dcc8874f19b472076ece943901be4d1afb53f9290ca18e588a6",
     "fixtures/patch.manifest.json": "0ee8eb63a8be866ea4a2e7053870f1e21a357db20caeb6848e860db9bc544bd9",
     "fixtures/weekly.manifest.json": "980abda97a2ceaab54a13e7a6d3549846a0bf607612c3bba33e9b679ce03d4a3",
-    "verification-acceptance-v2.json": "6f9094a3ba72e612f7e0d6b5ced846c7bf4efc077d0dab0ec13a592cadb7faac"
+    "verification-acceptance-v2.json": "2f559b6a05d032691904516d5bde4d8a284247a05e6704f9f14113804a08032d"
   },
   "success_reason_codes": [
     "server_contract_v1_pass"

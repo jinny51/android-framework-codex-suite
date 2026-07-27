@@ -37,9 +37,17 @@ def test_versioned_contract_drives_every_conformance_case() -> None:
         "legacy_unscoped_pass",
         "build_delivery_unverified_pass",
         "incomplete_feature_accepted_pass",
+        "feature_rejected_when_pass_expected",
+        "feature_acceptance_mismatch",
+        "feature_method_unsupported",
         "complete_feature_device_accepted_pass",
         "complete_feature_equivalent_accepted_pass",
     } <= set(cases)
+    assert set(contract["failure_reason_codes"].values()) == {
+        case["expected_failure_reason"]
+        for case in cases.values()
+        if case["expected_failure_reason"]
+    }
 
     for case in cases.values():
         expected = case["expected_authoritative_result"]
@@ -47,5 +55,4 @@ def test_versioned_contract_drives_every_conformance_case() -> None:
         assert has_authoritative_requirement_result(
             payload,
             expected_result=expected or None,
-        ) is bool(expected), case["id"]
-
+        ) is bool(expected and not case["expected_failure_reason"]), case["id"]

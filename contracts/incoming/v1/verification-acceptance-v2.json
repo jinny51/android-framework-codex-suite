@@ -121,6 +121,63 @@
       "expected_knowledge_evidence_level": "review_required"
     },
     {
+      "id": "feature_rejected_when_pass_expected",
+      "payload": {
+        "contract_version": "akbs-verification-evidence/v2",
+        "scope": "feature",
+        "requirement_acceptance": "rejected",
+        "result": "FAIL",
+        "method": "device",
+        "build": [
+          "framework-services build PASS"
+        ],
+        "steps": [
+          "device behavior FAIL"
+        ]
+      },
+      "expected_authoritative_result": "PASS",
+      "expected_failure_reason": "verification_not_pass",
+      "expected_knowledge_evidence_level": "review_required"
+    },
+    {
+      "id": "feature_acceptance_mismatch",
+      "payload": {
+        "contract_version": "akbs-verification-evidence/v2",
+        "scope": "feature",
+        "requirement_acceptance": "rejected",
+        "result": "PASS",
+        "method": "device",
+        "build": [
+          "framework-services build PASS"
+        ],
+        "steps": [
+          "device behavior PASS"
+        ]
+      },
+      "expected_authoritative_result": "PASS",
+      "expected_failure_reason": "verification_acceptance_mismatch",
+      "expected_knowledge_evidence_level": "review_required"
+    },
+    {
+      "id": "feature_method_unsupported",
+      "payload": {
+        "contract_version": "akbs-verification-evidence/v2",
+        "scope": "feature",
+        "requirement_acceptance": "accepted",
+        "result": "PASS",
+        "method": "build_only",
+        "build": [
+          "framework-services build PASS"
+        ],
+        "steps": [
+          "build artifact exists"
+        ]
+      },
+      "expected_authoritative_result": "PASS",
+      "expected_failure_reason": "verification_method_unsupported",
+      "expected_knowledge_evidence_level": "review_required"
+    },
+    {
       "id": "complete_feature_device_accepted_pass",
       "payload": {
         "contract_version": "akbs-verification-evidence/v2",

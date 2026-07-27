@@ -37,7 +37,7 @@ class IncomingContractPinTests(unittest.TestCase):
         self.assertEqual(pin["compatibility"], "strict-content-hash-equality")
         self.assertEqual(
             pin["source_provenance"]["commit"],
-            "bff913b71618704eac068d1c394852e10e0103d5",
+            "e6cbf765b29360cf257b7f7f307d55a0275eff02",
         )
         self.assertFalse(pin["source_provenance"]["compatibility_condition"])
         consumer_path = SUITE_ROOT / pin["public_contract"]["consumer_path"]

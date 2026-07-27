@@ -11,7 +11,7 @@
   "verification_acceptance": {
     "path": "verification-acceptance-v2.json",
     "schema": "akbs-verification-acceptance-contract-v2",
-    "sha256": "6f9094a3ba72e612f7e0d6b5ced846c7bf4efc077d0dab0ec13a592cadb7faac"
+    "sha256": "2f559b6a05d032691904516d5bde4d8a284247a05e6704f9f14113804a08032d"
   },
   "golden_fixtures": {
     "daily": {
