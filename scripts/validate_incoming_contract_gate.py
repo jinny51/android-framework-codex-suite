@@ -190,6 +190,37 @@ def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> t
             f"public contract SHA drift: pin={expected_public_sha} plugin={consumer_public_sha} server={system_public_sha}"
         )
 
+    evaluator_source = pin.get("verification_reference_evaluator")
+    if not isinstance(evaluator_source, dict):
+        raise AssertionError("plugin compatibility pin is missing the verification evaluator")
+    evaluator_plugin_path = suite_root / _relative_contract_path(
+        evaluator_source.get("source_path"),
+        label="plugin verification evaluator path",
+    )
+    evaluator_system_path = system_root / _relative_contract_path(
+        evaluator_source.get("server_path"),
+        label="system verification evaluator path",
+    )
+    expected_evaluator_sha = str(evaluator_source.get("sha256") or "")
+    if (
+        not re.fullmatch(r"[0-9a-f]{64}", expected_evaluator_sha)
+        or not evaluator_plugin_path.is_file()
+        or not evaluator_system_path.is_file()
+    ):
+        raise AssertionError("verification evaluator pin is invalid")
+    plugin_evaluator_sha = sha256(evaluator_plugin_path)
+    system_evaluator_sha = sha256(evaluator_system_path)
+    if (
+        evaluator_plugin_path.read_bytes() != evaluator_system_path.read_bytes()
+        or plugin_evaluator_sha != expected_evaluator_sha
+        or system_evaluator_sha != expected_evaluator_sha
+    ):
+        raise AssertionError(
+            "verification evaluator drift: "
+            f"pin={expected_evaluator_sha} plugin={plugin_evaluator_sha} "
+            f"server={system_evaluator_sha}"
+        )
+
     error_source = pin.get("error_envelope")
     if not isinstance(error_source, dict):
         raise AssertionError("plugin compatibility pin is missing error envelope metadata")
@@ -214,14 +245,26 @@ def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> t
         )
 
     manifest_schema = system_public.get("manifest_schema")
+    verification_acceptance = system_public.get("verification_acceptance")
     fixtures = system_public.get("golden_fixtures")
-    if not isinstance(manifest_schema, dict) or not isinstance(fixtures, dict) or set(fixtures) != {
+    if (
+        not isinstance(manifest_schema, dict)
+        or not isinstance(verification_acceptance, dict)
+        or verification_acceptance.get("schema")
+        != "akbs-verification-acceptance-contract-v2"
+        or not isinstance(fixtures, dict)
+        or set(fixtures) != {
         "daily",
         "weekly",
         "patch",
-    }:
+        }
+    ):
         raise AssertionError("system public contract artifact declarations are incomplete")
-    declared_artifacts = [manifest_schema, *fixtures.values()]
+    declared_artifacts = [
+        manifest_schema,
+        verification_acceptance,
+        *fixtures.values(),
+    ]
     public_artifacts: dict[str, str] = {}
     for declaration in declared_artifacts:
         if not isinstance(declaration, dict):
@@ -307,6 +350,7 @@ def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> t
             "fixtures": len(fixtures),
             "reason_codes": len(reason_codes),
             "public_contract_sha256": system_public_sha,
+            "verification_evaluator_sha256": system_evaluator_sha,
             "error_envelope_sha256": system_error_sha,
             "source_provenance_commit": provenance_commit,
             "observed_system_commit": observed_system_commit,

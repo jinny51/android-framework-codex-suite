@@ -1,14 +1,53 @@
 from __future__ import annotations
 
+import json
+from functools import lru_cache
+from pathlib import Path
 from typing import Any, Mapping
 
+from .verification_acceptance import authoritative_requirement_result_error
 
-VERIFICATION_EVIDENCE_CONTRACT_VERSION = "akbs-verification-evidence/v2"
+
+VERIFICATION_ACCEPTANCE_CONTRACT_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "skills"
+    / "android-knowledge-intake"
+    / "references"
+    / "verification-acceptance-v2.json"
+)
+
+
+@lru_cache(maxsize=1)
+def load_verification_contract() -> dict[str, Any]:
+    payload = json.loads(VERIFICATION_ACCEPTANCE_CONTRACT_PATH.read_text(encoding="utf-8"))
+    if payload.get("schema") != "akbs-verification-acceptance-contract-v2":
+        raise RuntimeError("verification acceptance contract schema is invalid")
+    acceptance = payload.get("current_acceptance")
+    if not isinstance(acceptance, dict) or not isinstance(
+        acceptance.get("result_acceptance"),
+        dict,
+    ):
+        raise RuntimeError("verification acceptance contract is incomplete")
+    return payload
+
+
+_VERIFICATION_CONTRACT = load_verification_contract()
+VERIFICATION_EVIDENCE_CONTRACT_VERSION = str(
+    _VERIFICATION_CONTRACT["evidence_contract_version"]
+)
 BUILD_DELIVERY_SCOPE = "build_delivery"
-REQUIREMENT_SCOPE = "feature"
-REQUIREMENT_ACCEPTED = "accepted"
-REQUIREMENT_REJECTED = "rejected"
-REQUIREMENT_UNVERIFIED = "unverified"
+REQUIREMENT_SCOPE = str(_VERIFICATION_CONTRACT["current_acceptance"]["scope"])
+REQUIREMENT_ACCEPTED = str(
+    _VERIFICATION_CONTRACT["current_acceptance"]["result_acceptance"]["PASS"]
+)
+REQUIREMENT_REJECTED = str(
+    _VERIFICATION_CONTRACT["current_acceptance"]["result_acceptance"]["FAIL"]
+)
+REQUIREMENT_UNVERIFIED = str(
+    _VERIFICATION_CONTRACT["non_authoritative_evidence"]["scopes"][
+        BUILD_DELIVERY_SCOPE
+    ]["requirement_acceptance"]
+)
 
 
 def build_delivery_contract_fields() -> dict[str, str]:
@@ -39,27 +78,8 @@ def has_authoritative_requirement_result(
     *,
     expected_result: str | None = None,
 ) -> bool:
-    result = str(payload.get("result") or "").upper()
-    if expected_result is not None and result != str(expected_result).upper():
-        return False
-    if payload.get("contract_version") != VERIFICATION_EVIDENCE_CONTRACT_VERSION:
-        return False
-    if payload.get("scope") != REQUIREMENT_SCOPE:
-        return False
-    expected_acceptance = {
-        "PASS": REQUIREMENT_ACCEPTED,
-        "FAIL": REQUIREMENT_REJECTED,
-    }.get(result)
-    if expected_acceptance is None or payload.get("requirement_acceptance") != expected_acceptance:
-        return False
-    method = payload.get("method")
-    if method == "device":
-        return bool(payload.get("build")) and bool(payload.get("steps"))
-    if method == "equivalent":
-        return bool(
-            payload.get("equivalent_type")
-            and payload.get("reason")
-            and payload.get("coverage")
-            and payload.get("remaining_risk")
-        )
-    return False
+    return not authoritative_requirement_result_error(
+        payload,
+        _VERIFICATION_CONTRACT,
+        expected_result=expected_result,
+    )

@@ -36,7 +36,7 @@ from validate_incoming_contract_gate import verify_public_contract  # noqa: E402
 
 
 ERROR_SCHEMA_SHA256 = "82840edf68f219c52b3b031d3d789d22400bedbb1785dfa855722f30dec77c94"
-PUBLIC_CONTRACT_SHA256 = "9b327b470ab10c2e4d44860f4ce17605d448979f7b0e2841ab3f8a5e0ac1834f"
+PUBLIC_CONTRACT_SHA256 = "3ef6555208cb068e5006979a9ead61e2e639b247d241a0f3d34dbfbfa945c36d"
 REQUEST_ID = "req_0123456789abcdef0123456789abcdef"
 
 
@@ -88,7 +88,7 @@ def test_vendored_error_schema_and_incoming_pin_are_exact() -> None:
     assert pin["source_provenance"]["compatibility_condition"] is False
     assert pin["public_contract"]["sha256"] == PUBLIC_CONTRACT_SHA256
     assert pin["error_envelope"]["sha256"] == ERROR_SCHEMA_SHA256
-    assert len(pin["reason_codes"]) == 88
+    assert len(pin["reason_codes"]) == 93
     assert pin["reason_codes"] == sorted(error_reason_codes())
     assert len(public["reason_code_families"]["archive"]) == 12
 
@@ -233,7 +233,14 @@ def make_synthetic_system_root(root: Path) -> Path:
     )
     plugin_contract_root = REPO_ROOT / "contracts" / "incoming" / "v1"
     shutil.copy2(plugin_contract_root / "knowledge-incoming-package.schema.json", incoming_root)
+    shutil.copy2(plugin_contract_root / "verification-acceptance-v2.json", incoming_root)
     shutil.copytree(plugin_contract_root / "fixtures", incoming_root / "fixtures")
+    evaluator_root = system_root / "akbs_active" / "upload_domains"
+    evaluator_root.mkdir(parents=True)
+    shutil.copy2(
+        PLUGIN_ROOT / "lib" / "android_framework_ops" / "verification_acceptance.py",
+        evaluator_root,
+    )
     error_root = system_root / "contracts" / "http"
     error_root.mkdir(parents=True)
     shutil.copy2(PLUGIN_ROOT / "contracts" / "http" / "error-envelope-v1.schema.json", error_root)
@@ -257,13 +264,21 @@ def test_unrelated_system_commit_with_identical_contract_content_passes(tmp_path
 
     assert stats["public_contract_sha256"] == PUBLIC_CONTRACT_SHA256
     assert stats["error_envelope_sha256"] == ERROR_SCHEMA_SHA256
-    assert stats["reason_codes"] == 88
+    assert stats["reason_codes"] == 93
     assert stats["source_provenance_matches"] is False
 
 
 @pytest.mark.parametrize(
     "drift",
-    ["contract_hash", "reason_code", "manifest_schema", "fixture", "error_envelope"],
+    [
+        "contract_hash",
+        "reason_code",
+        "manifest_schema",
+        "verification_contract",
+        "verification_evaluator",
+        "fixture",
+        "error_envelope",
+    ],
 )
 def test_contract_content_drift_still_fails_closed(tmp_path: Path, drift: str) -> None:
     system_root = make_synthetic_system_root(tmp_path)
@@ -278,6 +293,12 @@ def test_contract_content_drift_still_fails_closed(tmp_path: Path, drift: str) -
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     elif drift == "manifest_schema":
         path = incoming_root / "knowledge-incoming-package.schema.json"
+        path.write_bytes(path.read_bytes() + b"\n")
+    elif drift == "verification_contract":
+        path = incoming_root / "verification-acceptance-v2.json"
+        path.write_bytes(path.read_bytes() + b"\n")
+    elif drift == "verification_evaluator":
+        path = system_root / "akbs_active" / "upload_domains" / "verification_acceptance.py"
         path.write_bytes(path.read_bytes() + b"\n")
     elif drift == "fixture":
         path = incoming_root / "fixtures" / "daily.manifest.json"

@@ -8,7 +8,7 @@ from typing import Any
 
 
 AKBS_RULES_CONTRACT_VERSION = "2026-07-19.1"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.141"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.142"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -80,6 +80,10 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
     "patch_package_subject_v2": {
         "min_plugin_version": "1.0.140",
         "description": "patch_package_id remains the sole business subject across queue and main while package_key is source-only",
+    },
+    "verification_acceptance_v2": {
+        "min_plugin_version": "1.0.142",
+        "description": "feature acceptance is versioned and cannot be inferred from build or delivery PASS evidence",
     },
 }
 DEFAULT_SOURCE_VERSION_CAPABILITIES = ("source_version_evidence",)

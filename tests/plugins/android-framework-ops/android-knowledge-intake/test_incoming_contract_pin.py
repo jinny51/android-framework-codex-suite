@@ -35,13 +35,19 @@ class IncomingContractPinTests(unittest.TestCase):
         pin = json.loads((CONTRACT_ROOT / "contract-pin.json").read_text(encoding="utf-8"))
         self.assertEqual(pin["schema_version"], "1")
         self.assertEqual(pin["compatibility"], "strict-content-hash-equality")
-        self.assertEqual(pin["source_provenance"]["commit"], "449d17417e58acac6e2b0b2f0e18cbf793e72268")
+        self.assertEqual(
+            pin["source_provenance"]["commit"],
+            "bff913b71618704eac068d1c394852e10e0103d5",
+        )
         self.assertFalse(pin["source_provenance"]["compatibility_condition"])
         consumer_path = SUITE_ROOT / pin["public_contract"]["consumer_path"]
         consumer = json.loads(consumer_path.read_text(encoding="utf-8"))
         self.assertEqual(hashlib.sha256(consumer_path.read_bytes()).hexdigest(), pin["public_contract"]["sha256"])
         expected_artifacts = {
             consumer["manifest_schema"]["path"]: consumer["manifest_schema"]["sha256"],
+            consumer["verification_acceptance"]["path"]: consumer[
+                "verification_acceptance"
+            ]["sha256"],
             **{
                 declaration["path"]: declaration["sha256"]
                 for declaration in consumer["golden_fixtures"].values()
@@ -58,8 +64,14 @@ class IncomingContractPinTests(unittest.TestCase):
             for code in codes
         )
         self.assertEqual(pin["reason_codes"], reason_codes)
-        self.assertEqual(len(reason_codes), 88)
+        self.assertEqual(len(reason_codes), 93)
         self.assertEqual(pin["success_reason_codes"], consumer["success_reason_codes"])
+        evaluator = pin["verification_reference_evaluator"]
+        source_evaluator = SUITE_ROOT / evaluator["source_path"]
+        self.assertEqual(
+            hashlib.sha256(source_evaluator.read_bytes()).hexdigest(),
+            evaluator["sha256"],
+        )
         completion = consumer["patch_information_completion"]
         self.assertEqual(
             [item["id"] for item in completion["fields"]],

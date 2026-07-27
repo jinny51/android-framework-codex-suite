@@ -326,7 +326,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.141"
+    "plugin_version": "1.0.142"
   }
 }
 ```
@@ -342,6 +342,8 @@ Manifest excerpt:
 
 Build delivery, adb push/restart, and legacy unscoped verification records remain evidence but
 cannot upgrade a package to `validated`.
+The normative method fields, failure reasons, evidence-rating limits, and conformance cases are
+defined only in `verification-acceptance-v2.json`.
 
 ## Source Capability Versions
 
@@ -368,9 +370,13 @@ report_view_v2 = 1.0.63
 patch_package_unification_v1 = 1.0.139
 queue_information_completion_v1 = 1.0.139
 patch_package_subject_v2 = 1.0.140
+verification_acceptance_v2 = 1.0.142
 ```
 
-The required capabilities come from package contents, not from the current plugin release. Historical packages retain their generation-time capability evidence. A current patch package requires the unified package and v2 subject capabilities; queue information completion requires the same-package completion capability.
+The required capabilities come from package contents, not from the current plugin release.
+Historical packages retain their generation-time capability evidence. A current validated patch
+package requires the unified package, v2 subject, and verification acceptance v2 capabilities;
+queue information completion requires the same-package completion capability.
 
 `patch_packages.patch_package_id` is the only patch-package business identity in both queue and main. `packages.package_key` identifies an immutable physical upload source only. Notification, information-request, and merge-confirmation IDs remain causal event IDs and must not be used as replacement package subjects.
 
