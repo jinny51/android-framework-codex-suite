@@ -29,6 +29,8 @@ python3 "scripts/capture_framework_patch.py" \
   --platform rk14 \
   --feature display-policy-settings-entry \
   --summary "调整显示策略和设置入口" \
+  --problem-summary "显示策略缺少目标产品要求的配置入口和运行时行为" \
+  --solution-summary "调整 Framework 显示策略并补齐 Settings 配置入口，再验证配置生效" \
   --implementation-origin codex \
   --status candidate \
   --verification "framework 编译通过" \
@@ -53,6 +55,8 @@ python3 "scripts/capture_framework_patch.py" \
 补丁资料包必须按功能生成，不能按日期生成“今日补丁合集”。这个规则不设补丁数量例外。一个功能跨多个 repo 管理的 Git 仓库时，可以在一个补丁包（patch package）里保留多个仓库级 patch；多个独立功能必须拆成多个补丁包（patch package）。成员即使是手写代码，也应先用补丁采集技能把改动包装成功能级材料，再交给成员补丁入口（android-framework-patch-intake）。
 
 功能边界说明由补丁采集技能自动生成，不由成员手写结论。生成的 README 会记录功能目标、模块范围、关键锚点，以及每个仓库级 patch 如何共同服务同一个功能目标；如果这些事实不足，成员端 Codex 应提示成员补充真实需求、目标功能或验证范围后再重新生成。
+
+成员端 Codex 在读取真实需求、diff 和验证证据后，应同时传入 `--problem-summary` 与 `--solution-summary`。脚本负责校验这两个参数并生成 `patch-problem-summary.json`；成员不需要、也不得手改 JSON。模块模板仍是本地草稿或候选材料的兼容兜底。若兜底结果过于通用，Codex 应使用真实问题和方案重新执行采集命令，而不是因为缺少某个模块专用模板而停止提交。
 
 补丁需要修正时，必须从干净源码工作树重新采集同一功能，并通过 `--patch-package <capture package dir>` 生成一个新的完整补丁包。不要复制既有 patch、直接 `--patch` 或手写说明伪装为修正结果；若源工作树仍混有无关 diff，先拆分或清理，再采集。
 

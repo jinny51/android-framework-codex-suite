@@ -98,6 +98,24 @@ def create_audio_camera_repo(root: Path) -> None:
     )
 
 
+def create_launcher_repo(root: Path) -> None:
+    run(["git", "init"], root)
+    run(["git", "config", "user.email", "codex@example.invalid"], root)
+    run(["git", "config", "user.name", "Codex Test"], root)
+    source = root / "packages" / "apps" / "Launcher3" / "src" / "com" / "android" / "launcher3"
+    source.mkdir(parents=True)
+    (source / "Workspace.java").write_text("class Workspace {}\n", encoding="utf-8")
+    run(["git", "add", "."], root)
+    run(["git", "commit", "-m", "initial"], root)
+    (source / "Workspace.java").write_text(
+        "class Workspace {\n"
+        "  //gyf 20260728@ keep workspace labels centered\n"
+        "  static final boolean CENTER_LABELS = true;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+
 def create_frameworks_base_repo(root: Path) -> None:
     run(["git", "init"], root)
     run(["git", "config", "user.email", "codex@example.invalid"], root)
@@ -819,6 +837,79 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("音频录制", problem_summary["problem_summary"])
             self.assertIn("音频路由/音量行为", risk_surface["risk_areas"])
             self.assertIn("相机行为", risk_surface["risk_areas"])
+
+    def test_launcher_capture_uses_explicit_problem_and_solution_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_launcher_repo(root)
+            problem = "Launcher 工作区模式切换后，标签位置和裁切结果不符合产品要求。"
+            solution = "调整 Workspace 布局与标签测量逻辑，并验证所有模式下的居中和完整显示。"
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260728-120000-launcher",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "launcher-workspace-label-layout",
+                    "--summary",
+                    "修复 Launcher 工作区模式切换后的标签居中和裁切",
+                    "--problem-summary",
+                    problem,
+                    "--solution-summary",
+                    solution,
+                    "--status",
+                    "candidate",
+                ],
+                root,
+            )
+            package_dir = Path(json.loads(result.stdout)["package"])
+            payload = json.loads(
+                (package_dir / "evidence" / "patch-problem-summary.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(payload["problem_summary"], problem)
+            self.assertEqual(payload["solution_summary"], solution)
+            self.assertEqual(payload["confidence"], "medium")
+            self.assertIn("提交时显式提供了问题说明和方案说明", payload["basis"])
+
+    def test_explicit_problem_and_solution_evidence_must_be_paired(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_launcher_repo(root)
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260728-120000-launcher",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "launcher-workspace-label-layout",
+                    "--summary",
+                    "修复 Launcher 工作区模式切换后的标签居中和裁切",
+                    "--problem-summary",
+                    "Launcher 工作区标签显示不符合产品要求。",
+                    "--status",
+                    "candidate",
+                ],
+                root,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("--problem-summary 和 --solution-summary 必须同时提供", result.stderr)
 
     def test_statusbar_paths_do_not_trigger_usb_semantics(self) -> None:
         patch_capture = load_patch_capture_module()

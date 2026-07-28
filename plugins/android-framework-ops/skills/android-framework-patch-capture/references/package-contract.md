@@ -171,6 +171,8 @@ Patch-content explanation is allowed only when it carries basis and limits:
 }
 ```
 
+`capture_framework_patch.py` accepts a paired `--problem-summary` and `--solution-summary` from the Codex workflow after it has read the actual request, diff, and verification evidence. The script writes those values into the generated evidence and records their explicit capture basis. Passing only one is invalid. Module-based inference is retained for backward-compatible draft or candidate capture; generated JSON must never be edited by hand to replace a generic fallback.
+
 These judgments should still happen at search/use time:
 
 - applicability to a new project

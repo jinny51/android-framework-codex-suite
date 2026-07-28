@@ -40,6 +40,8 @@ python3 "scripts/capture_framework_patch.py" \
   --platform rk14 \
   --feature display-policy-settings-entry \
   --summary "调整显示策略和设置入口" \
+  --problem-summary "显示策略缺少目标产品要求的配置入口和运行时行为" \
+  --solution-summary "调整 Framework 显示策略并补齐 Settings 配置入口，再验证配置生效" \
   --implementation-origin codex \
   --project "TVE8402M" \
   --status candidate \
@@ -103,6 +105,8 @@ Do not write generic labels such as `android16`, `Camera2`, or `mtk android16 Ca
 Before packaging, inspect `git status --short` for every source repository and preserve unrelated user work. Package only the intended feature change set. If unrelated files are dirty, stop and ask whether to split, stash, or include them.
 
 One capture package represents one feature. If the feature spans multiple repo-managed Git repositories, pass every affected repository with repeated `--source-root`; the package will contain one root `README.md` and one patch per affected repository. The skill, not the member, must write the function-boundary explanation into the generated README: function target, module scope, key anchors, and how each repository-level patch serves the same function target. If those facts are missing or the relationship cannot be explained from source changes, summary, and evidence, stop and ask the member for the missing factual input before generating or uploading the package.
+
+Before generating a package for intake, Codex must derive the actual requirement problem and implemented solution from the current request, diff, and verification evidence, then pass both `--problem-summary` and `--solution-summary`. The two arguments are a pair. They are not member-authored JSON overrides: the capture script validates them and writes the generated `patch-problem-summary.json`. Module-based inference remains a compatibility fallback for local draft or candidate material, but a generic low-confidence fallback is not sufficient reason to hand-edit generated JSON or stop permanently. Rerun the same capture command with the factual pair instead.
 
 Do not use one capture package for a date-bundled patch set such as “今日补丁合集” or “今天完成 6 个补丁”, or for several unrelated feature patches listed in one title. The script must stop before writing any patch package when the summary or feature name is a no-common-target 聚合包（aggregate package）. A member may implement code manually, but the uploaded framework material must still be wrapped by this skill as a function-level patch package. Multiple independent features must be split into multiple patch packages; only multiple patches that belong to the same feature may stay in one package.
 

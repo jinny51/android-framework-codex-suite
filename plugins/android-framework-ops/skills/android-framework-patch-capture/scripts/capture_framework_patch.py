@@ -665,7 +665,16 @@ def feature_problem_and_risk_payloads(args: argparse.Namespace, captures: list[R
     files = list(facts.get("modified_files", []))
     modules = list(facts.get("modules", []))
     symbols = list(facts.get("symbols", []))
-    joined = "\n".join([args.summary, args.feature, " ".join(files), " ".join(modules)]).lower()
+    joined = "\n".join(
+        [
+            args.summary,
+            args.feature,
+            args.problem_summary,
+            args.solution_summary,
+            " ".join(files),
+            " ".join(modules),
+        ]
+    ).lower()
     flags = semantic_flags(joined, modules)
     keywords = sorted(
         {
@@ -682,7 +691,13 @@ def feature_problem_and_risk_payloads(args: argparse.Namespace, captures: list[R
     if args.summary:
         basis.append("提交时提供了功能摘要")
 
-    problem_summary, solution_summary, confidence = semantic_problem_solution(modules, flags)
+    if args.problem_summary and args.solution_summary:
+        problem_summary = args.problem_summary
+        solution_summary = args.solution_summary
+        confidence = "medium"
+        basis.append("提交时显式提供了问题说明和方案说明")
+    else:
+        problem_summary, solution_summary, confidence = semantic_problem_solution(modules, flags)
     risks = semantic_risk_areas(modules, flags)
     limits = [
         "补丁内容不能单独证明原始需求文字",
@@ -794,6 +809,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--feature", required=True, help="Feature slug for filename, for example allow-powerkey-to-user.")
     parser.add_argument("--summary", required=True, help="Human-readable requirement or patch summary.")
     parser.add_argument(
+        "--problem-summary",
+        default="",
+        help="Requirement-level problem statement derived from the actual request and patch evidence. Must be paired with --solution-summary.",
+    )
+    parser.add_argument(
+        "--solution-summary",
+        default="",
+        help="Implementation-level solution statement derived from the actual change and verification evidence. Must be paired with --problem-summary.",
+    )
+    parser.add_argument(
         "--implementation-origin",
         choices=IMPLEMENTATION_ORIGINS,
         default="codex",
@@ -839,7 +864,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rollback", default="", help="Rollback note for readme.")
     parser.add_argument("--allow-missing-author-date", action="store_true", help="Allow package even when patch lacks //name YYYYMMDD@ marker.")
     parser.add_argument("--allow-banned-logs", action="store_true", help="Allow package even when added lines contain direct Log/Slog calls.")
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.problem_summary = args.problem_summary.strip()
+    args.solution_summary = args.solution_summary.strip()
+    if bool(args.problem_summary) != bool(args.solution_summary):
+        parser.error("--problem-summary 和 --solution-summary 必须同时提供")
+    return args
 
 
 def main() -> int:
