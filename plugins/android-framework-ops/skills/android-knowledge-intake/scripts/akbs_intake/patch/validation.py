@@ -24,7 +24,7 @@ ListStringValues = Callable[[Any], list[str]]
 UniqueStrings = Callable[[list[str]], list[str]]
 TemplateLeakErrors = Callable[..., list[str]]
 AggregatePackageScopeErrors = Callable[[str, int], list[str]]
-ImplementationOriginsRequirePreChangeSearch = Callable[[list[str]], bool]
+WorkflowContractRequiresPreChangeSearch = Callable[[str], bool]
 SearchPayloadPredicate = Callable[[dict[str, Any]], bool]
 
 
@@ -598,8 +598,7 @@ def validate_patch_pre_change_search(
     manifest: dict[str, Any],
     evidence_by_kind: dict[str, dict[str, Any]],
     package_status: str,
-    list_string_values: ListStringValues,
-    implementation_origins_require_pre_change_search: ImplementationOriginsRequirePreChangeSearch,
+    workflow_contract_requires_pre_change_search: WorkflowContractRequiresPreChangeSearch,
     search_payload_missing_required_pre_change_search: SearchPayloadPredicate,
     search_payload_needs_closed_decision: SearchPayloadPredicate,
     errors: list[str],
@@ -607,17 +606,24 @@ def validate_patch_pre_change_search(
 ) -> None:
     search_evidence = evidence_by_kind.get("search_before_change", {})
     search_payload = search_evidence.get("payload", search_evidence) if isinstance(search_evidence, dict) else {}
-    implementation_origins = list_string_values(manifest.get("implementation_origins"))
-    if not implementation_origins:
-        patch_diff = evidence_by_kind.get("patch_diff_facts", {})
-        patch_diff_payload = patch_diff.get("payload", patch_diff) if isinstance(patch_diff, dict) else {}
-        if isinstance(patch_diff_payload, dict):
-            implementation_origins = list_string_values(patch_diff_payload.get("implementation_origins"))
+    workflow_contract = str(manifest.get("workflow_contract") or "").strip()
+    if workflow_contract not in {
+        "current_codex_skill",
+        "manual_import",
+        "historical_import",
+    }:
+        errors.append(
+            "framework_change 必须显式记录 workflow_contract="
+            "current_codex_skill/manual_import/historical_import；"
+            "不能根据 implementation_origins 猜测工作流。"
+        )
     search_payload_body = search_payload.get("payload", search_payload) if isinstance(search_payload, dict) else {}
     if not isinstance(search_payload_body, dict):
         search_payload_body = {}
     missing_pre_change_search = not bool(search_payload_body.get("searched"))
-    requires_pre_change_search = implementation_origins_require_pre_change_search(implementation_origins)
+    requires_pre_change_search = workflow_contract_requires_pre_change_search(
+        workflow_contract
+    )
     if (
         package_status == "validated"
         and requires_pre_change_search
@@ -625,18 +631,23 @@ def validate_patch_pre_change_search(
     ):
         errors.append(
             "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造。"
-            "本包包含 Codex 参与，不能按当前 validated 上传；"
-            "请保持真实实施来源，不得通过改写 implementation-origin 规避门禁。"
+            "本包声明为 current_codex_skill 工作流，不能按当前 validated 上传；"
+            "请保持真实工作流和实施来源，不能互相改写以规避门禁。"
             "当前结果可留在本地或报告上下文；后续重新开发时必须先完成知识检索。"
         )
-    elif package_status == "validated" and missing_pre_change_search:
+    elif (
+        package_status == "validated"
+        and missing_pre_change_search
+        and workflow_contract in {"manual_import", "historical_import"}
+    ):
         warnings.append(
             "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造；"
-            "本包按已记录的非 Codex 实施来源保留，"
+            "本包按已记录的导入工作流保留，"
             "管理端后续会执行沉淀前重叠检索（post-change overlap check），且不获得搜索闭环加分。"
         )
     if (
         package_status == "validated"
+        and requires_pre_change_search
         and search_payload_needs_closed_decision(search_payload)
     ):
         errors.append(

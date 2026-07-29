@@ -101,36 +101,44 @@ class KnowledgeRulesTest(unittest.TestCase):
     def test_pre_change_search_classification_contract(self) -> None:
         from android_framework_ops.knowledge_rules import (
             classify_pre_change_search,
-            implementation_requires_pre_change_search,
+            workflow_requires_pre_change_search,
         )
 
-        manual = classify_pre_change_search(
+        current_manual = classify_pre_change_search(
             {"searched": False, "decision": "unknown"},
-            implementation_origin="manual",
+            workflow_contract="current_codex_skill",
             package_status="validated",
         )
-        self.assertFalse(manual["member_can_complete_before_upload"])
-        self.assertTrue(manual["requires_post_change_overlap_check"])
-        self.assertEqual(manual["validity_score_effect"], "no_search_loop_score")
+        self.assertTrue(current_manual["requires_pre_change_search"])
+        self.assertTrue(current_manual["requires_post_change_overlap_check"])
+        self.assertEqual(current_manual["validity_score_effect"], "no_search_loop_score")
 
-        codex_unknown = classify_pre_change_search(
+        current_unknown = classify_pre_change_search(
             {"searched": True, "results": ["case-taskbar"], "decision": "unknown"},
-            implementation_origin="codex",
+            workflow_contract="current_codex_skill",
             package_status="validated",
         )
-        self.assertTrue(codex_unknown["member_can_complete_before_upload"])
-        self.assertEqual(codex_unknown["missing_field"], "search_usage")
+        self.assertTrue(current_unknown["member_can_complete_before_upload"])
+        self.assertEqual(current_unknown["missing_field"], "search_usage")
 
-        codex_closed = classify_pre_change_search(
+        current_closed = classify_pre_change_search(
             {"searched": True, "results": ["case-taskbar"], "decision": "adapt"},
-            implementation_origin="codex",
+            workflow_contract="current_codex_skill",
             package_status="validated",
         )
-        self.assertFalse(codex_closed["member_can_complete_before_upload"])
-        self.assertFalse(codex_closed["requires_post_change_overlap_check"])
-        self.assertTrue(implementation_requires_pre_change_search("codex"))
-        self.assertTrue(implementation_requires_pre_change_search("mixed"))
-        self.assertFalse(implementation_requires_pre_change_search("manual"))
+        self.assertFalse(current_closed["member_can_complete_before_upload"])
+        self.assertFalse(current_closed["requires_post_change_overlap_check"])
+
+        imported_codex = classify_pre_change_search(
+            {"searched": False, "decision": "unknown"},
+            workflow_contract="historical_import",
+            package_status="validated",
+        )
+        self.assertFalse(imported_codex["requires_pre_change_search"])
+        self.assertTrue(imported_codex["requires_post_change_overlap_check"])
+        self.assertTrue(workflow_requires_pre_change_search("current_codex_skill"))
+        self.assertFalse(workflow_requires_pre_change_search("manual_import"))
+        self.assertFalse(workflow_requires_pre_change_search("historical_import"))
 
     def test_source_version_contract_uses_capability_matrix_not_current_version(self) -> None:
         from android_framework_ops.knowledge_rules import (
@@ -141,7 +149,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.145")
+        self.assertEqual(current, "1.0.146")
         self.assertEqual(AKBS_RULES_CONTRACT_VERSION, "2026-07-29.1")
         matrix = source_version_compatibility_matrix()
         self.assertEqual(matrix["source_version_evidence"]["min_plugin_version"], "1.0.60")

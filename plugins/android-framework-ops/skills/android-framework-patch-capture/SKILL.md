@@ -11,7 +11,9 @@ Use it after `android-framework-change-workflow` has produced a concrete change,
 
 The generated package includes patch content `sha1` for server-side deduplication. If a known daily/weekly incoming run produced the work context, pass `--related-report-run-id <run_id>` so intake can preserve an explicit report link. Weekly links are provenance only; weekly packages are not knowledge repository materialization candidates.
 
-Search evidence is development evidence, not a curation decision. Codex normal development should record pre-change knowledge search before source edits. If no usable knowledge was found, record `--reuse-decision not_found` instead of omitting search evidence. If search has hits, close the search usage decision with `--reuse-decision reuse`, `adapt`, `reference_only`, `not_applicable`, or `not_found`; do not leave it as `unknown`. Record `--reuse-target`, `--reuse-match`, `--reuse-mismatch`, or `--reuse-reason` when a hit influenced the implementation. If no pre-change search happened, record that fact; do not invent a search record. A `validated` package can still keep real PASS verification, but later admin-side curation must run post-change overlap check and award no search-loop score.
+Search evidence is development evidence, not a curation decision. `workflow_contract`, not `implementation_origin`, controls the pre-change search gate. A `current_codex_skill` package must record pre-change knowledge search before source edits. If no usable knowledge was found, record `--reuse-decision not_found` instead of omitting search evidence. If search has hits, close the search usage decision with `--reuse-decision reuse`, `adapt`, `reference_only`, `not_applicable`, or `not_found`; do not leave it as `unknown`. Record `--reuse-target`, `--reuse-match`, `--reuse-mismatch`, or `--reuse-reason` when a hit influenced the implementation. If no pre-change search happened, record that fact and keep the current-workflow package out of `validated`; do not invent a search record.
+
+`--implementation-origin` records who wrote the code. `--workflow-contract` records how the patch entered AKBS. They are independent: a manually written change can still be processed under `current_codex_skill`, while a truthful already-implemented import uses `manual_import` or `historical_import`. Import workflows may preserve missing pre-change search without earning search-loop credit. Never relabel either field to bypass a gate.
 
 `--project` is a high-priority hint only when it contains a company project anchor in the current recognition scope (`TVD`, `TVE`, `TVA`, or `TVI`). If `--project` is omitted or contains a generic label such as `mtk android16 Camera2`, the capture script must continue looking at source roots, repository paths, git branches/remotes, the WSL source-access registry, and feature README/diff/summary text before falling back to `unknown`.
 
@@ -43,6 +45,7 @@ python3 "scripts/capture_framework_patch.py" \
   --problem-summary "显示策略缺少目标产品要求的配置入口和运行时行为" \
   --solution-summary "调整 Framework 显示策略并补齐 Settings 配置入口，再验证配置生效" \
   --implementation-origin codex \
+  --workflow-contract current_codex_skill \
   --project "TVE8402M" \
   --status candidate \
   --verification "framework 编译通过" \
@@ -171,12 +174,12 @@ Stop before upload when:
 - new added lines contain direct `Log.*` or `Slog.*`
 - README facts are unknown but presented as verified
 - build or device verification is missing but status is `validated`
-- status is `validated`, implementation origin is `codex` or `mixed`, and pre-change knowledge search evidence is missing
+- status is `validated`, workflow contract is `current_codex_skill`, and pre-change knowledge search evidence is missing
 - status is `validated`, knowledge search returned hits, and search usage decision is still `unknown`
 
 Team or project coding rules, such as `jinny-framework-coding-standards`, should be applied during development. This skill only checks and records violations; it is not the place to retrofit coding style after the fact.
 
-Record the implementation origin exactly as observed. Use `manual`, `external`, `historical`, or `unknown` only when Codex did not author any part of the implementation; use `mixed` when Codex participated alongside another author. `mixed` has the same pre-change knowledge-search gate as `codex`. Never relabel a Codex-involved change to bypass that gate. The package records origin as curation input material; it does not turn the change into curated knowledge and does not fabricate pre-change knowledge search.
+Record the implementation origin exactly as observed. Use `manual`, `external`, `historical`, or `unknown` only when Codex did not author any part of the implementation; use `mixed` when Codex participated alongside another author. Record the workflow contract separately. The package records both as curation input material; neither turns the change into curated knowledge, and neither may be rewritten to fabricate or bypass pre-change knowledge search.
 
 `candidate`, `draft`, `failed`, and `blocked` captures stay local or in report context. Only a `validated` capture may continue to `android-framework-patch-intake`.
 

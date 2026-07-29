@@ -326,12 +326,27 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.145"
+    "plugin_version": "1.0.146"
   }
 }
 ```
 
 `package_status` must match `materials/variant.json` `package_status`.
+
+`materials/evidence/source.json` carries two independent development provenance facts:
+
+```json
+{
+  "kind": "source",
+  "payload": {
+    "implementation_origin": "manual",
+    "implementation_origins": ["manual"],
+    "workflow_contract": "current_codex_skill"
+  }
+}
+```
+
+`implementation_origin` identifies the code author. `workflow_contract` identifies how the patch entered AKBS and is one of `current_codex_skill`, `manual_import`, or `historical_import`. Only `workflow_contract` controls the pre-change search gate. A direct raw patch defaults to `current_codex_skill`; an older capture package without a workflow field must declare a truthful import contract explicitly. The member client must reject conflicting workflow values and must not infer one fact from the other.
 
 `validated` requires all of:
 

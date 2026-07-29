@@ -81,6 +81,7 @@ def copy_patch_capture_packages(
         if not readme_rel:
             raise SystemExit(f"capture package 缺少功能 readme: {capture_dir}")
         implementation_origin = str(manifest.get("implementation_origin") or "unknown")
+        workflow_contract = str(manifest.get("workflow_contract") or "")
         captured_by = str(manifest.get("captured_by") or "codex")
         coding_standard_check = manifest.get("coding_standard_check") if isinstance(manifest.get("coding_standard_check"), dict) else {}
         feature_readme_rel = materials_rel("readme.md")
@@ -104,6 +105,7 @@ def copy_patch_capture_packages(
                         "git_remote": str(git.get("remote") or ""),
                         "git_remotes": str(git.get("remotes") or ""),
                         "implementation_origin": implementation_origin,
+                        "workflow_contract": workflow_contract,
                         "captured_by": captured_by,
                     }
                 )
@@ -138,6 +140,9 @@ def copy_patch_capture_packages(
                     "platform": str(item.get("platform") or manifest.get("platform") or ""),
                     "android_version": str(item.get("android_version") or manifest.get("android_version") or ""),
                     "implementation_origin": str(item.get("implementation_origin") or implementation_origin),
+                    "workflow_contract": str(
+                        item.get("workflow_contract") or workflow_contract
+                    ),
                     "captured_by": str(item.get("captured_by") or captured_by),
                     "coding_standard_check": coding_standard_check,
                     "note": "来自 android-framework-patch-capture 工作包",
@@ -150,6 +155,9 @@ def copy_patch_capture_packages(
                     "source": str(capture_dir / patch_rel),
                     "project": item.get("project") or default_project,
                     "implementation_origin": str(item.get("implementation_origin") or implementation_origin),
+                    "workflow_contract": str(
+                        item.get("workflow_contract") or workflow_contract
+                    ),
                     "captured_by": str(item.get("captured_by") or captured_by),
                 }
             )

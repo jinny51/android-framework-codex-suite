@@ -36,7 +36,7 @@ from validate_incoming_contract_gate import verify_public_contract  # noqa: E402
 
 
 ERROR_SCHEMA_SHA256 = "82840edf68f219c52b3b031d3d789d22400bedbb1785dfa855722f30dec77c94"
-PUBLIC_CONTRACT_SHA256 = "c1f22f93e4e7fe4ba6d888a32a7a48ef768141c1009fcbc40b483909410ef036"
+PUBLIC_CONTRACT_SHA256 = "20ae5ebf996f9fe3f1f8958859f230eae2d4c59851ab3074f6f3195f5b7dcae9"
 REQUEST_ID = "req_0123456789abcdef0123456789abcdef"
 
 
@@ -88,7 +88,7 @@ def test_vendored_error_schema_and_incoming_pin_are_exact() -> None:
     assert pin["source_provenance"]["compatibility_condition"] is False
     assert pin["public_contract"]["sha256"] == PUBLIC_CONTRACT_SHA256
     assert pin["error_envelope"]["sha256"] == ERROR_SCHEMA_SHA256
-    assert len(pin["reason_codes"]) == 93
+    assert len(pin["reason_codes"]) == 96
     assert pin["reason_codes"] == sorted(error_reason_codes())
     assert len(public["reason_code_families"]["archive"]) == 12
 
@@ -264,7 +264,7 @@ def test_unrelated_system_commit_with_identical_contract_content_passes(tmp_path
 
     assert stats["public_contract_sha256"] == PUBLIC_CONTRACT_SHA256
     assert stats["error_envelope_sha256"] == ERROR_SCHEMA_SHA256
-    assert stats["reason_codes"] == 93
+    assert stats["reason_codes"] == 96
     assert stats["source_provenance_matches"] is False
 
 

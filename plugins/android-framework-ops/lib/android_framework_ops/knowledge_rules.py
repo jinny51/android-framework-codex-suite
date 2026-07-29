@@ -8,7 +8,7 @@ from typing import Any
 
 
 AKBS_RULES_CONTRACT_VERSION = "2026-07-29.1"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.145"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.146"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -133,7 +133,12 @@ MULTI_FEATURE_COLLECTION_RE = re.compile(
 LISTED_FEATURE_PACKAGE_RE = re.compile(r"[^，。；\n]+、[^，。；\n]+(?:，)?(?:以及|和)[^，。；\n]+补丁包")
 
 REUSE_DECISIONS = {"reuse", "adapt", "reference_only", "not_applicable", "not_found", "unknown"}
-CODEX_IMPLEMENTATION_ORIGINS = {"codex", "mixed"}
+WORKFLOW_CONTRACTS = {
+    "current_codex_skill",
+    "manual_import",
+    "historical_import",
+}
+PRE_CHANGE_SEARCH_WORKFLOW_CONTRACTS = {"current_codex_skill"}
 CURATION_TEXT_FIELD_ORDER = {
     "patch_asset_correction": 0,
     "function_split": 1,
@@ -548,9 +553,9 @@ def normalize_reuse_decision(value: Any) -> str:
     return decision if decision in REUSE_DECISIONS else "unknown"
 
 
-def implementation_requires_pre_change_search(implementation_origin: str) -> bool:
-    origin = str(implementation_origin or "").strip().lower()
-    return origin in CODEX_IMPLEMENTATION_ORIGINS
+def workflow_requires_pre_change_search(workflow_contract: str) -> bool:
+    contract = str(workflow_contract or "").strip().lower()
+    return contract in PRE_CHANGE_SEARCH_WORKFLOW_CONTRACTS
 
 
 def search_results_need_usage_decision(results: Any) -> bool:
@@ -563,7 +568,7 @@ def search_results_need_usage_decision(results: Any) -> bool:
 def classify_pre_change_search(
     search_payload: dict[str, Any] | None,
     *,
-    implementation_origin: str = "",
+    workflow_contract: str = "",
     package_status: str = "",
 ) -> dict[str, Any]:
     payload = search_payload if isinstance(search_payload, dict) else {}
@@ -571,7 +576,7 @@ def classify_pre_change_search(
     searched = bool(payload.get("searched"))
     results = payload.get("results")
     has_results = search_results_need_usage_decision(results)
-    requires_search = implementation_requires_pre_change_search(implementation_origin)
+    requires_search = workflow_requires_pre_change_search(workflow_contract)
     can_complete_before_upload = requires_search and searched and has_results and decision == "unknown"
     requires_overlap = not searched or not requires_search
     return {

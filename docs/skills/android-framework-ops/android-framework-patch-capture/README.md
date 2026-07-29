@@ -32,13 +32,14 @@ python3 "scripts/capture_framework_patch.py" \
   --problem-summary "显示策略缺少目标产品要求的配置入口和运行时行为" \
   --solution-summary "调整 Framework 显示策略并补齐 Settings 配置入口，再验证配置生效" \
   --implementation-origin codex \
+  --workflow-contract current_codex_skill \
   --status candidate \
   --verification "framework 编译通过" \
   --build-result /path/to/build-result.json \
   --related-report-run-id 20260601-210000-daily
 ```
 
-如果代码不是 Codex 实现，而是成员手写、外部补丁或历史代码，传 `--implementation-origin manual`、`external`、`historical`、`mixed` 或 `unknown`。补丁采集只记录来源和规范检查结果，不做沉淀结论（curation decision）。
+`--implementation-origin` 记录谁写了代码；`--workflow-contract` 记录补丁如何进入 AKBS。两个事实相互独立：成员手写代码也可以由当前 Codex + Skill 流程处理，此时仍使用 `current_codex_skill`；只有真实的既有代码导入才使用 `manual_import` 或 `historical_import`。补丁采集只记录来源、工作流和规范检查结果，不做沉淀结论（curation decision）。
 
 如果 `--project` 未提供，或只提供了 `android16`、`Camera2`、`mtk android16 Camera2` 这类非公司项目标签，脚本会继续从 `source_root`、repo 路径、git 分支/remote、WSL source-access registry 和补丁内容中识别 `TVD`/`TVE`/`TVA`/`TVI` 项目号；识别不到时写入 `unknown`。
 
@@ -62,7 +63,7 @@ python3 "scripts/capture_framework_patch.py" \
 
 结构化问题/方案证据不能残留无关模板文本。比如功能摘要和修改文件都指向 E-Ink、显示模式或资源配置时，生成的 `case.json`、`patch_problem_summary`、`risk_surface` 不应出现 CameraService、Camera2、相机预览、拍照或扫码等相机模板内容；出现这类不一致时必须停止并重新生成。
 
-Codex 正常开发流程必须尽量在改代码前记录开发前知识搜索（pre-change knowledge search）证据。没有找到可用知识时，也要通过 `--reuse-decision not_found` 记录未命中（not_found），不能省略搜索证据。如果搜索结果命中了候选知识，就不能继续保留未知（unknown）；必须通过 `--reuse-decision reuse|adapt|reference_only|not_applicable|not_found` 闭合为直接复用（reuse）、适配复用（adapt）、仅作参考（reference_only）、不适用（not_applicable）或未命中（not_found）。如果开发前搜索事实没有发生，不能为了标记已验证（validated）补造搜索；补丁采集只保留真实验证结论并给出警告，后续由管理端本地技能执行沉淀前重叠检索（post-change overlap check），且不获得搜索闭环加分。手动实现（manual implementation）、外部实现、历史材料、混合实现或未知来源同样必须如实记录 `searched=false` 或未发生搜索。这些只是开发证据，不是沉淀结论（curation decision）。
+`workflow_contract=current_codex_skill` 必须在改代码前记录开发前知识搜索（pre-change knowledge search）证据。没有找到可用知识时，也要通过 `--reuse-decision not_found` 记录未命中（not_found），不能省略搜索证据。如果搜索结果命中了候选知识，就不能继续保留未知（unknown）；必须通过 `--reuse-decision reuse|adapt|reference_only|not_applicable|not_found` 闭合为直接复用（reuse）、适配复用（adapt）、仅作参考（reference_only）、不适用（not_applicable）或未命中（not_found）。如果开发前搜索没有发生，不能为了标记已验证（validated）补造搜索，当前工作流包必须留在本地。真实的 `manual_import` 或 `historical_import` 可以保留 `searched=false`，但不获得搜索闭环加分。检索门禁由工作流合同决定，不由代码作者来源决定；这些都只是开发证据，不是沉淀结论（curation decision）。
 
 输出目录：
 

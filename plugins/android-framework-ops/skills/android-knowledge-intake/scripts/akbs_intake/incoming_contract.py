@@ -162,7 +162,7 @@ def _validate_patch_package_contract(value: Any, reason_families: dict[str, Any]
         ("queue", "under_review", "rejected", "queue", "closed", "rejected"),
         ("queue", "information_required", "rejected", "queue", "closed", "rejected"),
         ("queue", "information_review", "rejected", "queue", "closed", "rejected"),
-        ("queue", "received", "withdrawn", "queue", "closed", "cancelled"),
+        ("queue", "received", "withdrawn", "queue", "closed", "withdrawn"),
     ]
     if normalized_transitions != expected_transitions:
         raise RuntimeError("packaged patch queue transition graph drifted")

@@ -261,7 +261,7 @@ def validate_package(package_dir: Path) -> dict[str, Any]:
 
 
 from akbs_intake.search_usage import (  # noqa: E402
-    implementation_origins_require_pre_change_search,
+    workflow_contract_requires_pre_change_search,
     patch_search_feature_tokens,
     search_payload_has_member_decision,
     search_payload_missing_required_pre_change_search,
@@ -506,8 +506,7 @@ def validate_incoming_package(package_dir: Path, manifest: dict[str, Any]) -> di
             manifest=manifest,
             evidence_by_kind=evidence_by_kind,
             package_status=package_status,
-            list_string_values=list_string_values,
-            implementation_origins_require_pre_change_search=implementation_origins_require_pre_change_search,
+            workflow_contract_requires_pre_change_search=workflow_contract_requires_pre_change_search,
             search_payload_missing_required_pre_change_search=search_payload_missing_required_pre_change_search,
             search_payload_needs_closed_decision=search_payload_needs_closed_decision,
             errors=errors,
@@ -566,6 +565,7 @@ def prepare_patch_package(
     related_report_run_ids: list[str] | None = None,
     platform_override: str = "",
     android_version_override: str = "",
+    workflow_contract: str = "",
 ) -> Path:
     return build_patch_package(
         date,
@@ -580,6 +580,7 @@ def prepare_patch_package(
         related_report_run_ids=related_report_run_ids,
         platform_override=platform_override,
         android_version_override=android_version_override,
+        workflow_contract_override=workflow_contract,
         incoming_schema_version=INCOMING_SCHEMA_VERSION,
         framework_optional_evidence_kinds=FRAMEWORK_OPTIONAL_EVIDENCE_KINDS,
         validate_package_fn=validate_package,
@@ -668,6 +669,15 @@ def parse_args() -> argparse.Namespace:
             sub.add_argument("--project", default="unknown", help="project name for framework_change incoming")
             sub.add_argument("--platform", default="", help="explicit platform for framework_change incoming: mtk, rk, unisoc, or unknown")
             sub.add_argument("--android-version", default="", help="explicit Android version for framework_change incoming, for example 14, 16, or 9.0")
+            sub.add_argument(
+                "--workflow-contract",
+                choices=["current_codex_skill", "manual_import", "historical_import"],
+                default="",
+                help=(
+                    "explicit workflow for direct or legacy imports; current capture packages "
+                    "carry their own workflow contract"
+                ),
+            )
             sub.add_argument("--summary", default="Framework 修改沉淀", help="summary for framework_change incoming")
             sub.add_argument("--related-report-run-id", dest="related_report_run_ids", action="append", default=[], help="daily/weekly incoming run_id related to this framework_change; repeatable")
             sub.add_argument(
@@ -805,6 +815,7 @@ def main() -> int:
                 args.related_report_run_ids,
                 args.platform,
                 args.android_version,
+                args.workflow_contract,
             )
         else:
             package_dir = prepare_package(
@@ -842,6 +853,7 @@ def main() -> int:
                 args.related_report_run_ids,
                 args.platform,
                 args.android_version,
+                args.workflow_contract,
             )
         else:
             package_dir = prepare_package(

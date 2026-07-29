@@ -74,7 +74,7 @@ python3 scripts/android_knowledge_intake.py --profile <member_alias> patch --pre
 
 日报和周报必须在生成阶段识别项目名和客户名。无法识别时，Codex 应在会话中提示成员补充，例如 `TVE1086U 青鸾云`；未补齐的包可以保留在本地，但上传前必须拒绝。
 
-补丁上传必须是一个 `validated` 补丁包，并具备共同功能边界、项目、平台、Android 版本、干净不可变补丁和 PASS 验证。服务端 `patch_package_id` 是队列和主分支唯一业务身份，`package_key` 只标识上传来源。队列轻量缺口通过 `--inspect-information-request` 与 `--complete-information-request` 按因果 `request_id` 补到同一主体；提交后进入 `information_review`，需要改补丁或拆分功能时重新采集补丁包。
+补丁上传必须是一个 `validated` 补丁包，并具备共同功能边界、项目、平台、Android 版本、干净不可变补丁和 PASS 验证。`implementation_origin` 记录代码作者，`workflow_contract` 记录当前 Codex + Skill 流程或真实导入流程；两者不能互相推断。直接 `--patch` 默认当前工作流，旧采集包或既有代码导入必须显式使用 `--workflow-contract manual_import|historical_import`。服务端 `patch_package_id` 是队列和主分支唯一业务身份，`package_key` 只标识上传来源。队列轻量缺口通过 `--inspect-information-request` 与 `--complete-information-request` 按因果 `request_id` 补到同一主体；提交后进入 `information_review`，需要改补丁或拆分功能时重新采集补丁包。
 
 ## 版本证据
 

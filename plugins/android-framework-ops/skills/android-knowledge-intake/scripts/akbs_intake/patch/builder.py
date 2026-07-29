@@ -88,6 +88,7 @@ def build_patch_package(
     related_report_run_ids: list[str] | None = None,
     platform_override: str = "",
     android_version_override: str = "",
+    workflow_contract_override: str = "",
     *,
     incoming_schema_version: str,
     framework_optional_evidence_kinds: set[str],
@@ -226,10 +227,51 @@ def build_patch_package(
         for item in all_patch_items
         if str(item.get("implementation_origin") or "").strip()
     )
+    workflow_contracts = unique_strings(
+        str(item.get("workflow_contract") or "")
+        for item in all_patch_items
+        if str(item.get("workflow_contract") or "").strip()
+    )
+    if len(workflow_contracts) > 1:
+        raise SystemExit(
+            "一个 framework_change 包只能声明一个 workflow_contract；"
+            f"当前发现: {', '.join(workflow_contracts)}"
+        )
+    workflow_contract_override = str(workflow_contract_override or "").strip()
+    if workflow_contract_override and workflow_contract_override not in {
+        "current_codex_skill",
+        "manual_import",
+        "historical_import",
+    }:
+        raise SystemExit(f"不支持 workflow_contract={workflow_contract_override}")
+    if (
+        workflow_contracts
+        and workflow_contract_override
+        and workflow_contracts[0] != workflow_contract_override
+    ):
+        raise SystemExit(
+            "命令行 workflow_contract 与补丁采集包不一致；"
+            "不能通过导入参数改写采集时记录的工作流。"
+        )
+    if workflow_contracts:
+        workflow_contract = workflow_contracts[0]
+    elif workflow_contract_override:
+        workflow_contract = workflow_contract_override
+    elif patch_package_paths:
+        raise SystemExit(
+            "旧补丁采集包缺少 workflow_contract；"
+            "必须显式使用 --workflow-contract manual_import/historical_import，"
+            "不能根据 implementation_origin 或目录形态猜测。"
+        )
+    else:
+        workflow_contract = "current_codex_skill"
     if implementation_origins:
         source["implementation_origins"] = implementation_origins
         if len(implementation_origins) == 1:
             source["implementation_origin"] = implementation_origins[0]
+    if workflow_contract:
+        source["workflow_contract"] = workflow_contract
+    if implementation_origins or workflow_contract:
         write_json(package_dir / source_path, {"kind": "source", "payload": source})
     capture_tools = unique_strings(str(item.get("captured_by") or "") for item in all_patch_items if str(item.get("captured_by") or "").strip())
     modified_files = sorted(
@@ -276,6 +318,7 @@ def build_patch_package(
         project=project,
         repo_paths=repo_paths,
         implementation_origins=implementation_origins,
+        workflow_contract=workflow_contract,
         capture_tools=capture_tools,
         package_status=package_status,
     )
@@ -389,6 +432,7 @@ def build_patch_package(
         project=project,
         repo_paths=repo_paths,
         implementation_origins=implementation_origins,
+        workflow_contract=workflow_contract,
         capture_tools=capture_tools,
         package_status=package_status,
         related_report_run_ids=all_related_report_run_ids,
@@ -406,6 +450,7 @@ def build_patch_package(
         project=project,
         summary=summary,
         implementation_origins=implementation_origins,
+        workflow_contract=workflow_contract,
         capture_tools=capture_tools,
         case_path=case_path,
         variant_path=variant_path,

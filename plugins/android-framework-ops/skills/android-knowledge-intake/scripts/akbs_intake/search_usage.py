@@ -13,7 +13,7 @@ if OPS_PLUGIN_LIB.is_dir() and str(OPS_PLUGIN_LIB) not in sys.path:
 
 from android_framework_ops.knowledge_rules import (
     classify_pre_change_search,
-    implementation_requires_pre_change_search as shared_implementation_requires_pre_change_search,
+    workflow_requires_pre_change_search as shared_workflow_requires_pre_change_search,
 )
 
 from akbs_intake.config import CONFIG_DEFAULTS, expanded_path
@@ -263,20 +263,24 @@ def search_payload_needs_closed_decision(payload: dict[str, Any]) -> bool:
         return False
     if isinstance(payload.get("payload"), dict):
         payload = payload["payload"]
-    classification = classify_pre_change_search(payload, implementation_origin="codex", package_status="validated")
+    classification = classify_pre_change_search(
+        payload,
+        workflow_contract="current_codex_skill",
+        package_status="validated",
+    )
     return bool(classification.get("member_can_complete_before_upload"))
 
 
 def search_payload_missing_required_pre_change_search(payload: dict[str, Any]) -> bool:
     if isinstance(payload.get("payload"), dict):
         payload = payload["payload"]
-    classification = classify_pre_change_search(payload, implementation_origin="codex", package_status="validated")
+    classification = classify_pre_change_search(
+        payload,
+        workflow_contract="current_codex_skill",
+        package_status="validated",
+    )
     return bool(classification.get("requires_pre_change_search")) and not bool(classification.get("searched"))
 
 
-def implementation_origins_require_pre_change_search(origins: list[str]) -> bool:
-    normalized = {str(item or "").strip().lower() for item in origins if str(item or "").strip()}
-    return any(
-        shared_implementation_requires_pre_change_search(origin)
-        for origin in normalized
-    )
+def workflow_contract_requires_pre_change_search(workflow_contract: str) -> bool:
+    return shared_workflow_requires_pre_change_search(workflow_contract)

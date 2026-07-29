@@ -28,6 +28,9 @@
     "tool": {"type": "string", "minLength": 1},
     "summary": {"type": "string", "minLength": 1},
     "files": {"type": "object"},
+    "workflow_contract": {
+      "enum": ["current_codex_skill", "manual_import", "historical_import"]
+    },
     "package_status": {"enum": ["validated", "candidate", "draft", "failed", "blocked"]},
     "logical_package_key": false,
     "logical_root_package_key": false,
@@ -46,7 +49,7 @@
     {
       "if": {"properties": {"package_kind": {"const": "framework_change"}}},
       "then": {
-        "required": ["case_id", "variant_id", "package_status", "project", "platform", "android_version"],
+        "required": ["case_id", "variant_id", "package_status", "project", "platform", "android_version", "workflow_contract"],
         "properties": {"package_status": {"const": "validated"}}
       }
     }

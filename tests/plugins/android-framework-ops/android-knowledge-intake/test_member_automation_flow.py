@@ -581,6 +581,22 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertIn("Weekly packages are progress archives only", member_text)
         self.assertIn("do not become knowledge materialization candidates", member_text)
 
+    def test_patch_docs_keep_origin_and_workflow_contract_independent(self) -> None:
+        combined = "\n".join(path.read_text(encoding="utf-8") for path in MEMBER_BOUNDARY_DOCS)
+
+        self.assertIn("workflow_contract", combined)
+        self.assertIn("current_codex_skill", combined)
+        self.assertIn("manual_import", combined)
+        self.assertIn("historical_import", combined)
+        self.assertNotIn(
+            "implementation origin is `codex` or `mixed`, and pre-change knowledge search evidence is missing",
+            combined,
+        )
+        self.assertNotIn(
+            "`mixed` has the same pre-change knowledge-search gate as `codex`",
+            combined,
+        )
+
     def test_member_setup_prompt_covers_current_plugin_and_endpoint(self) -> None:
         text = SETUP_PROMPT.read_text(encoding="utf-8")
 

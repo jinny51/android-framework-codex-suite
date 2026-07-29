@@ -45,6 +45,7 @@ There is no `patches/*.readme.md` in the capture package. The README is feature-
   "summary": "功能摘要",
   "status": "candidate",
   "implementation_origin": "manual",
+  "workflow_contract": "manual_import",
   "captured_by": "codex",
   "coding_standard_check": {
     "required": true,
@@ -117,6 +118,7 @@ There is no `patches/*.readme.md` in the capture package. The README is feature-
       "status": "candidate",
       "reuse_hint": false,
       "implementation_origin": "manual",
+      "workflow_contract": "manual_import",
       "captured_by": "codex",
       "facts": {
         "content_sha1": "40-hex-sha1",
@@ -211,7 +213,7 @@ not_found        未命中：搜索后没有找到可用知识。
 unknown          未记录：历史包或异常场景没有形成明确决策。
 ```
 
-Codex normal development should record pre-change knowledge search before source edits. If the search did not find reusable knowledge, set `reuse_decision=not_found` instead of leaving the package without search evidence. If pre-change search did not really happen, do not fabricate it for `validated`; record `searched=false`, keep real verification evidence, and let admin-side curation run post-change overlap check without search-loop score. Manual, external, historical, mixed, or unknown implementation origin follows the same no-fabrication rule.
+`implementation_origin` identifies who wrote the code. `workflow_contract` identifies how the patch entered AKBS. They are independent and must never be inferred from one another. `current_codex_skill` requires pre-change knowledge search before source edits; if the search did not find reusable knowledge, set `reuse_decision=not_found`. If that search did not really happen, do not fabricate it or mark the current-workflow package `validated`. A truthful `manual_import` or `historical_import` may record `searched=false`, keep real verification evidence, and let admin-side curation run post-change overlap check without search-loop score.
 
 ## Remote Build To Local ADB Evidence
 

@@ -150,6 +150,11 @@ def incoming_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[
     content_sha1 = str(patch_entry.get("content_sha1") or sha1_file(patch_path))
     repo_path = str(patch_entry.get("repo_path") or captured_facts.get("repo_path") or "").strip("/")
     implementation_origin = str(patch_entry.get("implementation_origin") or captured_facts.get("implementation_origin") or "unknown")
+    workflow_contract = str(
+        patch_entry.get("workflow_contract")
+        or captured_facts.get("workflow_contract")
+        or ""
+    )
     captured_by = str(patch_entry.get("captured_by") or captured_facts.get("captured_by") or "")
     coding_standard_check = patch_entry.get("coding_standard_check") if isinstance(patch_entry.get("coding_standard_check"), dict) else {}
     modified_files = captured_facts.get("modified_files") or patch_modified_files(patch_path)
@@ -163,6 +168,7 @@ def incoming_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[
         "platform": str(patch_entry.get("platform") or ""),
         "android_version": str(patch_entry.get("android_version") or ""),
         "implementation_origin": implementation_origin,
+        "workflow_contract": workflow_contract,
         "captured_by": captured_by,
         "modified_files": modified_files,
         "modules": captured_facts.get("modules") or [],
@@ -183,6 +189,7 @@ def incoming_patch_item(package_dir: Path, patch_entry: dict[str, Any]) -> dict[
         "note": str(patch_entry.get("note") or ""),
         "repo_path": repo_path,
         "implementation_origin": implementation_origin,
+        "workflow_contract": workflow_contract,
         "captured_by": captured_by,
         "coding_standard_check": coding_standard_check,
         "artifact": "",

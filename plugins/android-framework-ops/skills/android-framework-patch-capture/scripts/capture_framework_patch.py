@@ -543,7 +543,7 @@ def validate_search_decision_for_status(args: argparse.Namespace, search_payload
         return [], []
     classification = classify_pre_change_search(
         search_payload,
-        implementation_origin=str(args.implementation_origin or ""),
+        workflow_contract=str(args.workflow_contract or ""),
         package_status=str(args.status or ""),
     )
     if not bool(classification.get("searched")):
@@ -551,8 +551,8 @@ def validate_search_decision_for_status(args: argparse.Namespace, search_payload
             return [], []
         return [
             "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造。"
-            "本次实现包含 Codex 参与，不能按当前 validated 上传；"
-            "请保持真实实施来源，不得通过改写 implementation-origin 规避门禁。"
+            "本包声明为 current_codex_skill 工作流，不能按当前 validated 上传；"
+            "请保持真实工作流和实施来源，不能互相改写以规避门禁。"
             "当前结果可留在本地或报告上下文；后续重新开发时必须先完成知识检索。"
         ], []
     if not bool(classification.get("member_can_complete_before_upload")):
@@ -780,6 +780,7 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
         "kind": "coding_standard_check",
         "result": "FAIL" if errors else ("WARN" if warnings else "PASS"),
         "implementation_origin": args.implementation_origin,
+        "workflow_contract": args.workflow_contract,
         "captured_by": "codex",
         "review_required": implementation_review_required(args.implementation_origin),
         "review_mode": implementation_review_mode(args.implementation_origin),
@@ -824,6 +825,15 @@ def parse_args() -> argparse.Namespace:
         choices=IMPLEMENTATION_ORIGINS,
         default="codex",
         help="Who implemented the code before packaging. Use manual/external/historical/mixed/unknown for non-Codex-authored code.",
+    )
+    parser.add_argument(
+        "--workflow-contract",
+        choices=("current_codex_skill", "manual_import", "historical_import"),
+        default="current_codex_skill",
+        help=(
+            "How this patch entered AKBS. This is independent from who wrote "
+            "the code; current_codex_skill requires truthful pre-change search."
+        ),
     )
     parser.add_argument("--project", default="unknown", help="Project name for manifest/readme.")
     parser.add_argument("--status", choices=["draft", "candidate", "validated", "failed", "blocked"], default="draft")
@@ -1019,6 +1029,7 @@ def main() -> int:
             "platform": platform_name,
             "android_version": android_version,
             "implementation_origin": args.implementation_origin,
+            "workflow_contract": args.workflow_contract,
             "captured_by": "codex",
             "facts": capture.facts,
         }
@@ -1036,6 +1047,7 @@ def main() -> int:
         "summary": args.summary,
         "status": args.status,
         "implementation_origin": args.implementation_origin,
+        "workflow_contract": args.workflow_contract,
         "captured_by": "codex",
         "coding_standard_check": {
             "required": implementation_review_required(args.implementation_origin),
@@ -1103,6 +1115,7 @@ def main() -> int:
         "patches": [str(package_dir / capture.patch_rel) for capture in captures],
         "readme": str(readme_path),
         "implementation_origin": args.implementation_origin,
+        "workflow_contract": args.workflow_contract,
         "local_check": package_check,
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))

@@ -20,6 +20,8 @@ The member-side Skill is the primary completeness gate. Before upload it must co
 - PASS build plus device or accepted equivalent verification;
 - honest knowledge-search usage facts.
 
+`implementation_origin` and `workflow_contract` are separate evidence. Origin identifies the code author. Workflow identifies whether the patch followed the current Codex + Skill process or is a truthful manual/historical import. Only the workflow contract controls the pre-change knowledge-search gate; neither field may be inferred from the other or changed to make an incomplete package pass.
+
 Only a `validated` package enters the server queue. `candidate`, `draft`, `failed` and `blocked` work stays local or in report context until it becomes a complete patch package.
 
 The server-assigned `patch_package_id` is the patch package's only business identity from queue entry through the main curation branch. The uploaded `package_key` identifies an immutable physical source only; never use it as a second queue, curation, request, or confirmation identity. Retired chain fields fail closed at the shared contract boundary and cannot select another processing path.

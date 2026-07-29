@@ -275,6 +275,8 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "Allow navigation policy toggle",
                     "--implementation-origin",
                     "manual",
+                    "--workflow-contract",
+                    "manual_import",
                     "--status",
                     "validated",
                     "--verification",
@@ -333,6 +335,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertRegex(manifest["patches"][0]["content_sha1"], r"^[0-9a-f]{40}$")
             self.assertEqual(manifest["related_report_run_ids"], ["20260601-210000-daily"])
             self.assertEqual(manifest["implementation_origin"], "manual")
+            self.assertEqual(manifest["workflow_contract"], "manual_import")
             self.assertEqual(manifest["captured_by"], "codex")
             self.assertEqual(manifest["platform_token"], "rk14")
             self.assertEqual(manifest["platform"], "rk")
@@ -340,6 +343,10 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertTrue(manifest["coding_standard_check"]["required"])
             self.assertEqual(manifest["coding_standard_check"]["mode"], "capture_gate")
             self.assertEqual(manifest["patches"][0]["implementation_origin"], "manual")
+            self.assertEqual(
+                manifest["patches"][0]["workflow_contract"],
+                "manual_import",
+            )
             self.assertEqual(manifest["patches"][0]["platform"], "rk")
             self.assertEqual(manifest["patches"][0]["android_version"], "14")
             self.assertEqual(manifest["patches"][0]["reuse_hint"], True)
@@ -496,7 +503,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             errors = "\n".join(payload["local_check"]["errors"])
             self.assertIn("开发前知识搜索", errors)
             self.assertIn("不能事后补造", errors)
-            self.assertIn("保持真实实施来源", errors)
+            self.assertIn("保持真实工作流和实施来源", errors)
             self.assertNotIn("--implementation-origin manual", errors)
 
     def test_mixed_validated_capture_cannot_bypass_pre_change_search(self) -> None:
@@ -538,8 +545,8 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             errors = "\n".join(
                 json.loads(result.stdout)["local_check"]["errors"]
             )
-            self.assertIn("Codex 参与", errors)
-            self.assertIn("保持真实实施来源", errors)
+            self.assertIn("current_codex_skill", errors)
+            self.assertIn("保持真实工作流和实施来源", errors)
             self.assertNotIn("--implementation-origin manual", errors)
 
     def test_manual_validated_capture_allows_missing_pre_change_search_evidence(self) -> None:
@@ -564,6 +571,8 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "Allow navigation policy toggle",
                     "--implementation-origin",
                     "manual",
+                    "--workflow-contract",
+                    "manual_import",
                     "--status",
                     "validated",
                     "--verification",

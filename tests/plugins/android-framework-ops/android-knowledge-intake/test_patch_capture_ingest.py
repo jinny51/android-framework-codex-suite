@@ -59,6 +59,7 @@ def create_capture_package(
     git_remote: str = "",
     search_payload: dict | None = None,
     implementation_origin: str = "manual",
+    workflow_contract: str = "current_codex_skill",
 ) -> Path:
     package = root / "capture"
     patch = package / "patches" / "rk14-frameworks-base@nav-policy-toggle.patch"
@@ -144,6 +145,7 @@ def create_capture_package(
         "summary": "Allow nav policy toggle",
         "status": status,
         "implementation_origin": implementation_origin,
+        "workflow_contract": workflow_contract,
         "captured_by": "codex",
         "created_at": "2026-07-15T12:00:00+08:00",
         "coding_standard_check": {
@@ -172,6 +174,7 @@ def create_capture_package(
                 "platform": "rk",
                 "android_version": "14",
                 "implementation_origin": implementation_origin,
+                "workflow_contract": workflow_contract,
                 "captured_by": "codex",
                 "facts": {"modified_files": ["frameworks/base/services/core/java/X.java"]},
             }
@@ -284,6 +287,7 @@ def create_feature_capture_package(root: Path) -> Path:
         "summary": "跨源码仓库调整显示策略和设置入口",
         "status": "validated",
         "implementation_origin": "manual",
+        "workflow_contract": "current_codex_skill",
         "captured_by": "codex",
         "coding_standard_check": {
             "required": True,
@@ -309,6 +313,7 @@ def create_feature_capture_package(root: Path) -> Path:
                 "platform": "rk",
                 "android_version": "14",
                 "implementation_origin": "manual",
+                "workflow_contract": "current_codex_skill",
                 "captured_by": "codex",
                 "facts": {"modified_files": ["services/core/java/com/android/server/wm/DisplayPolicy.java"], "modules": ["frameworks-base"]},
             },
@@ -324,6 +329,7 @@ def create_feature_capture_package(root: Path) -> Path:
                 "platform": "rk",
                 "android_version": "14",
                 "implementation_origin": "manual",
+                "workflow_contract": "current_codex_skill",
                 "captured_by": "codex",
                 "facts": {"modified_files": ["src/com/android/settings/DisplaySettings.java"], "modules": ["settings"]},
             },
@@ -1115,7 +1121,9 @@ class PatchCaptureIngestTests(unittest.TestCase):
             )
 
             search_evidence = json.loads((package / "materials" / "evidence" / "search_before_change.json").read_text(encoding="utf-8"))
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
             payload = search_evidence["payload"]
+            self.assertEqual(manifest["workflow_contract"], "current_codex_skill")
             self.assertTrue(payload["searched"])
             self.assertEqual(payload["reuse_decision"], "adapt")
             self.assertEqual(payload["queries"], ["显示策略 split screen"])
@@ -1266,24 +1274,20 @@ class PatchCaptureIngestTests(unittest.TestCase):
             errors = "\n".join(check["errors"])
             self.assertIn("开发前知识搜索", errors)
             self.assertIn("不能事后补造", errors)
-            self.assertIn("保持真实实施来源", errors)
+            self.assertIn("保持真实工作流和实施来源", errors)
             self.assertNotIn("改用手动实现", errors)
 
-    def test_any_codex_involved_origin_requires_pre_change_search(self) -> None:
+    def test_workflow_contract_not_implementation_origin_controls_search_gate(self) -> None:
         self.assertTrue(
-            intake.implementation_origins_require_pre_change_search(
-                ["manual", "codex"]
-            )
-        )
-        self.assertTrue(
-            intake.implementation_origins_require_pre_change_search(
-                ["manual", "mixed"]
+            intake.workflow_contract_requires_pre_change_search(
+                "current_codex_skill"
             )
         )
         self.assertFalse(
-            intake.implementation_origins_require_pre_change_search(
-                ["manual", "external"]
-            )
+            intake.workflow_contract_requires_pre_change_search("manual_import")
+        )
+        self.assertFalse(
+            intake.workflow_contract_requires_pre_change_search("historical_import")
         )
 
     def test_mixed_validated_patch_package_rejects_missing_pre_change_search(self) -> None:
@@ -1319,8 +1323,8 @@ class PatchCaptureIngestTests(unittest.TestCase):
             )
             self.assertEqual(check["status"], "FAIL")
             errors = "\n".join(check["errors"])
-            self.assertIn("Codex 参与", errors)
-            self.assertIn("保持真实实施来源", errors)
+            self.assertIn("current_codex_skill", errors)
+            self.assertIn("保持真实工作流和实施来源", errors)
             self.assertNotIn("改用手动实现", errors)
 
     def test_manual_validated_patch_package_allows_missing_pre_change_search_without_faking_it(self) -> None:
@@ -1337,6 +1341,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                     "summary": "手动实现（manual implementation）开发前未搜索，不能事后补造。",
                 },
                 implementation_origin="manual",
+                workflow_contract="manual_import",
             )
 
             package = prepare_patch_package(
@@ -1360,8 +1365,105 @@ class PatchCaptureIngestTests(unittest.TestCase):
             self.assertIn("手动实现", search_evidence["payload"]["summary"])
             self.assertEqual(source_evidence["payload"]["implementation_origin"], "manual")
             self.assertEqual(source_evidence["payload"]["implementation_origins"], ["manual"])
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["workflow_contract"], "manual_import")
             warnings = "\n".join(check["warnings"])
             self.assertIn("沉淀前重叠检索", warnings)
+
+    def test_historical_import_can_record_codex_as_origin_without_faking_current_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_package = create_capture_package(
+                root,
+                search_payload={
+                    "result": "INFO",
+                    "method": "knowledge_search",
+                    "searched": False,
+                    "queries": [],
+                    "results": [],
+                    "summary": "历史记录没有开发前检索回执，不能事后补造。",
+                },
+                implementation_origin="codex",
+                workflow_contract="historical_import",
+            )
+
+            package = prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-135000-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture_package)],
+                project="TVE1067M",
+                summary="显示策略历史归档",
+                status="validated",
+                schema_version="1",
+            )
+
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(check["status"], "PASS")
+            self.assertEqual(manifest["implementation_origins"], ["codex"])
+            self.assertEqual(manifest["workflow_contract"], "historical_import")
+
+    def test_capture_workflow_cannot_be_overridden_by_the_import_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_package = create_capture_package(
+                root,
+                implementation_origin="manual",
+                workflow_contract="manual_import",
+            )
+
+            with self.assertRaises(SystemExit) as raised:
+                prepare_patch_package(
+                    dt.date(2026, 5, 26),
+                    self.config(root),
+                    run_id="20260526-135100-patch",
+                    patch_package_paths=[str(capture_package)],
+                    project="TVE1067M",
+                    summary="显示策略手工导入",
+                    status="validated",
+                    schema_version="1",
+                    workflow_contract="current_codex_skill",
+                )
+
+            self.assertIn("不能通过导入参数改写", str(raised.exception))
+
+    def test_legacy_capture_requires_an_explicit_import_workflow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_package = create_capture_package(
+                root,
+                implementation_origin="codex",
+                workflow_contract="",
+            )
+
+            with self.assertRaises(SystemExit) as missing:
+                prepare_patch_package(
+                    dt.date(2026, 5, 26),
+                    self.config(root),
+                    run_id="20260526-135200-patch",
+                    patch_package_paths=[str(capture_package)],
+                    project="TVE1067M",
+                    summary="显示策略历史导入",
+                    status="validated",
+                    schema_version="1",
+                )
+            self.assertIn("必须显式使用 --workflow-contract", str(missing.exception))
+
+            package = prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-135201-patch",
+                patch_package_paths=[str(capture_package)],
+                project="TVE1067M",
+                summary="显示策略历史导入",
+                status="validated",
+                schema_version="1",
+                workflow_contract="historical_import",
+            )
+            manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["workflow_contract"], "historical_import")
 
     def test_patch_package_does_not_attach_unrelated_same_day_search_usage(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -3,13 +3,13 @@
   "schema_version": "1",
   "compatibility": "strict-content-hash-equality",
   "source_provenance": {
-    "commit": "e6cbf765b29360cf257b7f7f307d55a0275eff02",
+    "commit": "c13d827d718bd487611bcc59924e58fb094d7944",
     "compatibility_condition": false
   },
   "public_contract": {
     "system_path": "contracts/incoming/v1/public-contract.json",
     "consumer_path": "plugins/android-framework-ops/skills/android-knowledge-intake/references/incoming-public-contract-v1.json",
-    "sha256": "c1f22f93e4e7fe4ba6d888a32a7a48ef768141c1009fcbc40b483909410ef036"
+    "sha256": "20ae5ebf996f9fe3f1f8958859f230eae2d4c59851ab3074f6f3195f5b7dcae9"
   },
   "verification_reference_evaluator": {
     "source_path": "plugins/android-framework-ops/lib/android_framework_ops/verification_acceptance.py",
@@ -22,9 +22,9 @@
     "sha256": "82840edf68f219c52b3b031d3d789d22400bedbb1785dfa855722f30dec77c94"
   },
   "artifact_sha256": {
-    "knowledge-incoming-package.schema.json": "4b39a576414a147bbdca9d4e76f691bbeeea0653b055a56db29ec10e3e36907c",
+    "knowledge-incoming-package.schema.json": "4c9052496b7524c36eb65f1eefbc01c685741570e8136369b5f75439602b7e28",
     "fixtures/daily.manifest.json": "b907189009b81dcc8874f19b472076ece943901be4d1afb53f9290ca18e588a6",
-    "fixtures/patch.manifest.json": "0ee8eb63a8be866ea4a2e7053870f1e21a357db20caeb6848e860db9bc544bd9",
+    "fixtures/patch.manifest.json": "74790b340c9f2c23a60d1378872346c97de72c41777da31f14b6ee2d0acf072e",
     "fixtures/weekly.manifest.json": "980abda97a2ceaab54a13e7a6d3549846a0bf607612c3bba33e9b679ce03d4a3",
     "verification-acceptance-v2.json": "2f559b6a05d032691904516d5bde4d8a284247a05e6704f9f14113804a08032d"
   },
@@ -107,6 +107,7 @@
     "patch_set_changed",
     "patch_set_missing",
     "patch_set_proof_mismatch",
+    "pre_change_search_required",
     "project_trace_mismatch",
     "queue_state_closed",
     "queue_state_not_admitted",
@@ -124,6 +125,8 @@
     "verification_method_missing",
     "verification_method_unsupported",
     "verification_not_pass",
-    "verification_scope_not_feature"
+    "verification_scope_not_feature",
+    "workflow_contract_invalid",
+    "workflow_contract_missing"
   ]
 }
