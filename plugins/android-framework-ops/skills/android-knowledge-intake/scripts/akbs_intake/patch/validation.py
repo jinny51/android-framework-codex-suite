@@ -625,13 +625,14 @@ def validate_patch_pre_change_search(
     ):
         errors.append(
             "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造。"
-            "请改用手动实现（manual implementation）事实记录，或重新走开发前知识搜索后再开发。"
-            "管理端后续会执行沉淀前重叠检索（post-change overlap check）。"
+            "本包包含 Codex 参与，不能按当前 validated 上传；"
+            "请保持真实实施来源，不得通过改写 implementation-origin 规避门禁。"
+            "当前结果可留在本地或报告上下文；后续重新开发时必须先完成知识检索。"
         )
     elif package_status == "validated" and missing_pre_change_search:
         warnings.append(
             "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造；"
-            "本包按手动实现（manual implementation）等事实保留，"
+            "本包按已记录的非 Codex 实施来源保留，"
             "管理端后续会执行沉淀前重叠检索（post-change overlap check），且不获得搜索闭环加分。"
         )
     if (

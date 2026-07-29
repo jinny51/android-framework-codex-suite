@@ -14,6 +14,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[4]
 CORE_PLUGIN = REPO_ROOT / "plugins" / "android-framework-ops"
 WORKFLOW_SKILL = CORE_PLUGIN / "skills" / "android-framework-change-workflow" / "SKILL.md"
+CAPTURE_SKILL = CORE_PLUGIN / "skills" / "android-framework-patch-capture" / "SKILL.md"
 BUILD_SKILL = CORE_PLUGIN / "skills" / "android-remote-build-deploy" / "SKILL.md"
 PUSH_SCRIPT = CORE_PLUGIN / "skills" / "android-remote-build-deploy" / "scripts" / "push_artifacts.py"
 MARKETPLACE = REPO_ROOT / ".agents" / "plugins" / "marketplace.json"
@@ -47,6 +48,15 @@ def test_change_workflow_keeps_the_ordered_engineering_and_knowledge_loop() -> N
     assert "Build/deploy evidence is necessary but not sufficient." in text
     assert "Do not treat delivery as final correctness." in text
     assert "final device verification performed by this workflow" in text
+
+
+def test_only_validated_capture_continues_to_patch_intake() -> None:
+    workflow = WORKFLOW_SKILL.read_text(encoding="utf-8")
+    capture = CAPTURE_SKILL.read_text(encoding="utf-8")
+
+    assert "Only when the capture status is `validated`, invoke `android-framework-patch-intake`" in workflow
+    assert "`candidate`, `draft`, `failed`, and `blocked` captures stay local or in report context." in capture
+    assert "Only a `validated` capture may continue to `android-framework-patch-intake`." in capture
 
 
 def test_platform_plugins_only_own_source_access_while_core_owns_build_and_channel() -> None:

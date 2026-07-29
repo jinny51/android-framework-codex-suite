@@ -99,7 +99,10 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertFalse(has_uncontrolled_patch_asset_prefix("TVE1067M1-frameworks-base@permission.patch"))
 
     def test_pre_change_search_classification_contract(self) -> None:
-        from android_framework_ops.knowledge_rules import classify_pre_change_search
+        from android_framework_ops.knowledge_rules import (
+            classify_pre_change_search,
+            implementation_requires_pre_change_search,
+        )
 
         manual = classify_pre_change_search(
             {"searched": False, "decision": "unknown"},
@@ -125,6 +128,9 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
         self.assertFalse(codex_closed["member_can_complete_before_upload"])
         self.assertFalse(codex_closed["requires_post_change_overlap_check"])
+        self.assertTrue(implementation_requires_pre_change_search("codex"))
+        self.assertTrue(implementation_requires_pre_change_search("mixed"))
+        self.assertFalse(implementation_requires_pre_change_search("manual"))
 
     def test_source_version_contract_uses_capability_matrix_not_current_version(self) -> None:
         from android_framework_ops.knowledge_rules import (
@@ -135,7 +141,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.144")
+        self.assertEqual(current, "1.0.145")
         self.assertEqual(AKBS_RULES_CONTRACT_VERSION, "2026-07-19.1")
         matrix = source_version_compatibility_matrix()
         self.assertEqual(matrix["source_version_evidence"]["min_plugin_version"], "1.0.60")

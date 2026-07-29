@@ -547,12 +547,13 @@ def validate_search_decision_for_status(args: argparse.Namespace, search_payload
         package_status=str(args.status or ""),
     )
     if not bool(classification.get("searched")):
-        if args.implementation_origin != "codex":
+        if not bool(classification.get("requires_pre_change_search")):
             return [], []
         return [
             "开发前知识搜索（pre-change knowledge search）未发生，不能事后补造。"
-            "如果代码不是通过 Codex 闭环开发，请重新生成时显式使用 --implementation-origin manual、external 或 mixed。"
-            "管理端后续会执行沉淀前重叠检索（post-change overlap check）。"
+            "本次实现包含 Codex 参与，不能按当前 validated 上传；"
+            "请保持真实实施来源，不得通过改写 implementation-origin 规避门禁。"
+            "当前结果可留在本地或报告上下文；后续重新开发时必须先完成知识检索。"
         ], []
     if not bool(classification.get("member_can_complete_before_upload")):
         return [], []

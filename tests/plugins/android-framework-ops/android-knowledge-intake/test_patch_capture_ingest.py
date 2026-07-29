@@ -1266,7 +1266,62 @@ class PatchCaptureIngestTests(unittest.TestCase):
             errors = "\n".join(check["errors"])
             self.assertIn("开发前知识搜索", errors)
             self.assertIn("不能事后补造", errors)
-            self.assertIn("手动实现", errors)
+            self.assertIn("保持真实实施来源", errors)
+            self.assertNotIn("改用手动实现", errors)
+
+    def test_any_codex_involved_origin_requires_pre_change_search(self) -> None:
+        self.assertTrue(
+            intake.implementation_origins_require_pre_change_search(
+                ["manual", "codex"]
+            )
+        )
+        self.assertTrue(
+            intake.implementation_origins_require_pre_change_search(
+                ["manual", "mixed"]
+            )
+        )
+        self.assertFalse(
+            intake.implementation_origins_require_pre_change_search(
+                ["manual", "external"]
+            )
+        )
+
+    def test_mixed_validated_patch_package_rejects_missing_pre_change_search(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture_package = create_capture_package(
+                root,
+                search_payload={
+                    "result": "INFO",
+                    "method": "knowledge_search",
+                    "searched": False,
+                    "queries": [],
+                    "results": [],
+                    "summary": "not provided by capture command",
+                },
+                implementation_origin="mixed",
+            )
+
+            package = prepare_patch_package(
+                dt.date(2026, 5, 26),
+                self.config(root),
+                run_id="20260526-134850-patch",
+                patch_paths=[],
+                patch_package_paths=[str(capture_package)],
+                project="TVE1067M",
+                summary="显示策略适配",
+                status="validated",
+                schema_version="1",
+            )
+
+            check = json.loads(
+                (package / "local-check.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(check["status"], "FAIL")
+            errors = "\n".join(check["errors"])
+            self.assertIn("Codex 参与", errors)
+            self.assertIn("保持真实实施来源", errors)
+            self.assertNotIn("改用手动实现", errors)
 
     def test_manual_validated_patch_package_allows_missing_pre_change_search_without_faking_it(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

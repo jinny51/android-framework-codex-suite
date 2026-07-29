@@ -276,4 +276,7 @@ def search_payload_missing_required_pre_change_search(payload: dict[str, Any]) -
 
 def implementation_origins_require_pre_change_search(origins: list[str]) -> bool:
     normalized = {str(item or "").strip().lower() for item in origins if str(item or "").strip()}
-    return bool(normalized) and all(shared_implementation_requires_pre_change_search(origin) for origin in normalized)
+    return any(
+        shared_implementation_requires_pre_change_search(origin)
+        for origin in normalized
+    )

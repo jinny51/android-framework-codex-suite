@@ -496,7 +496,51 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             errors = "\n".join(payload["local_check"]["errors"])
             self.assertIn("开发前知识搜索", errors)
             self.assertIn("不能事后补造", errors)
-            self.assertIn("--implementation-origin manual", errors)
+            self.assertIn("保持真实实施来源", errors)
+            self.assertNotIn("--implementation-origin manual", errors)
+
+    def test_mixed_validated_capture_cannot_bypass_pre_change_search(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260611-131050-patch",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "nav-policy-toggle",
+                    "--summary",
+                    "Allow navigation policy toggle",
+                    "--implementation-origin",
+                    "mixed",
+                    "--status",
+                    "validated",
+                    "--verification",
+                    "frameworks/base/services build PASS",
+                    "--device",
+                    "rk3576",
+                    "--device-verification",
+                    "Boot completed and navigation policy behavior matched expectation",
+                ],
+                root,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            errors = "\n".join(
+                json.loads(result.stdout)["local_check"]["errors"]
+            )
+            self.assertIn("Codex 参与", errors)
+            self.assertIn("保持真实实施来源", errors)
+            self.assertNotIn("--implementation-origin manual", errors)
 
     def test_manual_validated_capture_allows_missing_pre_change_search_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -171,12 +171,14 @@ Stop before upload when:
 - new added lines contain direct `Log.*` or `Slog.*`
 - README facts are unknown but presented as verified
 - build or device verification is missing but status is `validated`
-- status is `validated`, implementation origin is `codex`, and pre-change knowledge search evidence is missing
+- status is `validated`, implementation origin is `codex` or `mixed`, and pre-change knowledge search evidence is missing
 - status is `validated`, knowledge search returned hits, and search usage decision is still `unknown`
 
 Team or project coding rules, such as `jinny-framework-coding-standards`, should be applied during development. This skill only checks and records violations; it is not the place to retrofit coding style after the fact.
 
-When the code was not authored by Codex, pass `--implementation-origin manual`, `external`, `historical`, `mixed`, or `unknown`. The package records this as curation input material; it does not turn the change into curated knowledge and does not fabricate pre-change knowledge search. Admin-side curation can later run post-change overlap check to decide new, merge, archive, or needs evidence.
+Record the implementation origin exactly as observed. Use `manual`, `external`, `historical`, or `unknown` only when Codex did not author any part of the implementation; use `mixed` when Codex participated alongside another author. `mixed` has the same pre-change knowledge-search gate as `codex`. Never relabel a Codex-involved change to bypass that gate. The package records origin as curation input material; it does not turn the change into curated knowledge and does not fabricate pre-change knowledge search.
+
+`candidate`, `draft`, `failed`, and `blocked` captures stay local or in report context. Only a `validated` capture may continue to `android-framework-patch-intake`.
 
 For `validated`, device verification is required by default. Use `--verification-method equivalent` only when device interaction is not the right proof, and provide `--equivalent-type`, `--equivalent-reason`, at least one `--equivalent-coverage`, and `--remaining-risk`.
 

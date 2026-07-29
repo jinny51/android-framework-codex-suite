@@ -200,11 +200,12 @@ After Gate 5 or a terminal failure/blocked state:
    - `blocked`: work could not continue because required environment, source, device, credentials, or acceptance evidence was unavailable.
 2. If local source changes exist and are not unrelated dirty files, invoke `android-framework-patch-capture` to package the intended change set with:
    - platform/version token, project, feature slug, summary, package status, implementation origin, modified files, artifacts, risk notes, verification evidence, search-before-change evidence, and explicit `related_report_run_ids` when a daily/weekly run id is known.
-3. Invoke `android-framework-patch-intake` with the capture package so it generates a `framework_change` incoming package through the shared intake kernel. Use the member profile, not an administrator profile, unless the administrator is manually contributing a patch.
-4. If no patch package can be made, do not pretend the material was captured. Record exactly why, and rely on the daily/weekly incoming automation to preserve the work as `work_findings`.
-5. Do not upload unrelated diffs, credentials, logs with sensitive data, mixed task changes, or a `validated` package without qualifying verification.
+3. Only when the capture status is `validated`, invoke `android-framework-patch-intake` so it generates a `framework_change` incoming package through the shared intake kernel. Use the member profile, not an administrator profile, unless the administrator is manually contributing a patch.
+4. Keep `candidate`, `draft`, `failed`, and `blocked` captures local or in report context. They are engineering evidence, not queue-ready patch packages, and must not invoke patch intake.
+5. If no patch package can be made, do not pretend the material was captured. Record exactly why, and rely on the daily/weekly incoming automation to preserve the work as `work_findings`.
+6. Do not upload unrelated diffs, credentials, logs with sensitive data, mixed task changes, or a `validated` package without qualifying verification.
 
-The normal successful chain is:
+The normal successful `validated` chain is:
 
 ```text
 android-knowledge-search

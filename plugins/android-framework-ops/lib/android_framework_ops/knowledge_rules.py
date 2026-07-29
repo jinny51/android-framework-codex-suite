@@ -8,7 +8,7 @@ from typing import Any
 
 
 AKBS_RULES_CONTRACT_VERSION = "2026-07-19.1"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.144"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.145"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -133,7 +133,7 @@ MULTI_FEATURE_COLLECTION_RE = re.compile(
 LISTED_FEATURE_PACKAGE_RE = re.compile(r"[^，。；\n]+、[^，。；\n]+(?:，)?(?:以及|和)[^，。；\n]+补丁包")
 
 REUSE_DECISIONS = {"reuse", "adapt", "reference_only", "not_applicable", "not_found", "unknown"}
-CODEX_IMPLEMENTATION_ORIGINS = {"codex"}
+CODEX_IMPLEMENTATION_ORIGINS = {"codex", "mixed"}
 CURATION_TEXT_FIELD_ORDER = {
     "patch_asset_correction": 0,
     "function_split": 1,
