@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-AKBS_RULES_CONTRACT_VERSION = "2026-07-19.1"
+AKBS_RULES_CONTRACT_VERSION = "2026-07-29.1"
 ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.145"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
