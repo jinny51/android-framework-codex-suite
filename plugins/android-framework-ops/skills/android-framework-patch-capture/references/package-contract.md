@@ -286,7 +286,7 @@ Allowed statuses:
 - `failed`: retained as failed verification or failed implementation evidence
 - `blocked`: retained as blocked work evidence
 
-Status helps ranking member-side materials, but it is not a curation decision and must not be used as the only reuse decision. `validated` means build/device or accepted equivalent verification passed; it does not prove the search loop happened. Actual search hits still require a closed search usage decision when they exist. A package may be validated by build/device evidence while recording that pre-change search did not happen; admin-side curation must then run post-change overlap check and avoid search-loop score. `reuse_hint` is only a hint for later review by the user's local curation maintainer skill.
+Status helps ranking member-side materials, but it is not a curation decision and must not be used as the only reuse decision. Build/device or accepted equivalent verification is necessary for `validated`, but it is not sufficient for the `current_codex_skill` workflow: that workflow must also record a real pre-change knowledge search and close any search usage decision. If the search did not happen, keep the current-workflow package out of `validated`; do not relabel its implementation origin or fabricate search evidence. A truthful `manual_import` or `historical_import` may still be `validated` by real verification while recording `searched=false`; admin-side curation must then run a post-change overlap check and avoid search-loop score. `reuse_hint` is only a hint for later review by the user's local curation maintainer skill.
 
 ## Project Recognition
 

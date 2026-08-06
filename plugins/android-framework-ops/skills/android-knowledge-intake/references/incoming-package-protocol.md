@@ -326,7 +326,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.146"
+    "plugin_version": "1.0.147"
   }
 }
 ```
@@ -395,7 +395,7 @@ queue information completion requires the same-package completion capability.
 
 `patch_packages.patch_package_id` is the only patch-package business identity in both queue and main. `packages.package_key` identifies an immutable physical upload source only. Notification, information-request, and merge-confirmation IDs remain causal event IDs and must not be used as replacement package subjects.
 
-Codex normal development should carry pre-change knowledge search evidence in `materials/evidence/search_before_change.json`. If no reusable knowledge was found, record the explicit search result as `not_found` instead of omitting the evidence. When pre-change search did not really happen, `validated` still means the verification evidence passed; preserve `payload.searched = false`, warn locally, and let admin-side curation perform post-change overlap check without awarding search-loop reuse score. Manual, external, historical, mixed, or unknown implementation origin must not fabricate pre-change search and can still carry verification and patch facts for later admin-side curation.
+A `current_codex_skill` workflow must carry real pre-change knowledge search evidence in `materials/evidence/search_before_change.json`. If no reusable knowledge was found, record the explicit search result as `not_found` instead of omitting the evidence. When pre-change search did not really happen, preserve `payload.searched = false` but keep the current-workflow package out of `validated` and ordinary upload; do not fabricate search evidence or relabel its implementation origin. A truthful `manual_import` or `historical_import` may carry real verification and patch facts while recording `searched=false`; admin-side curation must then perform a post-change overlap check without awarding search-loop reuse score. `implementation_origin` does not control this gate.
 
 `candidate`, `draft`, `failed`, and `blocked` are local/report-context states by default. They must not be uploaded as ordinary patch packages, and they must not be presented as knowledge entries or reuse-ready validated solutions by member-side tooling.
 

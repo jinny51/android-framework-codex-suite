@@ -597,6 +597,48 @@ class MemberAutomationFlowTests(unittest.TestCase):
             combined,
         )
 
+    def test_current_workflow_search_gate_is_consistent_across_patch_docs(self) -> None:
+        capture_skill = (
+            SUITE_ROOT
+            / "plugins"
+            / "android-framework-ops"
+            / "skills"
+            / "android-framework-patch-capture"
+            / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        package_contract = (
+            SUITE_ROOT
+            / "plugins"
+            / "android-framework-ops"
+            / "skills"
+            / "android-framework-patch-capture"
+            / "references"
+            / "package-contract.md"
+        ).read_text(encoding="utf-8")
+        incoming_protocol = (
+            SUITE_ROOT
+            / "plugins"
+            / "android-framework-ops"
+            / "skills"
+            / "android-knowledge-intake"
+            / "references"
+            / "incoming-package-protocol.md"
+        ).read_text(encoding="utf-8")
+
+        for text in (capture_skill, package_contract, incoming_protocol):
+            self.assertIn("current_codex_skill", text)
+            self.assertIn("pre-change knowledge search", text)
+            self.assertIn("manual_import", text)
+            self.assertIn("historical_import", text)
+
+        contradictions = (
+            "A package may be validated by build/device evidence while recording that pre-change search did not happen",
+            "When pre-change search did not really happen, `validated` still means the verification evidence passed",
+        )
+        for text in (package_contract, incoming_protocol):
+            for contradiction in contradictions:
+                self.assertNotIn(contradiction, text)
+
     def test_member_setup_prompt_covers_current_plugin_and_endpoint(self) -> None:
         text = SETUP_PROMPT.read_text(encoding="utf-8")
 
