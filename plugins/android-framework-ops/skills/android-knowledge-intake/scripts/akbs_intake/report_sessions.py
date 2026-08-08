@@ -57,8 +57,10 @@ REPORT_MISSING_CUSTOMER_VALUES = {"", "unknown", "未识别客户", "需成员�
 REPORT_CUSTOMER_STOP_RE = re.compile(r"\s*(?:[，,。.;；\n\r]|帮我|请|生成|提交|上传|日报|周报|报告)")
 REPORT_CUSTOMER_COMMAND_RE = re.compile(r"(帮我|请|生成|提交|上传|日报|周报|报告|今天|本周|主要工作|围绕|处理|完成|进度)")
 REPORT_CUSTOMER_WORK_TERM_RE = re.compile(
-    r"(?:功能|模块|策略|需求|事项|问题|补丁|开发|修复|适配|排查|验证|联调|进度|状态栏|锁屏|鼠标|副屏)$"
+    r"(?:功能|模块|播放器|遥控器|Demo|App|策略|需求|事项|问题|补丁|开发|修复|适配|排查|验证|联调|进度|状态栏|锁屏|鼠标|副屏)$",
+    re.IGNORECASE,
 )
+REPORT_CUSTOMER_MODULE_RE = re.compile(r"(?:播放器|遥控器|功能模块|\bDemo\b|\bApp\b)", re.IGNORECASE)
 REPORT_GENERATION_REQUEST_RE = re.compile(r"(?:帮我|请).{0,24}(?:生成|提交|上传).{0,24}(?:日报|周报|报告)")
 
 
@@ -226,6 +228,8 @@ def clean_report_customer_name(value: Any) -> str:
     if not customer or customer in REPORT_MISSING_CUSTOMER_VALUES:
         return ""
     if REPORT_CUSTOMER_COMMAND_RE.search(customer):
+        return ""
+    if REPORT_CUSTOMER_MODULE_RE.search(customer):
         return ""
     if REPORT_CUSTOMER_WORK_TERM_RE.search(customer):
         return ""

@@ -38,6 +38,7 @@ FORBIDDEN_REPORT_VIEW_FIELDS = {
 }
 WEEKLY_ALLOWED_SOURCES = {"CR", "TL", "PM", "TE", "BSP"}
 WEEKLY_ALLOWED_PROJECT_ROLES = {"主责", "协作"}
+WEEKLY_EMPTY_PLAN_VALUES = {"无", "无。", "暂无", "暂无。", "无下周计划", "暂无下周计划"}
 WEEKLY_COUNT_RE = re.compile(
     r"^(?P<label>共|本周完成|当前剩余)\s+(?P<total>\d+)\s*项(?:：(?P<parts>.+))?$"
 )
@@ -56,14 +57,25 @@ def report_project_customer_errors(rel: str, rows: Any, label: str) -> list[str]
     if not isinstance(rows, list) or not rows:
         row_errors.append(f"{rel} payload.{label} 必须包含项目和客户信息")
         return row_errors
+    seen_projects: dict[str, tuple[int, str, str]] = {}
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
             row_errors.append(f"{rel} payload.{label}[{index}] 必须是对象")
             continue
         project = str(row.get("project") or "").strip()
-        if project in REPORT_MISSING_PROJECT_VALUES or not find_company_project(project):
+        canonical_project = find_company_project(project)
+        if project in REPORT_MISSING_PROJECT_VALUES or not canonical_project:
             row_errors.append(f"{rel} payload.{label}[{index}].project 未识别到公司项目名。{MISSING_PROJECT_GUIDANCE}")
-        customer = str(row.get("customer_name") or row.get("customer") or "").strip()
+        elif project.upper() != canonical_project.upper():
+            row_errors.append(
+                f"{rel} payload.{label}[{index}].project 只能填写规范项目编号 {canonical_project}；App/功能模块应写入工作事项"
+            )
+        customer = str(row.get("customer") or row.get("customer_name") or "").strip()
+        compatibility_customer = str(row.get("customer_name") or "").strip()
+        if customer and compatibility_customer and customer != compatibility_customer:
+            row_errors.append(
+                f"{rel} payload.{label}[{index}].customer 与 customer_name 必须一致"
+            )
         if customer in REPORT_MISSING_CUSTOMER_VALUES or not clean_report_customer_name(customer):
             row_errors.append(
                 f"{rel} payload.{label}[{index}].customer 缺少客户名，请按“项目名 客户名”补充；可选第三段为客户的客户，例如：TVE1091U AOC 福建移动高清"
@@ -78,6 +90,23 @@ def report_project_customer_errors(rel: str, rows: Any, label: str) -> list[str]
             row_errors.append(
                 f"{rel} payload.{label}[{index}].downstream_customer 不是有效的客户名称"
             )
+        if canonical_project:
+            identity = (customer, downstream_customer)
+            previous = seen_projects.get(canonical_project)
+            if previous:
+                previous_index, previous_customer, previous_downstream = previous
+                if identity == (previous_customer, previous_downstream):
+                    row_errors.append(
+                        f"{rel} payload.{label}[{index}].project 与 [{previous_index}] 重复；"
+                        "同一项目只能有一行，App/功能模块应合并到工作事项"
+                    )
+                else:
+                    row_errors.append(
+                        f"{rel} payload.{label}[{index}] 与 [{previous_index}] 的 {canonical_project} 客户链冲突；"
+                        "App/功能模块不得写入 customer 或 downstream_customer"
+                    )
+            else:
+                seen_projects[canonical_project] = (index, customer, downstream_customer)
     return row_errors
 
 
@@ -303,7 +332,17 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
     for field in ("completed_items", "remaining_items", "key_points", "risks", "dependencies", "next_week_plan"):
         if not isinstance(project.get(field), list):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须是数组")
-    if parsed_counts.get("remaining") and sum(parsed_counts["remaining"].values()) > 0 and not project.get("next_week_plan"):
+    next_week_plan = project.get("next_week_plan")
+    effective_next_week_plan = (
+        [str(item).strip() for item in next_week_plan if str(item).strip() not in WEEKLY_EMPTY_PLAN_VALUES and str(item).strip()]
+        if isinstance(next_week_plan, list)
+        else []
+    )
+    if isinstance(next_week_plan, list) and any(str(item).strip() in WEEKLY_EMPTY_PLAN_VALUES for item in next_week_plan):
+        errors.append(
+            f"{rel} payload.projects[{index}].next_week_plan 不得使用“无”或空计划占位；没有下周动作时应使用空数组"
+        )
+    if parsed_counts.get("remaining") and sum(parsed_counts["remaining"].values()) > 0 and not effective_next_week_plan:
         errors.append(f"{rel} payload.projects[{index}].next_week_plan 有剩余事项时必须提供")
 
 

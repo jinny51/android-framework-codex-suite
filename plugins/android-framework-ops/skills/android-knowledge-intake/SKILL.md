@@ -21,6 +21,13 @@ Daily and weekly report bodies are the primary human-readable product. Generate 
 
 Weekly generation uses effective AKBS report facts before sessions: current daily reports for the target week, then the current previous-week report as the rolling ledger, then local submitted replacement leaves when the API is unavailable. Sessions are supplementary and must never be counted as requirements. The weekly package writes `materials/evidence/weekly_fact_sources.json`; missing ledger facts make local check fail. Close only those missing fields with an `akbs-weekly-project-facts-v2` artifact and `weekly --weekly-facts <path>`. The artifact belongs under `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/`, not in this skill directory. Read `references/weekly-facts-contract.md` before creating it.
 
+Weekly project identity is one canonical company project plus one direct customer
+and an optional downstream customer. One project appears exactly once. App or
+feature-module names belong inside the project's work-item and plan arrays; they
+must not become customer values or duplicate project rows. Empty next-week plans
+use an empty array and are omitted from the Markdown plan section. Both prepare
+and `--submit-latest` enforce this shape before HTTP.
+
 Daily and weekly generation is idempotent by member and report identity: daily uses `date`, weekly uses `week_range`. If a local pending or submitted report package already exists for the same member and identity, `--prepare`, `--upload`, and `--submit-latest` must stop instead of silently creating or uploading a second ordinary report package. The member must either cancel the new run or explicitly replace the old package. Use `daily --replace-daily-run-id <old_run_id>` or `weekly --replace-weekly-run-id <old_run_id>`; the replacement package writes `replacement_for_run_id` and `supersedes` metadata so it is not another silent ordinary report package.
 
 Use configuration profiles for identity. Ordinary member config stores identity, optional local knowledge fallback worktree, git author, role, allowed modes, and optional test behavior. AKBS HTTP endpoint values come from the endpoint resolver or controlled environment overrides, not member profiles. Upload, search, and merge-confirmation requests send only `X-AKBS-User=<member_alias>` plus content-negotiation/type headers; the server verifies the fixed workstation source IP. Prefer explicit `--profile <name>` in automations so a daily incoming run cannot accidentally use an administrator identity.

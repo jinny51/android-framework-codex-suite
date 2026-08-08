@@ -17,6 +17,8 @@
 
 `report_view.json` 是同一份周报正文的 UI 读模型（UI read model），使用 `schema=akbs-report-view-human-v1`，至少包含 `report_type=weekly`、`week_range`、`display_date`、`material_name`、`material_summary`、`member_alias`、`member_name` 和 `projects[]`。每个项目行包含 `project`、直接客户 `customer`、可选的客户的客户 `downstream_customer`、`project_role`、`week_summary`、`requirement_date`、`requirement_source`、主责必填且协作可省略的 `requirement_structure`、`completed_this_week`、`remaining`、`completed_items[]`、`remaining_items[]`、`key_points[]`、`risks[]`、`dependencies[]` 和 `next_week_plan[]`。周报包只归档，不进入知识库沉淀候选。
 
+同一公司项目只有一个 `projects[]` 项目块。“播放器”、“BLE 遥控器”等 App/功能模块写在完成项、剩余项或下周计划中，不得写成客户、客户链或拆成多个同项目行。没有下周动作时 `next_week_plan` 使用空数组，Markdown 不显示该项目的计划块，不用“无”占位。生成和 `--submit-latest` 都会在 HTTP 前拦截项目重复、客户链冲突和模块写入客户字段。
+
 周报不再保留“定制”父分类，直接使用需求、移植和 Bug：以前没做过的客户需求计需求，以前做过并复用或移植的客户需求计移植，缺陷处理计 Bug。BSP 只能出现在项目总量和当前剩余，不得出现在本周完成统计中。旧定制数量不能自动拆成需求和移植，必须由成员确认。
 
 成员周报以范文为基线：`本周概况` 先按项目写项目名称、直接客户、可选客户的客户、项目角色、需求时间、需求来源、本周完成和当前剩余；主责还要写项目总量，协作可以省略。`需求来源`只允许 `CR`、`TL`、`PM`、`TE`、`BSP`。`项目详情`依次写 `1. 本周完成`、`2. 当前剩余`、`3. 重点说明`、`4. 风险 / 依赖`；最后写 `下周计划`。多项目时重复同一项目块，不用大表格堆字段。成员可以说 `TVE1086U 青鸾云`，也可以说 `TVE1091U AOC 福建移动高清`；后者识别为项目 `TVE1091U`、直接客户 `AOC`、客户的客户 `福建移动高清`。直接客户和下游客户不得跨层当作别名。缺项目或直接客户时提交会被本地校验拦住；补齐结构化事实后重新生成 Markdown 和 JSON，不单独手改其中一份。

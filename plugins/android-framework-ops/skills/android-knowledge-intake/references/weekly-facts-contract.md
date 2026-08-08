@@ -43,6 +43,11 @@ Rules:
 - `project` must be a recognized TVD/TVE/TVA/TVI company project.
 - `customer` is the required direct customer. Optional `downstream_customer`
   means the direct customer's customer.
+- Each canonical `project` appears exactly once in `projects[]`. App, feature,
+  and workstream names such as `播放器` and `BLE 遥控器` belong in
+  `completed_items[]`, `remaining_items[]`, or `next_week_plan[]`; they are not
+  project or customer values. Do not write composite customers such as
+  `播放器（海信）` or split one project into module-specific rows.
 - `project_role` is required and must be `主责` or `协作`.
 - `requirement_date` is required and uses `YYYY-MM-DD`.
 - `requirement_source` is required and must be one of `CR`, `TL`, `PM`, `TE`,
@@ -67,6 +72,8 @@ Rules:
   difficulty overcome this week. Use `["无"]` when there is none.
 - When completed or remaining count is positive, provide the corresponding
   item list. When remaining is positive, provide `next_week_plan`.
+- When there is no next-week action, use `next_week_plan: []`. Do not use `无`,
+  `暂无`, or another placeholder; the Markdown plan section omits that project.
 - Markdown and `report_view.json` are regenerated from this same object. Do not
   repair only one representation.
 

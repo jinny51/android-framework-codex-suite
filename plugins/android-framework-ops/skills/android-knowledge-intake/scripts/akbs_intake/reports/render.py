@@ -28,6 +28,7 @@ REPORT_PROJECT_MARKDOWN_RE = re.compile(
     r"(?<![A-Z0-9*])(TV[DEAI]\d{2}[A-Z0-9]{2}[MRU]\d?|TVI[A-Z0-9]{5}[A-Z0-9]?)(?![A-Z0-9*])",
     re.IGNORECASE,
 )
+EMPTY_WEEKLY_PLAN_VALUES = {"无", "无。", "暂无", "暂无。", "无下周计划", "暂无下周计划"}
 
 
 def emphasize_report_project_names(markdown: Any) -> str:
@@ -442,6 +443,10 @@ def meaningful_fact_list(value: Any, ignored: set[str] | None = None) -> list[st
     return [str(item).strip() for item in rows if str(item).strip() and str(item).strip() not in ignored]
 
 
+def weekly_plan_items(value: Any) -> list[str]:
+    return meaningful_fact_list(value, EMPTY_WEEKLY_PLAN_VALUES)
+
+
 def weekly_fact_count_text(row: dict[str, Any], key: str, *, include_bsp: bool, label: str = "") -> str:
     counts = normalize_fact_counts(row.get(key))
     return format_requirement_counts(counts, include_bsp=include_bsp, label=label)
@@ -629,14 +634,23 @@ def write_weekly_report(
             "project": ledger["project"],
             "customer": ledger["customer_name"],
             "downstream_customer": ledger.get("downstream_customer", ""),
-            "next_week_plan": [next_step_for_entries(items.get(str(ledger["project"]), []), "weekly")],
+            "next_week_plan": (
+                [next_step_for_entries(items.get(str(ledger["project"]), []), "weekly")]
+                if any(
+                    progress_bucket(progress) != "completed"
+                    for _, progress in items.get(str(ledger["project"]), [])
+                )
+                else []
+            ),
         }
         for ledger in ledgers
     ]
     for row in plan_rows:
         project = str(row["project"])
         context = row_customer_context(row)
-        plans = meaningful_fact_list(row.get("next_week_plan")) or ["继续补充真实工作记录并推进未闭环事项。"]
+        plans = weekly_plan_items(row.get("next_week_plan"))
+        if not plans:
+            continue
         lines += [
             f"### {project_customer_heading(project, context['customer_name'], context['downstream_customer'])}",
             "",
@@ -733,7 +747,7 @@ def report_view_payload(
                     "key_points": meaningful_fact_list(row.get("key_points")) or ["无"],
                     "risks": meaningful_fact_list(row.get("risks")) or ["无超过 3 天无进展事项。"],
                     "dependencies": meaningful_fact_list(row.get("dependencies")) or ["无外部依赖事项。"],
-                    "next_week_plan": meaningful_fact_list(row.get("next_week_plan")),
+                    "next_week_plan": weekly_plan_items(row.get("next_week_plan")),
                 }, context["downstream_customer"])
             if row.get("project_role") == "主责" and row.get("requirement_structure_present"):
                 project_row["requirement_structure"] = weekly_fact_count_text(
@@ -772,7 +786,11 @@ def report_view_payload(
                 "key_points": ["无"],
                 "risks": weekly_risks(entries),
                 "dependencies": weekly_dependencies(entries),
-                "next_week_plan": [next_step_for_entries(entries, "weekly")],
+                "next_week_plan": (
+                    [next_step_for_entries(entries, "weekly")]
+                    if any(progress_bucket(progress) != "completed" for _, progress in entries)
+                    else []
+                ),
             }, downstream_customer)
         )
     payload.update({"projects": projects})

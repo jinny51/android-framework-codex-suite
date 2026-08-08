@@ -15,7 +15,7 @@ from android_framework_ops.knowledge_rules import find_company_project
 
 from ..config import expanded_path, local_now, parse_bool, submission_api_base_url
 from ..io_utils import read_json_file
-from ..report_sessions import report_customer_context_for_project
+from ..report_sessions import clean_report_customer_name, report_customer_context_for_project
 from .common import iter_local_manifests, replacement_run_id
 
 
@@ -27,6 +27,12 @@ ALLOWED_PROJECT_ROLES = {"主责", "协作"}
 ALLOWED_SOURCES = {"CR", "TL", "PM", "TE", "BSP"}
 MISSING_VALUES = {"", "unknown", "需成员确认", "需成员补充", "待确认"}
 EMPTY_ITEM_VALUES = {
+    "无",
+    "无。",
+    "暂无",
+    "暂无。",
+    "无下周计划",
+    "暂无下周计划",
     "暂无明确完成项",
     "无明确剩余项",
     "无超过 3 天无进展事项。",
@@ -375,16 +381,27 @@ def load_explicit_facts(path: Path, week_key: str) -> list[dict[str, Any]]:
         raise SystemExit("weekly facts projects 必须是非空数组")
     normalized: list[dict[str, Any]] = []
     errors: list[str] = []
+    seen_projects: dict[str, tuple[int, str, str]] = {}
     for index, item in enumerate(projects):
         if not isinstance(item, dict):
             errors.append(f"projects[{index}] 必须是对象")
             continue
-        project = find_company_project(clean_text(item.get("project"))) or f"projects[{index}]"
+        raw_project = clean_text(item.get("project"))
+        project = find_company_project(raw_project) or f"projects[{index}]"
         if project.startswith("projects["):
             errors.append(f"{project}.project 必须是公司项目名")
+        elif raw_project.upper() != project.upper():
+            errors.append(
+                f"{project}.project 只能填写规范项目编号 {project}；App/功能模块请写入工作事项"
+            )
         for field in ("customer", "project_role", "requirement_date", "requirement_source"):
             if clean_text(item.get(field)) in MISSING_VALUES:
                 errors.append(f"{project}.{field} 必须提供")
+        customer = clean_text(item.get("customer"))
+        if customer not in MISSING_VALUES and not clean_report_customer_name(customer):
+            errors.append(
+                f"{project}.customer 必须是直接客户名称；播放器、遥控器等 App/功能模块应写入工作事项，不能写入客户字段"
+            )
         downstream_value = (
             item.get("downstream_customer")
             or item.get("customer_of_customer")
@@ -393,6 +410,28 @@ def load_explicit_facts(path: Path, week_key: str) -> list[dict[str, Any]]:
         )
         if downstream_value is not None and clean_text(downstream_value) in MISSING_VALUES:
             errors.append(f"{project}.downstream_customer 如提供则必须是有效的客户名称")
+        downstream_customer = clean_text(downstream_value)
+        if downstream_customer and downstream_customer not in MISSING_VALUES and not clean_report_customer_name(downstream_customer):
+            errors.append(
+                f"{project}.downstream_customer 必须是客户的客户；App/功能模块不能写入客户字段"
+            )
+        if not project.startswith("projects["):
+            identity = (customer, downstream_customer)
+            previous_identity = seen_projects.get(project)
+            if previous_identity:
+                previous_index, previous_customer, previous_downstream = previous_identity
+                if identity == (previous_customer, previous_downstream):
+                    errors.append(
+                        f"{project} 在 projects[{previous_index}] 和 projects[{index}] 重复；"
+                        "同一项目只能有一行，App/功能模块请合并到 completed_items、remaining_items 或 next_week_plan"
+                    )
+                else:
+                    errors.append(
+                        f"{project} 在 projects[{previous_index}] 和 projects[{index}] 的客户链冲突；"
+                        "同一项目必须保留唯一客户链，App/功能模块不得写入 customer 或 downstream_customer"
+                    )
+            else:
+                seen_projects[project] = (index, customer, downstream_customer)
         requirement_date = clean_text(item.get("requirement_date"))
         try:
             valid_requirement_date = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", requirement_date))
@@ -716,7 +755,7 @@ def _session_fallback_projects(
             "key_points": ["无"],
             "risks": ["无超过 3 天无进展事项。"],
             "dependencies": ["无外部依赖事项。"],
-            "next_week_plan": ["继续推进：" + "、".join(remaining_items[:3])] if remaining_items else ["保持交付和验证记录完整。"],
+            "next_week_plan": ["继续推进：" + "、".join(remaining_items[:3])] if remaining_items else [],
         }
         projects.append(row)
         if not synthetic:

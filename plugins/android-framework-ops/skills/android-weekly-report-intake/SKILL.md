@@ -123,6 +123,16 @@ aggregation happens outside the member workflow and should not be exposed as a
 member responsibility. Direct and downstream customer aliases must be resolved
 within their own levels, never across the customer chain.
 
+There must be exactly one `projects[]` row for each canonical company project.
+App, feature, and workstream names such as `播放器` or `BLE 遥控器` are work
+items, not projects or customers: keep them in `completed_items[]`,
+`remaining_items[]`, or `next_week_plan[]`. Never encode a module plus customer
+as a composite customer such as `播放器（海信）`, and never split one project
+into duplicate rows by module. Generation and `--submit-latest` validation must
+reject duplicate project rows or conflicting customer chains before HTTP.
+An absent next-week action is an empty `next_week_plan[]`; do not write `无` and
+do not render that project's block under `下周计划`.
+
 Before running `--prepare`, `--upload`, or `--submit-latest`, check the current
 member request and visible conversation context for a recognized project +
 customer pair. If Codex cannot find both values, do not run the command yet.

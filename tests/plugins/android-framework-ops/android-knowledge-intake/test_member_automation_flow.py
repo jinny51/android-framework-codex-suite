@@ -1477,6 +1477,109 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(fact_sources["payload"]["source"], "explicit_weekly_facts")
             self.assertEqual(fact_sources["payload"]["missing_fields"], [])
 
+    def test_weekly_project_identity_rejects_modules_as_customers_and_duplicate_project_rows(self) -> None:
+        load_intake_module()
+        weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+        with tempfile.TemporaryDirectory() as tmp:
+            facts = write_weekly_facts(Path(tmp) / "weekly-facts.json")
+            payload = json.loads(facts.read_text(encoding="utf-8"))
+            payload["projects"][0]["project"] = "TVI2343R"
+            payload["projects"][0]["customer"] = "播放器（海信）"
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+            with self.assertRaisesRegex(SystemExit, "App/功能模块.*不能写入客户字段"):
+                weekly_module.load_explicit_facts(facts, "20260601-20260607")
+
+            payload = json.loads(write_weekly_facts(facts).read_text(encoding="utf-8"))
+            payload["projects"][0]["project"] = "TVI2343R"
+            payload["projects"][0]["customer"] = "海信"
+            second = dict(payload["projects"][0])
+            second["completed_items"] = ["BLE 遥控器：完成按键规则验证"]
+            payload["projects"].append(second)
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+            with self.assertRaisesRegex(SystemExit, "同一项目只能有一行.*App/功能模块请合并"):
+                weekly_module.load_explicit_facts(facts, "20260601-20260607")
+
+    def test_weekly_omits_empty_project_plan_and_keeps_module_in_work_item(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            source_root = create_framework_repo(root)
+            write_codex_session(
+                Path(env["CODEX_HOME"]),
+                "55555555-3333-3333-4444-555555555557",
+                source_root,
+                dt.date(2026, 6, 3),
+                "TVI2343R 海信，本周推进播放器和 BLE 遥控器功能。",
+            )
+            facts = write_weekly_facts(root / "artifacts" / "weekly-facts.json")
+            payload = json.loads(facts.read_text(encoding="utf-8"))
+            payload["projects"][0]["remaining"] = {"demand": 0, "migration": 0, "bug": 0, "bsp": 0}
+            payload["projects"][0]["remaining_items"] = []
+            payload["projects"][0]["next_week_plan"] = ["无"]
+            active = json.loads(json.dumps(payload["projects"][0], ensure_ascii=False))
+            active["project"] = "TVI2343R"
+            active["customer"] = "海信"
+            active["remaining"] = {"demand": 4, "migration": 0, "bug": 0, "bsp": 0}
+            active["remaining_items"] = ["播放器：剩余 4 项需求"]
+            active["next_week_plan"] = ["播放器：继续推进剩余 4 项需求"]
+            payload["projects"].append(active)
+            facts.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+            weekly = prepare_weekly_package(env, "2026-06-03", "20260603-225050-weekly", facts)
+            report = read_package_report(weekly, "weekly")
+            plan_section = report.split("## 三、下周计划", 1)[1]
+            view = read_report_view(weekly)["payload"]["projects"]
+
+            self.assertNotIn("**TVE1086U**", plan_section)
+            self.assertNotIn("- 无", plan_section)
+            self.assertIn("### **TVI2343R** 海信", plan_section)
+            self.assertIn("- 播放器：继续推进剩余 4 项需求", plan_section)
+            self.assertEqual(view[0]["next_week_plan"], [])
+            self.assertEqual(view[1]["customer"], "海信")
+
+    def test_weekly_submit_latest_revalidates_project_identity_before_http(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            facts = write_weekly_facts(root / "artifacts" / "weekly-facts.json")
+            package = prepare_weekly_package(env, "2026-06-03", "20260603-225100-weekly", facts)
+            report_view_path = package / "materials" / "display" / "report_view.json"
+            report_view = json.loads(report_view_path.read_text(encoding="utf-8"))
+            duplicate = json.loads(json.dumps(report_view["payload"]["projects"][0], ensure_ascii=False))
+            duplicate["customer"] = "播放器（海信）"
+            duplicate["customer_name"] = "播放器（海信）"
+            report_view["payload"]["projects"].append(duplicate)
+            report_view_path.write_text(json.dumps(report_view, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+            with fake_upload_server() as (api_base_url, uploads):
+                env["CODEX_REPORT_AKBS_ENDPOINT_SUBMISSION_API_BASE_URL"] = api_base_url
+                result = run(
+                    [
+                        sys.executable,
+                        str(INTAKE_SCRIPT),
+                        "--profile",
+                        "member01",
+                        "weekly",
+                        "--date",
+                        "2026-06-03",
+                        "--submit-latest",
+                    ],
+                    SUITE_ROOT,
+                    env,
+                    check=False,
+                )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(uploads, [])
+            self.assertIn("本地工作包校验失败", result.stderr)
+            local_check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            self.assertEqual(local_check["status"], "FAIL")
+            self.assertTrue(any("客户链冲突" in error for error in local_check["errors"]))
+
     def test_weekly_demand_migration_and_bug_are_separate_and_bsp_cannot_be_completed(self) -> None:
         load_intake_module()
         weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
