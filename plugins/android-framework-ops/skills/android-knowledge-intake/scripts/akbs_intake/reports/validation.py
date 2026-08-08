@@ -68,7 +68,7 @@ def report_project_customer_errors(rel: str, rows: Any, label: str) -> list[str]
             row_errors.append(f"{rel} payload.{label}[{index}].project 未识别到公司项目名。{MISSING_PROJECT_GUIDANCE}")
         elif project.upper() != canonical_project.upper():
             row_errors.append(
-                f"{rel} payload.{label}[{index}].project 只能填写规范项目编号 {canonical_project}；App/功能模块应写入工作事项"
+                f"{rel} payload.{label}[{index}].project 只能填写规范项目编号 {canonical_project}；其他内容应写入事项字段"
             )
         customer = str(row.get("customer") or row.get("customer_name") or "").strip()
         compatibility_customer = str(row.get("customer_name") or "").strip()
@@ -98,12 +98,12 @@ def report_project_customer_errors(rel: str, rows: Any, label: str) -> list[str]
                 if identity == (previous_customer, previous_downstream):
                     row_errors.append(
                         f"{rel} payload.{label}[{index}].project 与 [{previous_index}] 重复；"
-                        "同一项目只能有一行，App/功能模块应合并到工作事项"
+                        "同一项目只能有一行，具体工作内容应合并到事项数组"
                     )
                 else:
                     row_errors.append(
                         f"{rel} payload.{label}[{index}] 与 [{previous_index}] 的 {canonical_project} 客户链冲突；"
-                        "App/功能模块不得写入 customer 或 downstream_customer"
+                        "同一项目必须保留唯一客户链"
                     )
             else:
                 seen_projects[canonical_project] = (index, customer, downstream_customer)
@@ -199,6 +199,40 @@ def validate_weekly_fact_sources(
         errors.append("weekly_fact_sources.missing_fields 必须是数组")
     elif missing:
         errors.append("周报项目事实不完整，请补充后使用 --weekly-facts 重新生成: " + "、".join(str(item) for item in missing))
+    identity_conflicts = payload.get("identity_conflicts", [])
+    if not isinstance(identity_conflicts, list):
+        errors.append("weekly_fact_sources.identity_conflicts 必须是数组")
+    elif identity_conflicts:
+        errors.append("周报项目客户链与当前会话已确认身份冲突，请修正结构化事实后重新生成")
+
+
+def weekly_project_identity_consistency_errors(
+    rel: str,
+    rows: Any,
+    expected_rows: Any,
+) -> list[str]:
+    if not isinstance(rows, list) or not isinstance(expected_rows, list) or not expected_rows:
+        return []
+
+    def identities(values: list[Any]) -> dict[str, tuple[str, str]]:
+        result: dict[str, tuple[str, str]] = {}
+        for value in values:
+            if not isinstance(value, dict):
+                continue
+            project = find_company_project(str(value.get("project") or ""))
+            customer = str(value.get("customer") or value.get("customer_name") or "").strip()
+            downstream = str(value.get("downstream_customer") or "").strip()
+            if project and customer:
+                result[project] = (customer, downstream)
+        return result
+
+    actual = identities(rows)
+    expected = identities(expected_rows)
+    if actual == expected:
+        return []
+    return [
+        f"{rel} payload.projects 项目客户身份必须与 project_inference.project_customers 来源证据一致"
+    ]
 
 
 def validate_daily_report_view_project(rel: str, index: int, project: dict[str, Any], errors: list[str]) -> None:
@@ -352,6 +386,7 @@ def validate_report_view_payload(
     report_type: str,
     manifest: dict[str, Any],
     view: dict[str, Any],
+    expected_weekly_project_identities: Any = None,
     errors: list[str],
 ) -> None:
     for field in ("schema", "report_type", "material_name", "material_summary", "member_alias", "member_name", "display_date", "projects"):
@@ -365,6 +400,14 @@ def validate_report_view_payload(
         errors.append(f"{rel} payload.{field} 是已废弃的 report_view 字段，新包不得提供")
 
     errors.extend(report_project_customer_errors(rel, view.get("projects"), "projects"))
+    if report_type == "weekly":
+        errors.extend(
+            weekly_project_identity_consistency_errors(
+                rel,
+                view.get("projects"),
+                expected_weekly_project_identities,
+            )
+        )
     if not isinstance(view.get("projects"), list):
         errors.append(f"{rel} payload.projects 必须是数组")
         return
@@ -390,6 +433,7 @@ def validate_report_display_files(
     files: dict[str, Any],
     manifest: dict[str, Any],
     report_type: str,
+    expected_weekly_project_identities: Any,
     require_file: RequireFile,
     read_referenced_json: ReadReferencedJson,
     errors: list[str],
@@ -412,7 +456,14 @@ def validate_report_display_files(
         if not isinstance(view, dict):
             errors.append(f"{rel} payload 必须是对象")
             continue
-        validate_report_view_payload(rel=rel, report_type=report_type, manifest=manifest, view=view, errors=errors)
+        validate_report_view_payload(
+            rel=rel,
+            report_type=report_type,
+            manifest=manifest,
+            view=view,
+            expected_weekly_project_identities=expected_weekly_project_identities,
+            errors=errors,
+        )
 
 
 def validate_report_trace_package(
@@ -460,6 +511,12 @@ def validate_report_trace_package(
         files=files,
         manifest=manifest,
         report_type=report_type,
+        expected_weekly_project_identities=(
+            evidence_by_kind.get("project_inference", {}).get("payload", {}).get("project_customers")
+            if package_kind == "weekly_trace"
+            and isinstance(evidence_by_kind.get("project_inference", {}).get("payload"), dict)
+            else None
+        ),
         require_file=require_file,
         read_referenced_json=read_referenced_json,
         errors=errors,

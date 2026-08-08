@@ -44,10 +44,10 @@ Rules:
 - `customer` is the required direct customer. Optional `downstream_customer`
   means the direct customer's customer.
 - Each canonical `project` appears exactly once in `projects[]`. App, feature,
-  and workstream names such as `播放器` and `BLE 遥控器` belong in
-  `completed_items[]`, `remaining_items[]`, or `next_week_plan[]`; they are not
-  project or customer values. Do not write composite customers such as
-  `播放器（海信）` or split one project into module-specific rows.
+  and workstream names belong in `completed_items[]`, `remaining_items[]`, or
+  `next_week_plan[]`; do not split one project into work-item-specific rows.
+  Identity validation is based on canonical fields and confirmed source
+  context, not on an enumerated list of module names.
 - `project_role` is required and must be `主责` or `协作`.
 - `requirement_date` is required and uses `YYYY-MM-DD`.
 - `requirement_source` is required and must be one of `CR`, `TL`, `PM`, `TE`,

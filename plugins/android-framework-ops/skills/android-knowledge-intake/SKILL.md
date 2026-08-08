@@ -24,9 +24,11 @@ Weekly generation uses effective AKBS report facts before sessions: current dail
 Weekly project identity is one canonical company project plus one direct customer
 and an optional downstream customer. One project appears exactly once. App or
 feature-module names belong inside the project's work-item and plan arrays; they
-must not become customer values or duplicate project rows. Empty next-week plans
-use an empty array and are omitted from the Markdown plan section. Both prepare
-and `--submit-latest` enforce this shape before HTTP.
+must not become duplicate project rows. Enforcement uses canonical project shape,
+row uniqueness, the customer chain confirmed by current context, and same-source
+package evidence; it does not enumerate module names. Empty next-week plans use
+an empty array and are omitted from the Markdown plan section. Both prepare and
+`--submit-latest` enforce this shape before HTTP.
 
 Daily and weekly generation is idempotent by member and report identity: daily uses `date`, weekly uses `week_range`. If a local pending or submitted report package already exists for the same member and identity, `--prepare`, `--upload`, and `--submit-latest` must stop instead of silently creating or uploading a second ordinary report package. The member must either cancel the new run or explicitly replace the old package. Use `daily --replace-daily-run-id <old_run_id>` or `weekly --replace-weekly-run-id <old_run_id>`; the replacement package writes `replacement_for_run_id` and `supersedes` metadata so it is not another silent ordinary report package.
 

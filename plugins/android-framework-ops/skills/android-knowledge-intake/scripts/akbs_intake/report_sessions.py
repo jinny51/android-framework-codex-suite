@@ -57,10 +57,14 @@ REPORT_MISSING_CUSTOMER_VALUES = {"", "unknown", "未识别客户", "需成员�
 REPORT_CUSTOMER_STOP_RE = re.compile(r"\s*(?:[，,。.;；\n\r]|帮我|请|生成|提交|上传|日报|周报|报告)")
 REPORT_CUSTOMER_COMMAND_RE = re.compile(r"(帮我|请|生成|提交|上传|日报|周报|报告|今天|本周|主要工作|围绕|处理|完成|进度)")
 REPORT_CUSTOMER_WORK_TERM_RE = re.compile(
-    r"(?:功能|模块|播放器|遥控器|Demo|App|策略|需求|事项|问题|补丁|开发|修复|适配|排查|验证|联调|进度|状态栏|锁屏|鼠标|副屏)$",
-    re.IGNORECASE,
+    r"(?:功能|模块|策略|需求|事项|问题|补丁|开发|修复|适配|排查|验证|联调|进度|状态栏|锁屏|鼠标|副屏)$"
 )
-REPORT_CUSTOMER_MODULE_RE = re.compile(r"(?:播放器|遥控器|功能模块|\bDemo\b|\bApp\b)", re.IGNORECASE)
+REPORT_DIRECT_CUSTOMER_LABEL_RE = re.compile(
+    r"(?:直接)?客户(?:名|名称)?\s*(?:是|为|[:：])\s*([^，,。.;；、\n\r()（）]+)"
+)
+REPORT_DOWNSTREAM_CUSTOMER_LABEL_RE = re.compile(
+    r"(?:客户的客户|下游客户|终端客户)\s*(?:是|为|[:：])\s*([^，,。.;；、\n\r()（）]+)"
+)
 REPORT_GENERATION_REQUEST_RE = re.compile(r"(?:帮我|请).{0,24}(?:生成|提交|上传).{0,24}(?:日报|周报|报告)")
 
 
@@ -227,15 +231,16 @@ def clean_report_customer_name(value: Any) -> str:
     customer = re.sub(r"\s+", " ", str(value or "")).strip(" \t'\"`，,。.;；:：|-_/")
     if not customer or customer in REPORT_MISSING_CUSTOMER_VALUES:
         return ""
-    if REPORT_CUSTOMER_COMMAND_RE.search(customer):
-        return ""
-    if REPORT_CUSTOMER_MODULE_RE.search(customer):
-        return ""
-    if REPORT_CUSTOMER_WORK_TERM_RE.search(customer):
-        return ""
     if len(customer) > 32:
         return ""
     if not re.search(r"[\u4e00-\u9fffA-Za-z0-9]", customer):
+        return ""
+    return customer
+
+
+def inferred_report_customer_name(value: Any) -> str:
+    customer = clean_report_customer_name(value)
+    if not customer or REPORT_CUSTOMER_COMMAND_RE.search(customer) or REPORT_CUSTOMER_WORK_TERM_RE.search(customer):
         return ""
     return customer
 
@@ -244,12 +249,12 @@ def split_report_customer_context(value: Any) -> dict[str, str]:
     parts = re.split(r"\s+", str(value or "").strip())
     if not parts or not parts[0]:
         return {}
-    customer = clean_report_customer_name(parts[0])
+    customer = inferred_report_customer_name(parts[0])
     if not customer:
         return {}
     context = {"customer_name": customer}
     if len(parts) > 1:
-        downstream = clean_report_customer_name(" ".join(parts[1:]))
+        downstream = inferred_report_customer_name(" ".join(parts[1:]))
         if downstream:
             context["downstream_customer"] = downstream
     return context
@@ -262,12 +267,23 @@ def project_customer_contexts_from_text(text: Any) -> list[tuple[str, dict[str, 
         project = find_company_project(match.group("base"))
         if not project:
             continue
-        tail = raw_text[match.end() :]
-        if not tail or not tail[0].isspace():
-            continue
-        tail = tail.lstrip()
-        customer_part = REPORT_CUSTOMER_STOP_RE.split(tail, 1)[0]
-        context = split_report_customer_context(customer_part)
+        raw_tail = raw_text[match.end() :]
+        next_project = PROJECT_ANCHOR_RE.search(raw_tail)
+        tail = raw_tail[: next_project.start()] if next_project else raw_tail
+        direct_match = REPORT_DIRECT_CUSTOMER_LABEL_RE.search(tail)
+        downstream_match = REPORT_DOWNSTREAM_CUSTOMER_LABEL_RE.search(tail)
+        context: dict[str, str] = {}
+        if direct_match:
+            customer = clean_report_customer_name(direct_match.group(1))
+            if customer:
+                context["customer_name"] = customer
+                if downstream_match:
+                    downstream = clean_report_customer_name(downstream_match.group(1))
+                    if downstream:
+                        context["downstream_customer"] = downstream
+        elif raw_tail and raw_tail[0].isspace():
+            customer_part = REPORT_CUSTOMER_STOP_RE.split(raw_tail.lstrip(), 1)[0]
+            context = split_report_customer_context(customer_part)
         if context:
             item = (project, context)
             if item not in contexts:

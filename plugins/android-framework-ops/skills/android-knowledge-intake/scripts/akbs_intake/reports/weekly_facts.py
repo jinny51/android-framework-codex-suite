@@ -15,7 +15,11 @@ from android_framework_ops.knowledge_rules import find_company_project
 
 from ..config import expanded_path, local_now, parse_bool, submission_api_base_url
 from ..io_utils import read_json_file
-from ..report_sessions import clean_report_customer_name, report_customer_context_for_project
+from ..report_sessions import (
+    clean_report_customer_name,
+    normalize_report_customer_context,
+    report_customer_context_for_project,
+)
 from .common import iter_local_manifests, replacement_run_id
 
 
@@ -365,7 +369,48 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def load_explicit_facts(path: Path, week_key: str) -> list[dict[str, Any]]:
+def project_customer_identity_conflicts(
+    projects: list[dict[str, Any]],
+    expected_project_customers: dict[str, Any],
+) -> list[dict[str, str]]:
+    expected: dict[str, dict[str, str]] = {}
+    for raw_project, raw_context in expected_project_customers.items():
+        project = find_company_project(str(raw_project or ""))
+        context = normalize_report_customer_context(raw_context)
+        if project and context.get("customer_name"):
+            expected[project] = context
+
+    conflicts: list[dict[str, str]] = []
+    for row in projects:
+        project = find_company_project(clean_text(row.get("project")))
+        context = expected.get(project or "")
+        if not project or not context:
+            continue
+        actual_customer = clean_text(row.get("customer") or row.get("customer_name"))
+        actual_downstream = clean_text(row.get("downstream_customer"))
+        expected_customer = clean_text(context.get("customer_name"))
+        expected_downstream = clean_text(context.get("downstream_customer"))
+        direct_conflict = actual_customer != expected_customer
+        downstream_conflict = bool(expected_downstream) and actual_downstream != expected_downstream
+        if direct_conflict or downstream_conflict:
+            conflicts.append(
+                {
+                    "project": project,
+                    "actual_customer": actual_customer,
+                    "actual_downstream_customer": actual_downstream,
+                    "expected_customer": expected_customer,
+                    "expected_downstream_customer": expected_downstream,
+                }
+            )
+    return conflicts
+
+
+def load_explicit_facts(
+    path: Path,
+    week_key: str,
+    *,
+    expected_project_customers: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     payload = read_json_file(path)
     if payload.get("schema") == "akbs-weekly-project-facts-v1":
         raise SystemExit(
@@ -392,7 +437,7 @@ def load_explicit_facts(path: Path, week_key: str) -> list[dict[str, Any]]:
             errors.append(f"{project}.project 必须是公司项目名")
         elif raw_project.upper() != project.upper():
             errors.append(
-                f"{project}.project 只能填写规范项目编号 {project}；App/功能模块请写入工作事项"
+                f"{project}.project 只能填写规范项目编号 {project}；其他内容请写入事项字段"
             )
         for field in ("customer", "project_role", "requirement_date", "requirement_source"):
             if clean_text(item.get(field)) in MISSING_VALUES:
@@ -400,7 +445,7 @@ def load_explicit_facts(path: Path, week_key: str) -> list[dict[str, Any]]:
         customer = clean_text(item.get("customer"))
         if customer not in MISSING_VALUES and not clean_report_customer_name(customer):
             errors.append(
-                f"{project}.customer 必须是直接客户名称；播放器、遥控器等 App/功能模块应写入工作事项，不能写入客户字段"
+                f"{project}.customer 必须是有效的直接客户名称"
             )
         downstream_value = (
             item.get("downstream_customer")
@@ -413,7 +458,7 @@ def load_explicit_facts(path: Path, week_key: str) -> list[dict[str, Any]]:
         downstream_customer = clean_text(downstream_value)
         if downstream_customer and downstream_customer not in MISSING_VALUES and not clean_report_customer_name(downstream_customer):
             errors.append(
-                f"{project}.downstream_customer 必须是客户的客户；App/功能模块不能写入客户字段"
+                f"{project}.downstream_customer 必须是有效的客户的客户名称"
             )
         if not project.startswith("projects["):
             identity = (customer, downstream_customer)
@@ -423,12 +468,12 @@ def load_explicit_facts(path: Path, week_key: str) -> list[dict[str, Any]]:
                 if identity == (previous_customer, previous_downstream):
                     errors.append(
                         f"{project} 在 projects[{previous_index}] 和 projects[{index}] 重复；"
-                        "同一项目只能有一行，App/功能模块请合并到 completed_items、remaining_items 或 next_week_plan"
+                        "同一项目只能有一行，具体工作内容请合并到事项数组"
                     )
                 else:
                     errors.append(
                         f"{project} 在 projects[{previous_index}] 和 projects[{index}] 的客户链冲突；"
-                        "同一项目必须保留唯一客户链，App/功能模块不得写入 customer 或 downstream_customer"
+                        "同一项目必须保留唯一客户链"
                     )
             else:
                 seen_projects[project] = (index, customer, downstream_customer)
@@ -501,6 +546,11 @@ def load_explicit_facts(path: Path, week_key: str) -> list[dict[str, Any]]:
         if count_total(remaining) > 0 and not clean_list(item.get("next_week_plan")):
             errors.append(f"{project}.next_week_plan 当前有剩余时必须提供")
         normalized.append(_weekly_project_row(item))
+    for conflict in project_customer_identity_conflicts(normalized, expected_project_customers or {}):
+        errors.append(
+            f"{conflict['project']}.customer 客户链与当前会话已确认的项目身份不一致；"
+            "请保持项目、直接客户和客户的客户各自独立"
+        )
     if errors:
         raise SystemExit("weekly facts 校验失败: " + "；".join(errors))
     return normalized
@@ -794,7 +844,11 @@ def build_weekly_facts(
 ) -> WeeklyFactsResult:
     missing_fields: list[str] = []
     if explicit_path:
-        projects = load_explicit_facts(expanded_path(explicit_path), week_key)
+        projects = load_explicit_facts(
+            expanded_path(explicit_path),
+            week_key,
+            expected_project_customers=project_customers,
+        )
         provenance: dict[str, Any] = {"source": "explicit_weekly_facts", "daily_package_keys": [], "previous_weekly_package_keys": []}
         for row in projects:
             missing_fields.extend(_project_missing_fields(row))
@@ -852,12 +906,18 @@ def build_weekly_facts(
         )
         missing_fields.extend(fallback_missing)
         provenance["source"] = "session_fallback" if not synthetic else "synthetic_fixture"
+    identity_conflicts = project_customer_identity_conflicts(projects, project_customers or {})
+    missing_fields.extend(
+        f"{conflict['project']}.customer_identity_conflict"
+        for conflict in identity_conflicts
+    )
     evidence = {
         "schema": WEEKLY_FACT_SOURCES_SCHEMA,
         "week_range": week_key,
         **provenance,
         "project_count": len(projects),
         "missing_fields": sorted(set(missing_fields)),
+        "identity_conflicts": identity_conflicts,
         "facts_sha256": facts_hash(projects),
     }
     return WeeklyFactsResult(projects, evidence)

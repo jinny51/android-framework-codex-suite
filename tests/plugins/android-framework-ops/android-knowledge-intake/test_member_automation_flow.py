@@ -1369,6 +1369,12 @@ class MemberAutomationFlowTests(unittest.TestCase):
             [("TVE1067M1", {"customer_name": "韩福友", "downstream_customer": "P"})],
         )
         self.assertEqual(
+            sessions_module.project_customer_contexts_from_text(
+                "TVI2343R（客户：海信），本周推进任意未来名称；客户的客户：渠道甲。"
+            ),
+            [("TVI2343R", {"customer_name": "海信", "downstream_customer": "渠道甲"})],
+        )
+        self.assertEqual(
             validation_module.report_project_customer_errors(
                 "report_view.json",
                 [{"project": "TVE1086U", "customer": "青鸾云"}],
@@ -1376,13 +1382,8 @@ class MemberAutomationFlowTests(unittest.TestCase):
             ),
             [],
         )
-        self.assertTrue(
-            validation_module.report_project_customer_errors(
-                "report_view.json",
-                [{"project": "TVE1086U", "customer": "日报"}],
-                "projects",
-            )
-        )
+        self.assertEqual(sessions_module.clean_report_customer_name("日报"), "日报")
+        self.assertEqual(sessions_module.split_report_customer_context("日报"), {})
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1477,28 +1478,35 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(fact_sources["payload"]["source"], "explicit_weekly_facts")
             self.assertEqual(fact_sources["payload"]["missing_fields"], [])
 
-    def test_weekly_project_identity_rejects_modules_as_customers_and_duplicate_project_rows(self) -> None:
+    def test_weekly_project_identity_uses_source_binding_and_rejects_duplicate_rows(self) -> None:
         load_intake_module()
         weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+        sessions_module = importlib.import_module("akbs_intake.report_sessions")
+        self.assertEqual(sessions_module.clean_report_customer_name("任意未来功能模块"), "任意未来功能模块")
+        self.assertEqual(sessions_module.split_report_customer_context("任意未来功能模块"), {})
         with tempfile.TemporaryDirectory() as tmp:
             facts = write_weekly_facts(Path(tmp) / "weekly-facts.json")
             payload = json.loads(facts.read_text(encoding="utf-8"))
             payload["projects"][0]["project"] = "TVI2343R"
-            payload["projects"][0]["customer"] = "播放器（海信）"
+            payload["projects"][0]["customer"] = "任意新业务名称"
             facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
-            with self.assertRaisesRegex(SystemExit, "App/功能模块.*不能写入客户字段"):
-                weekly_module.load_explicit_facts(facts, "20260601-20260607")
+            with self.assertRaisesRegex(SystemExit, "与当前会话已确认的项目身份不一致"):
+                weekly_module.load_explicit_facts(
+                    facts,
+                    "20260601-20260607",
+                    expected_project_customers={"TVI2343R": {"customer_name": "海信"}},
+                )
 
             payload = json.loads(write_weekly_facts(facts).read_text(encoding="utf-8"))
             payload["projects"][0]["project"] = "TVI2343R"
             payload["projects"][0]["customer"] = "海信"
             second = dict(payload["projects"][0])
-            second["completed_items"] = ["BLE 遥控器：完成按键规则验证"]
+            second["completed_items"] = ["任意未来模块：完成规则验证"]
             payload["projects"].append(second)
             facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
-            with self.assertRaisesRegex(SystemExit, "同一项目只能有一行.*App/功能模块请合并"):
+            with self.assertRaisesRegex(SystemExit, "同一项目只能有一行.*合并到事项数组"):
                 weekly_module.load_explicit_facts(facts, "20260601-20260607")
 
     def test_weekly_omits_empty_project_plan_and_keeps_module_in_work_item(self) -> None:
@@ -1549,10 +1557,8 @@ class MemberAutomationFlowTests(unittest.TestCase):
             package = prepare_weekly_package(env, "2026-06-03", "20260603-225100-weekly", facts)
             report_view_path = package / "materials" / "display" / "report_view.json"
             report_view = json.loads(report_view_path.read_text(encoding="utf-8"))
-            duplicate = json.loads(json.dumps(report_view["payload"]["projects"][0], ensure_ascii=False))
-            duplicate["customer"] = "播放器（海信）"
-            duplicate["customer_name"] = "播放器（海信）"
-            report_view["payload"]["projects"].append(duplicate)
+            report_view["payload"]["projects"][0]["customer"] = "任意新身份"
+            report_view["payload"]["projects"][0]["customer_name"] = "任意新身份"
             report_view_path.write_text(json.dumps(report_view, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
             with fake_upload_server() as (api_base_url, uploads):
@@ -1578,7 +1584,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertIn("本地工作包校验失败", result.stderr)
             local_check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
             self.assertEqual(local_check["status"], "FAIL")
-            self.assertTrue(any("客户链冲突" in error for error in local_check["errors"]))
+            self.assertTrue(any("来源证据一致" in error for error in local_check["errors"]))
 
     def test_weekly_demand_migration_and_bug_are_separate_and_bsp_cannot_be_completed(self) -> None:
         load_intake_module()
