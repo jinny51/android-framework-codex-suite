@@ -2,7 +2,7 @@
 
 ## Session Filtering
 
-- Read sessions only after explicit consent for this report run. The report date or week is the exact time window, and only the selected `work_summary`, `project_hint`, `command_summary`, or `patch_discovery` fields may be derived.
+- Read sessions only after explicit consent for this report run. The report date or week is the exact time window, and only the selected `work_summary`, `project_hint`, `work_scope_hint`, `command_summary`, or `patch_discovery` fields may be derived.
 - Keep only sanitized derived summaries and minimal source session IDs. Do not retain thread titles, cwd, raw messages, raw commands, clipboard content, environment values, credentials, paths, or temporary extraction files.
 - Skip automation sessions, empty sessions, report self-test sessions, and pure report-maintenance sessions.
 - Keep cross-day sessions when messages on the target date contain real work.
@@ -32,9 +32,12 @@
   of the normal Codex workflow: create the project first, then create development
   sessions under that project. Do not ask for weekly ledger fields during daily
   generation.
-- Daily `work_type` is also required and must be confirmed as `Patch` or `App`;
-  App additionally requires `app_name`. This is a daily work-scope field, not a
-  weekly ledger field. Never infer it from vague item wording.
+- Daily `work_type` is also required as `Patch` or `App`; App additionally
+  requires `app_name`. Resolve it from explicit member context first, then from
+  high-confidence development evidence such as source/module paths, changed
+  files, build commands, patch artifacts, and APK/AAB outputs. Never infer it
+  from vague item wording. Ask only when evidence conflicts or remains
+  incomplete. This is a daily work-scope field, not a weekly ledger field.
 
 ## Report Summary
 
@@ -97,6 +100,11 @@
 同一项目可有一个 Patch 和多个不同 App；App 必须写 App 名称。只要范围内有
 `处理中`、`待验证`或`阻塞`事项，就必须填写该范围的明日重点。日报不填写
 项目角色、需求时间、需求来源、项目总量或剩余量。
+
+类型判定优先使用成员明确说明，其次使用高置信度开发证据。SystemUI、Launcher、
+Settings 和 Framework 服务等系统源码修改属于 Patch；独立交付的应用或 demo
+属于 App。证据一致时自动填写并可按范围拆分；证据冲突、仅有模糊事项文字或
+无法确定 App 名称时才询问成员。周报继承日报范围，不重新猜测。
 
 ## Weekly Template
 

@@ -1,13 +1,207 @@
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from typing import Any
 
 
 ALLOWED_WORK_TYPES = {"Patch", "App"}
 
+EXPLICIT_PATCH_RE = re.compile(
+    r"(?i)(?:类型|工作类型|开发类型)\s*[:：=]\s*patch\b|"
+    r"(?:属于|这是|这项(?:工作|开发)?是|做的是)\s*(?:系统源码定制|patch)\b"
+)
+EXPLICIT_APP_RE = re.compile(
+    r"(?i)(?:类型|工作类型|开发类型)\s*[:：=]\s*app\b|"
+    r"(?:属于|这是|这项(?:工作|开发)?是|做的是)\s*(?:独立\s*)?(?:app|应用开发)\b|"
+    r"(?:app|应用)\s*(?:名称|名)\s*[:：=]"
+)
+PATCH_TEXT_RE = re.compile(
+    r"(?i)(?:frameworks/base|system_server|systemui|launcher3|settingsprovider|"
+    r"windowmanager|activitytaskmanager|packagemanager|系统源码(?:定制|修改|开发)|"
+    r"(?:生成|产出|提交|应用|移植|制作|修改)\s*(?:了|一个|一份)?\s*(?:patch|补丁)|"
+    r"(?:patch|补丁)\s*(?:已|生成|提交|移植|验证|修改|开发|维护|调试|构建|联调))"
+)
+APP_TEXT_RE = re.compile(
+    r"(?i)(?:(?:独立|单独)\s*(?:app|应用)|(?:app|应用|demo)\s*(?:开发|维护|调试|构建|联调)|"
+    r"(?:开发|实现|维护|调试|构建|联调)\s*[^，,。；;\n]{0,28}\s*(?:app|应用)|"
+    r"\bapplicationid\b|\bassemble(?:debug|release)\b|(?:生成|产出|构建|安装)\s*[^，,。；;\n]{0,12}\.(?:apk|aab)\b)"
+)
+APP_NAME_PATTERNS = (
+    re.compile(r"(?i)(?:app|应用)\s*(?:名称|名)?\s*[:：=]\s*([^，,。；;|\n]{1,32})"),
+    re.compile(
+        r"(?i)(?:开发|实现|维护|调试|构建|适配|联调)\s*"
+        r"([A-Za-z0-9_+.-]*[\u4e00-\u9fffA-Za-z][\u4e00-\u9fffA-Za-z0-9_+.-]{1,23})\s*(?:app|应用)\b"
+    ),
+    re.compile(
+        r"(?i)([A-Za-z0-9_+.-]*[\u4e00-\u9fffA-Za-z][\u4e00-\u9fffA-Za-z0-9_+.-]{1,23})\s*"
+        r"(?:app|应用)\s*(?:开发|维护|调试|构建|适配|联调)"
+    ),
+)
+ANDROID_SYSTEM_PATH_MARKERS = (
+    "/frameworks/",
+    "/system/",
+    "/system_ext/",
+    "/packages/systemui/",
+    "/packages/apps/",
+    "/packages/modules/",
+    "/packages/providers/",
+    "/device/",
+    "/hardware/",
+    "/vendor/",
+)
+GENERIC_APP_NAMES = {
+    "android",
+    "app",
+    "application",
+    "demo",
+    "debug",
+    "release",
+    "应用",
+    "应用开发",
+    "客户",
+    "独立",
+    "系统",
+}
+
+
+@dataclass(frozen=True)
+class WorkScopeInference:
+    work_type: str = ""
+    app_name: str = ""
+    basis: tuple[str, ...] = ()
+    conflict: bool = False
+
 
 def clean_scope_text(value: Any) -> str:
     return " ".join(str(value or "").split())
+
+
+def clean_app_name(value: Any) -> str:
+    text = clean_scope_text(value).strip(" '\"`[]()（）<>《》")
+    text = re.sub(
+        r"(?i)\s*(?:app|应用)?\s*(?:开发|维护|调试|构建|适配|联调|已完成|处理中|待验证)?\s*$",
+        "",
+        text,
+    ).strip(" '\"`[]()（）<>《》:-：")
+    if not text or len(text) > 32 or text.casefold() in GENERIC_APP_NAMES:
+        return ""
+    if not re.search(r"[\u4e00-\u9fffA-Za-z0-9]", text):
+        return ""
+    return text
+
+
+def app_name_from_text(text: Any) -> str:
+    value = str(text or "")
+    for pattern in APP_NAME_PATTERNS:
+        match = pattern.search(value)
+        if match:
+            name = clean_app_name(match.group(1))
+            if name:
+                return name
+    return ""
+
+
+def path_scope_inference(path_hint: Any) -> WorkScopeInference:
+    raw_path = str(path_hint or "").replace("\\", "/").strip("/")
+    normalized = "/" + raw_path.lower() + "/"
+    if normalized == "//":
+        return WorkScopeInference()
+    if any(marker in normalized for marker in ANDROID_SYSTEM_PATH_MARKERS):
+        return WorkScopeInference("Patch", basis=("android_system_source_path",))
+
+    parts = [part for part in raw_path.split("/") if part]
+    lower_parts = [part.lower() for part in parts]
+    app_name = ""
+    if lower_parts and lower_parts[-1] == "app" and len(parts) >= 2:
+        app_name = clean_app_name(parts[-2])
+    elif parts and re.search(r"(?i)(?:app|application)$", parts[-1]):
+        app_name = clean_app_name(parts[-1])
+    elif "apps" in lower_parts:
+        index = len(parts) - 1 - lower_parts[::-1].index("apps")
+        if index + 1 < len(parts):
+            app_name = clean_app_name(parts[index + 1])
+    if app_name:
+        return WorkScopeInference("App", app_name, ("standalone_app_source_path",))
+    return WorkScopeInference()
+
+
+def text_scope_inference(
+    texts: list[Any] | tuple[Any, ...],
+    *,
+    allow_explicit: bool = True,
+) -> WorkScopeInference:
+    text = " ".join(clean_scope_text(value) for value in texts if clean_scope_text(value))
+    if not text:
+        return WorkScopeInference()
+    explicit_patch = allow_explicit and bool(EXPLICIT_PATCH_RE.search(text))
+    explicit_app = allow_explicit and bool(EXPLICIT_APP_RE.search(text))
+    if explicit_patch and explicit_app:
+        return WorkScopeInference(basis=("conflicting_explicit_work_type",), conflict=True)
+    if explicit_patch:
+        return WorkScopeInference("Patch", basis=("explicit_work_type",))
+    if explicit_app:
+        return WorkScopeInference("App", app_name_from_text(text), ("explicit_work_type",))
+
+    patch = bool(PATCH_TEXT_RE.search(text))
+    app = bool(APP_TEXT_RE.search(text))
+    if patch and app:
+        return WorkScopeInference(basis=("conflicting_development_evidence",), conflict=True)
+    if patch:
+        return WorkScopeInference("Patch", basis=("framework_development_terms",))
+    if app:
+        return WorkScopeInference("App", app_name_from_text(text), ("standalone_app_development_terms",))
+    return WorkScopeInference()
+
+
+def combine_scope_inferences(*values: WorkScopeInference) -> WorkScopeInference:
+    relevant = [value for value in values if value.work_type or value.conflict]
+    if not relevant:
+        return WorkScopeInference()
+    explicit = [value for value in relevant if "explicit_work_type" in value.basis]
+    if explicit:
+        explicit_types = {value.work_type for value in explicit if value.work_type}
+        if len(explicit_types) != 1 or any(value.conflict for value in explicit):
+            return WorkScopeInference(basis=("conflicting_explicit_work_type",), conflict=True)
+        chosen_type = next(iter(explicit_types))
+        chosen = next(value for value in explicit if value.work_type == chosen_type)
+        return WorkScopeInference(chosen_type, chosen.app_name, tuple(dict.fromkeys(chosen.basis)))
+    if any(value.conflict for value in relevant):
+        return WorkScopeInference(basis=("conflicting_development_evidence",), conflict=True)
+    types = {value.work_type for value in relevant if value.work_type}
+    if len(types) != 1:
+        return WorkScopeInference(basis=("conflicting_development_evidence",), conflict=True)
+    work_type = next(iter(types))
+    names = [value.app_name for value in relevant if value.work_type == "App" and value.app_name]
+    development_names = [
+        value.app_name
+        for value in relevant
+        if value.work_type == "App"
+        and value.app_name
+        and ("explicit_work_type" in value.basis or "standalone_app_development_terms" in value.basis)
+    ]
+    if work_type == "App" and len({name.casefold() for name in development_names}) > 1:
+        return WorkScopeInference(basis=("conflicting_app_name_evidence",), conflict=True)
+    basis = tuple(dict.fromkeys(item for value in relevant for item in value.basis))
+    return WorkScopeInference(work_type, development_names[0] if development_names else names[0] if names else "", basis)
+
+
+def infer_work_scope(
+    *,
+    path_hint: Any = "",
+    texts: list[Any] | tuple[Any, ...] = (),
+    has_patch_artifact: bool = False,
+    allow_explicit: bool = True,
+) -> WorkScopeInference:
+    inferred = combine_scope_inferences(
+        path_scope_inference(path_hint),
+        text_scope_inference(texts, allow_explicit=allow_explicit),
+    )
+    if inferred.work_type or inferred.conflict:
+        return inferred
+    if has_patch_artifact:
+        return WorkScopeInference("Patch", basis=("patch_artifact",))
+    return inferred
 
 
 def report_scope_key(row: dict[str, Any]) -> tuple[str, str, str]:

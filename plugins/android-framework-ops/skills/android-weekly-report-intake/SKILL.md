@@ -35,8 +35,8 @@ Weekly facts are resolved in this order:
 4. Sanitized Codex session summaries only as supplementary evidence for work
    not represented by an effective daily report.
 
-Current daily rows carry the member-confirmed Patch/App scope and conditional
-App name. Preserve that scope when rolling daily work into the weekly ledger;
+Current daily rows carry the evidence-resolved or member-confirmed Patch/App
+scope and conditional App name. Preserve that scope when rolling daily work into the weekly ledger;
 do not classify by item wording. Historical daily rows without scope remain
 readable, but they do not prove `work_type`, so ask the member for that missing
 weekly fact.
@@ -94,8 +94,9 @@ The weekly Markdown baseline is the project block format:
 
 `类型` is required and must be exactly `Patch` or `App`. `Patch` means system
 source customization normally delivered as patches. `App` means application
-or demo development and requires `App 名称`. Do not infer the type from item
-wording. The member must confirm it when the work scope is first created.
+or demo development and requires `App 名称`. Preserve the scope resolved by the
+daily workflow; do not reclassify it from weekly item wording. Ask the member
+only when the daily source is missing, conflicting, or lacks the App name.
 
 `项目角色` is required and must be `主责` or `协作`. `需求时间` is required
 and uses `YYYY-MM-DD`. `需求来源` is required and must be exactly one of

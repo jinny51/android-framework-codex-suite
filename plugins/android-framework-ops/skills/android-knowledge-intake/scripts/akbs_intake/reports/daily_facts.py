@@ -286,24 +286,44 @@ def fallback_projects(
     daily_work_items: dict[str, list[dict[str, Any]]],
     project_customers: dict[str, Any],
     synthetic: bool,
+    inferred_scopes: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     projects: list[dict[str, Any]] = []
-    for project in sorted(project_items):
+    scopes_by_project: dict[str, list[dict[str, Any]]] = {}
+    if not synthetic:
+        for scope in inferred_scopes:
+            raw_project = clean_scope_text(scope.get("project"))
+            project = find_company_project(raw_project) or raw_project
+            if project:
+                scopes_by_project.setdefault(project, []).append(scope)
+    project_names = sorted(set(project_items) | set(scopes_by_project))
+    for project in project_names:
         context = report_customer_context_for_project(project, project_customers)
-        work_items = fallback_work_items(project, project_items, daily_work_items)
-        row: dict[str, Any] = {
-            "project": project,
-            "customer": context["customer_name"],
-            "customer_name": context["customer_name"],
-            "work_type": "Patch" if synthetic else "需成员确认",
-            "today_topic": topic_from_work_items(work_items),
-            "current_result": result_from_work_items(work_items),
-            "work_items": work_items,
-            "tomorrow_focus": focus_from_work_items(work_items),
-        }
-        if context.get("downstream_customer"):
-            row["downstream_customer"] = context["downstream_customer"]
-        projects.append(row)
+        scope_rows = scopes_by_project.get(project) or [{}]
+        for scope in scope_rows:
+            raw_scope_items = scope.get("work_items")
+            work_items = (
+                [normalize_work_item(item) for item in raw_scope_items if isinstance(item, dict)]
+                if isinstance(raw_scope_items, list) and raw_scope_items
+                else fallback_work_items(project, project_items, daily_work_items)
+            )
+            work_type = "Patch" if synthetic else clean_scope_text(scope.get("work_type")) or "需成员确认"
+            row: dict[str, Any] = {
+                "project": project,
+                "customer": context["customer_name"],
+                "customer_name": context["customer_name"],
+                "work_type": work_type,
+                "today_topic": topic_from_work_items(work_items),
+                "current_result": result_from_work_items(work_items),
+                "work_items": work_items,
+                "tomorrow_focus": focus_from_work_items(work_items),
+            }
+            app_name = clean_scope_text(scope.get("app_name"))
+            if work_type == "App" and app_name:
+                row["app_name"] = app_name
+            if context.get("downstream_customer"):
+                row["downstream_customer"] = context["downstream_customer"]
+            projects.append(row)
     return projects
 
 
@@ -320,10 +340,12 @@ def build_daily_facts(
     project_items: dict[str, list[tuple[str, str]]] | None = None,
     daily_work_items: dict[str, list[dict[str, Any]]] | None = None,
     project_customers: dict[str, Any] | None = None,
+    inferred_scopes: list[dict[str, Any]] | None = None,
 ) -> DailyFactsResult:
     project_items = project_items or {}
     daily_work_items = daily_work_items or {}
     project_customers = project_customers or {}
+    inferred_scopes = inferred_scopes or []
     if explicit_path:
         path = expanded_path(explicit_path)
         projects = load_explicit_facts(
@@ -341,16 +363,45 @@ def build_daily_facts(
             daily_work_items=daily_work_items,
             project_customers=project_customers,
             synthetic=synthetic,
+            inferred_scopes=inferred_scopes,
         )
-        source = "synthetic_fixture" if synthetic else "session_draft"
+        inference_complete = bool(inferred_scopes) and all(
+            clean_scope_text(row.get("work_type")) in ALLOWED_WORK_TYPES
+            and (
+                clean_scope_text(row.get("work_type")) != "App"
+                or bool(clean_scope_text(row.get("app_name")))
+            )
+            and not bool(row.get("inference_conflict"))
+            for row in inferred_scopes
+        )
+        if synthetic:
+            source = "synthetic_fixture"
+        elif inference_complete:
+            source = "session_scope_inference"
+        else:
+            source = "session_draft"
         source_sha256 = ""
     missing_fields: list[str] = []
     if not explicit_path and not synthetic:
-        missing_fields.extend(
-            f"{clean_scope_text(row.get('project'))}.work_type"
-            for row in projects
-            if clean_scope_text(row.get("work_type")) not in ALLOWED_WORK_TYPES
-        )
+        for row in projects:
+            project = clean_scope_text(row.get("project"))
+            work_type = clean_scope_text(row.get("work_type"))
+            if work_type not in ALLOWED_WORK_TYPES:
+                missing_fields.append(f"{project}.work_type")
+            elif work_type == "App" and not clean_scope_text(row.get("app_name")):
+                missing_fields.append(f"{project}.app_name")
+    scope_inference = []
+    if not explicit_path and not synthetic:
+        for row in inferred_scopes:
+            item: dict[str, Any] = {
+                "project": clean_scope_text(row.get("project")),
+                "work_type": clean_scope_text(row.get("work_type")) or "unresolved",
+                "basis": clean_list(row.get("inference_basis")),
+                "conflict": bool(row.get("inference_conflict")),
+            }
+            if clean_scope_text(row.get("app_name")):
+                item["app_name"] = clean_scope_text(row.get("app_name"))
+            scope_inference.append(item)
     evidence = {
         "schema": DAILY_FACT_SOURCES_SCHEMA,
         "report_date": report_date.isoformat(),
@@ -359,6 +410,7 @@ def build_daily_facts(
         "project_count": len({clean_scope_text(row.get("project")) for row in projects}),
         "work_scope_count": len(projects),
         "missing_fields": sorted(set(missing_fields)),
+        "scope_inference": scope_inference,
         "facts_sha256": facts_hash(projects),
     }
     return DailyFactsResult(projects, evidence)

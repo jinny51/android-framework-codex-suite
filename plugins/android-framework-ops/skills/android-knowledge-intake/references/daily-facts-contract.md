@@ -1,7 +1,9 @@
 # Daily Project Facts Contract
 
-Use this contract after reading the authorized daily work window and confirming
-each work scope with the member. Write it under:
+Use this contract only when authorized development evidence cannot resolve a
+daily work scope, when the inferred scope needs correction, or when the member
+explicitly overrides it. Normal high-confidence Patch/App inference does not
+require this file. Write it under:
 
 ```text
 $CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json
@@ -36,7 +38,8 @@ Rules:
   `downstream_customer` means the direct customer's customer.
 - `work_type` is required and must be exactly `Patch` or `App`. Patch means
   system-source customization; App means application or demo development.
-  Never infer it from vague work-item wording.
+  Explicit facts override automatic inference. Never infer from vague work-item
+  wording alone.
 - `App` requires `app_name`; `Patch` must not provide it.
 - Scope identity is one Patch or one named App under a project/customer chain.
   The same project may contain one Patch and multiple differently named Apps.
@@ -50,8 +53,9 @@ Rules:
   `阻塞`.
 - A scope containing `处理中`, `待验证`, or `阻塞` work must have a non-empty
   `tomorrow_focus[]`. A fully completed scope may use an empty array.
-- Codex writes this JSON from member-confirmed facts. Do not ask the member to
-  hand-edit JSON, Markdown, or `report_view.json`.
+- Codex writes this JSON from the current development evidence and only asks the
+  member for facts that remain ambiguous. Do not ask the member to hand-edit
+  JSON, Markdown, or `report_view.json`.
 - Markdown and `report_view.json` are regenerated from the normalized object.
   Editing only one representation invalidates the render binding and blocks
   submission.
@@ -62,6 +66,7 @@ Generate with:
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" \
   --profile <member_alias> daily \
   --session-consent --session-field work_summary --session-field command_summary \
+  --session-field project_hint --session-field work_scope_hint \
   --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" \
   --prepare
 ```

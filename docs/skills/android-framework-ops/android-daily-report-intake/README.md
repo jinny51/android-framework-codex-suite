@@ -16,9 +16,9 @@
 
 日报项目行必须同时有公司项目名和直接客户。成员可以说 `TVE1086U 青鸾云`，也可以说 `TVE1091U AOC 福建移动高清`；后者识别为项目 `TVE1091U`、直接客户 `AOC`、客户的客户 `福建移动高清`。直接客户和下游客户不得跨层当作别名。缺项目或直接客户时提交会被本地校验拦住。
 
-日报类型只允许 `Patch` 或 `App`。Patch 表示系统源码定制，App 表示应用或 demo 开发并必须填写 App 名称；不得从事项措辞猜类型。同一项目可以有一个 Patch 和多个不同 App。存在处理中、待验证或阻塞事项时，该范围必须填写明日重点。日报不填写项目角色、需求时间、需求来源、项目总量或剩余量。
+日报类型只允许 `Patch` 或 `App`。Patch 表示系统源码定制，App 表示独立应用或 demo 开发并必须确定 App 名称。Codex 优先采用成员明确说明，否则根据源码/模块路径、修改文件、构建命令、Patch 或 APK/AAB 产物等高置信度开发证据自动判定；不能只从模糊事项措辞猜类型。SystemUI、Launcher、Settings 和 Framework 服务等系统树修改属于 Patch。证据冲突或 App 名称不明时才询问成员。同一项目可以有一个 Patch 和多个不同 App。存在处理中、待验证或阻塞事项时，该范围必须填写明日重点。日报不填写项目角色、需求时间、需求来源、项目总量或剩余量。
 
-Codex 将成员确认的范围写入 `$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` 下的 `akbs-daily-project-facts-v1`，再通过 `--daily-facts <path>` 生成。同一项目只有一个范围时可直接复用会话提取的工作项；存在多个范围时，必须在事实对象中明确各范围的工作项。
+正常生成先由共享内核自动识别并按范围绑定工作项。`$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` 下的 `akbs-daily-project-facts-v1` 只用于补齐未决字段、纠正判定或记录成员显式覆盖；显式事实优先于自动判定。一个混合会话若不能可靠绑定各事项，必须补齐范围事实，不得猜测拆分。
 
 `reports/daily.md` 中项目名每次出现都加粗，不限于项目标题；只加粗项目名，例如 `**TVE1091U** AOC 福建移动高清`，客户链保持普通文字。`report_view.json` 是结构化数据，项目及摘要字段不写 Markdown 标记。
 
@@ -28,12 +28,13 @@ Markdown、`report_view.json` 和日报事实由 `report_render_binding` 绑定�
 
 执行生成或提交前，Codex 应先从当前请求和可见会话上下文里找项目名 + 直接客户；找不到时只要求成员补这两个最小字段，并提示正确流程：`当前会话未关联项目，请补充项目名和客户名。例如：TVE1086U 青鸾云；如有客户的客户：TVE1091U AOC 福建移动高清。建议后续先创建项目，再在项目下创建开发会话。` 不要把项目角色、需求时间、需求来源、项目总量或剩余量等周报字段塞进日报追问。
 
-成员本次明确要求生成日报，只授权本次日报日期和本次选择的派生字段。默认使用 `work_summary` 和 `command_summary`，以便同时提取工作内容和处理方法；只有确有需要时才增加 `project_hint` 或 `patch_discovery`，其中 `patch_discovery` 还要求 `project_hint`。没有本次明确请求时，必须在读取 session、打包和 HTTP 前停止；不得复用旧授权或给定时任务长期授权。
+成员本次明确要求生成日报，只授权本次日报日期和本次选择的派生字段。默认使用 `work_summary`、`command_summary`、`project_hint` 和 `work_scope_hint`，以便提取工作内容、处理方法和安全的源码范围提示；原始路径不进入报告或证据文件。只有确有需要时才增加 `patch_discovery`，且它要求 `project_hint`。没有本次明确请求时，必须在读取 session、打包和 HTTP 前停止；不得复用旧授权或给定时任务长期授权。
 
 常用命令：
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --submit-latest
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare --replace-daily-run-id <old_run_id>
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare --replace-daily-run-id <old_run_id>
 ```

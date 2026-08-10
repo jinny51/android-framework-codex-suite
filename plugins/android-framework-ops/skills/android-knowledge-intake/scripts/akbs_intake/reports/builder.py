@@ -15,7 +15,8 @@ from akbs_intake.reports.daily_facts import build_daily_facts, project_rows_to_i
 from akbs_intake.reports.render import write_report, write_report_view
 from akbs_intake.reports.render_binding import write_report_render_binding
 from akbs_intake.reports.session_summary import (
-    daily_work_items_by_project,
+    daily_work_items_from_scopes,
+    daily_work_scopes,
     items_by_project,
     overview_text,
     work_findings_payload,
@@ -120,10 +121,11 @@ def build_report_package(
     else:
         sessions = parse_sessions_fn(config, dates)
         patches = discover_patches_fn(config, sessions, start, end)
+    daily_scopes = daily_work_scopes(sessions, patches) if report_type == "daily" else []
+    daily_work_items = daily_work_items_from_scopes(daily_scopes) if report_type == "daily" else {}
     for session in sessions:
         session.cwd = ""
     session_items = items_by_project(sessions, patches)
-    daily_work_items = daily_work_items_by_project(sessions, patches) if report_type == "daily" else {}
     preliminary_summary = overview_text(report_type, session_items, patches)
     report_project, project_payload = infer_report_project(report_type, preliminary_summary, session_items, sessions, patches)
     project_customers: dict[str, dict[str, str]] = {}
@@ -147,6 +149,7 @@ def build_report_package(
             project_items=session_items,
             daily_work_items=daily_work_items,
             project_customers=project_customers,
+            inferred_scopes=daily_scopes,
         )
         daily_projects = daily_facts.projects
         if daily_projects:

@@ -17,7 +17,9 @@ from android_framework_ops.http_client import sanitize_public_text
 
 SESSION_CONSENT_VERSION = "akbs-report-session-consent-v1"
 SESSION_RETENTION_POLICY = "memory_only_no_raw_copy"
-ALLOWED_SESSION_FIELDS = frozenset({"work_summary", "project_hint", "command_summary", "patch_discovery"})
+ALLOWED_SESSION_FIELDS = frozenset(
+    {"work_summary", "project_hint", "work_scope_hint", "command_summary", "patch_discovery"}
+)
 CONSENT_KEY_PREFIX = "_report_session_consent_"
 SOURCE_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f-]{27,}$", re.I)
 REPORT_REQUEST_TAIL_RE = re.compile(r"(?:，|,)?\s*(?:帮我|请).{0,48}(?:生成|提交|上传).{0,24}(?:日报|周报|报告).*$")

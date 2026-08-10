@@ -22,6 +22,7 @@ from android_framework_ops.knowledge_rules import (
 )
 from akbs_intake.config import expanded_path
 from akbs_intake.reports.common import week_bounds, ymd
+from akbs_intake.reports.scope import path_scope_inference
 from akbs_intake.session_privacy import (
     minimal_source_id,
     require_report_session_consent,
@@ -77,6 +78,10 @@ class SessionWork:
     messages: list[str] = field(default_factory=list)
     outcomes: list[str] = field(default_factory=list)
     commands: list[str] = field(default_factory=list)
+    source_work_type_hint: str = ""
+    source_app_name_hint: str = ""
+    source_scope_basis: list[str] = field(default_factory=list)
+    source_scope_conflict: bool = False
     latest_at: str = ""
 
 
@@ -387,7 +392,7 @@ def parse_sessions(config: dict[str, str], dates: set[dt.date], run_command: Run
                     payload = row.get("payload") or {}
                     if row.get("type") == "session_meta":
                         work.session_id = str(payload.get("id", "") or work.session_id)
-                        if consent.fields & {"project_hint", "patch_discovery"}:
+                        if consent.fields & {"project_hint", "work_scope_hint", "patch_discovery"}:
                             raw_cwd = str(payload.get("cwd", "") or raw_cwd)
                         continue
                     if row.get("type") != "response_item":
@@ -418,9 +423,16 @@ def parse_sessions(config: dict[str, str], dates: set[dt.date], run_command: Run
                     work.session_id = match.group(1) if match else file.stem
                 work.session_id = minimal_source_id(work.session_id)
                 if raw_cwd:
-                    anchored = find_company_project(raw_cwd)
-                    if anchored:
-                        work.project = anchored
+                    if "work_scope_hint" in consent.fields:
+                        source_scope = path_scope_inference(raw_cwd)
+                        work.source_work_type_hint = source_scope.work_type
+                        work.source_app_name_hint = source_scope.app_name
+                        work.source_scope_basis = list(source_scope.basis)
+                        work.source_scope_conflict = source_scope.conflict
+                    if consent.fields & {"project_hint", "patch_discovery"}:
+                        anchored = find_company_project(raw_cwd)
+                        if anchored:
+                            work.project = anchored
                     if "patch_discovery" in consent.fields and Path(raw_cwd).exists():
                         work.cwd = raw_cwd
                         work.project = git_branch_or_name(raw_cwd, run_command)

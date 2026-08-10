@@ -43,19 +43,33 @@ Generate the same-source UI read model at `materials/display/report_view.json`. 
 Each daily row is one work scope and must also contain `work_type`, exactly
 `Patch` or `App`. Patch means system-source customization normally delivered as
 a patch. App means application or demo development and requires `app_name`.
-Do not infer the type from vague item wording. The same project/customer chain
-may contain one Patch and multiple differently named Apps, but the same Patch or
-same App must not be repeated. A scope with any `处理中`, `待验证`, or `阻塞`
-item must have a non-empty `tomorrow_focus[]`.
+Resolve it in this order:
 
-Before generation, collect the member-confirmed scope facts into
-`akbs-daily-project-facts-v1` under
-`$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` and pass
-`--daily-facts`. Read
-`../android-knowledge-intake/references/daily-facts-contract.md`. For one scope
-per project, the generator can reuse session-derived work items. For multiple
-scopes under the same project, the fact object must assign work items to each
-scope explicitly.
+1. An explicit type or App name stated by the member in the current development
+   context wins.
+2. Otherwise use high-confidence development evidence: Android system source or
+   Framework module paths, changed files, patch artifacts, standalone App
+   modules, Gradle application builds, and APK/AAB outputs.
+3. Never decide from vague work-item wording alone. If evidence conflicts, or
+   App is clear but its name is not, ask only for the unresolved fact.
+
+SystemUI, Launcher, Settings, framework services, and other Android system-tree
+changes are `Patch`, even when the module itself is an Android application.
+`App` means a separately delivered application or demo. Separate sessions with
+consistent evidence may automatically split the same project into one Patch and
+multiple named Apps. A mixed session is not split unless each item can be bound
+to a scope without guessing. The same Patch or same App must not be repeated. A
+scope with any `处理中`, `待验证`, or `阻塞` item must have a non-empty
+`tomorrow_focus[]`.
+
+Run normal generation first and let the shared kernel infer scope from the
+authorized evidence. Use `akbs-daily-project-facts-v1` under
+`$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` only to complete
+an unresolved scope, correct an inference, or make an explicit member override;
+pass it with `--daily-facts`. Read
+`../android-knowledge-intake/references/daily-facts-contract.md`. Explicit facts
+take precedence over inferred scope. For multiple unresolved scopes under one
+project, assign each work item to its scope explicitly.
 
 Daily card identity is not the date. `material_name` must preserve the customer chain, such as `TVE1086U（青鸾云）` or `TVE1091U（AOC → 福建移动高清）`; multiple projects use `、`. `material_summary` must be a short daily topic summary, such as `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`. The current read model emits `material_name`, `material_summary`, and `projects`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
 
@@ -76,7 +90,8 @@ report. Do not ask for weekly fields such as project role, requirement date,
 requirement source, project total, or remaining count. After the member supplies
 the identity, continue daily generation.
 
-If project/customer exists but work type is missing, ask only:
+If project/customer exists but the development evidence still cannot resolve
+work type or the App name, ask only:
 
 ```text
 请确认这项工作属于 Patch（系统源码定制）还是 App（应用开发）；如果是 App，请同时提供 App 名称。
@@ -91,14 +106,15 @@ regenerate. `--prepare` returns failure when local validation fails,
 `--submit-latest` revalidates before HTTP, and an invalid report must not be
 described as successfully generated or submitted.
 
-The member's explicit request to generate this daily report authorizes only this run's report date and selected derived fields. Pass `work_summary` and `command_summary` so the report can describe both the work and the actual handling method. Add `project_hint` or `patch_discovery` only when the request needs them; `patch_discovery` requires `project_hint`. If there is no explicit current-run request, stop before session read, package creation, and HTTP. Do not reuse consent from a previous run or recurring automation.
+The member's explicit request to generate this daily report authorizes only this run's report date and selected derived fields. Pass `work_summary`, `command_summary`, `project_hint`, and `work_scope_hint` so the report can describe the work and method and derive a safe source-scope hint without retaining the path. Add `patch_discovery` only when patch artifacts are needed; it requires `project_hint`. If there is no explicit current-run request, stop before session read, package creation, and HTTP. Do not reuse consent from a previous run or recurring automation.
 
 ## Commands
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --submit-latest
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare --replace-daily-run-id <old_run_id>
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare --replace-daily-run-id <old_run_id>
 ```
 
 Future dates are blocked. Past dates are late submissions and are allowed. If an ordinary daily package for the same member and date already exists, stop unless the member explicitly replaces it.

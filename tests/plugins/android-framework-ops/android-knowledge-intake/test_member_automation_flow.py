@@ -47,6 +47,8 @@ SESSION_CONSENT_ARGS = [
     "--session-field",
     "project_hint",
     "--session-field",
+    "work_scope_hint",
+    "--session-field",
     "command_summary",
     "--session-field",
     "patch_discovery",
@@ -603,6 +605,12 @@ def create_framework_repo(root: Path) -> Path:
         encoding="utf-8",
     )
     return source_root
+
+
+def create_app_workspace(root: Path, project: str, app_name: str) -> Path:
+    app_dir = root / "work" / project / app_name / "app"
+    app_dir.mkdir(parents=True)
+    return app_dir
 
 
 class MemberAutomationFlowTests(unittest.TestCase):
@@ -2140,6 +2148,140 @@ class MemberAutomationFlowTests(unittest.TestCase):
         work_items = summary_module.daily_work_items_by_project([session], [])["TVE1086U"]
 
         self.assertEqual([item["status"] for item in work_items], ["已完成", "处理中"])
+
+    def test_work_scope_inference_uses_development_evidence_and_explicit_override(self) -> None:
+        load_intake_module()
+        scope_module = importlib.import_module("akbs_intake.reports.scope")
+
+        patch = scope_module.infer_work_scope(path_hint="/work/TVE1086U/frameworks/base")
+        system_app = scope_module.infer_work_scope(path_hint="/work/TVE1086U/packages/apps/Camera2")
+        app = scope_module.infer_work_scope(texts=["开发蓝牙播放器 App，并执行 assembleDebug 构建。"])
+        override = scope_module.infer_work_scope(
+            path_hint="/work/TVE1086U/frameworks/base",
+            texts=["类型：App；App 名称：设备管理工具"],
+        )
+        generated_output = scope_module.infer_work_scope(
+            path_hint="/work/TVE1086U/frameworks/base",
+            texts=["- 类型：App；- App 名称：设备管理工具"],
+            allow_explicit=False,
+        )
+        mixed = scope_module.infer_work_scope(texts=["Patch 开发与蓝牙播放器 App 开发"])
+        vague = scope_module.infer_work_scope(texts=["处理云外设 App USB 权限自动获取问题。"])
+
+        self.assertEqual((patch.work_type, patch.app_name), ("Patch", ""))
+        self.assertEqual((system_app.work_type, system_app.app_name), ("Patch", ""))
+        self.assertEqual((app.work_type, app.app_name), ("App", "蓝牙播放器"))
+        self.assertEqual((override.work_type, override.app_name), ("App", "设备管理工具"))
+        self.assertEqual((generated_output.work_type, generated_output.app_name), ("Patch", ""))
+        self.assertTrue(mixed.conflict)
+        self.assertEqual((vague.work_type, vague.app_name), ("", ""))
+
+    def test_source_scope_hint_requires_its_own_session_consent_field(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            module = load_intake_module()
+            codex_home = root / "codex-home"
+            source_root = create_framework_repo(root)
+            date = dt.date(2026, 6, 3)
+            write_codex_session(
+                codex_home,
+                "99999999-5555-3333-4444-555555555550",
+                source_root / "frameworks" / "base",
+                date,
+                "TVE1086U 青鸾云，处理显示问题。",
+            )
+            config = {"codex_home": str(codex_home), "timezone": "Asia/Shanghai"}
+            module.configure_report_session_consent(
+                config,
+                {date},
+                granted=True,
+                fields=["work_summary", "project_hint"],
+            )
+            without_scope_consent = module.parse_sessions(config, {date})
+            module.configure_report_session_consent(
+                config,
+                {date},
+                granted=True,
+                fields=["work_summary", "project_hint", "work_scope_hint"],
+            )
+            with_scope_consent = module.parse_sessions(config, {date})
+
+            self.assertEqual(without_scope_consent[0].source_work_type_hint, "")
+            self.assertEqual(with_scope_consent[0].source_work_type_hint, "Patch")
+            self.assertEqual(with_scope_consent[0].source_scope_basis, ["android_system_source_path"])
+
+    def test_daily_auto_infers_and_splits_patch_and_app_scopes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            codex_home = Path(env["CODEX_HOME"])
+            source_root = create_framework_repo(root)
+            app_dir = create_app_workspace(root, "TVI2343R", "BluetoothPlayer")
+            write_codex_session(
+                codex_home,
+                "99999999-5555-3333-4444-555555555551",
+                source_root / "frameworks" / "base",
+                dt.date(2026, 6, 3),
+                "TVI2343R 海信，系统源码定制：完成 SystemUI 状态同步修复并验证通过。",
+                thread_name="TVI2343R 系统源码定制",
+            )
+            write_codex_session(
+                codex_home,
+                "99999999-5555-3333-4444-555555555552",
+                app_dir,
+                dt.date(2026, 6, 3),
+                "TVI2343R 海信，开发蓝牙播放器 App，完成播放列表页面，当前仍在联调。",
+                thread_name="TVI2343R 蓝牙播放器 App 开发",
+                commands=["./gradlew assembleDebug"],
+            )
+
+            package = prepare_daily_package(env, "2026-06-03", "20260603-215100-daily")
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            view = read_report_view(package)["payload"]
+            evidence_text = (package / "materials" / "evidence" / "daily_fact_sources.json").read_text(
+                encoding="utf-8"
+            )
+            evidence = json.loads(evidence_text)["payload"]
+
+            self.assertEqual(check["status"], "PASS")
+            self.assertEqual(
+                [(row["work_type"], row.get("app_name", "")) for row in view["projects"]],
+                [("Patch", ""), ("App", "蓝牙播放器")],
+            )
+            self.assertTrue(any("SystemUI" in item["name"] for item in view["projects"][0]["work_items"]))
+            self.assertTrue(any("播放列表" in item["name"] for item in view["projects"][1]["work_items"]))
+            self.assertEqual(evidence["source"], "session_scope_inference")
+            self.assertEqual(evidence["missing_fields"], [])
+            self.assertNotIn(str(source_root), evidence_text)
+            self.assertNotIn(str(app_dir), evidence_text)
+
+    def test_daily_ambiguous_scope_requires_only_missing_type_confirmation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            codex_home = Path(env["CODEX_HOME"])
+            workspace = root / "work" / "TVI2343R"
+            workspace.mkdir(parents=True)
+            write_codex_session(
+                codex_home,
+                "99999999-5555-3333-4444-555555555553",
+                workspace,
+                dt.date(2026, 6, 3),
+                "TVI2343R 海信，处理播放列表问题，当前仍在推进。",
+            )
+
+            package = prepare_daily_package(env, "2026-06-03", "20260603-215200-daily", check=False)
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            evidence = json.loads(
+                (package / "materials" / "evidence" / "daily_fact_sources.json").read_text(encoding="utf-8")
+            )["payload"]
+
+            self.assertEqual(check["status"], "FAIL")
+            self.assertEqual(evidence["source"], "session_draft")
+            self.assertEqual(evidence["missing_fields"], ["TVI2343R.work_type"])
+            self.assertIn("TVI2343R.work_type", "\n".join(check["errors"]))
 
     def test_daily_patch_and_multiple_apps_are_distinct_bound_scopes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

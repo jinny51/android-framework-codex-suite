@@ -17,6 +17,11 @@ from akbs_intake.report_sessions import (
     should_skip_message,
     strip_project_anchor,
 )
+from akbs_intake.reports.scope import (
+    WorkScopeInference,
+    combine_scope_inferences,
+    infer_work_scope,
+)
 
 
 GitRoot = Callable[[str], Path | None]
@@ -224,95 +229,192 @@ def session_project_segments(session: SessionWork) -> list[SessionWork]:
                 messages=messages,
                 outcomes=relevant_outcomes,
                 commands=relevant_commands,
+                source_work_type_hint=session.source_work_type_hint,
+                source_app_name_hint=session.source_app_name_hint,
+                source_scope_basis=list(session.source_scope_basis),
+                source_scope_conflict=session.source_scope_conflict,
                 latest_at=session.latest_at,
             )
         )
     return segments
 
 
-def daily_work_items_by_project(
+def inferred_scope_for_segment(segment: SessionWork, *, has_patch_artifact: bool) -> WorkScopeInference:
+    source_hint = WorkScopeInference(
+        segment.source_work_type_hint,
+        segment.source_app_name_hint,
+        tuple(segment.source_scope_basis),
+        segment.source_scope_conflict,
+    )
+    member_hint = infer_work_scope(
+        texts=[message for message in segment.messages if not is_report_generation_request(message)],
+    )
+    development_hint = infer_work_scope(
+        path_hint=segment.cwd,
+        texts=[segment.thread_name, *segment.outcomes, *segment.commands],
+        allow_explicit=False,
+    )
+    inferred = combine_scope_inferences(source_hint, member_hint, development_hint)
+    if not inferred.work_type and not inferred.conflict and has_patch_artifact:
+        return WorkScopeInference("Patch", basis=("patch_artifact",))
+    return inferred
+
+
+def daily_rows_for_segment(segment: SessionWork, *, has_patch: bool) -> list[dict[str, Any]]:
+    project = find_company_project(segment.project) or segment.project
+    tasks = [
+        clause
+        for message in segment.messages
+        if not is_report_generation_request(message)
+        for clause in split_work_clauses(message, project)
+    ]
+    if not tasks:
+        fallback = summarize_session(segment)
+        if fallback != "处理Codex对话中的开发问题":
+            tasks = [fallback]
+    outcomes = [
+        clause
+        for outcome in segment.outcomes
+        for clause in split_work_clauses(outcome, project)
+    ]
+    methods = list(dict.fromkeys(command_method(command) for command in segment.commands))
+    methods.extend(method for method in clause_methods([*tasks, *outcomes]) if method not in methods)
+    methods = methods[:4] or [DAILY_METHOD_MISSING]
+    rows: list[dict[str, Any]] = []
+    for task in tasks:
+        ranked = sorted(
+            ((text_similarity(task, outcome), outcome) for outcome in outcomes),
+            reverse=True,
+        )
+        matched_outcome = ranked[0][1] if ranked and (ranked[0][0] >= 0.2 or len(tasks) == 1) else ""
+        status_basis = matched_outcome or task
+        status = daily_status(status_basis, has_patch=has_patch)
+        result_text = compact_text(matched_outcome, 160) if matched_outcome else progress_for_session(segment, has_patch)
+        rows.append(
+            {
+                "name": compact_text(task, 80),
+                "did": [compact_text(task, 160)],
+                "how": list(methods),
+                "result": result_text or status,
+                "status": status,
+                "_latest_at": segment.latest_at,
+            }
+        )
+    return rows
+
+
+def merge_daily_row(rows: list[dict[str, Any]], row: dict[str, Any]) -> None:
+    existing = next((item for item in rows if same_daily_item(item["name"], row["name"])), None)
+    if existing is None:
+        rows.append(row)
+        return
+    for field in ("did", "how"):
+        for value in row[field]:
+            if value not in existing[field]:
+                existing[field].append(value)
+    if row["_latest_at"] >= existing.get("_latest_at", ""):
+        existing["result"] = row["result"]
+        existing["status"] = row["status"]
+        existing["_latest_at"] = row["_latest_at"]
+
+
+def daily_work_scopes(
     sessions: list[SessionWork],
     patches: list[Any],
-) -> dict[str, list[dict[str, Any]]]:
+) -> list[dict[str, Any]]:
     valid_projects = sorted(
         dict.fromkeys(project for session in sessions for project in [find_company_project(session.project)] if project)
     )
     fallback_project = valid_projects[0] if len(valid_projects) == 1 else ""
     patch_projects = {find_company_project(patch.project) or fallback_project or patch.project for patch in patches}
-    result: dict[str, list[dict[str, Any]]] = {}
+    result: dict[tuple[str, str, str], dict[str, Any]] = {}
 
     for session in sorted(sessions, key=lambda item: (item.latest_at, item.session_id)):
         for segment in session_project_segments(session):
             project = find_company_project(segment.project) or segment.project
-            tasks = [
-                clause
-                for message in segment.messages
-                if not is_report_generation_request(message)
-                for clause in split_work_clauses(message, project)
-            ]
-            if not tasks:
-                fallback = summarize_session(segment)
-                if fallback != "处理Codex对话中的开发问题":
-                    tasks = [fallback]
-            outcomes = [
-                clause
-                for outcome in segment.outcomes
-                for clause in split_work_clauses(outcome, project)
-            ]
-            methods = list(dict.fromkeys(command_method(command) for command in segment.commands))
-            methods.extend(method for method in clause_methods([*tasks, *outcomes]) if method not in methods)
-            methods = methods[:4] or [DAILY_METHOD_MISSING]
-            has_patch = project in patch_projects
-            for task in tasks:
-                ranked = sorted(
-                    ((text_similarity(task, outcome), outcome) for outcome in outcomes),
-                    reverse=True,
-                )
-                matched_outcome = ranked[0][1] if ranked and (ranked[0][0] >= 0.2 or len(tasks) == 1) else ""
-                status_basis = matched_outcome or task
-                status = daily_status(status_basis, has_patch=has_patch)
-                result_text = compact_text(matched_outcome, 160) if matched_outcome else progress_for_session(segment, has_patch)
-                row: dict[str, Any] = {
-                    "name": compact_text(task, 80),
-                    "did": [compact_text(task, 160)],
-                    "how": list(methods),
-                    "result": result_text or status,
-                    "status": status,
-                    "_latest_at": segment.latest_at,
-                }
-                existing = next(
-                    (item for item in result.setdefault(project, []) if same_daily_item(item["name"], row["name"])),
-                    None,
-                )
-                if existing is None:
-                    result[project].append(row)
-                    continue
-                for field in ("did", "how"):
-                    for value in row[field]:
-                        if value not in existing[field]:
-                            existing[field].append(value)
-                if row["_latest_at"] >= existing.get("_latest_at", ""):
-                    existing["result"] = row["result"]
-                    existing["status"] = row["status"]
-                    existing["_latest_at"] = row["_latest_at"]
+            inferred = inferred_scope_for_segment(segment, has_patch_artifact=project in patch_projects)
+            app_key = inferred.app_name.casefold() if inferred.work_type == "App" else ""
+            key = (project, inferred.work_type, app_key)
+            scope = result.setdefault(
+                key,
+                {
+                    "project": project,
+                    "work_type": inferred.work_type,
+                    "app_name": inferred.app_name if inferred.work_type == "App" else "",
+                    "work_items": [],
+                    "inference_basis": list(inferred.basis),
+                    "inference_conflict": inferred.conflict,
+                },
+            )
+            for basis in inferred.basis:
+                if basis not in scope["inference_basis"]:
+                    scope["inference_basis"].append(basis)
+            scope["inference_conflict"] = bool(scope["inference_conflict"] or inferred.conflict)
+            for row in daily_rows_for_segment(
+                segment,
+                has_patch=project in patch_projects and inferred.work_type != "App",
+            ):
+                merge_daily_row(scope["work_items"], row)
 
     for patch in patches:
         project = find_company_project(patch.project) or fallback_project or patch.project
-        if not result.get(project):
-            result.setdefault(project, []).append(
-                {
-                    "name": "产出功能补丁",
-                    "did": ["产出功能补丁"],
-                    "how": ["整理代码改动并生成补丁"],
-                    "result": "补丁已生成，等待验证",
-                    "status": "待验证",
+        key = (project, "Patch", "")
+        if key not in result:
+            result[key] = {
+                "project": project,
+                "work_type": "Patch",
+                "app_name": "",
+                "work_items": [
+                    {
+                        "name": "产出功能补丁",
+                        "did": ["产出功能补丁"],
+                        "how": ["整理代码改动并生成补丁"],
+                        "result": "补丁已生成，等待验证",
+                        "status": "待验证",
+                        "_latest_at": "",
+                    }
+                ],
+                "inference_basis": ["patch_artifact"],
+                "inference_conflict": False,
+            }
+    scopes = sorted(
+        result.values(),
+        key=lambda row: (
+            row["project"],
+            0 if row["work_type"] == "Patch" else 1 if row["work_type"] == "App" else 2,
+            row.get("app_name", "").casefold(),
+        ),
+    )
+    for scope in scopes:
+        for row in scope["work_items"]:
+            row.pop("_latest_at", None)
+    return scopes
+
+
+def daily_work_items_from_scopes(scopes: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    result: dict[str, list[dict[str, Any]]] = {}
+    for scope in scopes:
+        project = str(scope.get("project") or "")
+        for row in scope.get("work_items", []):
+            if isinstance(row, dict):
+                copied = {
+                    **row,
+                    "did": list(row.get("did", [])),
+                    "how": list(row.get("how", [])),
                     "_latest_at": "",
                 }
-            )
+                merge_daily_row(result.setdefault(project, []), copied)
     for rows in result.values():
         for row in rows:
             row.pop("_latest_at", None)
     return result
+
+
+def daily_work_items_by_project(
+    sessions: list[SessionWork],
+    patches: list[Any],
+) -> dict[str, list[dict[str, Any]]]:
+    return daily_work_items_from_scopes(daily_work_scopes(sessions, patches))
 
 
 def progress_phrase(text: str) -> str:
