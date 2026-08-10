@@ -10,15 +10,21 @@
 - `materials/display/report_view.json`
 - `materials/evidence/work_findings.json`
 
-`report_view.json` 是同一份日报正文的 UI 读模型（UI read model），使用 `schema=akbs-report-view-human-v1`，至少包含 `report_type=daily`、`report_date`、`display_date`、`material_name`、`material_summary`、`member_alias`、`member_name` 和 `projects[]`。每个项目行包含 `project`、直接客户 `customer`、可选的客户的客户 `downstream_customer`、`today_topic`、`current_result`、`work_items[]` 和 `tomorrow_focus[]`。每个工作项包含 `name`、`did[]`、`how[]`、`result` 和 `status`；`status` 只能是 `已完成`、`处理中`、`待验证` 或 `阻塞`。它不是 AI 证据层，也不改变日报只归档的性质。
+`report_view.json` 是同一份日报正文的 UI 读模型（UI read model），使用 `schema=akbs-report-view-human-v1`，至少包含 `report_type=daily`、`report_date`、`display_date`、`material_name`、`material_summary`、`member_alias`、`member_name` 和 `projects[]`。每个范围行包含 `project`、直接客户 `customer`、可选的客户的客户 `downstream_customer`、必填 `work_type`、App 条件必填的 `app_name`、`today_topic`、`current_result`、`work_items[]` 和 `tomorrow_focus[]`。每个工作项包含 `name`、`did[]`、`how[]`、`result` 和 `status`；`status` 只能是 `已完成`、`处理中`、`待验证` 或 `阻塞`。它不是 AI 证据层，也不改变日报只归档的性质。
 
 日报卡片不使用日期当标题。`material_name` 写项目 + 客户链路，例如 `TVE1086U（青鸾云）` 或 `TVE1091U（AOC → 福建移动高清）`；多项目时每个项目都带自己的客户链路。`material_summary` 写今日主题，例如 `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`。新包不得再写已废弃的 `report_view` 字段，例如 `display_title`、`ui_card`、`one_line_summary`、顶层 `work_items`、`risks` 或 `outputs`。
 
 日报项目行必须同时有公司项目名和直接客户。成员可以说 `TVE1086U 青鸾云`，也可以说 `TVE1091U AOC 福建移动高清`；后者识别为项目 `TVE1091U`、直接客户 `AOC`、客户的客户 `福建移动高清`。直接客户和下游客户不得跨层当作别名。缺项目或直接客户时提交会被本地校验拦住。
 
+日报类型只允许 `Patch` 或 `App`。Patch 表示系统源码定制，App 表示应用或 demo 开发并必须填写 App 名称；不得从事项措辞猜类型。同一项目可以有一个 Patch 和多个不同 App。存在处理中、待验证或阻塞事项时，该范围必须填写明日重点。日报不填写项目角色、需求时间、需求来源、项目总量或剩余量。
+
+Codex 将成员确认的范围写入 `$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` 下的 `akbs-daily-project-facts-v1`，再通过 `--daily-facts <path>` 生成。同一项目只有一个范围时可直接复用会话提取的工作项；存在多个范围时，必须在事实对象中明确各范围的工作项。
+
 `reports/daily.md` 中项目名每次出现都加粗，不限于项目标题；只加粗项目名，例如 `**TVE1091U** AOC 福建移动高清`，客户链保持普通文字。`report_view.json` 是结构化数据，项目及摘要字段不写 Markdown 标记。
 
 日报按独立事项拆分同一会话中的多项工作，并合并不同会话里重复推进的同一事项。`怎么做的`来自授权会话中的实际排查、修改、构建、部署或验证信息；命令只转换成方法摘要，不展示原始命令，也不再使用“根据 Codex 会话记录整理”之类固定套话。
+
+Markdown、`report_view.json` 和日报事实由 `report_render_binding` 绑定。只手改其中一份会导致校验失败；应修改结构化事实后重新生成。`--prepare` 本地校验失败时返回非零，`--submit-latest` 在 HTTP 前再次执行相同校验。
 
 执行生成或提交前，Codex 应先从当前请求和可见会话上下文里找项目名 + 直接客户；找不到时只要求成员补这两个最小字段，并提示正确流程：`当前会话未关联项目，请补充项目名和客户名。例如：TVE1086U 青鸾云；如有客户的客户：TVE1091U AOC 福建移动高清。建议后续先创建项目，再在项目下创建开发会话。` 不要把项目角色、需求时间、需求来源、项目总量或剩余量等周报字段塞进日报追问。
 
@@ -27,7 +33,7 @@
 常用命令：
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --prepare
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --submit-latest
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --prepare --replace-daily-run-id <old_run_id>
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare --replace-daily-run-id <old_run_id>
 ```

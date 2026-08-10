@@ -388,7 +388,15 @@ def read_report_view(package: Path) -> dict:
     return json.loads((package / display_paths[0]).read_text(encoding="utf-8"))
 
 
-def prepare_daily_package(env: dict[str, str], date: str, run_id: str) -> Path:
+def prepare_daily_package(
+    env: dict[str, str],
+    date: str,
+    run_id: str,
+    daily_facts: Path | None = None,
+    *,
+    check: bool = True,
+) -> Path:
+    facts_args = ["--daily-facts", str(daily_facts)] if daily_facts else []
     result = run_json(
         [
             sys.executable,
@@ -400,16 +408,25 @@ def prepare_daily_package(env: dict[str, str], date: str, run_id: str) -> Path:
             date,
             "--run-id",
             run_id,
+            *facts_args,
             *SESSION_CONSENT_ARGS,
             "--prepare",
         ],
         SUITE_ROOT,
         env,
+        check=check,
     )
     return Path(result["package"])
 
 
-def prepare_weekly_package(env: dict[str, str], date: str, run_id: str, weekly_facts: Path | None = None) -> Path:
+def prepare_weekly_package(
+    env: dict[str, str],
+    date: str,
+    run_id: str,
+    weekly_facts: Path | None = None,
+    *,
+    check: bool = True,
+) -> Path:
     facts_args = ["--weekly-facts", str(weekly_facts)] if weekly_facts else []
     result = run_json(
         [
@@ -428,6 +445,7 @@ def prepare_weekly_package(env: dict[str, str], date: str, run_id: str, weekly_f
         ],
         SUITE_ROOT,
         env,
+        check=check,
     )
     return Path(result["package"])
 
@@ -459,6 +477,42 @@ def write_weekly_facts(path: Path, week_range: str = "20260601-20260607") -> Pat
                         "next_week_plan": ["完成 BSP 联调并提交客户验收"],
                     }
                 ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def write_daily_facts(
+    path: Path,
+    *,
+    report_date: str = "2026-06-03",
+    project: str = "TVE1086U",
+    customer: str = "青鸾云",
+    downstream_customer: str = "",
+    work_type: str = "Patch",
+    app_name: str = "",
+) -> Path:
+    row = {
+        "project": project,
+        "customer": customer,
+        "work_type": work_type,
+    }
+    if downstream_customer:
+        row["downstream_customer"] = downstream_customer
+    if app_name:
+        row["app_name"] = app_name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "schema": "akbs-daily-project-facts-v1",
+                "report_date": report_date,
+                "projects": [row],
             },
             ensure_ascii=False,
             indent=2,
@@ -1197,7 +1251,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 source_root,
                 dt.date(2026, 6, 3),
                 [
-                    "今天通过 ssh test35 连接服务器，在 /home/jinny/work/rk/TVA10A2R 源码里处理 TVA10A2R 视频通话看不到设备端画面，dual_camera_error 补丁已改完，进度80%，待设备验证。",
+                    "TVA10A2R 测试客户。今天通过 ssh test35 连接服务器，在 /home/jinny/work/rk/TVA10A2R 源码里处理视频通话看不到设备端画面，dual_camera_error 补丁已改完，进度80%，待设备验证。",
                     "继续排查 TVA10A2R 视频监控画面旋转问题，进度40%。",
                 ],
                 thread_name="TVA10A2R 视频通话和视频监控定制",
@@ -1220,7 +1274,12 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 thread_name="The following is the Codex agent history whose request action you are assessing",
             )
 
-            package = prepare_daily_package(env, "2026-06-03", "20260603-210000-daily")
+            facts = write_daily_facts(
+                root / "artifacts" / "daily-facts.json",
+                project="TVA10A2R",
+                customer="测试客户",
+            )
+            package = prepare_daily_package(env, "2026-06-03", "20260603-210000-daily", facts)
             report = read_package_report(package)
             findings = read_package_findings(package)
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
@@ -1258,7 +1317,12 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "今天处理 TVA10A2R 状态栏策略，进度60%。",
                 thread_name="TVA10A2R 状态栏策略",
             )
-            package = prepare_daily_package(env, "2026-06-03", "20260603-212000-daily")
+            facts = write_daily_facts(
+                root / "artifacts" / "daily-facts.json",
+                project="TVA10A2R",
+                customer="测试客户",
+            )
+            package = prepare_daily_package(env, "2026-06-03", "20260603-212000-daily", facts)
             manifest_path = package / "manifest.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest["files"]["evidence"] = [
@@ -1308,7 +1372,8 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 thread_name="TVE1086U整体项目交接",
             )
 
-            package = prepare_daily_package(env, "2026-06-03", "20260603-211000-daily")
+            facts = write_daily_facts(root / "artifacts" / "daily-facts.json")
+            package = prepare_daily_package(env, "2026-06-03", "20260603-211000-daily", facts)
             report = read_package_report(package)
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
 
@@ -1338,8 +1403,14 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 thread_name="TVE1086U 日报",
             )
 
-            daily = prepare_daily_package(env, "2026-06-03", "20260603-213000-daily")
-            weekly = prepare_weekly_package(env, "2026-06-03", "20260603-223000-weekly")
+            facts = write_daily_facts(root / "artifacts" / "daily-facts.json")
+            daily = prepare_daily_package(env, "2026-06-03", "20260603-213000-daily", facts)
+            weekly = prepare_weekly_package(
+                env,
+                "2026-06-03",
+                "20260603-223000-weekly",
+                check=False,
+            )
             daily_check = json.loads((daily / "local-check.json").read_text(encoding="utf-8"))
             weekly_check = json.loads((weekly / "local-check.json").read_text(encoding="utf-8"))
             daily_view = read_report_view(daily)
@@ -1404,7 +1475,13 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 thread_name="TVE1091U 日报",
             )
 
-            daily = prepare_daily_package(env, "2026-06-03", "20260603-214500-daily")
+            daily_facts = write_daily_facts(
+                root / "artifacts" / "daily-facts.json",
+                project="TVE1091U",
+                customer="AOC",
+                downstream_customer="福建移动高清",
+            )
+            daily = prepare_daily_package(env, "2026-06-03", "20260603-214500-daily", daily_facts)
             daily_check = json.loads((daily / "local-check.json").read_text(encoding="utf-8"))
             daily_report = read_package_report(daily)
             daily_view = read_report_view(daily)["payload"]
@@ -2064,6 +2141,160 @@ class MemberAutomationFlowTests(unittest.TestCase):
 
         self.assertEqual([item["status"] for item in work_items], ["已完成", "处理中"])
 
+    def test_daily_patch_and_multiple_apps_are_distinct_bound_scopes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            codex_home = Path(env["CODEX_HOME"])
+            source_root = create_framework_repo(root)
+            write_codex_session(
+                codex_home,
+                "99999999-4444-3333-4444-555555555555",
+                source_root,
+                dt.date(2026, 6, 3),
+                "TVI2343R 海信，今天分别处理系统 Patch、蓝牙播放器和产测工具。",
+                thread_name="TVI2343R Patch 与 App 开发",
+            )
+            facts = root / "artifacts" / "daily-multi-scope.json"
+            facts.parent.mkdir(parents=True)
+            facts.write_text(
+                json.dumps(
+                    {
+                        "schema": "akbs-daily-project-facts-v1",
+                        "report_date": "2026-06-03",
+                        "projects": [
+                            {
+                                "project": "TVI2343R",
+                                "customer": "海信",
+                                "work_type": "Patch",
+                                "work_items": [
+                                    {
+                                        "name": "系统属性适配",
+                                        "did": ["完成系统属性适配"],
+                                        "how": ["按属性读写链路修改并验证"],
+                                        "result": "验证通过",
+                                        "status": "已完成",
+                                    }
+                                ],
+                                "tomorrow_focus": [],
+                            },
+                            {
+                                "project": "TVI2343R",
+                                "customer": "海信",
+                                "work_type": "App",
+                                "app_name": "蓝牙播放器",
+                                "work_items": [
+                                    {
+                                        "name": "播放协议接入",
+                                        "did": ["完成协议框架接入"],
+                                        "how": ["按接口文档接入并执行本地联调"],
+                                        "result": "基础链路可用",
+                                        "status": "处理中",
+                                    }
+                                ],
+                                "tomorrow_focus": ["继续完成整机联调"],
+                            },
+                            {
+                                "project": "TVI2343R",
+                                "customer": "海信",
+                                "work_type": "App",
+                                "app_name": "产测工具",
+                                "work_items": [
+                                    {
+                                        "name": "串口检测页",
+                                        "did": ["完成串口检测页开发"],
+                                        "how": ["通过模拟数据完成页面和状态联调"],
+                                        "result": "等待工厂设备验证",
+                                        "status": "待验证",
+                                    }
+                                ],
+                                "tomorrow_focus": ["使用工厂设备验证串口检测"],
+                            },
+                        ],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            package = prepare_daily_package(env, "2026-06-03", "20260603-215000-daily", facts)
+            check = json.loads((package / "local-check.json").read_text(encoding="utf-8"))
+            report = read_package_report(package)
+            view = read_report_view(package)["payload"]
+
+            self.assertEqual(check["status"], "PASS")
+            self.assertEqual(
+                [(row["work_type"], row.get("app_name", "")) for row in view["projects"]],
+                [("Patch", ""), ("App", "蓝牙播放器"), ("App", "产测工具")],
+            )
+            self.assertIn("### **TVI2343R** 海信｜Patch", report)
+            self.assertIn("### **TVI2343R** 海信｜App：蓝牙播放器", report)
+            self.assertIn("- 类型：App", report)
+            self.assertIn("- App 名称：产测工具", report)
+
+            weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+            _metadata, records = weekly_module._daily_project_records(
+                [{"report_date": "2026-06-03", "package_key": "fixture", "report_view": view}]
+            )
+            seeds = weekly_module.daily_scope_seed_rows(records["TVI2343R"])
+            assigned, ambiguous = weekly_module.assign_daily_records_to_scopes(seeds, records["TVI2343R"])
+            self.assertFalse(ambiguous)
+            self.assertEqual([len(rows) for rows in assigned], [1, 1, 1])
+
+            module = load_intake_module()
+            report_path = package / "reports" / "daily.md"
+            original_report = report_path.read_text(encoding="utf-8")
+            report_path.write_text(original_report + "\n手工补一行\n", encoding="utf-8")
+            edited_check = module.validate_package(package)
+            self.assertEqual(edited_check["status"], "FAIL")
+            self.assertIn("不能只改其中一份", "\n".join(edited_check["errors"]))
+
+    def test_daily_app_name_and_unfinished_focus_are_hard_gates(self) -> None:
+        module = load_intake_module()
+        daily_module = importlib.import_module("akbs_intake.reports.daily_facts")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            facts = root / "daily-facts.json"
+            facts.write_text(
+                json.dumps(
+                    {
+                        "schema": "akbs-daily-project-facts-v1",
+                        "report_date": "2026-06-03",
+                        "projects": [
+                            {
+                                "project": "TVI2343R",
+                                "customer": "海信",
+                                "work_type": "App",
+                                "work_items": [
+                                    {
+                                        "name": "接口联调",
+                                        "did": ["完成接口接入"],
+                                        "how": ["执行本地联调"],
+                                        "result": "仍在联调",
+                                        "status": "处理中",
+                                    }
+                                ],
+                                "tomorrow_focus": [],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(SystemExit, "app_name.*tomorrow_focus"):
+                daily_module.load_explicit_facts(
+                    facts,
+                    dt.date(2026, 6, 3),
+                    project_items={},
+                    daily_work_items={},
+                )
+            self.assertTrue(callable(module.validate_package))
+
     def test_report_local_check_rejects_missing_customer_and_command_text_customer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -2084,8 +2315,18 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 thread_name="TVE1086U 日报",
             )
 
-            daily = prepare_daily_package(env, "2026-06-03", "20260603-214000-daily")
-            weekly = prepare_weekly_package(env, "2026-06-03", "20260603-224000-weekly")
+            daily = prepare_daily_package(
+                env,
+                "2026-06-03",
+                "20260603-214000-daily",
+                check=False,
+            )
+            weekly = prepare_weekly_package(
+                env,
+                "2026-06-03",
+                "20260603-224000-weekly",
+                check=False,
+            )
             daily_check = json.loads((daily / "local-check.json").read_text(encoding="utf-8"))
             weekly_check = json.loads((weekly / "local-check.json").read_text(encoding="utf-8"))
 
@@ -2153,6 +2394,10 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     "已完成 TVE1086U SystemUI 状态栏策略修改，后续需要补齐验证和 patch capture。",
                 ],
             )
+            daily_facts = write_daily_facts(
+                root / "artifacts" / "daily-facts.json",
+                report_date="2026-06-02",
+            )
 
             result = run_json(
                 [
@@ -2165,6 +2410,8 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     "2026-06-02",
                     "--run-id",
                     "20260602-210000-daily",
+                    "--daily-facts",
+                    str(daily_facts),
                     *SESSION_CONSENT_ARGS,
                     "--prepare",
                 ],

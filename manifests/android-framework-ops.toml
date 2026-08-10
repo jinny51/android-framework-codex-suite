@@ -18,12 +18,12 @@ summary = "生成、检查和提交单一完整补丁包；全流程以 patch_pa
 [[skills]]
 name = "android-daily-report-intake"
 category = "Knowledge System"
-summary = "生成个人日报正文和同源 report_view，并提交 daily_trace incoming 包"
+summary = "按 Patch/App 范围生成个人日报正文和同源 report_view，并提交 daily_trace incoming 包"
 
 [[skills]]
 name = "android-weekly-report-intake"
 category = "Knowledge System"
-summary = "汇总当前有效日报和上一周项目台账，生成个人周报正文和同源 report_view，并提交 weekly_trace incoming 包"
+summary = "按 Patch/App 范围汇总当前有效日报和上一周项目台账，生成个人周报正文和同源 report_view，并提交 weekly_trace incoming 包"
 
 [[skills]]
 name = "android-knowledge-search"

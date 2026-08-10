@@ -13,6 +13,8 @@
 
 周报统计周期固定为周一至周日，起止日期都纳入统计；补交日期不改变日报所属日期，也不能导致周一日报被漏掉。周报事实优先读取 AKBS 中本周当前有效日报和上一周当前有效周报；API 不可用时回退到本机 `submitted` 包，并按替换链只选补交后的叶节点。Codex session 只补充有效日报未覆盖的事项，不能再把“一段会话”统计成“一项需求”。跨日长会话按消息日期和文件活跃时间补扫。
 
+当前日报已携带成员确认的 Patch/App 范围和 App 名称，周报按该范围归并，不再根据事项文字猜类型。旧日报缺少范围字段时仍可读取，但不能证明周报类型，必须由成员补齐。
+
 如果类型、App 名称（仅 App）、项目角色、需求时间、需求来源、主责总量或剩余事项身份仍缺失，本地检查会列出准确字段并阻止上传。成员只补这些事实，Codex 将其写入 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/` 下的 `akbs-weekly-project-facts-v3` JSON，再通过 `--weekly-facts <path>` 重新生成；不再要求成员大面积手改 Markdown。
 
 `report_view.json` 是同一份周报正文的 UI 读模型（UI read model），使用 `schema=akbs-report-view-human-v1`，至少包含 `report_type=weekly`、`week_range`、`display_date`、`material_name`、`material_summary`、`member_alias`、`member_name` 和 `projects[]`。每行包含 `project`、直接客户 `customer`、可选的客户的客户 `downstream_customer`、必填 `work_type`、App 条件必填的 `app_name`、`project_role`、`week_summary`、`requirement_date`、`requirement_source`、`completed_this_week`、`remaining` 和事项数组。Patch 主责填写 `requirement_structure`，App 主责填写 `work_total`；协作可省略对应总量。周报包只归档，不进入知识库沉淀候选。
@@ -24,6 +26,8 @@ Patch 不再保留“定制”父分类，直接使用需求、移植和 Bug：�
 成员周报以范文为基线：`本周概况` 先按项目写项目名称、直接客户、可选客户的客户、项目角色、需求时间、需求来源、本周完成和当前剩余；主责还要写项目总量，协作可以省略。`需求来源`只允许 `CR`、`TL`、`PM`、`TE`、`BSP`。`项目详情`依次写 `1. 本周完成`、`2. 当前剩余`、`3. 重点说明`、`4. 风险 / 依赖`；最后写 `下周计划`。多项目时重复同一项目块，不用大表格堆字段。成员可以说 `TVE1086U 青鸾云`，也可以说 `TVE1091U AOC 福建移动高清`；后者识别为项目 `TVE1091U`、直接客户 `AOC`、客户的客户 `福建移动高清`。直接客户和下游客户不得跨层当作别名。缺项目或直接客户时提交会被本地校验拦住；补齐结构化事实后重新生成 Markdown 和 JSON，不单独手改其中一份。
 
 `reports/weekly.md` 中项目名每次出现都加粗，包括概况正文、完成项、剩余项、风险、依赖和下周计划，不只处理标题；只加粗项目名，客户链保持普通文字。`report_view.json` 的项目与摘要字段保持纯文本，不写 Markdown 标记。
+
+Markdown、`report_view.json` 和周报事实由 `report_render_binding` 绑定。只手改其中一份会导致校验失败；应修改结构化事实后重新生成。`--prepare` 本地校验失败时返回非零，提交前还会再次执行相同校验。
 
 周报卡片不使用周范围当标题。`material_name` 写项目 + 客户链路，例如 `TVE1086U（青鸾云）` 或 `TVE1091U（AOC → 福建移动高清）`；多项目时每个项目都带自己的客户链路。`material_summary` 写各项目本周完成、剩余、风险或依赖，例如 `TVE1086U：本周完成 5 项，剩余 3 项，有风险。`。
 

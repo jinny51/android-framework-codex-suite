@@ -32,6 +32,9 @@
   of the normal Codex workflow: create the project first, then create development
   sessions under that project. Do not ask for weekly ledger fields during daily
   generation.
+- Daily `work_type` is also required and must be confirmed as `Patch` or `App`;
+  App additionally requires `app_name`. This is a daily work-scope field, not a
+  weekly ledger field. Never infer it from vague item wording.
 
 ## Report Summary
 
@@ -53,20 +56,22 @@
 ## Daily Template
 
 ```markdown
-# YYYY-MM-DD 日报 - 成员名
+# YYYYMMDD_成员名_日报
 
 日报目的：讲清楚今天干了什么、怎么干的、结果是什么。日报不是周总结，不要写成项目总账。
 
 ## 一、今日概况
 
-### **项目名** 客户名 [客户的客户]
+### **项目名** 客户名 [客户的客户]｜Patch
 
+- 类型：Patch / App 中选择一个
+- App 名称：仅 App 必填
 - 今日主题：今天主要处理了什么。
 - 当前结果：今天处理到什么程度。
 
 ## 二、今日工作
 
-### **项目名** 客户名 [客户的客户]
+### **项目名** 客户名 [客户的客户]｜Patch / App：App 名称
 
 #### 1. 事项名称
 
@@ -84,9 +89,14 @@
 
 ## 三、明日重点
 
-### **项目名** 客户名 [客户的客户]
+### **项目名** 客户名 [客户的客户]｜Patch / App：App 名称
 - 明天优先处理什么。
 ```
+
+日报按工作范围分块。Patch 表示系统源码定制，App 表示应用或 demo 开发。
+同一项目可有一个 Patch 和多个不同 App；App 必须写 App 名称。只要范围内有
+`处理中`、`待验证`或`阻塞`事项，就必须填写该范围的明日重点。日报不填写
+项目角色、需求时间、需求来源、项目总量或剩余量。
 
 ## Weekly Template
 
@@ -100,7 +110,7 @@ source is created when the member receives the demand and must not be inferred
 from daily-report wording.
 
 ```markdown
-# YYYYMMDD-YYYYMMDD 周报 - 成员名
+# YYYYMMDD-YYYYMMDD_成员名_周报
 
 周报目的：按项目汇总这一周完成多少、还剩多少、风险和依赖是什么、下周怎么收敛。周报不复述每天流水。
 
@@ -182,6 +192,7 @@ Daily and weekly reports are the primary human-readable product. The package als
       {
         "project": "TVE1086U",
         "customer": "青鸾云",
+        "work_type": "Patch",
         "today_topic": "锁屏鼠标位置刷新",
         "current_result": "已完成基础验证",
         "work_items": [
@@ -204,6 +215,23 @@ Report card fields are authoritative:
 
 - `material_name`：项目 + 客户链路。多项目写 `TVE1086U（青鸾云）、TVE1091U（AOC → 福建移动高清）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
 - `material_summary`：日报写各项目“今日主题”；周报写各项目“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
-- Daily project rows contain `project/customer/[downstream_customer]/today_topic/current_result/work_items/tomorrow_focus`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
-- Weekly project rows contain `project/customer/[downstream_customer]/project_role/week_summary/requirement_date/requirement_source/[requirement_structure]/completed_this_week/remaining/completed_items/remaining_items/key_points/risks/dependencies/next_week_plan`.
+- Daily project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/today_topic/current_result/work_items/tomorrow_focus`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
+- Weekly project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/project_role/week_summary/requirement_date/requirement_source/[requirement_structure/work_total]/completed_this_week/remaining/completed_items/remaining_items/key_points/risks/dependencies/next_week_plan`.
 - The current read model does not emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.
+
+Daily scope identity and work-item assignment flow into weekly history so the
+weekly generator does not guess Patch/App from text. Old daily rows without
+scope fields remain readable as history, but they cannot prove the weekly type
+and therefore leave an explicit fact gap.
+
+## Submission Gates
+
+- `--prepare` may leave a local package for diagnosis, but returns a non-zero
+  exit code when `local-check.json` is `FAIL`; callers must not report success.
+- `--upload` and `--submit-latest` run the same validation before HTTP. Invalid
+  packages remain local.
+- Daily facts, weekly facts, Markdown, and `report_view.json` are linked by a
+  `report_render_binding`. Local validation also rerenders Markdown from
+  `report_view.json` and requires exact equality.
+- Correct structured facts and regenerate. Do not repair only Markdown or only
+  `report_view.json`.

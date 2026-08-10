@@ -17,7 +17,16 @@ Default policy: preserve work facts locally first, then upload only packages tha
 
 Daily and weekly generation have no "future submission" mode. A daily package date later than the current local date must stop with "不能提交未来日期的日报，请重新生成正确日期的日报。". A weekly package whose anchor date is later than the current local date, or whose `week_range` is later than the current local week, must stop with "不能提交未来周期的周报，请重新生成正确周期的周报。". Older daily dates and older weekly periods are late submissions and are allowed.
 
-Daily and weekly report bodies are the primary human-readable product. Generate `reports/daily.md` and `reports/weekly.md` with the Codex office report templates. Daily reports answer 今天干了什么、怎么做的、结果和状态是什么. Weekly reports answer 本周完成多少、还剩多少、重点信息、风险和依赖是什么、下周怎么收敛. Weekly project blocks use 项目名称、直接客户、可选客户的客户、类型（Patch/App）、App 名称（仅 App）、项目角色、需求时间、需求来源、总量（主责必填，协作可不填）、本周完成、当前剩余, then 本周完成详情、当前剩余详情、重点说明、风险 / 依赖 and 下周计划. Patch counts use only 需求、移植、Bug and the constrained BSP dependency count; App uses plain counts. Never retain a 定制 parent category or add Patch and App quantities together. Do not use a large overview table in the weekly `本周概况`, and do not repeat daily execution logs. In both Markdown reports, bold every project-name occurrence, including body text, while leaving the customer chain unbolded. This presentation rule must not add Markdown markers to structured fields. Also write `materials/display/report_view.json` as the current UI read model for cards, lists, and member report detail; it is a structured index of the same report, not a separate AI/evidence layer. `report_view.json` uses `schema=akbs-report-view-human-v1`; `material_name` is project + customer chain, `customer` is the direct customer, optional `downstream_customer` is the direct customer's customer, and `material_summary` is the daily topic or weekly completed/remaining/risk summary. Management-side aggregation may consume the same fields later, but the member-side flow must not ask members to understand team summary concepts. Keep `work_findings.json` as evidence for audit and later analysis.
+Daily and weekly report bodies are the primary human-readable product. Generate `reports/daily.md` and `reports/weekly.md` with the Codex office report templates. Daily reports answer 今天干了什么、怎么做的、结果和状态是什么. Every daily scope requires member-confirmed `Patch` or `App`; App also requires its name. Daily does not ask for weekly role, source, or counts. Weekly reports answer 本周完成多少、还剩多少、重点信息、风险和依赖是什么、下周怎么收敛. Weekly project blocks use 项目名称、直接客户、可选客户的客户、类型（Patch/App）、App 名称（仅 App）、项目角色、需求时间、需求来源、总量（主责必填，协作可不填）、本周完成、当前剩余, then 本周完成详情、当前剩余详情、重点说明、风险 / 依赖 and 下周计划. Patch counts use only 需求、移植、Bug and the constrained BSP dependency count; App uses plain counts. Never retain a 定制 parent category or add Patch and App quantities together. Do not use a large overview table in the weekly `本周概况`, and do not repeat daily execution logs. In both Markdown reports, bold every project-name occurrence, including body text, while leaving the customer chain unbolded. This presentation rule must not add Markdown markers to structured fields. Also write `materials/display/report_view.json` as the current UI read model for cards, lists, and member report detail; it is a structured index of the same report, not a separate AI/evidence layer. `report_view.json` uses `schema=akbs-report-view-human-v1`; `material_name` is project + customer chain, `customer` is the direct customer, optional `downstream_customer` is the direct customer's customer, and `material_summary` is the daily topic or weekly completed/remaining/risk summary. Management-side aggregation may consume the same fields later, but the member-side flow must not ask members to understand team summary concepts. Keep `work_findings.json` as evidence for audit and later analysis.
+
+Daily scope facts use `akbs-daily-project-facts-v1` under
+`$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/`; read
+`references/daily-facts-contract.md`. The same project may contain one Patch
+and multiple named Apps. The scope flows into weekly history so weekly does not
+guess type from text. `report_render_binding` binds the normalized fact hash,
+Markdown, and `report_view.json`; local validation also rerenders Markdown and
+requires exact equality. `--prepare` returns non-zero on local-check failure,
+and every submission revalidates before HTTP.
 
 Weekly generation uses effective AKBS report facts before sessions: current daily reports for the target week, then the current previous-week report as the rolling ledger, then local submitted replacement leaves when the API is unavailable. Sessions are supplementary and must never be counted as requirements. The weekly package writes `materials/evidence/weekly_fact_sources.json`; missing ledger facts make local check fail. Close only those missing fields with an `akbs-weekly-project-facts-v3` artifact and `weekly --weekly-facts <path>`. The artifact belongs under `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/`, not in this skill directory. Read `references/weekly-facts-contract.md` before creating it.
 
@@ -66,7 +75,7 @@ Real daily and weekly generation requires explicit consent for each report run. 
 Prepare a draft package without submitting:
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --prepare
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --prepare
 ```
 
@@ -80,14 +89,14 @@ python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --
 Prepare and submit in one run:
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --upload
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --upload
 python3 "scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --upload
 ```
 
 Explicitly replace an existing daily package for the same member and date:
 
 ```bash
-python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --prepare --replace-daily-run-id 20260629-210000-daily
+python3 "scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare --replace-daily-run-id 20260629-210000-daily
 ```
 
 Explicitly replace an existing weekly package for the same member and week:

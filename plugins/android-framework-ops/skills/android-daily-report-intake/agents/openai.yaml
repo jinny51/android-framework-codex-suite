@@ -1,7 +1,7 @@
 interface:
   display_name: "Android Daily Report Intake"
   short_description: "Generate personal daily report incoming packages"
-  default_prompt: "Use $android-daily-report-intake to generate, replace, check, or submit a member personal daily report package through AKBS incoming. Use the shared android-knowledge-intake script in daily mode; do not make curation decisions."
+  default_prompt: "Use $android-daily-report-intake to generate, replace, check, or submit a member personal daily report package through AKBS incoming. Confirm each Patch/App scope and App name before using the shared daily intake kernel; do not make curation decisions."
 
 policy:
   allow_implicit_invocation: true

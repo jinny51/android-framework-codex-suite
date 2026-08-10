@@ -11,7 +11,9 @@ from akbs_intake.report_sessions import SessionWork, synthetic_sessions
 from akbs_intake.session_privacy import require_report_session_consent, session_evidence_payload
 from akbs_intake.reports.common import ensure_report_date_allowed, ensure_report_not_duplicate, report_dates, report_identity, ymd
 from akbs_intake.reports.identity import infer_report_project
+from akbs_intake.reports.daily_facts import build_daily_facts, project_rows_to_items as daily_project_rows_to_items
 from akbs_intake.reports.render import write_report, write_report_view
+from akbs_intake.reports.render_binding import write_report_render_binding
 from akbs_intake.reports.session_summary import (
     daily_work_items_by_project,
     items_by_project,
@@ -80,6 +82,7 @@ def build_report_package(
     run_id: str | None = None,
     schema_version: str = "",
     replace_report_run_id: str = "",
+    daily_facts_path: str = "",
     weekly_facts_path: str = "",
     *,
     incoming_schema_version: str,
@@ -132,8 +135,37 @@ def build_report_package(
             context["downstream_customer"] = str(item["downstream_customer"])
         project_customers[str(item["project"])] = context
     weekly_projects: list[dict[str, Any]] = []
+    daily_projects: list[dict[str, Any]] = []
+    daily_fact_evidence_path = ""
     weekly_fact_evidence_path = ""
     items = session_items
+    if report_type == "daily":
+        daily_facts = build_daily_facts(
+            date,
+            explicit_path=daily_facts_path,
+            synthetic=is_synthetic,
+            project_items=session_items,
+            daily_work_items=daily_work_items,
+            project_customers=project_customers,
+        )
+        daily_projects = daily_facts.projects
+        if daily_projects:
+            items = daily_project_rows_to_items(daily_projects)
+            for row in daily_projects:
+                project = str(row.get("project") or "")
+                customer = str(row.get("customer") or row.get("customer_name") or "")
+                if not project or not customer:
+                    continue
+                context = {"customer_name": customer}
+                if row.get("downstream_customer"):
+                    context["downstream_customer"] = str(row["downstream_customer"])
+                project_customers[project] = context
+        daily_fact_evidence_path = materials_rel("evidence", "daily_fact_sources.json")
+        package_dir.mkdir(parents=True)
+        write_json(
+            package_dir / daily_fact_evidence_path,
+            {"kind": "daily_fact_sources", "payload": daily_facts.evidence},
+        )
     if report_type == "weekly":
         weekly_facts = build_weekly_facts(
             config,
@@ -164,6 +196,33 @@ def build_report_package(
         )
     summary = overview_text(report_type, items, patches)
     report_project, project_payload = infer_report_project(report_type, summary, items, sessions, patches)
+    if daily_projects:
+        fact_customers = []
+        for row in daily_projects:
+            customer_row = {
+                "project": str(row.get("project") or ""),
+                "customer_name": str(row.get("customer") or row.get("customer_name") or ""),
+            }
+            if row.get("downstream_customer"):
+                customer_row["downstream_customer"] = str(row["downstream_customer"])
+            if customer_row["project"] and customer_row["customer_name"] and customer_row not in fact_customers:
+                fact_customers.append(customer_row)
+        project_payload["project_customers"] = fact_customers
+        project_payload["projects"] = sorted({row["project"] for row in fact_customers})
+        project_payload["customer_basis"] = {
+            row["project"]: ["daily_fact_sources"]
+            for row in fact_customers
+        }
+        if len(project_payload["projects"]) == 1:
+            report_project = project_payload["projects"][0]
+            project_payload["project"] = report_project
+            context = next(row for row in fact_customers if row["project"] == report_project)
+            project_payload["customer_name"] = context["customer_name"]
+            if context.get("downstream_customer"):
+                project_payload["downstream_customer"] = context["downstream_customer"]
+        else:
+            report_project = ""
+            project_payload["project"] = ""
     if weekly_projects:
         fact_customers = []
         for row in weekly_projects:
@@ -197,6 +256,7 @@ def build_report_package(
         project_customers,
         weekly_projects,
         daily_work_items,
+        daily_projects,
     )
     project_path = write_default_evidence(
         package_dir,
@@ -237,6 +297,19 @@ def build_report_package(
         project_customers,
         weekly_projects,
         daily_work_items,
+        daily_projects,
+    )
+    fact_sources_path = daily_fact_evidence_path or weekly_fact_evidence_path
+    fact_sources_payload = daily_facts.evidence if report_type == "daily" else weekly_facts.evidence
+    render_binding_path = materials_rel("evidence", "report_render_binding.json")
+    write_report_render_binding(
+        package_dir,
+        report_type=report_type,
+        report_path=f"reports/{report_type}.md",
+        report_view_path=display_path,
+        fact_sources_path=fact_sources_path,
+        facts_sha256=str(fact_sources_payload.get("facts_sha256") or ""),
+        output_path=render_binding_path,
     )
     manifest = incoming_report_manifest(
         report_type,
@@ -264,8 +337,13 @@ def build_report_package(
         }
     if search_path:
         manifest["files"]["evidence"].append(search_path)
+    if daily_projects:
+        manifest["projects"] = sorted({str(row.get("project") or "") for row in daily_projects if row.get("project")})
+    if daily_fact_evidence_path:
+        manifest["files"]["evidence"].append(daily_fact_evidence_path)
     if weekly_fact_evidence_path:
         manifest["files"]["evidence"].append(weekly_fact_evidence_path)
+    manifest["files"]["evidence"].append(render_binding_path)
     write_json(package_dir / "manifest.json", manifest)
     check = validate_package_fn(package_dir)
     write_json(package_dir / "local-check.json", check)

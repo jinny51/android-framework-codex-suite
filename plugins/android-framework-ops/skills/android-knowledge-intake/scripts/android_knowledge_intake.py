@@ -534,6 +534,7 @@ def prepare_package(
     run_id: str | None = None,
     schema_version: str = INCOMING_SCHEMA_VERSION,
     replace_report_run_id: str = "",
+    daily_facts_path: str = "",
     weekly_facts_path: str = "",
 ) -> Path:
     return build_report_package(
@@ -543,6 +544,7 @@ def prepare_package(
         run_id=run_id,
         schema_version=schema_version,
         replace_report_run_id=replace_report_run_id,
+        daily_facts_path=daily_facts_path,
         weekly_facts_path=weekly_facts_path,
         incoming_schema_version=INCOMING_SCHEMA_VERSION,
         validate_package_fn=validate_package,
@@ -699,6 +701,11 @@ def parse_args() -> argparse.Namespace:
             )
         if report_type == "daily":
             sub.add_argument(
+                "--daily-facts",
+                default="",
+                help="authoritative akbs-daily-project-facts-v1 JSON with required Patch/App work scopes",
+            )
+            sub.add_argument(
                 "--replace-daily-run-id",
                 default="",
                 help="explicitly regenerate a daily package for an existing report date and write supersedes metadata",
@@ -825,12 +832,11 @@ def main() -> int:
                 args.run_id,
                 schema_version,
                 getattr(args, "replace_daily_run_id", "") or getattr(args, "replace_weekly_run_id", ""),
+                getattr(args, "daily_facts", ""),
                 getattr(args, "weekly_facts", ""),
             )
         result = json.loads((package_dir / "local-check.json").read_text(encoding="utf-8"))
         print(json.dumps({"package": str(package_dir), "local_check": result}, ensure_ascii=False, indent=2))
-        if args.report_type in {"daily", "weekly"}:
-            return 0
         return 0 if result["status"] == "PASS" else 1
     if args.submit_latest:
         package_dir = patch_submit_pending or latest_pending(args.report_type, config, date if args.date else None)
@@ -863,6 +869,7 @@ def main() -> int:
                 args.run_id,
                 schema_version,
                 getattr(args, "replace_daily_run_id", "") or getattr(args, "replace_weekly_run_id", ""),
+                getattr(args, "daily_facts", ""),
                 getattr(args, "weekly_facts", ""),
             )
         result = submit_package(package_dir, config)

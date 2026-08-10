@@ -35,6 +35,12 @@ Weekly facts are resolved in this order:
 4. Sanitized Codex session summaries only as supplementary evidence for work
    not represented by an effective daily report.
 
+Current daily rows carry the member-confirmed Patch/App scope and conditional
+App name. Preserve that scope when rolling daily work into the weekly ledger;
+do not classify by item wording. Historical daily rows without scope remain
+readable, but they do not prove `work_type`, so ask the member for that missing
+weekly fact.
+
 Do not count Codex sessions as requirements. If the effective reports cannot
 prove project role, requirement date, requirement source, project totals, or
 remaining-item identity, local check must fail with exact missing fields. Ask the member
@@ -155,6 +161,12 @@ project, customer chain, work scope, and same-source identity consistency.
 Generation and `--submit-latest` reject conflicts before HTTP.
 An absent next-week action is an empty `next_week_plan[]`; do not write `无` and
 do not render that project's block under `下周计划`.
+
+`reports/weekly.md` and `report_view.json` are deterministic views of the same
+normalized weekly facts. `report_render_binding` binds both files to the weekly
+fact hash. Never repair only one file. Update the facts and regenerate.
+`--prepare` returns failure when local validation fails, and submission always
+revalidates before HTTP.
 
 Before running `--prepare`, `--upload`, or `--submit-latest`, check the current
 member request and visible conversation context for a recognized project +

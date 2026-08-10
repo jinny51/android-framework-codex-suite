@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 
-AKBS_RULES_CONTRACT_VERSION = "2026-08-10.1"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.150"
+AKBS_RULES_CONTRACT_VERSION = "2026-08-10.2"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.151"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -64,6 +64,14 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
     "weekly_work_type_v1": {
         "min_plugin_version": "1.0.150",
         "description": "weekly reports require Patch/App scope typing, App names, separate count semantics, and scope-level main/collaborator aggregation",
+    },
+    "daily_work_type_v1": {
+        "min_plugin_version": "1.0.151",
+        "description": "daily reports require Patch/App scope typing, conditional App names, and scope-bound work items",
+    },
+    "report_render_binding_v1": {
+        "min_plugin_version": "1.0.151",
+        "description": "daily and weekly facts bind deterministic Markdown and report_view output before submission",
     },
     "report_customer_hierarchy_v1": {
         "min_plugin_version": "1.0.134",

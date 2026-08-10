@@ -40,6 +40,23 @@ Markdown presentation rule only. Keep project and customer values in
 
 Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, and `tomorrow_focus[]`; every work item contains `name`, `did[]`, `how[]`, `result`, and fixed-enum `status`.
 
+Each daily row is one work scope and must also contain `work_type`, exactly
+`Patch` or `App`. Patch means system-source customization normally delivered as
+a patch. App means application or demo development and requires `app_name`.
+Do not infer the type from vague item wording. The same project/customer chain
+may contain one Patch and multiple differently named Apps, but the same Patch or
+same App must not be repeated. A scope with any `处理中`, `待验证`, or `阻塞`
+item must have a non-empty `tomorrow_focus[]`.
+
+Before generation, collect the member-confirmed scope facts into
+`akbs-daily-project-facts-v1` under
+`$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` and pass
+`--daily-facts`. Read
+`../android-knowledge-intake/references/daily-facts-contract.md`. For one scope
+per project, the generator can reuse session-derived work items. For multiple
+scopes under the same project, the fact object must assign work items to each
+scope explicitly.
+
 Daily card identity is not the date. `material_name` must preserve the customer chain, such as `TVE1086U（青鸾云）` or `TVE1091U（AOC → 福建移动高清）`; multiple projects use `、`. `material_summary` must be a short daily topic summary, such as `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`. The current read model emits `material_name`, `material_summary`, and `projects`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
 
 Daily project rows must include a recognized company project and direct customer. A third segment is optional and means the direct customer's customer: parse `TVE1091U AOC 福建移动高清` as project `TVE1091U`, customer `AOC`, and downstream customer `福建移动高清`. Keep `TVE1086U 青鸾云` compatible as a two-segment identity. If project or direct customer is missing, local submit must stop; never merge direct and downstream customers as aliases.
@@ -59,16 +76,29 @@ report. Do not ask for weekly fields such as project role, requirement date,
 requirement source, project total, or remaining count. After the member supplies
 the identity, continue daily generation.
 
+If project/customer exists but work type is missing, ask only:
+
+```text
+请确认这项工作属于 Patch（系统源码定制）还是 App（应用开发）；如果是 App，请同时提供 App 名称。
+```
+
 Do not put raw commands, plugin cache paths, Codex session names, JSON fragments, shell output, package keys, case ids, or source paths into UI display fields. If evidence is missing, write clear human text such as `需补充`, not fabricated facts.
+
+`reports/daily.md` and `report_view.json` are deterministic views of the same
+normalized facts. A render-binding evidence file covers both outputs and the
+fact hash. Never repair only Markdown or only JSON; update the facts and
+regenerate. `--prepare` returns failure when local validation fails,
+`--submit-latest` revalidates before HTTP, and an invalid report must not be
+described as successfully generated or submitted.
 
 The member's explicit request to generate this daily report authorizes only this run's report date and selected derived fields. Pass `work_summary` and `command_summary` so the report can describe both the work and the actual handling method. Add `project_hint` or `patch_discovery` only when the request needs them; `patch_discovery` requires `project_hint`. If there is no explicit current-run request, stop before session read, package creation, and HTTP. Do not reuse consent from a previous run or recurring automation.
 
 ## Commands
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --prepare
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --submit-latest
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --prepare --replace-daily-run-id <old_run_id>
+python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare --replace-daily-run-id <old_run_id>
 ```
 
 Future dates are blocked. Past dates are late submissions and are allowed. If an ordinary daily package for the same member and date already exists, stop unless the member explicitly replaces it.

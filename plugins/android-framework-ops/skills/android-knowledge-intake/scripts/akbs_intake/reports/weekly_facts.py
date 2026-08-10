@@ -21,6 +21,7 @@ from ..report_sessions import (
     report_customer_context_for_project,
 )
 from .common import iter_local_manifests, replacement_run_id
+from .scope import ALLOWED_WORK_TYPES, report_scope_key
 
 
 WEEKLY_FACTS_SCHEMA = "akbs-weekly-project-facts-v3"
@@ -29,7 +30,6 @@ COUNT_KEYS = ("demand", "migration", "bug", "bsp")
 BUSINESS_COUNT_KEYS = ("demand", "migration", "bug")
 ALLOWED_PROJECT_ROLES = {"主责", "协作"}
 ALLOWED_SOURCES = {"CR", "TL", "PM", "TE", "BSP"}
-ALLOWED_WORK_TYPES = {"Patch", "App"}
 MISSING_VALUES = {"", "unknown", "需成员确认", "需成员补充", "待确认"}
 EMPTY_ITEM_VALUES = {
     "无",
@@ -468,7 +468,7 @@ def load_explicit_facts(
     normalized: list[dict[str, Any]] = []
     errors: list[str] = []
     seen_project_chains: dict[str, tuple[int, str, str]] = {}
-    seen_scopes: dict[tuple[str, str, str, str, str], int] = {}
+    seen_scopes: dict[tuple[str, str, str], int] = {}
     for index, item in enumerate(projects):
         if not isinstance(item, dict):
             errors.append(f"projects[{index}] 必须是对象")
@@ -521,7 +521,7 @@ def load_explicit_facts(
                 )
             elif not previous_identity:
                 seen_project_chains[project] = (index, customer, downstream_customer)
-            scope = (project, customer, downstream_customer, work_type, app_name.casefold() if work_type == "App" else "")
+            scope = report_scope_key({"project": project, "work_type": work_type, "app_name": app_name})
             previous_scope_index = seen_scopes.get(scope)
             if previous_scope_index is not None:
                 label = f"App {app_name}" if work_type == "App" else "Patch"
@@ -664,6 +664,8 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
             if focuses:
                 metadata[project]["latest_focus"] = focuses
             work_items = raw_project.get("work_items") if isinstance(raw_project.get("work_items"), list) else []
+            work_type = clean_text(raw_project.get("work_type"))
+            app_name = clean_text(raw_project.get("app_name"))
             for work_item in work_items:
                 if not isinstance(work_item, dict):
                     continue
@@ -672,11 +674,23 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
                 text = name or (did[0] if did else "")
                 if not text:
                     continue
-                result = clean_text(work_item.get("result") or raw_project.get("current_result"))
-                records.setdefault(project, {})[item_key(text) or text] = {
+                result = " ".join(
+                    value
+                    for value in (
+                        clean_text(work_item.get("status")),
+                        clean_text(work_item.get("result") or raw_project.get("current_result")),
+                    )
+                    if value
+                )
+                record_key = "|".join(
+                    (work_type, app_name.casefold() if work_type == "App" else "", item_key(text) or text)
+                )
+                records.setdefault(project, {})[record_key] = {
                     "date": report_date,
                     "text": text,
                     "progress": result,
+                    "work_type": work_type,
+                    "app_name": app_name,
                 }
     return metadata, {project: list(project_records.values()) for project, project_records in records.items()}
 
@@ -961,6 +975,21 @@ def assign_daily_records_to_scopes(
     ambiguous = False
     for record in records:
         text = clean_text(record.get("text"))
+        record_work_type = clean_text(record.get("work_type"))
+        record_app_name = clean_text(record.get("app_name"))
+        exact_candidates = [
+            index
+            for index, row in enumerate(prior_rows)
+            if record_work_type
+            and clean_text(row.get("work_type")) == record_work_type
+            and (
+                record_work_type != "App"
+                or clean_text(row.get("app_name")).casefold() == record_app_name.casefold()
+            )
+        ]
+        if len(exact_candidates) == 1:
+            assigned[exact_candidates[0]].append(record)
+            continue
         candidates: list[int] = []
         for index, row in enumerate(prior_rows):
             app_name = clean_text(row.get("app_name"))
@@ -977,6 +1006,30 @@ def assign_daily_records_to_scopes(
         else:
             ambiguous = True
     return assigned, ambiguous
+
+
+def daily_scope_seed_rows(records: list[dict[str, str]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for record in records:
+        work_type = clean_text(record.get("work_type"))
+        app_name = clean_text(record.get("app_name"))
+        key = (work_type, app_name.casefold() if work_type == "App" else "")
+        if work_type not in ALLOWED_WORK_TYPES or key in seen:
+            continue
+        seen.add(key)
+        rows.append(
+            {
+                "work_type": work_type,
+                "app_name": app_name,
+                "project_role": "需成员确认",
+                "requirement_date": "需成员确认",
+                "requirement_source": "需成员确认",
+                "requirement_structure_present": False,
+                "work_total_present": False,
+            }
+        )
+    return rows
 
 
 def facts_hash(projects: list[dict[str, Any]]) -> str:
@@ -1043,9 +1096,13 @@ def build_weekly_facts(
             prior_rows = previous.get(project, [])
             records = daily_records.get(project, [])
             if not prior_rows:
-                prior_rows = [None]
-                records_by_scope = [records]
-                ambiguous_scope = False
+                seeded_rows = daily_scope_seed_rows(records)
+                prior_rows = seeded_rows or [None]
+                records_by_scope, ambiguous_scope = (
+                    assign_daily_records_to_scopes(prior_rows, records)
+                    if seeded_rows
+                    else ([records], False)
+                )
             else:
                 records_by_scope, ambiguous_scope = assign_daily_records_to_scopes(prior_rows, records)
             for prior, scope_records in zip(prior_rows, records_by_scope):
