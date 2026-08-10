@@ -14,12 +14,13 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
 
 ```json
 {
-  "schema": "akbs-weekly-project-facts-v2",
+  "schema": "akbs-weekly-project-facts-v3",
   "week_range": "20260601-20260607",
   "projects": [
     {
       "project": "TVE1086U",
       "customer": "青鸾云",
+      "work_type": "Patch",
       "project_role": "主责",
       "requirement_date": "2026-05-18",
       "requirement_source": "CR",
@@ -32,6 +33,24 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
       "risks": [],
       "dependencies": ["等待客户提供验收环境"],
       "next_week_plan": ["完成客户验收并关闭剩余问题"]
+    },
+    {
+      "project": "TVI2343R",
+      "customer": "海信",
+      "work_type": "App",
+      "app_name": "蓝牙播放器",
+      "project_role": "主责",
+      "requirement_date": "2026-06-25",
+      "requirement_source": "CR",
+      "work_total": 10,
+      "completed_this_week": 3,
+      "remaining": 7,
+      "completed_items": ["完成串口协议接入"],
+      "remaining_items": ["完成整机链路验证"],
+      "key_points": ["完成原生服务和产品模块接入"],
+      "risks": [],
+      "dependencies": ["等待客户提供正式 API"],
+      "next_week_plan": ["完成整机链路验证"]
     }
   ]
 }
@@ -43,18 +62,22 @@ Rules:
 - `project` must be a recognized TVD/TVE/TVA/TVI company project.
 - `customer` is the required direct customer. Optional `downstream_customer`
   means the direct customer's customer.
-- Each canonical `project` appears exactly once in `projects[]`. App, feature,
-  and workstream names belong in `completed_items[]`, `remaining_items[]`, or
-  `next_week_plan[]`; do not split one project into work-item-specific rows.
-  Identity validation is based on canonical fields and confirmed source
-  context, not on an enumerated list of module names.
+- `work_type` is required and must be exactly `Patch` or `App`; do not infer it
+  from work-item wording. `App` requires `app_name`; `Patch` must not provide it.
+- Each reporting scope appears exactly once. Patch identity is `project + direct
+  customer + Patch`; App identity adds `app_name`. The same project may contain
+  one Patch row and multiple differently named App rows. Feature names remain
+  work items and do not create additional rows.
 - `project_role` is required and must be `主责` or `协作`.
 - `requirement_date` is required and uses `YYYY-MM-DD`.
 - `requirement_source` is required and must be one of `CR`, `TL`, `PM`, `TE`,
   or `BSP`. Do not infer it from daily-report wording.
-- `completed_this_week` and `remaining` are required for every member.
-  `requirement_structure` is required for `主责`; `协作` may omit it.
-- Count objects use only `demand`, `migration`, `bug`, and optional `bsp`.
+- `completed_this_week` and `remaining` are required for every member. For a
+  Patch row they are category objects. For an App row they are non-negative
+  integers without Patch categories.
+- A Patch main requires `requirement_structure`; an App main requires integer
+  `work_total`. Collaborators may omit the corresponding total.
+- Patch count objects use only `demand`, `migration`, `bug`, and optional `bsp`.
   Display labels are `需求`, `移植`, `Bug`, and `BSP`.
 - `需求` means a customer requirement the team has not implemented before;
   `移植` means reusing or porting a requirement already implemented before;
@@ -68,6 +91,8 @@ Rules:
   of its categories.
 - Old `custom` or `定制` counts are invalid. They cannot be split into
   `需求` and `移植` automatically; the member must confirm the split.
+- App counts must satisfy `completed_this_week + remaining <= work_total` when
+  the total is present. Patch and App quantities are never added together.
 - `key_points` records external project news, scope changes, or a key
   difficulty overcome this week. Use `["无"]` when there is none.
 - When completed or remaining count is positive, provide the corresponding

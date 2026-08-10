@@ -38,7 +38,7 @@ Weekly facts are resolved in this order:
 Do not count Codex sessions as requirements. If the effective reports cannot
 prove project role, requirement date, requirement source, project totals, or
 remaining-item identity, local check must fail with exact missing fields. Ask the member
-only for those facts, write an `akbs-weekly-project-facts-v2` JSON file under
+only for those facts, write an `akbs-weekly-project-facts-v3` JSON file under
 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/`, and regenerate
 with `--weekly-facts`. Read `../android-knowledge-intake/references/weekly-facts-contract.md`
 when this fact-completion path is needed. Do not ask the member to repair a
@@ -77,6 +77,7 @@ The weekly Markdown baseline is the project block format:
 
 本周围绕 **TVE1086U** 青鸾云 项目推进：完成系统接口联调。
 
+- 类型：Patch
 - 项目角色：主责
 - 需求时间：2026-06-18
 - 需求来源：CR
@@ -85,12 +86,33 @@ The weekly Markdown baseline is the project block format:
 - 当前剩余 5 项：需求 1、移植 2、BSP 2
 ```
 
+`类型` is required and must be exactly `Patch` or `App`. `Patch` means system
+source customization normally delivered as patches. `App` means application
+or demo development and requires `App 名称`. Do not infer the type from item
+wording. The member must confirm it when the work scope is first created.
+
 `项目角色` is required and must be `主责` or `协作`. `需求时间` is required
 and uses `YYYY-MM-DD`. `需求来源` is required and must be exactly one of
 `CR`, `TL`, `PM`, `TE`, or `BSP`. Every member provides `本周完成` and
-`当前剩余`; only `协作` may omit the `共 N 项` project-total line. Positive
+`当前剩余`; only `协作` may omit the `共 N 项` total line.
+
+For `Patch`, the main member uses the existing category breakdown. Positive
 count lines must contain at least one `需求`, `移植`, or `Bug`. Omit zero
-categories; the displayed total must equal the category sum.
+categories; the displayed total must equal the category sum. For `App`, use
+plain counts without Patch categories:
+
+```markdown
+### **TVI2343R** 海信｜App：蓝牙播放器
+
+- 类型：App
+- App 名称：蓝牙播放器
+- 项目角色：主责
+- 需求时间：2026-06-25
+- 需求来源：CR
+- 共 10 项
+- 本周完成 3 项
+- 当前剩余 7 项
+```
 
 Under each project in `项目详情`, use exactly these numbered subsections:
 `1. 本周完成`, `2. 当前剩余`, `3. 重点说明`, and `4. 风险 / 依赖`.
@@ -101,7 +123,7 @@ as separate unordered lists under subsection 4.
 For multiple projects, repeat the same block per project. Do not use a large
 overview table in `本周概况`.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `project_role`, `week_summary`, `requirement_date`, `requirement_source`, optional `requirement_structure` for collaborators, `completed_this_week`, `remaining`, `completed_items[]`, `remaining_items[]`, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), required `work_type`, conditional `app_name`, `project_role`, `week_summary`, `requirement_date`, `requirement_source`, `completed_this_week`, `remaining`, `completed_items[]`, `remaining_items[]`, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`. A Patch main row also contains `requirement_structure`; an App main row contains `work_total`. Collaborators may omit their corresponding total.
 
 Weekly card identity is not the week range. `material_name` must preserve the
 customer chain, such as `TVE1086U（青鸾云）` or
@@ -123,13 +145,14 @@ aggregation happens outside the member workflow and should not be exposed as a
 member responsibility. Direct and downstream customer aliases must be resolved
 within their own levels, never across the customer chain.
 
-There must be exactly one `projects[]` row for each canonical company project.
-App, feature, and workstream names are work items, not identity fields: keep
-them in `completed_items[]`, `remaining_items[]`, or `next_week_plan[]`.
-Do not split one project into rows by work-item name. The gate is structural,
-not a vocabulary blacklist: it validates the canonical project, uniqueness,
-the customer chain confirmed by current context, and same-source identity
-consistency. Generation and `--submit-latest` reject conflicts before HTTP.
+There must be exactly one `projects[]` row for each reporting scope. A Patch
+scope is `project + direct customer + Patch`; an App scope is `project + direct
+customer + App + app_name`. The same formal project may therefore contain one
+Patch row and multiple App rows, but the same Patch or same App must not be
+duplicated. Feature names remain work items and do not create more rows. The
+gate is structural, not a vocabulary blacklist: it validates the canonical
+project, customer chain, work scope, and same-source identity consistency.
+Generation and `--submit-latest` reject conflicts before HTTP.
 An absent next-week action is an empty `next_week_plan[]`; do not write `无` and
 do not render that project's block under `下周计划`.
 

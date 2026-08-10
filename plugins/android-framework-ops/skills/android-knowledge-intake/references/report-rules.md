@@ -95,7 +95,7 @@ effective daily reports from AKBS, carry the current previous-week project
 ledger forward, apply report replacement chains, and use sessions only to
 supplement work absent from effective daily reports. `weekly_fact_sources`
 records this provenance. Missing ledger fields block upload and are completed
-through the explicit `akbs-weekly-project-facts-v2` contract. Requirement
+through the explicit `akbs-weekly-project-facts-v3` contract. Requirement
 source is created when the member receives the demand and must not be inferred
 from daily-report wording.
 
@@ -110,6 +110,8 @@ from daily-report wording.
 
 本周围绕 **项目名** 客户名 [客户的客户] 项目推进：简短说明本周主要处理的方向。
 
+- 类型：Patch / App 中选择一个
+- App 名称：仅 App 必填
 - 项目角色：主责 / 协作 中选择一个
 - 需求时间：2026-06-18
 - 需求来源：CR / TL / PM / TE / BSP 中选择一个
@@ -123,11 +125,14 @@ from daily-report wording.
 旧`定制`计数不能自动拆分，必须由成员确认。正数计数行至少包含一项`需求`、
 `移植`或`Bug`，为 0 的分类省略，行总数必须等于分类之和。
 
+以上分类只用于 `Patch`。`App` 使用独立的简单计数，不填写需求、移植、Bug
+或 BSP 分类：主责填写`共 N 项`，所有成员填写`本周完成 N 项`和`当前剩余 N 项`。
+
 多项目时，在“本周概况”下按项目重复上述块；不要使用“总盘子”这类说法，也不要用大表格堆字段。
 
-每个公司项目在结构化 `projects[]` 中只出现一次。App/功能模块属于本周完成、
-当前剩余或下周计划事项，不得按事项名称拆成多个同项目块。身份门禁验证规范项目
-编号、唯一项目行、当前上下文已确认的客户链和同源证据一致性，不枚举模块名称。
+结构化 `projects[]` 按统计对象唯一：Patch 使用“项目 + 直接客户 + Patch”，App
+使用“项目 + 直接客户 + App + App 名称”。同一正式项目可以有一个 Patch 和多个
+不同 App，但不得重复同一 Patch 或同一 App。普通功能名称仍属于事项，不单独拆行。
 
 ## 二、项目详情
 

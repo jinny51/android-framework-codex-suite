@@ -68,9 +68,9 @@ python3 scripts/android_knowledge_intake.py --profile <member_alias> patch --pre
 
 `--upload` 生成并上传，`--submit-latest` 上传最近一个已准备包。日报按日期、周报按周周期保持唯一；替换必须显式提供被替换的运行编号。
 
-周报生成优先消费 AKBS 当前有效日报和上一周项目台账，离线时只读取本机 submitted 替换链的当前叶节点；session 仅作补充，不参与需求总量口径。每个周报包写 `weekly_fact_sources` 证据，事实缺口会阻止上传。Codex 应只向成员追问缺失字段，生成 `akbs-weekly-project-facts-v2` artifact 后用 `--weekly-facts <path>` 重新生成。旧`定制`数量不能自动拆成`需求`和`移植`。
+周报生成优先消费 AKBS 当前有效日报和上一周项目台账，离线时只读取本机 submitted 替换链的当前叶节点；session 仅作补充，不参与需求总量口径。每个周报包写 `weekly_fact_sources` 证据，事实缺口会阻止上传。Codex 应只向成员追问缺失字段，生成 `akbs-weekly-project-facts-v3` artifact 后用 `--weekly-facts <path>` 重新生成。旧`定制`数量不能自动拆成`需求`和`移植`。
 
-周报中一个公司项目只能对应一条客户链和一个项目块。App/功能模块只写入工作事项和计划数组。门禁不枚举模块名称，而是校验规范项目编号、项目唯一性、当前上下文已确认的客户链，以及展示身份与来源证据的一致性；冲突会在 HTTP 前失败。无下周动作时使用空计划数组，不渲染“无”占位项目块。
+周报的`类型`只允许 `Patch` 或 `App`。同一公司项目保持一条客户链，但可以有一个 Patch 和多个不同 App；App 必须填写 App 名称。门禁按“项目 + 客户 + 类型 + App 名称（仅 App）”校验统计对象唯一性，以及展示身份与来源证据的一致性；冲突会在 HTTP 前失败。无下周动作时使用空计划数组，不渲染“无”占位项目块。
 
 真实日报或周报的生成必须来自成员本次明确请求，并通过 `--session-consent` 和最小 `--session-field` 集合授权。本次日期或周范围就是授权时间窗；授权不写入 profile，也不能跨运行或定时任务复用。缺少授权时脚本在读取 session、创建包和 HTTP 前失败。包内只保留最小 source session ID、时间窗、consent version/fields 和 retention policy，不复制 thread 名、cwd、原始消息或原始命令。
 

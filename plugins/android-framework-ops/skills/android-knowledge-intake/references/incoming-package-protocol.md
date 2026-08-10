@@ -183,15 +183,15 @@ the direct customer's customer. Thus `TVE1091U AOC 福建移动高清` is repres
 as `project=TVE1091U`, `customer=AOC`, and
 `downstream_customer=福建移动高清`; direct and downstream names are not aliases.
 
-For `report_type=weekly`, `payload` must include `schema=akbs-report-view-human-v1`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each project row must contain `project`, direct `customer`, optional `downstream_customer`, `project_role`, `week_summary`, `requirement_date`, `requirement_source`, `completed_this_week`, `remaining`, `completed_items[]`, `remaining_items[]`, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`. `requirement_structure` is required for `主责` and optional for `协作`. `display_date` is the last workday of the week range, not the upload day. Daily `work_items[]` must also contain fixed-enum `status` (`已完成`, `处理中`, `待验证`, or `阻塞`).
+For `report_type=weekly`, `payload` must include `schema=akbs-report-view-human-v1`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each row must contain `project`, direct `customer`, optional `downstream_customer`, fixed-enum `work_type` (`Patch` or `App`), `project_role`, `week_summary`, `requirement_date`, `requirement_source`, `completed_this_week`, `remaining`, and the required item arrays. App rows also require `app_name`. A Patch main requires `requirement_structure`; an App main requires `work_total`; collaborators may omit the corresponding total. `display_date` is the last workday of the week range, not the upload day. Daily `work_items[]` must also contain fixed-enum `status` (`已完成`, `处理中`, `待验证`, or `阻塞`).
 
 Every new `weekly_trace` also carries `weekly_fact_sources` evidence with
 `schema=akbs-weekly-fact-sources-v1`, the exact `week_range`, source package
-keys, project count, a sanitized facts hash, and `missing_fields`. The member
+keys, unique project count, work-scope count, a sanitized facts hash, and `missing_fields`. The member
 client resolves current AKBS daily reports and the current previous-week report
 before local submitted replacement leaves; sessions only supplement missing
 daily coverage. Non-empty `missing_fields` fails local upload validation and is
-closed through an explicit `akbs-weekly-project-facts-v2` artifact. Old
+closed through an explicit `akbs-weekly-project-facts-v3` artifact. Old
 `custom`/`定制` counts are rejected because they cannot be split into `需求`
 and `移植` without member confirmation.
 
@@ -326,7 +326,7 @@ Manifest excerpt:
     },
     "merge_gate_inputs": {},
     "protocol_version": "patch-human-ai-evidence-v1",
-    "plugin_version": "1.0.149"
+    "plugin_version": "1.0.150"
   }
 }
 ```

@@ -437,12 +437,13 @@ def write_weekly_facts(path: Path, week_range: str = "20260601-20260607") -> Pat
     path.write_text(
         json.dumps(
             {
-                "schema": "akbs-weekly-project-facts-v2",
+                "schema": "akbs-weekly-project-facts-v3",
                 "week_range": week_range,
                 "projects": [
                     {
                         "project": "TVE1086U",
                         "customer": "青鸾云",
+                        "work_type": "Patch",
                         "project_role": "主责",
                         "week_summary": "本周完成状态栏策略修改和设备验证。",
                         "requirement_date": "2026-05-18",
@@ -1464,6 +1465,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(check["status"], "PASS")
             self.assertIn("本周完成状态栏策略修改和设备验证。", report)
             self.assertNotIn("本周围绕 **TVE1086U** 青鸾云 项目推进：下周继续", report)
+            self.assertIn("- 类型：Patch", report)
             self.assertIn("- 项目角色：主责", report)
             self.assertIn("- 需求时间：2026-05-18", report)
             self.assertIn("- 需求来源：CR", report)
@@ -1473,6 +1475,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertIn("#### 3. 重点说明", report)
             self.assertIn("#### 4. 风险 / 依赖", report)
             self.assertEqual(view["requirement_structure"], "共 12 项：需求 5、移植 3、Bug 3、BSP 1")
+            self.assertEqual(view["work_type"], "Patch")
             self.assertEqual(view["completed_this_week"], "本周完成 3 项：需求 1、移植 1、Bug 1")
             self.assertEqual(view["remaining"], "当前剩余 3 项：需求 1、移植 1、BSP 1")
             self.assertEqual(fact_sources["payload"]["source"], "explicit_weekly_facts")
@@ -1506,7 +1509,71 @@ class MemberAutomationFlowTests(unittest.TestCase):
             payload["projects"].append(second)
             facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
-            with self.assertRaisesRegex(SystemExit, "同一项目只能有一行.*合并到事项数组"):
+            with self.assertRaisesRegex(SystemExit, "同一统计对象只能有一行"):
+                weekly_module.load_explicit_facts(facts, "20260601-20260607")
+
+            first_app = dict(payload["projects"][0])
+            first_app.update(
+                {
+                    "work_type": "App",
+                    "app_name": "蓝牙播放器",
+                    "work_total": 10,
+                    "completed_this_week": 3,
+                    "remaining": 7,
+                }
+            )
+            first_app.pop("requirement_structure", None)
+            second_app = dict(first_app)
+            second_app.update({"app_name": "播放器", "work_total": 9, "completed_this_week": 5, "remaining": 4})
+            payload["projects"] = [first_app, second_app]
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            loaded = weekly_module.load_explicit_facts(facts, "20260601-20260607")
+            self.assertEqual([row["app_name"] for row in loaded], ["蓝牙播放器", "播放器"])
+
+    def test_weekly_app_uses_plain_counts_and_requires_app_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            facts = write_weekly_facts(root / "artifacts" / "app-weekly-facts.json")
+            payload = json.loads(facts.read_text(encoding="utf-8"))
+            row = payload["projects"][0]
+            row.update(
+                {
+                    "project": "TVI2343R",
+                    "customer": "海信",
+                    "work_type": "App",
+                    "app_name": "蓝牙播放器",
+                    "work_total": 10,
+                    "completed_this_week": 3,
+                    "remaining": 7,
+                }
+            )
+            row.pop("requirement_structure")
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+            weekly = prepare_weekly_package(env, "2026-06-03", "20260603-225025-weekly", facts)
+            report = read_package_report(weekly, "weekly")
+            view = read_report_view(weekly)["payload"]["projects"][0]
+
+            self.assertEqual(json.loads((weekly / "local-check.json").read_text(encoding="utf-8"))["status"], "PASS")
+            self.assertIn("### **TVI2343R** 海信｜App：蓝牙播放器", report)
+            self.assertIn("- 类型：App", report)
+            self.assertIn("- App 名称：蓝牙播放器", report)
+            self.assertIn("- 共 10 项", report)
+            self.assertIn("- 本周完成 3 项", report)
+            self.assertIn("- 当前剩余 7 项", report)
+            self.assertNotIn("需求 3", report)
+            self.assertEqual(view["work_type"], "App")
+            self.assertEqual(view["app_name"], "蓝牙播放器")
+            self.assertEqual(view["work_total"], "共 10 项")
+            self.assertNotIn("requirement_structure", view)
+
+            row.pop("app_name")
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            load_intake_module()
+            weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+            with self.assertRaisesRegex(SystemExit, "app_name 类型为 App 时必须提供"):
                 weekly_module.load_explicit_facts(facts, "20260601-20260607")
 
     def test_weekly_omits_empty_project_plan_and_keeps_module_in_work_item(self) -> None:
@@ -1692,6 +1759,12 @@ class MemberAutomationFlowTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "不能自动拆成需求和移植"):
                 weekly_module.load_explicit_facts(facts, "20260601-20260607")
 
+            payload = json.loads(write_weekly_facts(facts).read_text(encoding="utf-8"))
+            payload["schema"] = "akbs-weekly-project-facts-v2"
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            with self.assertRaisesRegex(SystemExit, "缺少 Patch/App 类型"):
+                weekly_module.load_explicit_facts(facts, "20260601-20260607")
+
     def test_weekly_completed_plus_remaining_cannot_exceed_main_total(self) -> None:
         load_intake_module()
         weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
@@ -1769,6 +1842,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     {
                         "project": "TVE1086U",
                         "customer": "青鸾云",
+                        "work_type": "Patch",
                         "project_role": "主责",
                         "week_summary": "上周持续推进状态栏和亮度事项。",
                         "requirement_date": "2026-05-18",
@@ -2436,6 +2510,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             for field in (
                 "project",
                 "customer",
+                "work_type",
                 "project_role",
                 "week_summary",
                 "requirement_date",
@@ -2452,6 +2527,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             ):
                 self.assertIn(field, ledger)
             self.assertIn(ledger["project_role"], {"主责", "协作"})
+            self.assertEqual(ledger["work_type"], "Patch")
             self.assertIn(ledger["requirement_source"], {"CR", "TL", "PM", "TE", "BSP"})
 
             daily_manifest = json.loads((daily / "manifest.json").read_text(encoding="utf-8"))

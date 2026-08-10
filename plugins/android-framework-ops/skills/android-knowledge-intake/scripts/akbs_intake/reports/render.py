@@ -362,7 +362,8 @@ def weekly_material_summary(
             completed = weekly_fact_count_text(row, "completed_this_week_counts", include_bsp=False)
             remaining = weekly_fact_count_text(row, "remaining_counts", include_bsp=True)
             risk_text = "有风险" if meaningful_fact_list(row.get("risks"), {"无超过 3 天无进展事项。"}) else "无明确风险"
-            parts.append(f"{row['project']}：本周完成 {completed}，剩余 {remaining}，{risk_text}。")
+            scope = f" / {row.get('app_name')}" if row.get("work_type") == "App" else ""
+            parts.append(f"{row['project']}{scope}：本周完成 {completed}，剩余 {remaining}，{risk_text}。")
         if len(weekly_projects) > max_projects:
             parts.append(f"另有 {len(weekly_projects) - max_projects} 个项目。")
         return compact_text("".join(parts), 220)
@@ -448,8 +449,28 @@ def weekly_plan_items(value: Any) -> list[str]:
 
 
 def weekly_fact_count_text(row: dict[str, Any], key: str, *, include_bsp: bool, label: str = "") -> str:
+    if row.get("work_type") == "App":
+        scalar_fields = {
+            "requirement_structure_counts": "work_total",
+            "completed_this_week_counts": "completed_this_week_total",
+            "remaining_counts": "remaining_total",
+        }
+        prefix = f"{label} " if label else ""
+        return f"{prefix}{int(row.get(scalar_fields[key], 0) or 0)} 项"
     counts = normalize_fact_counts(row.get(key))
     return format_requirement_counts(counts, include_bsp=include_bsp, label=label)
+
+
+def weekly_scope_heading(row: dict[str, Any]) -> str:
+    context = row_customer_context(row)
+    heading = project_customer_heading(
+        str(row["project"]),
+        context["customer_name"],
+        context["downstream_customer"],
+    )
+    if row.get("work_type") == "App":
+        return f"{heading}｜App：{row.get('app_name') or '需成员确认'}"
+    return heading
 
 def weekly_risks(entries: list[tuple[str, str]]) -> list[str]:
     risks = [compact_text(desc, 120) for desc, progress in entries if progress_bucket(progress) == "blocked"]
@@ -541,19 +562,24 @@ def write_weekly_report(
     ]
     if weekly_projects:
         for row in weekly_projects:
-            project = str(row["project"])
-            context = row_customer_context(row)
             lines += [
-                f"### {project_customer_heading(project, context['customer_name'], context['downstream_customer'])}",
+                f"### {weekly_scope_heading(row)}",
                 "",
                 str(row.get("week_summary") or "需补充真实工作记录。"),
                 "",
+                f"- 类型：{row.get('work_type') or '需成员确认'}",
+                *([f"- App 名称：{row.get('app_name') or '需成员确认'}"] if row.get("work_type") == "App" else []),
                 f"- 项目角色：{row.get('project_role') or '需成员确认'}",
                 f"- 需求时间：{row.get('requirement_date') or '需成员确认'}",
                 f"- 需求来源：{row.get('requirement_source') or '需成员确认'}",
                 *(
                     [f"- {weekly_fact_count_text(row, 'requirement_structure_counts', include_bsp=True, label='共')}"]
-                    if row.get("project_role") == "主责" and row.get("requirement_structure_present")
+                    if row.get("project_role") == "主责"
+                    and (
+                        row.get("work_total_present")
+                        if row.get("work_type") == "App"
+                        else row.get("requirement_structure_present")
+                    )
                     else []
                 ),
                 f"- {weekly_fact_count_text(row, 'completed_this_week_counts', include_bsp=False, label='本周完成')}",
@@ -573,6 +599,7 @@ def write_weekly_report(
                 f"本周围绕 {project_customer_heading(project, ledger['customer_name'], ledger.get('downstream_customer', ''))} 项目推进：{next_step_for_entries(entries, 'weekly') if entries else '需补充真实工作记录。'}",
                 "",
                 "- 项目角色：需成员确认",
+                "- 类型：需成员确认",
                 f"- 需求时间：{ledger['start_date']}",
                 f"- 需求来源：{weekly_source_label(entries)}",
                 f"- {format_requirement_counts(all_counts, include_bsp=True, label='共')}",
@@ -595,15 +622,13 @@ def write_weekly_report(
         for ledger in ledgers
     ]
     for row in detail_rows:
-        project = str(row["project"])
-        context = row_customer_context(row)
         completed = meaningful_fact_list(row.get("completed_items"))
         unfinished = meaningful_fact_list(row.get("remaining_items"))
         key_points = meaningful_fact_list(row.get("key_points")) or ["无"]
         risks = meaningful_fact_list(row.get("risks")) or ["无超过 3 天无进展事项。"]
         dependencies = meaningful_fact_list(row.get("dependencies")) or ["无外部依赖事项。"]
         lines += [
-            f"### {project_customer_heading(project, context['customer_name'], context['downstream_customer'])}",
+            f"### {weekly_scope_heading(row)}",
             "",
             "#### 1. 本周完成",
             "",
@@ -646,13 +671,11 @@ def write_weekly_report(
         for ledger in ledgers
     ]
     for row in plan_rows:
-        project = str(row["project"])
-        context = row_customer_context(row)
         plans = weekly_plan_items(row.get("next_week_plan"))
         if not plans:
             continue
         lines += [
-            f"### {project_customer_heading(project, context['customer_name'], context['downstream_customer'])}",
+            f"### {weekly_scope_heading(row)}",
             "",
             *(f"- {plan}" for plan in plans),
             "",
@@ -732,6 +755,7 @@ def report_view_payload(
                     "project": str(row["project"]),
                     "customer": customer,
                     "customer_name": customer,
+                    "work_type": str(row.get("work_type") or "需成员确认"),
                     "project_role": str(row.get("project_role") or "需成员确认"),
                     "week_summary": str(row.get("week_summary") or "需补充真实工作记录。"),
                     "requirement_date": str(row.get("requirement_date") or "需成员确认"),
@@ -749,7 +773,13 @@ def report_view_payload(
                     "dependencies": meaningful_fact_list(row.get("dependencies")) or ["无外部依赖事项。"],
                     "next_week_plan": weekly_plan_items(row.get("next_week_plan")),
                 }, context["downstream_customer"])
-            if row.get("project_role") == "主责" and row.get("requirement_structure_present"):
+            if row.get("work_type") == "App":
+                project_row["app_name"] = str(row.get("app_name") or "需成员确认")
+                if row.get("project_role") == "主责" and row.get("work_total_present"):
+                    project_row["work_total"] = weekly_fact_count_text(
+                        row, "requirement_structure_counts", include_bsp=False, label="共"
+                    )
+            elif row.get("project_role") == "主责" and row.get("requirement_structure_present"):
                 project_row["requirement_structure"] = weekly_fact_count_text(
                     row, "requirement_structure_counts", include_bsp=True, label="共"
                 )
@@ -774,6 +804,7 @@ def report_view_payload(
                 "project": project,
                 "customer": customer,
                 "customer_name": customer,
+                "work_type": "需成员确认",
                 "project_role": "需成员确认",
                 "week_summary": f"本周围绕 {project_customer_heading(project, customer, downstream_customer)} 项目推进：{next_step_for_entries(entries, 'weekly') if entries else '需补充真实工作记录。'}",
                 "requirement_date": str(ledger.get("start_date") or "需成员确认"),

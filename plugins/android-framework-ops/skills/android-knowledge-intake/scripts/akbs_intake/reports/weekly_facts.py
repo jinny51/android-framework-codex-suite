@@ -23,12 +23,13 @@ from ..report_sessions import (
 from .common import iter_local_manifests, replacement_run_id
 
 
-WEEKLY_FACTS_SCHEMA = "akbs-weekly-project-facts-v2"
+WEEKLY_FACTS_SCHEMA = "akbs-weekly-project-facts-v3"
 WEEKLY_FACT_SOURCES_SCHEMA = "akbs-weekly-fact-sources-v1"
 COUNT_KEYS = ("demand", "migration", "bug", "bsp")
 BUSINESS_COUNT_KEYS = ("demand", "migration", "bug")
 ALLOWED_PROJECT_ROLES = {"主责", "协作"}
 ALLOWED_SOURCES = {"CR", "TL", "PM", "TE", "BSP"}
+ALLOWED_WORK_TYPES = {"Patch", "App"}
 MISSING_VALUES = {"", "unknown", "需成员确认", "需成员补充", "待确认"}
 EMPTY_ITEM_VALUES = {
     "无",
@@ -157,6 +158,28 @@ def legacy_custom_count(value: Any) -> int:
 
 def count_total(counts: dict[str, int]) -> int:
     return sum(int(counts.get(key, 0) or 0) for key in COUNT_KEYS)
+
+
+def scalar_count_present(value: Any) -> bool:
+    return (isinstance(value, int) and not isinstance(value, bool)) or bool(clean_text(value))
+
+
+def normalize_scalar_count(value: Any) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return max(0, value)
+    match = re.fullmatch(r"(?:(?:共|本周完成|当前剩余)\s*)?(\d+)\s*项?", clean_text(value))
+    return int(match.group(1)) if match else 0
+
+
+def row_count(row: dict[str, Any], field: str) -> int:
+    scalar_fields = {
+        "requirement_structure_counts": "work_total",
+        "completed_this_week_counts": "completed_this_week_total",
+        "remaining_counts": "remaining_total",
+    }
+    if row.get("work_type") == "App":
+        return int(row.get(scalar_fields[field], 0) or 0)
+    return count_total(normalize_counts(row.get(field)))
 
 
 def item_category(text: str, *, completed: bool = False) -> str:
@@ -339,6 +362,8 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
     raw_structure = value.get("requirement_structure_counts", value.get("requirement_structure"))
     raw_completed = value.get("completed_this_week_counts", value.get("completed_this_week"))
     raw_remaining = value.get("remaining_counts", value.get("remaining"))
+    work_type = clean_text(value.get("work_type") or value.get("type"), "需成员确认")
+    raw_work_total = value.get("work_total")
     completed_items = clean_list(value.get("completed_items"))
     remaining_items = clean_list(value.get("remaining_items"))
     row = {
@@ -346,14 +371,20 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
         "customer": customer,
         "customer_name": customer,
         "downstream_customer": downstream_customer,
+        "work_type": work_type,
+        "app_name": clean_text(value.get("app_name")),
         "project_role": clean_text(value.get("project_role"), "需成员确认"),
         "week_summary": weekly_summary(value.get("week_summary"), completed_items, remaining_items),
         "requirement_date": clean_text(value.get("requirement_date") or value.get("received_date"), "需成员确认"),
         "requirement_source": clean_text(value.get("requirement_source") or value.get("source"), "需成员确认"),
         "requirement_structure_present": count_field_present(raw_structure),
         "requirement_structure_counts": normalize_counts(raw_structure),
+        "work_total_present": scalar_count_present(raw_work_total),
+        "work_total": normalize_scalar_count(raw_work_total),
         "completed_this_week_counts": normalize_counts(raw_completed),
         "remaining_counts": normalize_counts(raw_remaining),
+        "completed_this_week_total": normalize_scalar_count(raw_completed),
+        "remaining_total": normalize_scalar_count(raw_remaining),
         "legacy_custom_counts": {
             "requirement_structure": legacy_custom_count(raw_structure),
             "completed_this_week": legacy_custom_count(raw_completed),
@@ -366,6 +397,11 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
         "dependencies": clean_list(value.get("dependencies")) or ["无外部依赖事项。"],
         "next_week_plan": clean_list(value.get("next_week_plan")),
     }
+    if work_type == "Patch":
+        row["work_total_present"] = row["requirement_structure_present"]
+        row["work_total"] = count_total(row["requirement_structure_counts"])
+        row["completed_this_week_total"] = count_total(row["completed_this_week_counts"])
+        row["remaining_total"] = count_total(row["remaining_counts"])
     return row
 
 
@@ -417,6 +453,11 @@ def load_explicit_facts(
             "weekly facts v1 的定制分类不能自动拆成需求和移植；请由成员确认后改用 "
             f"{WEEKLY_FACTS_SCHEMA}"
         )
+    if payload.get("schema") == "akbs-weekly-project-facts-v2":
+        raise SystemExit(
+            "weekly facts v2 缺少 Patch/App 类型；请由成员确认类型后改用 "
+            f"{WEEKLY_FACTS_SCHEMA}"
+        )
     if payload.get("schema") != WEEKLY_FACTS_SCHEMA:
         raise SystemExit(f"weekly facts schema 必须是 {WEEKLY_FACTS_SCHEMA}")
     if clean_text(payload.get("week_range")) != week_key:
@@ -426,7 +467,8 @@ def load_explicit_facts(
         raise SystemExit("weekly facts projects 必须是非空数组")
     normalized: list[dict[str, Any]] = []
     errors: list[str] = []
-    seen_projects: dict[str, tuple[int, str, str]] = {}
+    seen_project_chains: dict[str, tuple[int, str, str]] = {}
+    seen_scopes: dict[tuple[str, str, str, str, str], int] = {}
     for index, item in enumerate(projects):
         if not isinstance(item, dict):
             errors.append(f"projects[{index}] 必须是对象")
@@ -439,7 +481,7 @@ def load_explicit_facts(
             errors.append(
                 f"{project}.project 只能填写规范项目编号 {project}；其他内容请写入事项字段"
             )
-        for field in ("customer", "project_role", "requirement_date", "requirement_source"):
+        for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
             if clean_text(item.get(field)) in MISSING_VALUES:
                 errors.append(f"{project}.{field} 必须提供")
         customer = clean_text(item.get("customer"))
@@ -460,23 +502,35 @@ def load_explicit_facts(
             errors.append(
                 f"{project}.downstream_customer 必须是有效的客户的客户名称"
             )
+        work_type = clean_text(item.get("work_type"))
+        app_name = clean_text(item.get("app_name"))
+        if work_type not in ALLOWED_WORK_TYPES:
+            errors.append(f"{project}.work_type 只能是 Patch 或 App")
+        if work_type == "App" and not app_name:
+            errors.append(f"{project}.app_name 类型为 App 时必须提供")
+        if work_type == "Patch" and app_name:
+            errors.append(f"{project}.app_name 类型为 Patch 时不得提供")
         if not project.startswith("projects["):
             identity = (customer, downstream_customer)
-            previous_identity = seen_projects.get(project)
-            if previous_identity:
-                previous_index, previous_customer, previous_downstream = previous_identity
-                if identity == (previous_customer, previous_downstream):
-                    errors.append(
-                        f"{project} 在 projects[{previous_index}] 和 projects[{index}] 重复；"
-                        "同一项目只能有一行，具体工作内容请合并到事项数组"
-                    )
-                else:
-                    errors.append(
-                        f"{project} 在 projects[{previous_index}] 和 projects[{index}] 的客户链冲突；"
-                        "同一项目必须保留唯一客户链"
-                    )
+            previous_identity = seen_project_chains.get(project)
+            if previous_identity and identity != previous_identity[1:]:
+                previous_index, _, _ = previous_identity
+                errors.append(
+                    f"{project} 在 projects[{previous_index}] 和 projects[{index}] 的客户链冲突；"
+                    "同一项目必须保留唯一客户链"
+                )
+            elif not previous_identity:
+                seen_project_chains[project] = (index, customer, downstream_customer)
+            scope = (project, customer, downstream_customer, work_type, app_name.casefold() if work_type == "App" else "")
+            previous_scope_index = seen_scopes.get(scope)
+            if previous_scope_index is not None:
+                label = f"App {app_name}" if work_type == "App" else "Patch"
+                errors.append(
+                    f"{project} {label} 在 projects[{previous_scope_index}] 和 projects[{index}] 重复；"
+                    "同一统计对象只能有一行"
+                )
             else:
-                seen_projects[project] = (index, customer, downstream_customer)
+                seen_scopes[scope] = index
         requirement_date = clean_text(item.get("requirement_date"))
         try:
             valid_requirement_date = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", requirement_date))
@@ -492,58 +546,84 @@ def load_explicit_facts(
             errors.append(f"{project}.requirement_source 只能是 CR、TL、PM、TE 或 BSP")
         if "下周继续" in clean_text(item.get("week_summary")):
             errors.append(f"{project}.week_summary 不得用下周计划代替本周进展")
-        raw_count_fields = {
-            "requirement_structure": item.get("requirement_structure"),
-            "completed_this_week": item.get("completed_this_week"),
-            "remaining": item.get("remaining"),
-        }
-        if item.get("project_role") == "主责" and not isinstance(raw_count_fields["requirement_structure"], dict):
-            errors.append(f"{project}.requirement_structure 主责必须提供")
-        if item.get("project_role") == "协作" and raw_count_fields["requirement_structure"] is not None and not isinstance(raw_count_fields["requirement_structure"], dict):
-            errors.append(f"{project}.requirement_structure 如提供则必须是对象")
-        count_fields: dict[str, dict[str, int]] = {}
-        for field, raw in raw_count_fields.items():
-            if field == "requirement_structure" and item.get("project_role") == "协作" and raw is None:
-                continue
-            if field != "requirement_structure" and not isinstance(raw, dict):
-                errors.append(f"{project}.{field} 必须提供对象")
-                raw = {}
-            counts = normalize_counts(raw)
-            count_fields[field] = counts
-            if not isinstance(raw, dict):
-                continue
-            unknown_keys = sorted(str(key) for key in raw if str(key) not in COUNT_KEYS)
-            if unknown_keys:
-                errors.append(
-                    f"{project}.{field} 含非法分类 {','.join(unknown_keys)}；定制不能自动拆分，"
-                    "只允许 demand/migration/bug/bsp"
+        completed_total = 0
+        remaining_total = 0
+        if work_type == "App":
+            if item.get("requirement_structure") is not None:
+                errors.append(f"{project}.requirement_structure 类型为 App 时不得提供")
+            raw_app_counts = {
+                "work_total": item.get("work_total"),
+                "completed_this_week": item.get("completed_this_week"),
+                "remaining": item.get("remaining"),
+            }
+            if item.get("project_role") == "主责" and raw_app_counts["work_total"] is None:
+                errors.append(f"{project}.work_total App 主责必须提供")
+            if item.get("project_role") == "协作" and raw_app_counts["work_total"] is None:
+                raw_app_counts.pop("work_total")
+            scalar_counts: dict[str, int] = {}
+            for field, raw in raw_app_counts.items():
+                if not isinstance(raw, int) or isinstance(raw, bool) or raw < 0:
+                    errors.append(f"{project}.{field} App 计数必须是非负整数")
+                    continue
+                scalar_counts[field] = raw
+            completed_total = scalar_counts.get("completed_this_week", 0)
+            remaining_total = scalar_counts.get("remaining", 0)
+            if "work_total" in scalar_counts and completed_total + remaining_total > scalar_counts["work_total"]:
+                errors.append(f"{project} App 本周完成加当前剩余不能超过 App 总量")
+        else:
+            raw_count_fields = {
+                "requirement_structure": item.get("requirement_structure"),
+                "completed_this_week": item.get("completed_this_week"),
+                "remaining": item.get("remaining"),
+            }
+            if item.get("project_role") == "主责" and not isinstance(raw_count_fields["requirement_structure"], dict):
+                errors.append(f"{project}.requirement_structure 主责必须提供（Patch）")
+            if item.get("project_role") == "协作" and raw_count_fields["requirement_structure"] is not None and not isinstance(raw_count_fields["requirement_structure"], dict):
+                errors.append(f"{project}.requirement_structure 如提供则必须是对象")
+            count_fields: dict[str, dict[str, int]] = {}
+            for field, raw in raw_count_fields.items():
+                if field == "requirement_structure" and item.get("project_role") == "协作" and raw is None:
+                    continue
+                if field != "requirement_structure" and not isinstance(raw, dict):
+                    errors.append(f"{project}.{field} Patch 必须提供分类对象")
+                    raw = {}
+                counts = normalize_counts(raw)
+                count_fields[field] = counts
+                if not isinstance(raw, dict):
+                    continue
+                unknown_keys = sorted(str(key) for key in raw if str(key) not in COUNT_KEYS)
+                if unknown_keys:
+                    errors.append(
+                        f"{project}.{field} 含非法分类 {','.join(unknown_keys)}；定制不能自动拆分，"
+                        "只允许 demand/migration/bug/bsp"
+                    )
+                invalid_counts = any(
+                    key in raw
+                    and (not isinstance(raw.get(key), int) or isinstance(raw.get(key), bool) or int(raw.get(key)) < 0)
+                    for key in COUNT_KEYS
                 )
-            allowed_keys = COUNT_KEYS if field != "completed_this_week" else BUSINESS_COUNT_KEYS + ("bsp",)
-            invalid_counts = any(
-                key in raw
-                and (not isinstance(raw.get(key), int) or isinstance(raw.get(key), bool) or int(raw.get(key)) < 0)
-                for key in allowed_keys
-            )
-            if invalid_counts:
-                errors.append(f"{project}.{field} 计数必须是非负整数")
-            if count_total(counts) > 0 and not any(counts[key] > 0 for key in BUSINESS_COUNT_KEYS):
-                errors.append(f"{project}.{field} 至少要有一项需求、移植或 Bug，不能只填 BSP")
-        completed = count_fields.get("completed_this_week", zero_counts())
-        remaining = count_fields.get("remaining", zero_counts())
-        total = count_fields.get("requirement_structure")
-        if completed["bsp"]:
-            errors.append(f"{project}.completed_this_week.bsp 必须为 0；Android 团队完成项只能归入需求、移植或 Bug")
-        if total is not None:
-            for key in COUNT_KEYS:
-                if completed[key] + remaining[key] > total[key]:
-                    errors.append(f"{project}.{key} 本周完成加当前剩余不能超过项目总量")
+                if invalid_counts:
+                    errors.append(f"{project}.{field} 计数必须是非负整数")
+                if count_total(counts) > 0 and not any(counts[key] > 0 for key in BUSINESS_COUNT_KEYS):
+                    errors.append(f"{project}.{field} 至少要有一项需求、移植或 Bug，不能只填 BSP")
+            completed = count_fields.get("completed_this_week", zero_counts())
+            remaining = count_fields.get("remaining", zero_counts())
+            total = count_fields.get("requirement_structure")
+            completed_total = count_total(completed)
+            remaining_total = count_total(remaining)
+            if completed["bsp"]:
+                errors.append(f"{project}.completed_this_week.bsp 必须为 0；Android 团队完成项只能归入需求、移植或 Bug")
+            if total is not None:
+                for key in COUNT_KEYS:
+                    if completed[key] + remaining[key] > total[key]:
+                        errors.append(f"{project}.{key} 本周完成加当前剩余不能超过项目总量")
         completed_items = clean_list(item.get("completed_items"))
         remaining_items = clean_list(item.get("remaining_items"))
-        if count_total(completed) > 0 and not completed_items:
+        if completed_total > 0 and not completed_items:
             errors.append(f"{project}.completed_items 本周完成大于 0 时必须提供")
-        if count_total(remaining) > 0 and not remaining_items:
+        if remaining_total > 0 and not remaining_items:
             errors.append(f"{project}.remaining_items 当前剩余大于 0 时必须提供")
-        if count_total(remaining) > 0 and not clean_list(item.get("next_week_plan")):
+        if remaining_total > 0 and not clean_list(item.get("next_week_plan")):
             errors.append(f"{project}.next_week_plan 当前有剩余时必须提供")
         normalized.append(_weekly_project_row(item))
     for conflict in project_customer_identity_conflicts(normalized, expected_project_customers or {}):
@@ -601,8 +681,8 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
     return metadata, {project: list(project_records.values()) for project, project_records in records.items()}
 
 
-def _previous_week_projects(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    result: dict[str, dict[str, Any]] = {}
+def _previous_week_projects(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    result: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         view = report_item_view(item)
         projects = view.get("projects") if isinstance(view.get("projects"), list) else []
@@ -613,7 +693,7 @@ def _previous_week_projects(items: list[dict[str, Any]]) -> dict[str, dict[str, 
             project = find_company_project(row["project"])
             if project:
                 row["project"] = project
-                result.setdefault(project, row)
+                result.setdefault(project, []).append(row)
     return result
 
 
@@ -627,9 +707,13 @@ def _history_project_row(
     as_of: dt.date,
 ) -> tuple[dict[str, Any], list[str]]:
     prior = dict(previous or {})
+    work_type = clean_text(prior.get("work_type"), "需成员确认")
     total_counts = normalize_counts(prior.get("requirement_structure_counts"))
     remaining_counts = normalize_counts(prior.get("remaining_counts"))
     completed_counts = zero_counts()
+    work_total = int(prior.get("work_total", 0) or 0)
+    completed_total = 0
+    remaining_total = int(prior.get("remaining_total", 0) or 0)
     prior_remaining = clean_list(prior.get("remaining_items"))
     current_remaining = list(prior_remaining)
     completed_items: list[str] = []
@@ -638,8 +722,23 @@ def _history_project_row(
     for record in sorted(daily_records, key=lambda item: item.get("date", "")):
         text = record["text"]
         is_completed = progress_completed(record.get("progress"))
-        category = item_category(text, completed=is_completed)
         matched = next((item for item in prior_remaining if same_item(text, item)), "")
+        if work_type == "App":
+            if is_completed:
+                add_unique(completed_items, text)
+                completed_total += 1
+                if matched:
+                    current_remaining = [item for item in current_remaining if not same_item(item, matched)]
+                    remaining_total = max(0, remaining_total - 1)
+                else:
+                    work_total += 1
+            else:
+                add_unique(current_unfinished, text)
+                if not matched:
+                    work_total += 1
+                    remaining_total += 1
+            continue
+        category = item_category(text, completed=is_completed)
         if is_completed:
             matched_category = item_category(matched) if matched else ""
             if matched_category and matched_category != "bsp":
@@ -698,14 +797,20 @@ def _history_project_row(
         "customer": customer,
         "customer_name": customer,
         "downstream_customer": downstream_customer,
+        "work_type": work_type,
+        "app_name": clean_text(prior.get("app_name")),
         "project_role": clean_text(prior.get("project_role"), "需成员确认"),
         "week_summary": summary,
         "requirement_date": clean_text(prior.get("requirement_date"), "需成员确认"),
         "requirement_source": clean_text(prior.get("requirement_source"), "需成员确认"),
         "requirement_structure_present": bool(prior.get("requirement_structure_present")),
         "requirement_structure_counts": total_counts,
+        "work_total_present": bool(prior.get("work_total_present")),
+        "work_total": work_total,
         "completed_this_week_counts": completed_counts,
         "remaining_counts": remaining_counts,
+        "completed_this_week_total": completed_total if work_type == "App" else count_total(completed_counts),
+        "remaining_total": remaining_total if work_type == "App" else count_total(remaining_counts),
         "completed_items": completed_items,
         "remaining_items": current_remaining,
         "key_points": clean_list(prior.get("key_points")) or ["无"],
@@ -714,21 +819,28 @@ def _history_project_row(
         "next_week_plan": plans,
     }
     missing: list[str] = []
-    for field in ("customer", "project_role", "requirement_date", "requirement_source"):
+    for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
         if clean_text(row.get(field)) in MISSING_VALUES or clean_text(row.get(field)).startswith("需成员补充"):
             missing.append(f"{project}.{field}")
+    if row["work_type"] not in ALLOWED_WORK_TYPES:
+        missing.append(f"{project}.work_type")
+    if row["work_type"] == "App" and not row["app_name"]:
+        missing.append(f"{project}.app_name")
     if row["project_role"] not in ALLOWED_PROJECT_ROLES:
         missing.append(f"{project}.project_role")
     if row["requirement_source"] not in ALLOWED_SOURCES:
         missing.append(f"{project}.requirement_source")
-    if row["project_role"] == "主责" and not row["requirement_structure_present"]:
-        missing.append(f"{project}.requirement_structure")
+    if row["project_role"] == "主责":
+        if row["work_type"] == "App" and not row["work_total_present"]:
+            missing.append(f"{project}.work_total")
+        elif row["work_type"] == "Patch" and not row["requirement_structure_present"]:
+            missing.append(f"{project}.requirement_structure")
     for field, count in (prior.get("legacy_custom_counts") or {}).items():
         if int(count or 0) > 0:
             missing.append(f"{project}.{field}_category_split")
-    if not row["next_week_plan"] and count_total(row["remaining_counts"]):
+    if not row["next_week_plan"] and row_count(row, "remaining_counts"):
         missing.append(f"{project}.next_week_plan")
-    if previous and count_total(normalize_counts(previous.get("remaining_counts"))) > len(prior_remaining) and daily_records:
+    if previous and row_count(prior, "remaining_counts") > len(prior_remaining) and daily_records:
         missing.append(f"{project}.remaining_item_identity")
     return row, missing
 
@@ -736,20 +848,27 @@ def _history_project_row(
 def _project_missing_fields(row: dict[str, Any]) -> list[str]:
     project = clean_text(row.get("project"), "unknown")
     missing: list[str] = []
-    for field in ("customer", "project_role", "requirement_date", "requirement_source"):
+    for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
         value = clean_text(row.get(field))
         if value in MISSING_VALUES or value.startswith("需成员补充"):
             missing.append(f"{project}.{field}")
+    if row.get("work_type") not in ALLOWED_WORK_TYPES:
+        missing.append(f"{project}.work_type")
+    if row.get("work_type") == "App" and not clean_text(row.get("app_name")):
+        missing.append(f"{project}.app_name")
     if row.get("project_role") not in ALLOWED_PROJECT_ROLES:
         missing.append(f"{project}.project_role")
     if row.get("requirement_source") not in ALLOWED_SOURCES:
         missing.append(f"{project}.requirement_source")
-    if row.get("project_role") == "主责" and not row.get("requirement_structure_present"):
-        missing.append(f"{project}.requirement_structure")
+    if row.get("project_role") == "主责":
+        if row.get("work_type") == "App" and not row.get("work_total_present"):
+            missing.append(f"{project}.work_total")
+        elif row.get("work_type") == "Patch" and not row.get("requirement_structure_present"):
+            missing.append(f"{project}.requirement_structure")
     for field, count in (row.get("legacy_custom_counts") or {}).items():
         if int(count or 0) > 0:
             missing.append(f"{project}.{field}_category_split")
-    if not clean_list(row.get("next_week_plan")) and count_total(normalize_counts(row.get("remaining_counts"))):
+    if not clean_list(row.get("next_week_plan")) and row_count(row, "remaining_counts"):
         missing.append(f"{project}.next_week_plan")
     return missing
 
@@ -792,14 +911,20 @@ def _session_fallback_projects(
             "customer": customer_context["customer_name"],
             "customer_name": customer_context["customer_name"],
             "downstream_customer": customer_context.get("downstream_customer", ""),
+            "work_type": "Patch" if synthetic else "需成员确认",
+            "app_name": "",
             "project_role": "主责" if synthetic else "需成员确认",
             "week_summary": summary,
             "requirement_date": start.isoformat() if synthetic else "需成员确认",
             "requirement_source": "TL" if synthetic else "需成员确认",
             "requirement_structure_present": synthetic,
             "requirement_structure_counts": total_counts,
+            "work_total_present": synthetic,
+            "work_total": count_total(total_counts),
             "completed_this_week_counts": completed_counts,
             "remaining_counts": remaining_counts,
+            "completed_this_week_total": count_total(completed_counts),
+            "remaining_total": count_total(remaining_counts),
             "completed_items": completed_items,
             "remaining_items": remaining_items,
             "key_points": ["无"],
@@ -822,8 +947,36 @@ def project_rows_to_items(projects: list[dict[str, Any]]) -> dict[str, list[tupl
         entries.extend((item, "进行中") for item in clean_list(row.get("remaining_items")))
         if not entries:
             entries.append((clean_text(row.get("week_summary"), "未形成有效工作记录"), "进行中"))
-        result[project] = entries
+        result.setdefault(project, []).extend(entries)
     return result
+
+
+def assign_daily_records_to_scopes(
+    prior_rows: list[dict[str, Any]],
+    records: list[dict[str, str]],
+) -> tuple[list[list[dict[str, str]]], bool]:
+    if len(prior_rows) <= 1:
+        return [records], False
+    assigned: list[list[dict[str, str]]] = [[] for _ in prior_rows]
+    ambiguous = False
+    for record in records:
+        text = clean_text(record.get("text"))
+        candidates: list[int] = []
+        for index, row in enumerate(prior_rows):
+            app_name = clean_text(row.get("app_name"))
+            known_items = [
+                *clean_list(row.get("completed_items")),
+                *clean_list(row.get("remaining_items")),
+            ]
+            if (app_name and app_name.casefold() in text.casefold()) or any(
+                same_item(text, item) for item in known_items
+            ):
+                candidates.append(index)
+        if len(candidates) == 1:
+            assigned[candidates[0]].append(record)
+        else:
+            ambiguous = True
+    return assigned, ambiguous
 
 
 def facts_hash(projects: list[dict[str, Any]]) -> str:
@@ -887,16 +1040,27 @@ def build_weekly_facts(
         projects = []
         project_names = sorted(set(previous) | set(daily_records))
         for project in project_names:
-            row, project_missing = _history_project_row(
-                project,
-                previous.get(project),
-                daily_meta.get(project, {}),
-                daily_records.get(project, []),
-                period_start=start,
-                as_of=as_of,
-            )
-            projects.append(row)
-            missing_fields.extend(project_missing)
+            prior_rows = previous.get(project, [])
+            records = daily_records.get(project, [])
+            if not prior_rows:
+                prior_rows = [None]
+                records_by_scope = [records]
+                ambiguous_scope = False
+            else:
+                records_by_scope, ambiguous_scope = assign_daily_records_to_scopes(prior_rows, records)
+            for prior, scope_records in zip(prior_rows, records_by_scope):
+                row, project_missing = _history_project_row(
+                    project,
+                    prior,
+                    daily_meta.get(project, {}),
+                    scope_records,
+                    period_start=start,
+                    as_of=as_of,
+                )
+                projects.append(row)
+                missing_fields.extend(project_missing)
+            if ambiguous_scope:
+                missing_fields.append(f"{project}.work_scope_assignment")
     if not projects:
         projects, fallback_missing = _session_fallback_projects(
             start,
@@ -915,7 +1079,8 @@ def build_weekly_facts(
         "schema": WEEKLY_FACT_SOURCES_SCHEMA,
         "week_range": week_key,
         **provenance,
-        "project_count": len(projects),
+        "project_count": len({clean_text(row.get("project")) for row in projects}),
+        "work_scope_count": len(projects),
         "missing_fields": sorted(set(missing_fields)),
         "identity_conflicts": identity_conflicts,
         "facts_sha256": facts_hash(projects),
