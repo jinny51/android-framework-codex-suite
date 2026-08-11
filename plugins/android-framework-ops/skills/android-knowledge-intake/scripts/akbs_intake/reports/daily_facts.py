@@ -30,6 +30,7 @@ LEGACY_DAILY_FACTS_SCHEMA = "akbs-daily-project-facts-v1"
 DAILY_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v2"
 LEGACY_DAILY_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v1"
 DAILY_STATUS_VALUES = {"已完成", "处理中", "待验证", "阻塞"}
+NO_TOMORROW_FOCUS_VALUES = {"无", "无。", "暂无", "暂无。", "没有", "没有。"}
 OLD_DAILY_HOW_TEXT = "根据 Codex 会话记录、工程修改、命令执行和材料证据整理实际处理过程。"
 
 
@@ -115,7 +116,19 @@ def focus_from_work_items(work_items: list[dict[str, Any]]) -> list[str]:
         for item in work_items
         if clean_scope_text(item.get("status")) != "已完成"
     ]
-    return ["继续推进：" + "、".join(item for item in unfinished[:3] if item)] if any(unfinished) else []
+    return ["继续推进：" + "、".join(item for item in unfinished[:3] if item)] if any(unfinished) else ["无"]
+
+
+def normalize_tomorrow_focus(
+    value: Any,
+    *,
+    field_present: bool,
+    work_items: list[dict[str, Any]],
+) -> list[str]:
+    if not field_present:
+        return focus_from_work_items(work_items)
+    focus = [item for item in clean_list(value) if item not in NO_TOMORROW_FOCUS_VALUES]
+    return focus or ["无"]
 
 
 def normalize_daily_project(
@@ -134,10 +147,11 @@ def normalize_daily_project(
         work_items = fallback_work_items(project, project_items, daily_work_items)
     else:
         work_items = []
-    focus_present = "tomorrow_focus" in value
-    tomorrow_focus = clean_list(value.get("tomorrow_focus"))
-    if not focus_present:
-        tomorrow_focus = focus_from_work_items(work_items)
+    tomorrow_focus = normalize_tomorrow_focus(
+        value.get("tomorrow_focus"),
+        field_present="tomorrow_focus" in value,
+        work_items=work_items,
+    )
     customer = clean_scope_text(value.get("customer") or value.get("customer_name"))
     row: dict[str, Any] = {
         "project": project,
@@ -169,10 +183,11 @@ def normalize_daily_document(value: dict[str, Any]) -> dict[str, Any]:
         if isinstance(raw_items, list)
         else []
     )
-    focus_present = "tomorrow_focus" in value
-    tomorrow_focus = clean_list(value.get("tomorrow_focus"))
-    if not focus_present:
-        tomorrow_focus = focus_from_work_items(work_items)
+    tomorrow_focus = normalize_tomorrow_focus(
+        value.get("tomorrow_focus"),
+        field_present="tomorrow_focus" in value,
+        work_items=work_items,
+    )
     return {
         "work_type": DOCUMENT_WORK_TYPE,
         "document_name": clean_document_name(value.get("document_name")),

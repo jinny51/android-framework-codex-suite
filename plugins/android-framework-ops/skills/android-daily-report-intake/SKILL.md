@@ -68,7 +68,9 @@ consistent evidence may automatically split the same project into one Patch and
 multiple named Apps. A mixed session is not split unless each item can be bound
 to a scope without guessing. The same Patch or same App must not be repeated. A
 scope with any `处理中`, `待验证`, or `阻塞` item must have a non-empty
-`tomorrow_focus[]`.
+`tomorrow_focus[]`. When the member explicitly says there is no next-day focus,
+preserve that answer as `tomorrow_focus=["无"]`; never rewrite it to an empty
+array or reject the report merely because unfinished work exists.
 
 Run normal generation first and let the shared kernel infer scope from the
 authorized evidence. Use `akbs-daily-work-facts-v2` under

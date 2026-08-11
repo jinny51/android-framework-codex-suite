@@ -2394,47 +2394,64 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(edited_check["status"], "FAIL")
             self.assertIn("不能只改其中一份", "\n".join(edited_check["errors"]))
 
-    def test_daily_app_name_and_unfinished_focus_are_hard_gates(self) -> None:
+    def test_daily_app_name_is_a_hard_gate_and_explicit_no_focus_is_preserved(self) -> None:
         module = load_intake_module()
         daily_module = importlib.import_module("akbs_intake.reports.daily_facts")
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             facts = root / "daily-facts.json"
-            facts.write_text(
-                json.dumps(
+            payload = {
+                "schema": "akbs-daily-project-facts-v1",
+                "report_date": "2026-06-03",
+                "projects": [
                     {
-                        "schema": "akbs-daily-project-facts-v1",
-                        "report_date": "2026-06-03",
-                        "projects": [
+                        "project": "TVI2343R",
+                        "customer": "海信",
+                        "work_type": "App",
+                        "work_items": [
                             {
-                                "project": "TVI2343R",
-                                "customer": "海信",
-                                "work_type": "App",
-                                "work_items": [
-                                    {
-                                        "name": "接口联调",
-                                        "did": ["完成接口接入"],
-                                        "how": ["执行本地联调"],
-                                        "result": "仍在联调",
-                                        "status": "处理中",
-                                    }
-                                ],
-                                "tomorrow_focus": [],
+                                "name": "接口联调",
+                                "did": ["完成接口接入"],
+                                "how": ["执行本地联调"],
+                                "result": "仍在联调",
+                                "status": "处理中",
                             }
                         ],
-                    },
-                    ensure_ascii=False,
-                ),
+                        "tomorrow_focus": [],
+                    }
+                ],
+            }
+            facts.write_text(
+                json.dumps(payload, ensure_ascii=False),
                 encoding="utf-8",
             )
 
-            with self.assertRaisesRegex(SystemExit, "app_name.*tomorrow_focus"):
+            with self.assertRaisesRegex(SystemExit, "app_name"):
                 daily_module.load_explicit_facts(
                     facts,
                     dt.date(2026, 6, 3),
                     project_items={},
                     daily_work_items={},
                 )
+            payload["projects"][0]["app_name"] = "联调工具"
+            payload["projects"][0]["tomorrow_focus"] = "无"
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            projects = daily_module.load_explicit_facts(
+                facts,
+                dt.date(2026, 6, 3),
+                project_items={},
+                daily_work_items={},
+            )
+            self.assertEqual(projects[0]["tomorrow_focus"], ["无"])
+            payload["projects"][0]["tomorrow_focus"] = []
+            facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            projects = daily_module.load_explicit_facts(
+                facts,
+                dt.date(2026, 6, 3),
+                project_items={},
+                daily_work_items={},
+            )
+            self.assertEqual(projects[0]["tomorrow_focus"], ["无"])
             self.assertTrue(callable(module.validate_package))
 
     def test_report_local_check_rejects_missing_customer_and_command_text_customer(self) -> None:
@@ -3337,9 +3354,12 @@ class MemberAutomationFlowTests(unittest.TestCase):
             daily_report = read_package_report(daily)
             self.assertEqual(daily_view["projects"], [])
             self.assertEqual(daily_view["documents"][0]["work_type"], "Document")
+            self.assertEqual(daily_view["documents"][0]["tomorrow_focus"], ["无"])
             self.assertTrue(daily_manifest["has_non_project_work"])
             self.assertNotIn("需成员补充项目名", daily_report)
             self.assertIn("### 文档：Android Framework Orchestrator 功能介绍文档", daily_report)
+            self.assertIn("## 三、明日重点", daily_report)
+            self.assertIn("- 无", daily_report)
 
             write_codex_session(
                 Path(env["CODEX_HOME"]),

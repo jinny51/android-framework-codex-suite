@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 
-AKBS_RULES_CONTRACT_VERSION = "2026-08-11.1"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.153"
+AKBS_RULES_CONTRACT_VERSION = "2026-08-11.2"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.154"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -76,6 +76,10 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
     "report_document_work_v1": {
         "min_plugin_version": "1.0.153",
         "description": "daily and weekly reports preserve standalone Document work without fabricated project or customer identity",
+    },
+    "daily_no_focus_marker_v1": {
+        "min_plugin_version": "1.0.154",
+        "description": "daily reports preserve an explicit no-next-day-focus answer as the visible marker 无",
     },
     "report_render_binding_v1": {
         "min_plugin_version": "1.0.151",

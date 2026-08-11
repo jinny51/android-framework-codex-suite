@@ -74,7 +74,9 @@ Rules:
   `result`, and `status`. Status is exactly `已完成`, `处理中`, `待验证`, or
   `阻塞`.
 - A scope containing `处理中`, `待验证`, or `阻塞` work must have a non-empty
-  `tomorrow_focus[]`. A fully completed scope may use an empty array.
+  `tomorrow_focus[]`. When the member says there is no next-day focus, write
+  `["无"]`; do not turn that answer into an empty array or block submission.
+  Explicit empty/no-focus values are normalized to `["无"]` for compatibility.
 - Codex writes this JSON from the current development evidence and only asks the
   member for facts that remain ambiguous. Do not ask the member to hand-edit
   JSON, Markdown, or `report_view.json`.
