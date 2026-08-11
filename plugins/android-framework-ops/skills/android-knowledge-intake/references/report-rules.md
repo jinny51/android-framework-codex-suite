@@ -94,9 +94,13 @@
 
 ### **项目名** 客户名 [客户的客户]｜Patch / App：App 名称
 - 明天优先处理什么。
+
+### 文档：文档名称
+- 明天优先处理什么。
 ```
 
-日报按工作范围分块。Patch 表示系统源码定制，App 表示应用或 demo 开发。
+日报按工作范围分块。Patch 表示系统源码定制，App 表示应用或 demo 开发，
+Document 表示独立文档整理。
 同一项目可有一个 Patch 和多个不同 App；App 必须写 App 名称。只要范围内有
 `处理中`、`待验证`或`阻塞`事项，就必须填写该范围的明日重点。日报不填写
 项目角色、需求时间、需求来源、项目总量或剩余量。
@@ -104,7 +108,8 @@
 类型判定优先使用成员明确说明，其次使用高置信度开发证据。SystemUI、Launcher、
 Settings 和 Framework 服务等系统源码修改属于 Patch；独立交付的应用或 demo
 属于 App。证据一致时自动填写并可按范围拆分；证据冲突、仅有模糊事项文字或
-无法确定 App 名称时才询问成员。周报继承日报范围，不重新猜测。
+无法确定 App 名称或 Document 文档名称时才询问成员。Document 使用独立
+`documents[]`，不得把“文档”伪造成项目。周报继承日报范围，不重新猜测。
 
 ## Weekly Template
 
@@ -113,7 +118,7 @@ effective daily reports from AKBS, carry the current previous-week project
 ledger forward, apply report replacement chains, and use sessions only to
 supplement work absent from effective daily reports. `weekly_fact_sources`
 records this provenance. Missing ledger fields block upload and are completed
-through the explicit `akbs-weekly-project-facts-v3` contract. Requirement
+through the explicit `akbs-weekly-work-facts-v4` contract. Requirement
 source is created when the member receives the demand and must not be inferred
 from daily-report wording.
 
@@ -151,6 +156,11 @@ from daily-report wording.
 结构化 `projects[]` 按统计对象唯一：Patch 使用“项目 + 直接客户 + Patch”，App
 使用“项目 + 直接客户 + App + App 名称”。同一正式项目可以有一个 Patch 和多个
 不同 App，但不得重复同一 Patch 或同一 App。普通功能名称仍属于事项，不单独拆行。
+
+独立文档工作写入平级 `documents[]`：`work_type=Document`、`document_name`
+必填，不填写项目、客户、项目角色、需求时间、需求来源或项目总量。它使用简单的
+本周完成/当前剩余计数，并沿用完成详情、剩余详情、重点说明、风险/依赖和下周计划。
+Document 数量不得并入项目需求统计。
 
 ## 二、项目详情
 
@@ -221,14 +231,15 @@ into aliases. A two-segment identity such as `TVE1086U 青鸾云` remains valid.
 
 Report card fields are authoritative:
 
-- `material_name`：项目 + 客户链路。多项目写 `TVE1086U（青鸾云）、TVE1091U（AOC → 福建移动高清）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
-- `material_summary`：日报写各项目“今日主题”；周报写各项目“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
+- `material_name`：项目 + 客户链路；独立文档写 `文档工作：<文档名称>`。多项目写 `TVE1086U（青鸾云）、TVE1091U（AOC → 福建移动高清）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
+- `material_summary`：日报写各项目或文档的“今日主题”；周报写各项目或文档的“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
 - Daily project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/today_topic/current_result/work_items/tomorrow_focus`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
 - Weekly project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/project_role/week_summary/requirement_date/requirement_source/[requirement_structure/work_total]/completed_this_week/remaining/completed_items/remaining_items/key_points/risks/dependencies/next_week_plan`.
+- Daily and weekly document rows live in `documents[]`, require `work_type=Document` and `document_name`, reuse the corresponding progress/detail fields, and contain no project/customer fields.
 - The current read model does not emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.
 
 Daily scope identity and work-item assignment flow into weekly history so the
-weekly generator does not guess Patch/App from text. Old daily rows without
+weekly generator does not guess Patch/App/Document from text. Old daily rows without
 scope fields remain readable as history, but they cannot prove the weekly type
 and therefore leave an explicit fact gap.
 

@@ -36,7 +36,7 @@ Weekly facts are resolved in this order:
    not represented by an effective daily report.
 
 Current daily rows carry the evidence-resolved or member-confirmed Patch/App
-scope and conditional App name. Preserve that scope when rolling daily work into the weekly ledger;
+project scope or standalone Document scope. Preserve that scope when rolling daily work into the weekly ledger;
 do not classify by item wording. Historical daily rows without scope remain
 readable, but they do not prove `work_type`, so ask the member for that missing
 weekly fact.
@@ -44,7 +44,7 @@ weekly fact.
 Do not count Codex sessions as requirements. If the effective reports cannot
 prove project role, requirement date, requirement source, project totals, or
 remaining-item identity, local check must fail with exact missing fields. Ask the member
-only for those facts, write an `akbs-weekly-project-facts-v3` JSON file under
+only for those facts, write an `akbs-weekly-work-facts-v4` JSON file under
 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/`, and regenerate
 with `--weekly-facts`. Read `../android-knowledge-intake/references/weekly-facts-contract.md`
 when this fact-completion path is needed. Do not ask the member to repair a
@@ -62,6 +62,11 @@ Generate `reports/weekly.md` with this required structure:
 
 - 本周概况
 - 项目详情
+  - 本周完成
+  - 当前剩余
+  - 重点说明
+  - 风险 / 依赖
+- 文档工作（仅存在 Document 工作时）
   - 本周完成
   - 当前剩余
   - 重点说明
@@ -98,6 +103,13 @@ or demo development and requires `App 名称`. Preserve the scope resolved by th
 daily workflow; do not reclassify it from weekly item wording. Ask the member
 only when the daily source is missing, conflicting, or lacks the App name.
 
+Standalone documentation is not a project block. It uses `work_type=Document`
+and a concrete `document_name`, appears under `文档工作`, and does not require
+project, customer, project role, requirement date, requirement source, or
+project totals. Its weekly block still records `本周完成`, `当前剩余`,
+`重点说明`, `风险 / 依赖`, and `下周计划`. Do not write “项目：文档” and do
+not add Document counts to Patch/App project demand totals.
+
 `项目角色` is required and must be `主责` or `协作`. `需求时间` is required
 and uses `YYYY-MM-DD`. `需求来源` is required and must be exactly one of
 `CR`, `TL`, `PM`, `TE`, or `BSP`. Every member provides `本周完成` and
@@ -130,13 +142,17 @@ as separate unordered lists under subsection 4.
 For multiple projects, repeat the same block per project. Do not use a large
 overview table in `本周概况`.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, and `projects[]`. Each row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), required `work_type`, conditional `app_name`, `project_role`, `week_summary`, `requirement_date`, `requirement_source`, `completed_this_week`, `remaining`, `completed_items[]`, `remaining_items[]`, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`. A Patch main row also contains `requirement_structure`; an App main row contains `work_total`. Collaborators may omit their corresponding total.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, `projects[]`, and `documents[]`; at least one array must be non-empty. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), required `work_type`, conditional `app_name`, `project_role`, `week_summary`, `requirement_date`, `requirement_source`, `completed_this_week`, `remaining`, `completed_items[]`, `remaining_items[]`, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`. A Patch main row also contains `requirement_structure`; an App main row contains `work_total`. Collaborators may omit their corresponding total. Each document row contains `work_type=Document`, `document_name`, `week_summary`, completed/remaining counts and item arrays, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`, without project/customer fields.
 
 Weekly card identity is not the week range. `material_name` must preserve the
 customer chain, such as `TVE1086U（青鸾云）` or
 `TVE1091U（AOC → 福建移动高清）`; multiple projects must keep each project
-paired with its own customer chain. `material_summary` must summarize each project's
-weekly completed count, remaining count, and risk/dependency state. The current read model emits `material_name`, `material_summary`, and `projects`; it does not emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.
+paired with its own customer chain. Standalone documentation uses
+`文档工作：<文档名称>`. `material_summary` must summarize each project's or
+document's weekly completed and remaining state. The current read model emits
+`material_name`, `material_summary`, `projects`, and `documents`; it does not
+emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`,
+`weekly_progress_summary`, or `weekly_detail_sections`.
 
 Each project row must include both a recognized company project name
 and a direct customer. A third segment is optional and represents the direct
@@ -169,14 +185,18 @@ fact hash. Never repair only one file. Update the facts and regenerate.
 `--prepare` returns failure when local validation fails, and submission always
 revalidates before HTTP.
 
-Before running `--prepare`, `--upload`, or `--submit-latest`, check the current
-member request and visible conversation context for a recognized project +
-customer pair. If Codex cannot find both values, do not run the command yet.
-Reply in the conversation:
+Before running `--prepare`, `--upload`, or `--submit-latest`, distinguish
+Patch/App project work from standalone Document work. A project row requires a
+recognized project + customer pair; a Document row requires a concrete
+document name and no project/customer. Ask for project/customer only when the
+unresolved work is project work, and reply:
 
 ```text
 缺少项目名和客户名，请补充，例如：TVE1086U 青鸾云；如有客户的客户，继续写第三段，例如：TVE1091U AOC 福建移动高清。
 ```
+
+If it is standalone documentation, ask only for the concrete document name and
+use `Document`; never block it merely because no company project code exists.
 
 The weekly display date is the last workday of the period. A late weekly submission still displays the weekly period date, not the upload day.
 

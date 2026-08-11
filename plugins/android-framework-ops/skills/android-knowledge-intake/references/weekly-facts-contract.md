@@ -1,4 +1,4 @@
-# Weekly Project Facts Contract
+# Weekly Work Facts Contract
 
 Use this contract only when effective AKBS daily reports and the previous weekly
 ledger cannot prove every required project fact. Ask the member only for fields
@@ -14,7 +14,7 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
 
 ```json
 {
-  "schema": "akbs-weekly-project-facts-v3",
+  "schema": "akbs-weekly-work-facts-v4",
   "week_range": "20260601-20260607",
   "projects": [
     {
@@ -52,6 +52,21 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
       "dependencies": ["等待客户提供正式 API"],
       "next_week_plan": ["完成整机链路验证"]
     }
+  ],
+  "documents": [
+    {
+      "work_type": "Document",
+      "document_name": "Android Framework Orchestrator 功能介绍文档",
+      "week_summary": "本周完成功能介绍文档整理并进入评审。",
+      "completed_this_week": 1,
+      "remaining": 0,
+      "completed_items": ["整理组件职责、调用流程和使用边界"],
+      "remaining_items": [],
+      "key_points": ["统一组件职责和使用边界"],
+      "risks": [],
+      "dependencies": [],
+      "next_week_plan": []
+    }
   ]
 }
 ```
@@ -59,6 +74,7 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
 Rules:
 
 - `week_range` must equal the generated weekly period.
+- `projects[]` and `documents[]` are arrays; at least one must be non-empty.
 - `project` must be a recognized TVD/TVE/TVA/TVI company project.
 - `customer` is the required direct customer. Optional `downstream_customer`
   means the direct customer's customer.
@@ -68,6 +84,13 @@ Rules:
   customer + Patch`; App identity adds `app_name`. The same project may contain
   one Patch row and multiple differently named App rows. Feature names remain
   work items and do not create additional rows.
+- Standalone documentation belongs in `documents[]`. Its `work_type` is exactly
+  `Document`, `document_name` is required, and project/customer/App fields are
+  forbidden. Do not write “项目：文档”. Document work does not require project
+  role, requirement date, requirement source, or project total.
+- Document `completed_this_week` and `remaining` are non-negative integer work
+  counts. Positive counts require matching item arrays, and positive remaining
+  requires `next_week_plan`.
 - `project_role` is required and must be `主责` or `协作`.
 - `requirement_date` is required and uses `YYYY-MM-DD`.
 - `requirement_source` is required and must be one of `CR`, `TL`, `PM`, `TE`,

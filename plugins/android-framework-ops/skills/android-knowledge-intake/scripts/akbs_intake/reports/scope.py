@@ -4,8 +4,11 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from .document_work import DOCUMENT_WORK_TYPE, document_name_from_text
 
-ALLOWED_WORK_TYPES = {"Patch", "App"}
+
+PROJECT_WORK_TYPES = {"Patch", "App"}
+ALLOWED_WORK_TYPES = PROJECT_WORK_TYPES | {DOCUMENT_WORK_TYPE}
 
 EXPLICIT_PATCH_RE = re.compile(
     r"(?i)(?:类型|工作类型|开发类型)\s*[:：=]\s*patch\b|"
@@ -15,6 +18,11 @@ EXPLICIT_APP_RE = re.compile(
     r"(?i)(?:类型|工作类型|开发类型)\s*[:：=]\s*app\b|"
     r"(?:属于|这是|这项(?:工作|开发)?是|做的是)\s*(?:独立\s*)?(?:app|应用开发)\b|"
     r"(?:app|应用)\s*(?:名称|名)\s*[:：=]"
+)
+EXPLICIT_DOCUMENT_RE = re.compile(
+    r"(?i)(?:类型|工作类型|开发类型)\s*[:：=]\s*(?:document|文档)\b|"
+    r"(?:属于|这是|这项(?:工作|任务)?是|做的是)\s*(?:document|文档(?:整理|编写|工作)?)\b|"
+    r"项目\s*[:：=]\s*文档\b"
 )
 PATCH_TEXT_RE = re.compile(
     r"(?i)(?:frameworks/base|system_server|systemui|launcher3|settingsprovider|"
@@ -26,6 +34,10 @@ APP_TEXT_RE = re.compile(
     r"(?i)(?:(?:独立|单独)\s*(?:app|应用)|(?:app|应用|demo)\s*(?:开发|维护|调试|构建|联调)|"
     r"(?:开发|实现|维护|调试|构建|联调)\s*[^，,。；;\n]{0,28}\s*(?:app|应用)|"
     r"\bapplicationid\b|\bassemble(?:debug|release)\b|(?:生成|产出|构建|安装)\s*[^，,。；;\n]{0,12}\.(?:apk|aab)\b)"
+)
+DOCUMENT_TEXT_RE = re.compile(
+    r"(?i)(?:编写|撰写|整理|更新|完善|补充|维护|修订|输出|产出)\s*"
+    r"[^，,。；;\n]{0,64}\s*文档\b"
 )
 APP_NAME_PATTERNS = (
     re.compile(r"(?i)(?:app|应用)\s*(?:名称|名)?\s*[:：=]\s*([^，,。；;|\n]{1,32})"),
@@ -71,6 +83,7 @@ class WorkScopeInference:
     app_name: str = ""
     basis: tuple[str, ...] = ()
     conflict: bool = False
+    document_name: str = ""
 
 
 def clean_scope_text(value: Any) -> str:
@@ -136,21 +149,35 @@ def text_scope_inference(
         return WorkScopeInference()
     explicit_patch = allow_explicit and bool(EXPLICIT_PATCH_RE.search(text))
     explicit_app = allow_explicit and bool(EXPLICIT_APP_RE.search(text))
-    if explicit_patch and explicit_app:
+    explicit_document = allow_explicit and bool(EXPLICIT_DOCUMENT_RE.search(text))
+    if sum(bool(value) for value in (explicit_patch, explicit_app, explicit_document)) > 1:
         return WorkScopeInference(basis=("conflicting_explicit_work_type",), conflict=True)
     if explicit_patch:
         return WorkScopeInference("Patch", basis=("explicit_work_type",))
     if explicit_app:
         return WorkScopeInference("App", app_name_from_text(text), ("explicit_work_type",))
+    if explicit_document:
+        return WorkScopeInference(
+            DOCUMENT_WORK_TYPE,
+            basis=("explicit_work_type",),
+            document_name=document_name_from_text(text),
+        )
 
     patch = bool(PATCH_TEXT_RE.search(text))
     app = bool(APP_TEXT_RE.search(text))
-    if patch and app:
+    document = bool(DOCUMENT_TEXT_RE.search(text))
+    if sum(bool(value) for value in (patch, app, document)) > 1:
         return WorkScopeInference(basis=("conflicting_development_evidence",), conflict=True)
     if patch:
         return WorkScopeInference("Patch", basis=("framework_development_terms",))
     if app:
         return WorkScopeInference("App", app_name_from_text(text), ("standalone_app_development_terms",))
+    if document:
+        return WorkScopeInference(
+            DOCUMENT_WORK_TYPE,
+            basis=("document_work_terms",),
+            document_name=document_name_from_text(text),
+        )
     return WorkScopeInference()
 
 
@@ -165,7 +192,12 @@ def combine_scope_inferences(*values: WorkScopeInference) -> WorkScopeInference:
             return WorkScopeInference(basis=("conflicting_explicit_work_type",), conflict=True)
         chosen_type = next(iter(explicit_types))
         chosen = next(value for value in explicit if value.work_type == chosen_type)
-        return WorkScopeInference(chosen_type, chosen.app_name, tuple(dict.fromkeys(chosen.basis)))
+        return WorkScopeInference(
+            chosen_type,
+            chosen.app_name,
+            tuple(dict.fromkeys(chosen.basis)),
+            document_name=chosen.document_name,
+        )
     if any(value.conflict for value in relevant):
         return WorkScopeInference(basis=("conflicting_development_evidence",), conflict=True)
     types = {value.work_type for value in relevant if value.work_type}
@@ -182,8 +214,20 @@ def combine_scope_inferences(*values: WorkScopeInference) -> WorkScopeInference:
     ]
     if work_type == "App" and len({name.casefold() for name in development_names}) > 1:
         return WorkScopeInference(basis=("conflicting_app_name_evidence",), conflict=True)
+    document_names = [
+        value.document_name
+        for value in relevant
+        if value.work_type == DOCUMENT_WORK_TYPE and value.document_name
+    ]
+    if work_type == DOCUMENT_WORK_TYPE and len({name.casefold() for name in document_names}) > 1:
+        return WorkScopeInference(basis=("conflicting_document_name_evidence",), conflict=True)
     basis = tuple(dict.fromkeys(item for value in relevant for item in value.basis))
-    return WorkScopeInference(work_type, development_names[0] if development_names else names[0] if names else "", basis)
+    return WorkScopeInference(
+        work_type,
+        development_names[0] if development_names else names[0] if names else "",
+        basis,
+        document_name=document_names[0] if document_names else "",
+    )
 
 
 def infer_work_scope(
@@ -213,4 +257,6 @@ def report_scope_key(row: dict[str, Any]) -> tuple[str, str, str]:
 def report_scope_suffix(row: dict[str, Any]) -> str:
     if clean_scope_text(row.get("work_type")) == "App":
         return f"App：{clean_scope_text(row.get('app_name')) or '需成员确认'}"
+    if clean_scope_text(row.get("work_type")) == DOCUMENT_WORK_TYPE:
+        return f"Document：{clean_scope_text(row.get('document_name')) or '需成员确认'}"
     return clean_scope_text(row.get("work_type")) or "需成员确认"

@@ -68,15 +68,15 @@ python3 scripts/android_knowledge_intake.py --profile <member_alias> patch --pre
 
 `--upload` 生成并上传，`--submit-latest` 上传最近一个已准备包。日报按日期、周报按周周期保持唯一；替换必须显式提供被替换的运行编号。`--prepare` 本地校验失败时返回非零，上传与提交都会在 HTTP 前重新校验。
 
-日报优先根据成员明确说明和高置信度开发证据自动判定 `Patch` 或 `App`，App 还必须确定 App 名称；只有证据冲突或缺失时才询问成员。SystemUI、Launcher、Settings 和 Framework 服务等系统源码工作属于 Patch，独立应用或 demo 属于 App。`akbs-daily-project-facts-v1` 只用于补齐、纠正或显式覆盖未决范围。同一项目可包含一个 Patch 和多个不同 App；日报不填写项目角色、需求来源或数量台账。
+日报优先根据成员明确说明和高置信度工作证据自动判定 `Patch`、`App` 或 `Document`。App 必须确定 App 名称，Document 必须确定文档名称且不要求项目/客户；只有证据冲突或缺失时才询问成员。`akbs-daily-work-facts-v2` 只用于补齐、纠正或显式覆盖未决范围。日报不填写项目角色、需求来源或数量台账。
 
-周报生成优先消费 AKBS 当前有效日报和上一周项目台账，离线时只读取本机 submitted 替换链的当前叶节点；session 仅作补充，不参与需求总量口径。每个周报包写 `weekly_fact_sources` 证据，事实缺口会阻止上传。Codex 应只向成员追问缺失字段，生成 `akbs-weekly-project-facts-v3` artifact 后用 `--weekly-facts <path>` 重新生成。旧`定制`数量不能自动拆成`需求`和`移植`。
+周报生成优先消费 AKBS 当前有效日报、上一周项目台账和文档进展，离线时只读取本机 submitted 替换链的当前叶节点；session 仅作补充，不参与需求总量口径。每个周报包写 `weekly_fact_sources` 证据，事实缺口会阻止上传。Codex 应只向成员追问缺失字段，生成 `akbs-weekly-work-facts-v4` artifact 后用 `--weekly-facts <path>` 重新生成。旧`定制`数量不能自动拆成`需求`和`移植`。
 
 周报的`类型`只允许 `Patch` 或 `App`。同一公司项目保持一条客户链，但可以有一个 Patch 和多个不同 App；App 必须填写 App 名称。门禁按“项目 + 客户 + 类型 + App 名称（仅 App）”校验统计对象唯一性，以及展示身份与来源证据的一致性；冲突会在 HTTP 前失败。无下周动作时使用空计划数组，不渲染“无”占位项目块。
 
 日报和周报的 Markdown、`report_view.json` 与结构化事实由 `report_render_binding` 绑定。本地校验还会从 `report_view.json` 确定性重渲染 Markdown 并要求完全一致；不得只手改其中一份。
 
-真实日报或周报的生成必须来自成员本次明确请求，并通过 `--session-consent` 和最小 `--session-field` 集合授权。日报的 `work_scope_hint` 只从源码位置派生安全的 Patch/App 范围提示，原始路径不保留。本次日期或周范围就是授权时间窗；授权不写入 profile，也不能跨运行或定时任务复用。缺少授权时脚本在读取 session、创建包和 HTTP 前失败。包内只保留最小 source session ID、时间窗、consent version/fields 和 retention policy，不复制 thread 名、cwd、原始消息或原始命令。
+真实日报或周报的生成必须来自成员本次明确请求，并通过 `--session-consent` 和最小 `--session-field` 集合授权。日报的 `work_scope_hint` 只从工作证据派生安全的 Patch/App/Document 范围提示，原始路径不保留。本次日期或周范围就是授权时间窗；授权不写入 profile，也不能跨运行或定时任务复用。缺少授权时脚本在读取 session、创建包和 HTTP 前失败。包内只保留最小 source session ID、时间窗、consent version/fields 和 retention policy，不复制 thread 名、cwd、原始消息或原始命令。
 
 日报和周报必须在生成阶段识别项目名和客户名。无法识别时，Codex 应在会话中提示成员补充，例如 `TVE1086U 青鸾云`；未补齐的包可以保留在本地，但上传前必须拒绝。
 

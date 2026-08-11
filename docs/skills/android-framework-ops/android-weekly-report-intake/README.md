@@ -13,11 +13,11 @@
 
 周报统计周期固定为周一至周日，起止日期都纳入统计；补交日期不改变日报所属日期，也不能导致周一日报被漏掉。周报事实优先读取 AKBS 中本周当前有效日报和上一周当前有效周报；API 不可用时回退到本机 `submitted` 包，并按替换链只选补交后的叶节点。Codex session 只补充有效日报未覆盖的事项，不能再把“一段会话”统计成“一项需求”。跨日长会话按消息日期和文件活跃时间补扫。
 
-当前日报已携带由开发证据自动判定或成员确认的 Patch/App 范围和 App 名称，周报按该范围归并，不再根据事项文字重新猜类型。旧日报缺少范围字段时仍可读取，但不能证明周报类型，必须由成员补齐。
+当前日报已携带由工作证据自动判定或成员确认的 Patch/App 项目范围、App 名称或独立 Document 文档范围，周报按该范围归并，不再根据事项文字重新猜类型。旧日报缺少范围字段时仍可读取，但不能证明周报类型，必须由成员补齐。
 
-如果类型、App 名称（仅 App）、项目角色、需求时间、需求来源、主责总量或剩余事项身份仍缺失，本地检查会列出准确字段并阻止上传。成员只补这些事实，Codex 将其写入 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/` 下的 `akbs-weekly-project-facts-v3` JSON，再通过 `--weekly-facts <path>` 重新生成；不再要求成员大面积手改 Markdown。
+如果类型、App 名称（仅 App）、文档名称（仅 Document）、项目角色、需求时间、需求来源、主责总量或剩余事项身份仍缺失，本地检查会列出准确字段并阻止上传。成员只补这些事实，Codex 将其写入 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/` 下的 `akbs-weekly-work-facts-v4` JSON，再通过 `--weekly-facts <path>` 重新生成；不再要求成员大面积手改 Markdown。
 
-`report_view.json` 是同一份周报正文的 UI 读模型（UI read model），使用 `schema=akbs-report-view-human-v1`，至少包含 `report_type=weekly`、`week_range`、`display_date`、`material_name`、`material_summary`、`member_alias`、`member_name` 和 `projects[]`。每行包含 `project`、直接客户 `customer`、可选的客户的客户 `downstream_customer`、必填 `work_type`、App 条件必填的 `app_name`、`project_role`、`week_summary`、`requirement_date`、`requirement_source`、`completed_this_week`、`remaining` 和事项数组。Patch 主责填写 `requirement_structure`，App 主责填写 `work_total`；协作可省略对应总量。周报包只归档，不进入知识库沉淀候选。
+`report_view.json` 是同一份周报正文的 UI 读模型（UI read model），使用 `schema=akbs-report-view-human-v1`，至少包含 `report_type=weekly`、`week_range`、`display_date`、`material_name`、`material_summary`、`member_alias`、`member_name`、`projects[]` 和 `documents[]`。项目行保留 Patch/App 项目台账；文档行使用 `work_type=Document`、`document_name`、完成/剩余数量和详情数组，不填写项目、客户、项目角色或需求字段。Document 数量不并入项目需求统计。周报包只归档，不进入知识库沉淀候选。
 
 `类型`只允许 `Patch` 或 `App`。Patch 按“项目 + 直接客户”形成一个统计对象；App 再加 `App 名称`形成统计对象。同一公司项目可以有一个 Patch 和多个不同 App，但不得重复同一 Patch 或同一 App。普通功能名称写在完成项、剩余项或下周计划中。没有下周动作时 `next_week_plan` 使用空数组，Markdown 不显示该统计对象的计划块，不用“无”占位。生成和 `--submit-latest` 都会在 HTTP 前重新执行这些校验。
 

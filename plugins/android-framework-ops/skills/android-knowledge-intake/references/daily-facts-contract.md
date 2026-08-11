@@ -1,8 +1,8 @@
-# Daily Project Facts Contract
+# Daily Work Facts Contract
 
 Use this contract only when authorized development evidence cannot resolve a
 daily work scope, when the inferred scope needs correction, or when the member
-explicitly overrides it. Normal high-confidence Patch/App inference does not
+explicitly overrides it. Normal high-confidence Patch/App/Document inference does not
 require this file. Write it under:
 
 ```text
@@ -13,7 +13,7 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
 
 ```json
 {
-  "schema": "akbs-daily-project-facts-v1",
+  "schema": "akbs-daily-work-facts-v2",
   "report_date": "2026-08-10",
   "projects": [
     {
@@ -27,6 +27,22 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
       "work_type": "App",
       "app_name": "设备管理工具"
     }
+  ],
+  "documents": [
+    {
+      "work_type": "Document",
+      "document_name": "Android Framework Orchestrator 功能介绍文档",
+      "work_items": [
+        {
+          "name": "完成功能介绍文档",
+          "did": ["整理组件职责、调用流程和使用边界"],
+          "how": ["核对实现代码和现有说明后按功能模块重写"],
+          "result": "文档已完成并可供评审",
+          "status": "已完成"
+        }
+      ],
+      "tomorrow_focus": []
+    }
   ]
 }
 ```
@@ -34,15 +50,21 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
 Rules:
 
 - `report_date` must equal the generated daily date.
-- `project` and direct `customer` are required. Optional
+- `projects[]` and `documents[]` are arrays; at least one must be non-empty.
+- In `projects[]`, `project` and direct `customer` are required. Optional
   `downstream_customer` means the direct customer's customer.
 - `work_type` is required and must be exactly `Patch` or `App`. Patch means
   system-source customization; App means application or demo development.
   Explicit facts override automatic inference. Never infer from vague work-item
   wording alone.
 - `App` requires `app_name`; `Patch` must not provide it.
+- In `documents[]`, `work_type` must be `Document` and `document_name` is
+  required. Do not provide project, customer, downstream customer, or App name.
+  Do not use “文档” as a fake company project code.
 - Scope identity is one Patch or one named App under a project/customer chain.
   The same project may contain one Patch and multiple differently named Apps.
+- Document scope identity is its concrete document name. Merge repeated work on
+  the same document instead of creating duplicate rows.
 - When a project has only one scope, `work_items`, `today_topic`,
   `current_result`, and `tomorrow_focus` may be omitted; the generator fills
   them from the authorized session-derived daily work.

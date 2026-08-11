@@ -10,14 +10,20 @@ from android_framework_ops.knowledge_rules import find_company_project
 
 from ..report_sessions import clean_report_customer_name
 from ..session_privacy import session_evidence_errors
-from .daily_facts import DAILY_FACT_SOURCES_SCHEMA
+from .daily_facts import DAILY_FACT_SOURCES_SCHEMA, LEGACY_DAILY_FACT_SOURCES_SCHEMA
+from .document_work import (
+    DOCUMENT_WORK_TYPE,
+    clean_document_name,
+    clean_list as clean_document_list,
+    validate_daily_documents,
+)
 from .render import (
     REPORT_MISSING_CUSTOMER_VALUES,
     REPORT_MISSING_PROJECT_VALUES,
     report_markdown_from_view,
 )
 from .render_binding import REPORT_RENDER_BINDING_SCHEMA
-from .weekly_facts import WEEKLY_FACT_SOURCES_SCHEMA
+from .weekly_facts import WEEKLY_FACT_SOURCES_SCHEMA, LEGACY_WEEKLY_FACT_SOURCES_SCHEMA
 
 
 RequireFile = Callable[[Any, str], Path | None]
@@ -57,7 +63,8 @@ OLD_DAILY_HOW_TEXT = "根据 Codex 会话记录、工程修改、命令执行和
 MISSING_PROJECT_GUIDANCE = (
     "当前会话未关联项目，请补充项目名和客户名；例如：TVE1086U 青鸾云；"
     "如有客户的客户：TVE1091U AOC 福建移动高清。"
-    "建议后续先创建项目，再在项目下创建开发会话。"
+    "建议后续先创建项目，再在项目下创建开发会话。独立文档整理应使用 Document 类型并填写文档名称，"
+    "不得把“文档”伪造成项目编号。"
 )
 
 
@@ -157,7 +164,14 @@ def validate_daily_project_inference(
     )
     if project and project != "unknown" and project not in inferred_projects:
         inferred_projects.append(project)
-    if not inferred_projects and project == "unknown":
+    non_project_work = bool(project_payload.get("non_project_work"))
+    if not inferred_projects and project == "unknown" and non_project_work:
+        if not manifest.get("has_non_project_work"):
+            errors.append("Document 日报 manifest.has_non_project_work 必须为 true")
+        documents = project_payload.get("documents")
+        if not isinstance(documents, list) or not any(clean_document_name(value) for value in documents):
+            errors.append("Document 日报 project_inference.documents 必须提供文档名称")
+    elif not inferred_projects and project == "unknown":
         errors.append(f"project_inference.project 未识别到公司项目名。{MISSING_PROJECT_GUIDANCE}")
         if not isinstance(project_payload.get("checked_sources"), list) or not project_payload.get("checked_sources"):
             errors.append("unknown project_inference 必须记录 checked_sources")
@@ -217,17 +231,21 @@ def validate_daily_fact_sources(
     if not isinstance(payload, dict):
         errors.append("daily_fact_sources payload 必须是对象")
         return
-    if payload.get("schema") != DAILY_FACT_SOURCES_SCHEMA:
+    if payload.get("schema") not in {DAILY_FACT_SOURCES_SCHEMA, LEGACY_DAILY_FACT_SOURCES_SCHEMA}:
         errors.append(f"daily_fact_sources.schema 必须是 {DAILY_FACT_SOURCES_SCHEMA}")
     if payload.get("report_date") != manifest.get("date"):
         errors.append("daily_fact_sources.report_date 必须等于 manifest.date")
-    for field in ("project_count", "work_scope_count"):
+    counts: dict[str, int] = {}
+    for field in ("project_count", "document_count", "work_scope_count"):
         try:
             count = int(payload.get(field) or 0)
         except (TypeError, ValueError):
             count = 0
-        if count < 1:
-            errors.append(f"daily_fact_sources.{field} 必须大于 0")
+        counts[field] = count
+    if counts["work_scope_count"] < 1:
+        errors.append("daily_fact_sources.work_scope_count 必须大于 0")
+    if counts["project_count"] + counts["document_count"] < 1:
+        errors.append("daily_fact_sources 必须至少包含一个项目或文档范围")
     missing = payload.get("missing_fields")
     if not isinstance(missing, list):
         errors.append("daily_fact_sources.missing_fields 必须是数组")
@@ -282,7 +300,7 @@ def validate_weekly_fact_sources(
     if not isinstance(payload, dict):
         errors.append("weekly_fact_sources payload 必须是对象")
         return
-    if payload.get("schema") != WEEKLY_FACT_SOURCES_SCHEMA:
+    if payload.get("schema") not in {WEEKLY_FACT_SOURCES_SCHEMA, LEGACY_WEEKLY_FACT_SOURCES_SCHEMA}:
         errors.append(f"weekly_fact_sources.schema 必须是 {WEEKLY_FACT_SOURCES_SCHEMA}")
     if payload.get("week_range") != manifest.get("week_range"):
         errors.append("weekly_fact_sources.week_range 必须等于 manifest.week_range")
@@ -290,8 +308,12 @@ def validate_weekly_fact_sources(
         project_count = int(payload.get("project_count") or 0)
     except (TypeError, ValueError):
         project_count = 0
-    if project_count < 1:
-        errors.append("周报未形成项目级事实，请补充有效日报、上一周周报或 --weekly-facts")
+    try:
+        document_count = int(payload.get("document_count") or 0)
+    except (TypeError, ValueError):
+        document_count = 0
+    if project_count + document_count < 1:
+        errors.append("周报未形成项目或文档事实，请补充有效日报、上一周周报或 --weekly-facts")
     missing = payload.get("missing_fields")
     if not isinstance(missing, list):
         errors.append("weekly_fact_sources.missing_fields 必须是数组")
@@ -560,6 +582,87 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
         errors.append(f"{rel} payload.projects[{index}].next_week_plan 有剩余事项时必须提供")
 
 
+def validate_daily_report_view_documents(rel: str, documents: Any, errors: list[str]) -> None:
+    prefix = f"{rel} payload.documents"
+    errors.extend(validate_daily_documents(documents, prefix=prefix))
+    if not isinstance(documents, list):
+        return
+    for index, document in enumerate(documents):
+        if not isinstance(document, dict):
+            continue
+        work_items = document.get("work_items") if isinstance(document.get("work_items"), list) else []
+        for item_index, item in enumerate(work_items):
+            if not isinstance(item, dict):
+                continue
+            if OLD_DAILY_HOW_TEXT in clean_document_list(item.get("how")):
+                errors.append(
+                    f"{prefix}[{index}].work_items[{item_index}].how 不得使用固定套话，必须写实际处理方法"
+                )
+
+
+def validate_weekly_report_view_documents(rel: str, documents: Any, errors: list[str]) -> None:
+    prefix = f"{rel} payload.documents"
+    if not isinstance(documents, list):
+        errors.append(f"{prefix} 必须是数组")
+        return
+    seen: dict[str, int] = {}
+    for index, document in enumerate(documents):
+        row_prefix = f"{prefix}[{index}]"
+        if not isinstance(document, dict):
+            errors.append(f"{row_prefix} 必须是对象")
+            continue
+        if document.get("work_type") != DOCUMENT_WORK_TYPE:
+            errors.append(f"{row_prefix}.work_type 必须是 Document")
+        name = clean_document_name(document.get("document_name"))
+        if not name:
+            errors.append(f"{row_prefix}.document_name 必须提供具体文档名称")
+        elif name.casefold() in seen:
+            errors.append(f"{row_prefix} 与 {prefix}[{seen[name.casefold()]}] 的文档重复")
+        else:
+            seen[name.casefold()] = index
+        for forbidden in ("project", "customer", "customer_name", "downstream_customer", "app_name"):
+            if str(document.get(forbidden) or "").strip():
+                errors.append(f"{row_prefix}.{forbidden} 文档工作不得伪造项目或客户字段")
+        if not str(document.get("week_summary") or "").strip():
+            errors.append(f"{row_prefix}.week_summary 必须提供")
+        completed = parse_weekly_scalar_count_text(
+            document.get("completed_this_week"),
+            expected_label="本周完成",
+            field_path=f"{row_prefix}.completed_this_week",
+            errors=errors,
+        )
+        remaining = parse_weekly_scalar_count_text(
+            document.get("remaining"),
+            expected_label="当前剩余",
+            field_path=f"{row_prefix}.remaining",
+            errors=errors,
+        )
+        for field in ("completed_items", "remaining_items", "key_points", "risks", "dependencies", "next_week_plan"):
+            if not isinstance(document.get(field), list):
+                errors.append(f"{row_prefix}.{field} 必须是数组")
+        completed_items = [
+            item
+            for item in clean_document_list(document.get("completed_items"))
+            if item != "暂无明确完成项"
+        ]
+        remaining_items = [
+            item
+            for item in clean_document_list(document.get("remaining_items"))
+            if item != "无明确剩余项"
+        ]
+        if completed and not completed_items:
+            errors.append(f"{row_prefix}.completed_items 本周完成大于 0 时必须提供")
+        if remaining and not remaining_items:
+            errors.append(f"{row_prefix}.remaining_items 当前剩余大于 0 时必须提供")
+        plans = [
+            item
+            for item in clean_document_list(document.get("next_week_plan"))
+            if item not in WEEKLY_EMPTY_PLAN_VALUES
+        ]
+        if remaining and not plans:
+            errors.append(f"{row_prefix}.next_week_plan 当前有剩余时必须提供")
+
+
 def validate_report_view_payload(
     *,
     rel: str,
@@ -569,7 +672,7 @@ def validate_report_view_payload(
     expected_weekly_project_identities: Any = None,
     errors: list[str],
 ) -> None:
-    for field in ("schema", "report_type", "material_name", "material_summary", "member_alias", "member_name", "display_date", "projects"):
+    for field in ("schema", "report_type", "material_name", "material_summary", "member_alias", "member_name", "display_date"):
         if not view.get(field):
             errors.append(f"{rel} payload.{field} 必须提供")
     if view.get("schema") != "akbs-report-view-human-v1":
@@ -579,32 +682,44 @@ def validate_report_view_payload(
     for field in sorted(FORBIDDEN_REPORT_VIEW_FIELDS & set(view)):
         errors.append(f"{rel} payload.{field} 是已废弃的 report_view 字段，新包不得提供")
 
-    errors.extend(
-        report_project_customer_errors(
-            rel,
-            view.get("projects"),
-            "projects",
-            allow_work_scopes=True,
+    projects = view.get("projects")
+    documents = view.get("documents", [])
+    if not isinstance(projects, list):
+        errors.append(f"{rel} payload.projects 必须是数组")
+        projects = []
+    if not isinstance(documents, list):
+        errors.append(f"{rel} payload.documents 必须是数组")
+        documents = []
+    if not projects and not documents:
+        errors.append(f"{rel} payload.projects 和 payload.documents 至少提供一项")
+    if projects:
+        errors.extend(
+            report_project_customer_errors(
+                rel,
+                projects,
+                "projects",
+                allow_work_scopes=True,
+            )
         )
-    )
     if report_type == "weekly":
         errors.extend(
             weekly_project_identity_consistency_errors(
                 rel,
-                view.get("projects"),
+                projects,
                 expected_weekly_project_identities,
             )
         )
-    if not isinstance(view.get("projects"), list):
-        errors.append(f"{rel} payload.projects 必须是数组")
-        return
-    for index, project in enumerate(view.get("projects", [])):
+    for index, project in enumerate(projects):
         if not isinstance(project, dict):
             continue
         if report_type == "daily":
             validate_daily_report_view_project(rel, index, project, errors)
         else:
             validate_weekly_report_view_project(rel, index, project, errors)
+    if report_type == "daily":
+        validate_daily_report_view_documents(rel, documents, errors)
+    else:
+        validate_weekly_report_view_documents(rel, documents, errors)
     if report_type == "daily" and view.get("report_date") != manifest.get("date"):
         errors.append(f"{rel} payload.report_date 必须等于 manifest.date")
     if report_type == "weekly":

@@ -3274,6 +3274,133 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertFalse(project["payload"]["recognized"])
             self.assertIn("未作为项目名写入上传包", " ".join(project["payload"]["limits"]))
 
+    def test_document_work_is_a_non_project_daily_and_weekly_scope(self) -> None:
+        load_intake_module()
+        scope_module = importlib.import_module("akbs_intake.reports.scope")
+        inferred = scope_module.text_scope_inference(
+            ["已完成编写 Android Framework Orchestrator 功能介绍文档。"]
+        )
+        self.assertEqual(inferred.work_type, "Document")
+        self.assertEqual(inferred.document_name, "Android Framework Orchestrator 功能介绍文档")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            workspace = root / "docs-work"
+            workspace.mkdir()
+            write_codex_session(
+                Path(env["CODEX_HOME"]),
+                "99999999-4444-3333-4444-555555555556",
+                workspace,
+                dt.date(2026, 6, 3),
+                "已完成编写 Android Framework Orchestrator 功能介绍文档。",
+                thread_name="Orchestrator 功能文档整理",
+            )
+
+            daily_facts = root / "daily-document.json"
+            daily_facts.write_text(
+                json.dumps(
+                    {
+                        "schema": "akbs-daily-work-facts-v2",
+                        "report_date": "2026-06-03",
+                        "projects": [],
+                        "documents": [
+                            {
+                                "work_type": "Document",
+                                "document_name": "Android Framework Orchestrator 功能介绍文档",
+                                "work_items": [
+                                    {
+                                        "name": "完成功能介绍文档",
+                                        "did": ["整理组件职责、调用流程和使用边界"],
+                                        "how": ["核对实现代码和现有说明后按功能模块重写"],
+                                        "result": "文档已完成并可供评审",
+                                        "status": "已完成",
+                                    }
+                                ],
+                                "tomorrow_focus": [],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            daily = prepare_daily_package(
+                env,
+                "2026-06-03",
+                "20260603-233000-daily-document",
+                daily_facts,
+            )
+            daily_view = read_report_view(daily)["payload"]
+            daily_manifest = json.loads((daily / "manifest.json").read_text(encoding="utf-8"))
+            daily_report = read_package_report(daily)
+            self.assertEqual(daily_view["projects"], [])
+            self.assertEqual(daily_view["documents"][0]["work_type"], "Document")
+            self.assertTrue(daily_manifest["has_non_project_work"])
+            self.assertNotIn("需成员补充项目名", daily_report)
+            self.assertIn("### 文档：Android Framework Orchestrator 功能介绍文档", daily_report)
+
+            write_codex_session(
+                Path(env["CODEX_HOME"]),
+                "99999999-4444-3333-4444-555555555557",
+                workspace,
+                dt.date(2026, 6, 4),
+                "已完成编写 Android Framework Orchestrator 部署说明文档。",
+                thread_name="Orchestrator 部署文档整理",
+            )
+            inferred_daily = prepare_daily_package(
+                env,
+                "2026-06-04",
+                "20260604-233000-daily-document-inferred",
+            )
+            inferred_view = read_report_view(inferred_daily)["payload"]
+            self.assertEqual(inferred_view["projects"], [])
+            self.assertEqual(
+                inferred_view["documents"][0]["document_name"],
+                "Android Framework Orchestrator 部署说明文档",
+            )
+
+            weekly_facts = root / "weekly-document.json"
+            weekly_facts.write_text(
+                json.dumps(
+                    {
+                        "schema": "akbs-weekly-work-facts-v4",
+                        "week_range": "20260601-20260607",
+                        "projects": [],
+                        "documents": [
+                            {
+                                "work_type": "Document",
+                                "document_name": "Android Framework Orchestrator 功能介绍文档",
+                                "week_summary": "本周完成功能介绍文档整理并进入评审。",
+                                "completed_this_week": 1,
+                                "remaining": 0,
+                                "completed_items": ["整理组件职责、调用流程和使用边界"],
+                                "remaining_items": [],
+                                "key_points": ["统一了组件职责和使用边界"],
+                                "risks": ["无超过 3 天无进展事项。"],
+                                "dependencies": ["无外部依赖事项。"],
+                                "next_week_plan": [],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            weekly = prepare_weekly_package(
+                env,
+                "2026-06-03",
+                "20260603-234000-weekly-document",
+                weekly_facts,
+            )
+            weekly_view = read_report_view(weekly)["payload"]
+            weekly_report = read_package_report(weekly, "weekly")
+            self.assertEqual(weekly_view["projects"], [])
+            self.assertEqual(weekly_view["documents"][0]["completed_this_week"], "本周完成 1 项")
+            self.assertIn("## 二、文档工作", weekly_report)
+            self.assertIn("## 三、下周计划", weekly_report)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,11 +17,18 @@ from ..report_sessions import (
     normalize_report_customer_context,
     report_customer_context_for_project,
 )
-from .scope import ALLOWED_WORK_TYPES, clean_scope_text, report_scope_key
+from .document_work import (
+    DOCUMENT_WORK_TYPE,
+    clean_document_name,
+    validate_daily_documents,
+)
+from .scope import ALLOWED_WORK_TYPES, PROJECT_WORK_TYPES, clean_scope_text, report_scope_key
 
 
-DAILY_FACTS_SCHEMA = "akbs-daily-project-facts-v1"
-DAILY_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v1"
+DAILY_FACTS_SCHEMA = "akbs-daily-work-facts-v2"
+LEGACY_DAILY_FACTS_SCHEMA = "akbs-daily-project-facts-v1"
+DAILY_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v2"
+LEGACY_DAILY_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v1"
 DAILY_STATUS_VALUES = {"已完成", "处理中", "待验证", "阻塞"}
 OLD_DAILY_HOW_TEXT = "根据 Codex 会话记录、工程修改、命令执行和材料证据整理实际处理过程。"
 
@@ -29,6 +36,7 @@ OLD_DAILY_HOW_TEXT = "根据 Codex 会话记录、工程修改、命令执行和
 @dataclass(frozen=True)
 class DailyFactsResult:
     projects: list[dict[str, Any]]
+    documents: list[dict[str, Any]]
     evidence: dict[str, Any]
 
 
@@ -154,6 +162,27 @@ def normalize_daily_project(
     return row
 
 
+def normalize_daily_document(value: dict[str, Any]) -> dict[str, Any]:
+    raw_items = value.get("work_items")
+    work_items = (
+        [normalize_work_item(item) for item in raw_items if isinstance(item, dict)]
+        if isinstance(raw_items, list)
+        else []
+    )
+    focus_present = "tomorrow_focus" in value
+    tomorrow_focus = clean_list(value.get("tomorrow_focus"))
+    if not focus_present:
+        tomorrow_focus = focus_from_work_items(work_items)
+    return {
+        "work_type": DOCUMENT_WORK_TYPE,
+        "document_name": clean_document_name(value.get("document_name")),
+        "today_topic": clean_scope_text(value.get("today_topic")) or topic_from_work_items(work_items),
+        "current_result": clean_scope_text(value.get("current_result")) or result_from_work_items(work_items),
+        "work_items": work_items,
+        "tomorrow_focus": tomorrow_focus,
+    }
+
+
 def validate_daily_projects(
     projects: list[dict[str, Any]],
     *,
@@ -192,7 +221,7 @@ def validate_daily_projects(
         ):
             errors.append(f"{prefix}.customer 客户链与当前会话已确认身份不一致")
         work_type = clean_scope_text(row.get("work_type"))
-        if work_type not in ALLOWED_WORK_TYPES:
+        if work_type not in PROJECT_WORK_TYPES:
             errors.append(f"{prefix}.work_type 只能是 Patch 或 App")
         app_name = clean_scope_text(row.get("app_name"))
         if work_type == "App" and not app_name:
@@ -247,15 +276,24 @@ def load_explicit_facts(
     project_items: dict[str, list[tuple[str, str]]],
     daily_work_items: dict[str, list[dict[str, Any]]],
     expected_project_customers: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
+    include_documents: bool = False,
+) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     payload = read_json_file(path)
-    if payload.get("schema") != DAILY_FACTS_SCHEMA:
+    schema = payload.get("schema")
+    if schema not in {DAILY_FACTS_SCHEMA, LEGACY_DAILY_FACTS_SCHEMA}:
         raise SystemExit(f"daily facts schema 必须是 {DAILY_FACTS_SCHEMA}")
     if clean_scope_text(payload.get("report_date")) != report_date.isoformat():
         raise SystemExit(f"daily facts report_date 必须等于 {report_date.isoformat()}")
     raw_projects = payload.get("projects")
-    if not isinstance(raw_projects, list) or not raw_projects:
-        raise SystemExit("daily facts projects 必须是非空数组")
+    raw_documents = payload.get("documents", [])
+    if not isinstance(raw_projects, list):
+        raise SystemExit("daily facts projects 必须是数组")
+    if not isinstance(raw_documents, list):
+        raise SystemExit("daily facts documents 必须是数组")
+    if schema == LEGACY_DAILY_FACTS_SCHEMA and raw_documents:
+        raise SystemExit(f"文档工作必须改用 {DAILY_FACTS_SCHEMA}")
+    if not raw_projects and not raw_documents:
+        raise SystemExit("daily facts projects 和 documents 至少提供一项")
     project_names = [
         find_company_project(clean_scope_text(item.get("project"))) or clean_scope_text(item.get("project"))
         for item in raw_projects
@@ -272,12 +310,16 @@ def load_explicit_facts(
         for item in raw_projects
         if isinstance(item, dict)
     ]
+    documents = [normalize_daily_document(item) for item in raw_documents if isinstance(item, dict)]
     errors = validate_daily_projects(projects, expected_project_customers=expected_project_customers)
+    errors.extend(validate_daily_documents(documents))
     if len(projects) != len(raw_projects):
         errors.append("projects 中每一项都必须是对象")
+    if len(documents) != len(raw_documents):
+        errors.append("documents 中每一项都必须是对象")
     if errors:
         raise SystemExit("daily facts 校验失败: " + "；".join(errors))
-    return projects
+    return (projects, documents) if include_documents else projects
 
 
 def fallback_projects(
@@ -292,11 +334,22 @@ def fallback_projects(
     scopes_by_project: dict[str, list[dict[str, Any]]] = {}
     if not synthetic:
         for scope in inferred_scopes:
+            if clean_scope_text(scope.get("work_type")) == DOCUMENT_WORK_TYPE:
+                continue
             raw_project = clean_scope_text(scope.get("project"))
             project = find_company_project(raw_project) or raw_project
             if project:
                 scopes_by_project.setdefault(project, []).append(scope)
-    project_names = sorted(set(project_items) | set(scopes_by_project))
+    has_document_scopes = any(
+        clean_scope_text(scope.get("work_type")) == DOCUMENT_WORK_TYPE
+        for scope in inferred_scopes
+    )
+    item_projects = (
+        {project for project in project_items if find_company_project(project)}
+        if has_document_scopes
+        else set(project_items)
+    )
+    project_names = sorted(item_projects | set(scopes_by_project))
     for project in project_names:
         context = report_customer_context_for_project(project, project_customers)
         scope_rows = scopes_by_project.get(project) or [{}]
@@ -327,8 +380,37 @@ def fallback_projects(
     return projects
 
 
-def facts_hash(projects: list[dict[str, Any]]) -> str:
-    payload = json.dumps(projects, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+def fallback_documents(*, inferred_scopes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    documents: list[dict[str, Any]] = []
+    for scope in inferred_scopes:
+        if clean_scope_text(scope.get("work_type")) != DOCUMENT_WORK_TYPE:
+            continue
+        raw_items = scope.get("work_items")
+        work_items = (
+            [normalize_work_item(item) for item in raw_items if isinstance(item, dict)]
+            if isinstance(raw_items, list)
+            else []
+        )
+        documents.append(
+            {
+                "work_type": DOCUMENT_WORK_TYPE,
+                "document_name": clean_document_name(scope.get("document_name")),
+                "today_topic": topic_from_work_items(work_items),
+                "current_result": result_from_work_items(work_items),
+                "work_items": work_items,
+                "tomorrow_focus": focus_from_work_items(work_items),
+            }
+        )
+    return documents
+
+
+def facts_hash(projects: list[dict[str, Any]], documents: list[dict[str, Any]]) -> str:
+    payload = json.dumps(
+        {"projects": projects, "documents": documents},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -348,12 +430,13 @@ def build_daily_facts(
     inferred_scopes = inferred_scopes or []
     if explicit_path:
         path = expanded_path(explicit_path)
-        projects = load_explicit_facts(
+        projects, documents = load_explicit_facts(
             path,
             report_date,
             project_items=project_items,
             daily_work_items=daily_work_items,
             expected_project_customers=project_customers,
+            include_documents=True,
         )
         source = "explicit_daily_facts"
         source_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -365,11 +448,19 @@ def build_daily_facts(
             synthetic=synthetic,
             inferred_scopes=inferred_scopes,
         )
+        documents = fallback_documents(inferred_scopes=inferred_scopes)
         inference_complete = bool(inferred_scopes) and all(
             clean_scope_text(row.get("work_type")) in ALLOWED_WORK_TYPES
             and (
-                clean_scope_text(row.get("work_type")) != "App"
-                or bool(clean_scope_text(row.get("app_name")))
+                (clean_scope_text(row.get("work_type")) == "Patch")
+                or (
+                    clean_scope_text(row.get("work_type")) == "App"
+                    and bool(clean_scope_text(row.get("app_name")))
+                )
+                or (
+                    clean_scope_text(row.get("work_type")) == DOCUMENT_WORK_TYPE
+                    and bool(clean_document_name(row.get("document_name")))
+                )
             )
             and not bool(row.get("inference_conflict"))
             for row in inferred_scopes
@@ -390,6 +481,9 @@ def build_daily_facts(
                 missing_fields.append(f"{project}.work_type")
             elif work_type == "App" and not clean_scope_text(row.get("app_name")):
                 missing_fields.append(f"{project}.app_name")
+        for row in documents:
+            if not clean_document_name(row.get("document_name")):
+                missing_fields.append("document.document_name")
     scope_inference = []
     if not explicit_path and not synthetic:
         for row in inferred_scopes:
@@ -401,6 +495,8 @@ def build_daily_facts(
             }
             if clean_scope_text(row.get("app_name")):
                 item["app_name"] = clean_scope_text(row.get("app_name"))
+            if clean_document_name(row.get("document_name")):
+                item["document_name"] = clean_document_name(row.get("document_name"))
             scope_inference.append(item)
     evidence = {
         "schema": DAILY_FACT_SOURCES_SCHEMA,
@@ -408,12 +504,13 @@ def build_daily_facts(
         "source": source,
         "source_sha256": source_sha256,
         "project_count": len({clean_scope_text(row.get("project")) for row in projects}),
-        "work_scope_count": len(projects),
+        "document_count": len(documents),
+        "work_scope_count": len(projects) + len(documents),
         "missing_fields": sorted(set(missing_fields)),
         "scope_inference": scope_inference,
-        "facts_sha256": facts_hash(projects),
+        "facts_sha256": facts_hash(projects, documents),
     }
-    return DailyFactsResult(projects, evidence)
+    return DailyFactsResult(projects, documents, evidence)
 
 
 def project_rows_to_items(projects: list[dict[str, Any]]) -> dict[str, list[tuple[str, str]]]:

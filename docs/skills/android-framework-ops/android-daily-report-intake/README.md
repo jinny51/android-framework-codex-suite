@@ -10,7 +10,7 @@
 - `materials/display/report_view.json`
 - `materials/evidence/work_findings.json`
 
-`report_view.json` 是同一份日报正文的 UI 读模型（UI read model），使用 `schema=akbs-report-view-human-v1`，至少包含 `report_type=daily`、`report_date`、`display_date`、`material_name`、`material_summary`、`member_alias`、`member_name` 和 `projects[]`。每个范围行包含 `project`、直接客户 `customer`、可选的客户的客户 `downstream_customer`、必填 `work_type`、App 条件必填的 `app_name`、`today_topic`、`current_result`、`work_items[]` 和 `tomorrow_focus[]`。每个工作项包含 `name`、`did[]`、`how[]`、`result` 和 `status`；`status` 只能是 `已完成`、`处理中`、`待验证` 或 `阻塞`。它不是 AI 证据层，也不改变日报只归档的性质。
+`report_view.json` 是同一份日报正文的 UI 读模型（UI read model），使用 `schema=akbs-report-view-human-v1`，至少包含 `report_type=daily`、`report_date`、`display_date`、`material_name`、`material_summary`、`member_alias`、`member_name`、`projects[]` 和 `documents[]`，两类范围至少有一项。Patch/App 项目行保留项目和客户链；独立文档行使用 `work_type=Document` 和具体 `document_name`，不伪造项目或客户。每个范围都包含 `today_topic`、`current_result`、`work_items[]` 和 `tomorrow_focus[]`。每个工作项包含 `name`、`did[]`、`how[]`、`result` 和 `status`；`status` 只能是 `已完成`、`处理中`、`待验证` 或 `阻塞`。它不是 AI 证据层，也不改变日报只归档的性质。
 
 日报卡片不使用日期当标题。`material_name` 写项目 + 客户链路，例如 `TVE1086U（青鸾云）` 或 `TVE1091U（AOC → 福建移动高清）`；多项目时每个项目都带自己的客户链路。`material_summary` 写今日主题，例如 `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`。新包不得再写已废弃的 `report_view` 字段，例如 `display_title`、`ui_card`、`one_line_summary`、顶层 `work_items`、`risks` 或 `outputs`。
 
@@ -18,7 +18,7 @@
 
 日报类型只允许 `Patch` 或 `App`。Patch 表示系统源码定制，App 表示独立应用或 demo 开发并必须确定 App 名称。Codex 优先采用成员明确说明，否则根据源码/模块路径、修改文件、构建命令、Patch 或 APK/AAB 产物等高置信度开发证据自动判定；不能只从模糊事项措辞猜类型。SystemUI、Launcher、Settings 和 Framework 服务等系统树修改属于 Patch。证据冲突或 App 名称不明时才询问成员。同一项目可以有一个 Patch 和多个不同 App。存在处理中、待验证或阻塞事项时，该范围必须填写明日重点。日报不填写项目角色、需求时间、需求来源、项目总量或剩余量。
 
-正常生成先由共享内核自动识别并按范围绑定工作项。`$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` 下的 `akbs-daily-project-facts-v1` 只用于补齐未决字段、纠正判定或记录成员显式覆盖；显式事实优先于自动判定。一个混合会话若不能可靠绑定各事项，必须补齐范围事实，不得猜测拆分。
+正常生成先由共享内核自动识别并按范围绑定工作项。`$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` 下的 `akbs-daily-work-facts-v2` 只用于补齐未决字段、纠正判定或记录成员显式覆盖；显式事实优先于自动判定。一个混合会话若不能可靠绑定各事项，必须补齐范围事实，不得猜测拆分。
 
 `reports/daily.md` 中项目名每次出现都加粗，不限于项目标题；只加粗项目名，例如 `**TVE1091U** AOC 福建移动高清`，客户链保持普通文字。`report_view.json` 是结构化数据，项目及摘要字段不写 Markdown 标记。
 

@@ -44,6 +44,7 @@ def incoming_report_manifest(
     project: str = "",
     project_evidence_path: str = "",
     display_path: str = "",
+    has_non_project_work: bool = False,
 ) -> dict[str, Any]:
     report_name = f"{report_type}.md"
     package_kind = "daily_trace" if report_type == "daily" else "weekly_trace"
@@ -72,6 +73,8 @@ def incoming_report_manifest(
         manifest["week_range"] = week_key
     if report_type == "daily" and project:
         manifest["project"] = project
+    if has_non_project_work:
+        manifest["has_non_project_work"] = True
     if project_evidence_path:
         manifest["files"]["evidence"].append(project_evidence_path)
     return manifest
@@ -137,7 +140,9 @@ def build_report_package(
             context["downstream_customer"] = str(item["downstream_customer"])
         project_customers[str(item["project"])] = context
     weekly_projects: list[dict[str, Any]] = []
+    weekly_documents: list[dict[str, Any]] = []
     daily_projects: list[dict[str, Any]] = []
+    daily_documents: list[dict[str, Any]] = []
     daily_fact_evidence_path = ""
     weekly_fact_evidence_path = ""
     items = session_items
@@ -152,6 +157,7 @@ def build_report_package(
             inferred_scopes=daily_scopes,
         )
         daily_projects = daily_facts.projects
+        daily_documents = daily_facts.documents
         if daily_projects:
             items = daily_project_rows_to_items(daily_projects)
             for row in daily_projects:
@@ -181,6 +187,7 @@ def build_report_package(
             project_customers=project_customers,
         )
         weekly_projects = weekly_facts.projects
+        weekly_documents = weekly_facts.documents
         if weekly_projects:
             items = project_rows_to_items(weekly_projects)
             for row in weekly_projects:
@@ -247,6 +254,20 @@ def build_report_package(
             project_payload["customer_name"] = fact_customers[0]["customer_name"]
             if fact_customers[0].get("downstream_customer"):
                 project_payload["downstream_customer"] = fact_customers[0]["downstream_customer"]
+    documents = daily_documents if report_type == "daily" else weekly_documents
+    if documents:
+        project_payload["non_project_work"] = True
+        project_payload["documents"] = [
+            str(row.get("document_name") or "")
+            for row in documents
+            if row.get("document_name")
+        ]
+        if not (daily_projects if report_type == "daily" else weekly_projects):
+            report_project = ""
+            project_payload["project"] = "unknown"
+            project_payload["projects"] = []
+            project_payload.setdefault("checked_sources", ["authorized_report_sessions", "structured_facts"])
+            project_payload.setdefault("limits", ["Document work does not require project or customer identity"])
     package_dir.mkdir(parents=True, exist_ok=True)
     write_report(
         package_dir,
@@ -260,6 +281,8 @@ def build_report_package(
         weekly_projects,
         daily_work_items,
         daily_projects,
+        weekly_documents,
+        daily_documents,
     )
     project_path = write_default_evidence(
         package_dir,
@@ -301,6 +324,8 @@ def build_report_package(
         weekly_projects,
         daily_work_items,
         daily_projects,
+        weekly_documents,
+        daily_documents,
     )
     fact_sources_path = daily_fact_evidence_path or weekly_fact_evidence_path
     fact_sources_payload = daily_facts.evidence if report_type == "daily" else weekly_facts.evidence
@@ -326,6 +351,7 @@ def build_report_package(
         report_project,
         project_path,
         display_path,
+        bool(documents),
     )
     if report_type in {"daily", "weekly"} and replace_report_run_id:
         replacement = next((item for item in report_duplicates if item["run_id"] == replace_report_run_id), {})

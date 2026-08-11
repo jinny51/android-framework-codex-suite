@@ -22,6 +22,7 @@ from akbs_intake.reports.scope import (
     combine_scope_inferences,
     infer_work_scope,
 )
+from akbs_intake.reports.document_work import DOCUMENT_WORK_TYPE, clean_document_name
 
 
 GitRoot = Callable[[str], Path | None]
@@ -333,14 +334,27 @@ def daily_work_scopes(
         for segment in session_project_segments(session):
             project = find_company_project(segment.project) or segment.project
             inferred = inferred_scope_for_segment(segment, has_patch_artifact=project in patch_projects)
-            app_key = inferred.app_name.casefold() if inferred.work_type == "App" else ""
-            key = (project, inferred.work_type, app_key)
+            if inferred.work_type == DOCUMENT_WORK_TYPE:
+                project = ""
+            scope_name = (
+                inferred.app_name.casefold()
+                if inferred.work_type == "App"
+                else inferred.document_name.casefold()
+                if inferred.work_type == DOCUMENT_WORK_TYPE
+                else ""
+            )
+            key = (project, inferred.work_type, scope_name)
             scope = result.setdefault(
                 key,
                 {
                     "project": project,
                     "work_type": inferred.work_type,
                     "app_name": inferred.app_name if inferred.work_type == "App" else "",
+                    "document_name": (
+                        clean_document_name(inferred.document_name)
+                        if inferred.work_type == DOCUMENT_WORK_TYPE
+                        else ""
+                    ),
                     "work_items": [],
                     "inference_basis": list(inferred.basis),
                     "inference_conflict": inferred.conflict,
@@ -352,7 +366,7 @@ def daily_work_scopes(
             scope["inference_conflict"] = bool(scope["inference_conflict"] or inferred.conflict)
             for row in daily_rows_for_segment(
                 segment,
-                has_patch=project in patch_projects and inferred.work_type != "App",
+                has_patch=project in patch_projects and inferred.work_type == "Patch",
             ):
                 merge_daily_row(scope["work_items"], row)
 
@@ -382,7 +396,7 @@ def daily_work_scopes(
         key=lambda row: (
             row["project"],
             0 if row["work_type"] == "Patch" else 1 if row["work_type"] == "App" else 2,
-            row.get("app_name", "").casefold(),
+            (row.get("app_name") or row.get("document_name") or "").casefold(),
         ),
     )
     for scope in scopes:

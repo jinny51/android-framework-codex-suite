@@ -21,11 +21,18 @@ from ..report_sessions import (
     report_customer_context_for_project,
 )
 from .common import iter_local_manifests, replacement_run_id
-from .scope import ALLOWED_WORK_TYPES, report_scope_key
+from .document_work import (
+    DOCUMENT_WORK_TYPE,
+    clean_document_name,
+    validate_weekly_documents,
+)
+from .scope import PROJECT_WORK_TYPES, report_scope_key
 
 
-WEEKLY_FACTS_SCHEMA = "akbs-weekly-project-facts-v3"
-WEEKLY_FACT_SOURCES_SCHEMA = "akbs-weekly-fact-sources-v1"
+WEEKLY_FACTS_SCHEMA = "akbs-weekly-work-facts-v4"
+LEGACY_WEEKLY_FACTS_SCHEMA = "akbs-weekly-project-facts-v3"
+WEEKLY_FACT_SOURCES_SCHEMA = "akbs-weekly-fact-sources-v2"
+LEGACY_WEEKLY_FACT_SOURCES_SCHEMA = "akbs-weekly-fact-sources-v1"
 COUNT_KEYS = ("demand", "migration", "bug", "bsp")
 BUSINESS_COUNT_KEYS = ("demand", "migration", "bug")
 ALLOWED_PROJECT_ROLES = {"主责", "协作"}
@@ -54,6 +61,7 @@ LEGACY_CUSTOM_KEYS = {"custom", "定制", "定制需求", "feature_add"}
 @dataclass(frozen=True)
 class WeeklyFactsResult:
     projects: list[dict[str, Any]]
+    documents: list[dict[str, Any]]
     evidence: dict[str, Any]
 
 
@@ -405,6 +413,26 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def _weekly_document_row(value: dict[str, Any]) -> dict[str, Any]:
+    completed_items = clean_list(value.get("completed_items"))
+    remaining_items = clean_list(value.get("remaining_items"))
+    completed = normalize_scalar_count(value.get("completed_this_week"))
+    remaining = normalize_scalar_count(value.get("remaining"))
+    return {
+        "work_type": DOCUMENT_WORK_TYPE,
+        "document_name": clean_document_name(value.get("document_name")),
+        "week_summary": weekly_summary(value.get("week_summary"), completed_items, remaining_items),
+        "completed_this_week": completed,
+        "remaining": remaining,
+        "completed_items": completed_items,
+        "remaining_items": remaining_items,
+        "key_points": clean_list(value.get("key_points")) or ["无"],
+        "risks": clean_list(value.get("risks")) or ["无超过 3 天无进展事项。"],
+        "dependencies": clean_list(value.get("dependencies")) or ["无外部依赖事项。"],
+        "next_week_plan": clean_list(value.get("next_week_plan")),
+    }
+
+
 def project_customer_identity_conflicts(
     projects: list[dict[str, Any]],
     expected_project_customers: dict[str, Any],
@@ -446,7 +474,8 @@ def load_explicit_facts(
     week_key: str,
     *,
     expected_project_customers: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
+    include_documents: bool = False,
+) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     payload = read_json_file(path)
     if payload.get("schema") == "akbs-weekly-project-facts-v1":
         raise SystemExit(
@@ -458,13 +487,21 @@ def load_explicit_facts(
             "weekly facts v2 缺少 Patch/App 类型；请由成员确认类型后改用 "
             f"{WEEKLY_FACTS_SCHEMA}"
         )
-    if payload.get("schema") != WEEKLY_FACTS_SCHEMA:
+    schema = payload.get("schema")
+    if schema not in {WEEKLY_FACTS_SCHEMA, LEGACY_WEEKLY_FACTS_SCHEMA}:
         raise SystemExit(f"weekly facts schema 必须是 {WEEKLY_FACTS_SCHEMA}")
     if clean_text(payload.get("week_range")) != week_key:
         raise SystemExit(f"weekly facts week_range 必须等于 {week_key}")
     projects = payload.get("projects")
-    if not isinstance(projects, list) or not projects:
-        raise SystemExit("weekly facts projects 必须是非空数组")
+    documents = payload.get("documents", [])
+    if not isinstance(projects, list):
+        raise SystemExit("weekly facts projects 必须是数组")
+    if not isinstance(documents, list):
+        raise SystemExit("weekly facts documents 必须是数组")
+    if schema == LEGACY_WEEKLY_FACTS_SCHEMA and documents:
+        raise SystemExit(f"文档工作必须改用 {WEEKLY_FACTS_SCHEMA}")
+    if not projects and not documents:
+        raise SystemExit("weekly facts projects 和 documents 至少提供一项")
     normalized: list[dict[str, Any]] = []
     errors: list[str] = []
     seen_project_chains: dict[str, tuple[int, str, str]] = {}
@@ -504,7 +541,7 @@ def load_explicit_facts(
             )
         work_type = clean_text(item.get("work_type"))
         app_name = clean_text(item.get("app_name"))
-        if work_type not in ALLOWED_WORK_TYPES:
+        if work_type not in PROJECT_WORK_TYPES:
             errors.append(f"{project}.work_type 只能是 Patch 或 App")
         if work_type == "App" and not app_name:
             errors.append(f"{project}.app_name 类型为 App 时必须提供")
@@ -633,7 +670,17 @@ def load_explicit_facts(
         )
     if errors:
         raise SystemExit("weekly facts 校验失败: " + "；".join(errors))
-    return normalized
+    document_errors = validate_weekly_documents(documents)
+    if document_errors:
+        raise SystemExit("weekly facts 校验失败: " + "；".join(document_errors))
+    normalized_documents = [
+        _weekly_document_row(item)
+        for item in documents
+        if isinstance(item, dict)
+    ]
+    if len(normalized_documents) != len(documents):
+        raise SystemExit("weekly facts 校验失败: documents 中每一项都必须是对象")
+    return (normalized, normalized_documents) if include_documents else normalized
 
 
 def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, str]]]]:
@@ -695,6 +742,50 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
     return metadata, {project: list(project_records.values()) for project, project_records in records.items()}
 
 
+def _daily_document_records(
+    items: list[dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], dict[str, list[dict[str, str]]]]:
+    metadata: dict[str, dict[str, Any]] = {}
+    records: dict[str, dict[str, dict[str, str]]] = {}
+    for item in sorted(items, key=lambda row: (clean_text(row.get("report_date")), clean_text(row.get("package_key")))):
+        report_date = clean_text(item.get("report_date"))
+        view = report_item_view(item)
+        documents = view.get("documents") if isinstance(view.get("documents"), list) else []
+        for raw_document in documents:
+            if not isinstance(raw_document, dict):
+                continue
+            name = clean_document_name(raw_document.get("document_name"))
+            if not name:
+                continue
+            focuses = clean_list(raw_document.get("tomorrow_focus"))
+            if focuses:
+                metadata.setdefault(name, {})["latest_focus"] = focuses
+            work_items = raw_document.get("work_items") if isinstance(raw_document.get("work_items"), list) else []
+            for work_item in work_items:
+                if not isinstance(work_item, dict):
+                    continue
+                item_name = clean_text(work_item.get("name"))
+                did = clean_list(work_item.get("did"))
+                text = item_name or (did[0] if did else "")
+                if not text:
+                    continue
+                result = " ".join(
+                    value
+                    for value in (
+                        clean_text(work_item.get("status")),
+                        clean_text(work_item.get("result") or raw_document.get("current_result")),
+                    )
+                    if value
+                )
+                key = item_key(text) or text
+                records.setdefault(name, {})[key] = {
+                    "date": report_date,
+                    "text": text,
+                    "progress": result,
+                }
+    return metadata, {name: list(document_records.values()) for name, document_records in records.items()}
+
+
 def _previous_week_projects(items: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     result: dict[str, list[dict[str, Any]]] = {}
     for item in items:
@@ -709,6 +800,69 @@ def _previous_week_projects(items: list[dict[str, Any]]) -> dict[str, list[dict[
                 row["project"] = project
                 result.setdefault(project, []).append(row)
     return result
+
+
+def _previous_week_documents(items: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for item in items:
+        view = report_item_view(item)
+        documents = view.get("documents") if isinstance(view.get("documents"), list) else []
+        for raw_document in documents:
+            if not isinstance(raw_document, dict):
+                continue
+            row = _weekly_document_row(raw_document)
+            name = clean_document_name(row.get("document_name"))
+            if name:
+                result[name] = row
+    return result
+
+
+def _history_document_row(
+    document_name: str,
+    previous: dict[str, Any] | None,
+    daily_meta: dict[str, Any],
+    daily_records: list[dict[str, str]],
+) -> dict[str, Any]:
+    prior = dict(previous or {})
+    prior_remaining = clean_list(prior.get("remaining_items"))
+    current_remaining = list(prior_remaining)
+    completed_items: list[str] = []
+    current_unfinished: list[str] = []
+    for record in sorted(daily_records, key=lambda item: item.get("date", "")):
+        text = record["text"]
+        matched = next((item for item in current_remaining if same_item(text, item)), "")
+        if progress_completed(record.get("progress")):
+            add_unique(completed_items, text)
+            if matched:
+                current_remaining = [item for item in current_remaining if not same_item(item, matched)]
+        else:
+            add_unique(current_unfinished, text)
+    for item in current_unfinished:
+        add_unique(current_remaining, item)
+    risks = clean_list(prior.get("risks"))
+    dependencies = clean_list(prior.get("dependencies"))
+    for record in daily_records:
+        progress = record.get("progress", "")
+        if re.search(r"阻塞|失败|等待|依赖", progress):
+            add_unique(risks, record["text"])
+        if re.search(r"依赖|等待|评审|确认|反馈", f"{record['text']} {progress}"):
+            add_unique(dependencies, record["text"])
+    plans = clean_list(daily_meta.get("latest_focus")) or clean_list(prior.get("next_week_plan"))
+    if not plans and current_remaining:
+        plans = ["继续推进：" + "、".join(current_remaining[:3])]
+    return {
+        "work_type": DOCUMENT_WORK_TYPE,
+        "document_name": document_name,
+        "week_summary": weekly_summary("", completed_items, current_remaining),
+        "completed_this_week": len(completed_items),
+        "remaining": len(current_remaining),
+        "completed_items": completed_items,
+        "remaining_items": current_remaining,
+        "key_points": clean_list(prior.get("key_points")) or ["无"],
+        "risks": risks or ["无超过 3 天无进展事项。"],
+        "dependencies": dependencies or ["无外部依赖事项。"],
+        "next_week_plan": plans,
+    }
 
 
 def _history_project_row(
@@ -836,7 +990,7 @@ def _history_project_row(
     for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
         if clean_text(row.get(field)) in MISSING_VALUES or clean_text(row.get(field)).startswith("需成员补充"):
             missing.append(f"{project}.{field}")
-    if row["work_type"] not in ALLOWED_WORK_TYPES:
+    if row["work_type"] not in PROJECT_WORK_TYPES:
         missing.append(f"{project}.work_type")
     if row["work_type"] == "App" and not row["app_name"]:
         missing.append(f"{project}.app_name")
@@ -866,7 +1020,7 @@ def _project_missing_fields(row: dict[str, Any]) -> list[str]:
         value = clean_text(row.get(field))
         if value in MISSING_VALUES or value.startswith("需成员补充"):
             missing.append(f"{project}.{field}")
-    if row.get("work_type") not in ALLOWED_WORK_TYPES:
+    if row.get("work_type") not in PROJECT_WORK_TYPES:
         missing.append(f"{project}.work_type")
     if row.get("work_type") == "App" and not clean_text(row.get("app_name")):
         missing.append(f"{project}.app_name")
@@ -1015,7 +1169,7 @@ def daily_scope_seed_rows(records: list[dict[str, str]]) -> list[dict[str, Any]]
         work_type = clean_text(record.get("work_type"))
         app_name = clean_text(record.get("app_name"))
         key = (work_type, app_name.casefold() if work_type == "App" else "")
-        if work_type not in ALLOWED_WORK_TYPES or key in seen:
+        if work_type not in PROJECT_WORK_TYPES or key in seen:
             continue
         seen.add(key)
         rows.append(
@@ -1032,8 +1186,13 @@ def daily_scope_seed_rows(records: list[dict[str, str]]) -> list[dict[str, Any]]
     return rows
 
 
-def facts_hash(projects: list[dict[str, Any]]) -> str:
-    payload = json.dumps(projects, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+def facts_hash(projects: list[dict[str, Any]], documents: list[dict[str, Any]]) -> str:
+    payload = json.dumps(
+        {"projects": projects, "documents": documents},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -1050,10 +1209,11 @@ def build_weekly_facts(
 ) -> WeeklyFactsResult:
     missing_fields: list[str] = []
     if explicit_path:
-        projects = load_explicit_facts(
+        projects, documents = load_explicit_facts(
             expanded_path(explicit_path),
             week_key,
             expected_project_customers=project_customers,
+            include_documents=True,
         )
         provenance: dict[str, Any] = {"source": "explicit_weekly_facts", "daily_package_keys": [], "previous_weekly_package_keys": []}
         for row in projects:
@@ -1066,12 +1226,15 @@ def build_weekly_facts(
             project_customers or {},
             synthetic=True,
         )
+        documents = []
         missing_fields.extend(synthetic_missing)
     else:
         daily_items, weekly_items, provenance = load_history(config, start, end)
         as_of = min(end, local_now(config).date())
         daily_meta, daily_records = _daily_project_records(daily_items)
         previous = _previous_week_projects(weekly_items)
+        daily_document_meta, daily_document_records = _daily_document_records(daily_items)
+        previous_documents = _previous_week_documents(weekly_items)
         session_supplements: list[str] = []
         for raw_project, entries in sorted((fallback_items or {}).items()):
             project = find_company_project(raw_project)
@@ -1118,7 +1281,16 @@ def build_weekly_facts(
                 missing_fields.extend(project_missing)
             if ambiguous_scope:
                 missing_fields.append(f"{project}.work_scope_assignment")
-    if not projects:
+        documents = [
+            _history_document_row(
+                document_name,
+                previous_documents.get(document_name),
+                daily_document_meta.get(document_name, {}),
+                daily_document_records.get(document_name, []),
+            )
+            for document_name in sorted(set(previous_documents) | set(daily_document_records))
+        ]
+    if not projects and not documents:
         projects, fallback_missing = _session_fallback_projects(
             start,
             fallback_items or {},
@@ -1137,9 +1309,10 @@ def build_weekly_facts(
         "week_range": week_key,
         **provenance,
         "project_count": len({clean_text(row.get("project")) for row in projects}),
-        "work_scope_count": len(projects),
+        "document_count": len(documents),
+        "work_scope_count": len(projects) + len(documents),
         "missing_fields": sorted(set(missing_fields)),
         "identity_conflicts": identity_conflicts,
-        "facts_sha256": facts_hash(projects),
+        "facts_sha256": facts_hash(projects, documents),
     }
-    return WeeklyFactsResult(projects, evidence)
+    return WeeklyFactsResult(projects, documents, evidence)
