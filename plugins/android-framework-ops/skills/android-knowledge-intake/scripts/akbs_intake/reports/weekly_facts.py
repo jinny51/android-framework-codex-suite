@@ -24,6 +24,8 @@ from .common import iter_local_manifests, replacement_run_id
 from .document_work import (
     DOCUMENT_WORK_TYPE,
     clean_document_name,
+    normalize_standalone_work_type,
+    standalone_work_name,
     validate_weekly_documents,
 )
 from .scope import PROJECT_WORK_TYPES, report_scope_key
@@ -390,6 +392,8 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
         "downstream_customer": downstream_customer,
         "work_type": work_type,
         "app_name": clean_text(value.get("app_name")),
+        "display_name": clean_text(value.get("display_name") or value.get("model")),
+        "current_stage": clean_text(value.get("current_stage")),
         "project_role": clean_text(value.get("project_role"), "需成员确认"),
         "week_summary": weekly_summary(value.get("week_summary"), completed_items, remaining_items),
         "requirement_date": clean_text(value.get("requirement_date") or value.get("received_date"), "需成员确认"),
@@ -424,6 +428,22 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
         row["remaining_total"] = count_total(row["remaining_counts"])
     elif work_type == "App":
         row["bsp_pending_counts"] = 0
+    elif work_type == "GMS":
+        row.update(
+            {
+                "requirement_structure_present": False,
+                "requirement_structure_counts": zero_counts(),
+                "work_total_present": False,
+                "work_total": 0,
+                "completed_this_week_counts": zero_counts(),
+                "remaining_counts": zero_counts(),
+                "completed_this_week_total": 0,
+                "remaining_total": 0,
+                "ledger_present": False,
+                "ledger": {},
+                "bsp_pending_counts": zero_counts(),
+            }
+        )
     return row
 
 
@@ -432,9 +452,9 @@ def _weekly_document_row(value: dict[str, Any]) -> dict[str, Any]:
     remaining_items = clean_list(value.get("remaining_items"))
     completed = normalize_scalar_count(value.get("completed_this_week"))
     remaining = normalize_scalar_count(value.get("remaining"))
-    return {
-        "work_type": DOCUMENT_WORK_TYPE,
-        "document_name": clean_document_name(value.get("document_name")),
+    work_type = normalize_standalone_work_type(value.get("work_type")) or DOCUMENT_WORK_TYPE
+    row = {
+        "work_type": work_type,
         "week_summary": weekly_summary(value.get("week_summary"), completed_items, remaining_items),
         "completed_this_week": completed,
         "remaining": remaining,
@@ -445,6 +465,14 @@ def _weekly_document_row(value: dict[str, Any]) -> dict[str, Any]:
         "dependencies": clean_list(value.get("dependencies")) or ["无外部依赖事项。"],
         "next_week_plan": clean_list(value.get("next_week_plan")),
     }
+    if work_type == DOCUMENT_WORK_TYPE:
+        row["document_name"] = clean_document_name(value.get("document_name") or value.get("work_name"))
+    else:
+        row["work_name"] = standalone_work_name({**value, "work_type": work_type})
+    platform = clean_text(value.get("platform")).upper()
+    if platform:
+        row["platform"] = platform
+    return row
 
 
 def project_customer_identity_conflicts(
@@ -561,11 +589,13 @@ def load_explicit_facts(
         work_type = clean_text(item.get("work_type"))
         app_name = clean_text(item.get("app_name"))
         if work_type not in PROJECT_WORK_TYPES:
-            errors.append(f"{project}.work_type 只能是 Patch 或 App")
+            errors.append(f"{project}.work_type 只能是 Patch、App 或 GMS")
         if work_type == "App" and not app_name:
             errors.append(f"{project}.app_name 类型为 App 时必须提供")
-        if work_type == "Patch" and app_name:
-            errors.append(f"{project}.app_name 类型为 Patch 时不得提供")
+        if work_type != "App" and app_name:
+            errors.append(f"{project}.app_name 仅类型为 App 时允许提供")
+        if work_type == "GMS" and not clean_text(item.get("current_stage")):
+            errors.append(f"{project}.current_stage 类型为 GMS 时必须提供")
         if not project.startswith("projects["):
             identity = (customer, downstream_customer)
             previous_identity = seen_project_chains.get(project)
@@ -580,7 +610,7 @@ def load_explicit_facts(
             scope = report_scope_key({"project": project, "work_type": work_type, "app_name": app_name})
             previous_scope_index = seen_scopes.get(scope)
             if previous_scope_index is not None:
-                label = f"App {app_name}" if work_type == "App" else "Patch"
+                label = f"App {app_name}" if work_type == "App" else work_type
                 errors.append(
                     f"{project} {label} 在 projects[{previous_scope_index}] 和 projects[{index}] 重复；"
                     "同一统计对象只能有一行"
@@ -604,7 +634,10 @@ def load_explicit_facts(
             errors.append(f"{project}.week_summary 不得用下周计划代替本周进展")
         completed_total = 0
         remaining_total = 0
-        if work_type == "App":
+        if work_type == "GMS":
+            if any(item.get(field) not in (None, "", {}, 0) for field in ("requirement_structure", "work_total", "ledger")):
+                errors.append(f"{project} GMS 不得填写 Patch/App 总账字段")
+        elif work_type == "App":
             if item.get("requirement_structure") is not None:
                 errors.append(f"{project}.requirement_structure 类型为 App 时不得提供")
             raw_app_counts = {
@@ -686,7 +719,7 @@ def load_explicit_facts(
             normalized_row,
             previous_projects or {},
         )
-        if schema == WEEKLY_FACTS_SCHEMA:
+        if schema == WEEKLY_FACTS_SCHEMA and work_type in {"Patch", "App"}:
             validate_v5_project_ledger(
                 item,
                 normalized_row,
@@ -694,7 +727,7 @@ def load_explicit_facts(
                 previous_ambiguous=previous_ambiguous,
                 errors=errors,
             )
-        elif previous is not None or previous_ambiguous:
+        elif work_type in {"Patch", "App"} and (previous is not None or previous_ambiguous):
             errors.append(
                 f"{project}.ledger 已有上周台账的项目必须使用 {WEEKLY_FACTS_SCHEMA}；"
                 "旧显式事实不得绕过上周基线"
@@ -1039,6 +1072,8 @@ def _history_project_row(
         missing.append(f"{project}.work_type")
     if row["work_type"] == "App" and not row["app_name"]:
         missing.append(f"{project}.app_name")
+    if row["work_type"] == "GMS" and not clean_text(row.get("current_stage")):
+        missing.append(f"{project}.current_stage")
     if row["project_role"] not in ALLOWED_PROJECT_ROLES:
         missing.append(f"{project}.project_role")
     if row["requirement_source"] not in ALLOWED_SOURCES:
@@ -1071,6 +1106,8 @@ def _project_missing_fields(row: dict[str, Any]) -> list[str]:
         missing.append(f"{project}.work_type")
     if row.get("work_type") == "App" and not clean_text(row.get("app_name")):
         missing.append(f"{project}.app_name")
+    if row.get("work_type") == "GMS" and not clean_text(row.get("current_stage")):
+        missing.append(f"{project}.current_stage")
     if row.get("project_role") not in ALLOWED_PROJECT_ROLES:
         missing.append(f"{project}.project_role")
     if row.get("requirement_source") not in ALLOWED_SOURCES:

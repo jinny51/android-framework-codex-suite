@@ -3304,7 +3304,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
         inferred = scope_module.text_scope_inference(
             ["已完成编写 Android Framework Orchestrator 功能介绍文档。"]
         )
-        self.assertEqual(inferred.work_type, "Document")
+        self.assertEqual(inferred.work_type, "Doc")
         self.assertEqual(inferred.document_name, "Android Framework Orchestrator 功能介绍文档")
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -3331,7 +3331,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                         "projects": [],
                         "documents": [
                             {
-                                "work_type": "Document",
+                                "work_type": "Doc",
                                 "document_name": "Android Framework Orchestrator 功能介绍文档",
                                 "work_items": [
                                     {
@@ -3360,11 +3360,11 @@ class MemberAutomationFlowTests(unittest.TestCase):
             daily_manifest = json.loads((daily / "manifest.json").read_text(encoding="utf-8"))
             daily_report = read_package_report(daily)
             self.assertEqual(daily_view["projects"], [])
-            self.assertEqual(daily_view["documents"][0]["work_type"], "Document")
+            self.assertEqual(daily_view["documents"][0]["work_type"], "Doc")
             self.assertEqual(daily_view["documents"][0]["tomorrow_focus"], ["无"])
             self.assertTrue(daily_manifest["has_non_project_work"])
             self.assertNotIn("需成员补充项目名", daily_report)
-            self.assertIn("### 文档：Android Framework Orchestrator 功能介绍文档", daily_report)
+            self.assertIn("### Doc：Android Framework Orchestrator 功能介绍文档", daily_report)
             self.assertIn("## 三、明日重点", daily_report)
             self.assertIn("- 无", daily_report)
 
@@ -3397,7 +3397,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                         "projects": [],
                         "documents": [
                             {
-                                "work_type": "Document",
+                                "work_type": "Doc",
                                 "document_name": "Android Framework Orchestrator 功能介绍文档",
                                 "week_summary": "本周完成功能介绍文档整理并进入评审。",
                                 "completed_this_week": 1,
@@ -3425,8 +3425,139 @@ class MemberAutomationFlowTests(unittest.TestCase):
             weekly_report = read_package_report(weekly, "weekly")
             self.assertEqual(weekly_view["projects"], [])
             self.assertEqual(weekly_view["documents"][0]["completed_this_week"], "本周完成 1 项")
-            self.assertIn("## 二、文档工作", weekly_report)
+            self.assertIn("## 二、Doc", weekly_report)
             self.assertIn("## 三、下周计划", weekly_report)
+
+    def test_daily_and_weekly_support_gms_doc_and_other_categories(self) -> None:
+        load_intake_module()
+        scope_module = importlib.import_module("akbs_intake.reports.scope")
+        self.assertEqual(scope_module.text_scope_inference(["类型：GMS，完成 CTS 全量测试。 "]).work_type, "GMS")
+        self.assertEqual(scope_module.text_scope_inference(["类型：Other，协助摄像头调试。 "]).work_type, "Other")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote, synthetic_data=False)
+            daily_facts = root / "daily-five-types.json"
+            daily_facts.write_text(
+                json.dumps(
+                    {
+                        "schema": "akbs-daily-work-facts-v2",
+                        "report_date": "2026-06-03",
+                        "projects": [
+                            {
+                                "project": "TVE1067M1",
+                                "customer": "客户A",
+                                "work_type": "GMS",
+                                "today_topic": "完成 GMS 测试",
+                                "current_result": "内部全量测试完成",
+                                "work_items": [
+                                    {
+                                        "name": "CTS 全量测试",
+                                        "did": ["完成 CTS 测试"],
+                                        "how": ["使用正式固件执行测试并核对结果"],
+                                        "result": "测试完成",
+                                        "status": "已完成",
+                                    }
+                                ],
+                                "tomorrow_focus": ["继续 GTS 测试"],
+                            }
+                        ],
+                        "documents": [
+                            {
+                                "work_type": "GMS",
+                                "work_name": "自动化测试环境（Codex/ATS）",
+                                "platform": "M",
+                                "work_items": [
+                                    {
+                                        "name": "多机协同测试",
+                                        "did": ["完成双 Worker 验证"],
+                                        "how": ["运行 CTS 并核对 Worker 状态"],
+                                        "result": "联调中",
+                                        "status": "处理中",
+                                    }
+                                ],
+                                "tomorrow_focus": ["继续跨 Worker 分片联调"],
+                            },
+                            {
+                                "work_type": "Other",
+                                "work_name": "RK 摄像头协助",
+                                "platform": "R",
+                                "work_items": [
+                                    {
+                                        "name": "摄像头方向调整",
+                                        "did": ["协助原厂调整方向"],
+                                        "how": ["现场联调并验证画面"],
+                                        "result": "已完成",
+                                        "status": "已完成",
+                                    }
+                                ],
+                                "tomorrow_focus": [],
+                            },
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            daily = prepare_daily_package(env, "2026-06-03", "20260603-235000-daily-five-types", daily_facts)
+            daily_view = read_report_view(daily)["payload"]
+            self.assertEqual(daily_view["projects"][0]["work_type"], "GMS")
+            self.assertEqual([row["work_type"] for row in daily_view["documents"]], ["GMS", "Other"])
+
+            weekly_facts = root / "weekly-five-types.json"
+            weekly_facts.write_text(
+                json.dumps(
+                    {
+                        "schema": "akbs-weekly-work-facts-v5",
+                        "week_range": "20260601-20260607",
+                        "projects": [
+                            {
+                                "project": "TVE1067M1",
+                                "customer": "客户A",
+                                "work_type": "GMS",
+                                "project_role": "主责",
+                                "requirement_date": "2026-06-01",
+                                "requirement_source": "TE",
+                                "current_stage": "内部全量测试完成",
+                                "week_summary": "完成 GMS 全量测试。",
+                                "completed_items": ["完成 CTS 和 GTS 测试"],
+                                "remaining_items": ["等待正式送测"],
+                                "key_points": ["测试结果已收敛"],
+                                "risks": [],
+                                "dependencies": ["依赖实验室受理"],
+                                "next_week_plan": ["正式送测"],
+                            }
+                        ],
+                        "documents": [
+                            {
+                                "work_type": "Other",
+                                "work_name": "RK 摄像头协助",
+                                "platform": "R",
+                                "week_summary": "完成摄像头方向和 HDR 协助。",
+                                "completed_this_week": 1,
+                                "remaining": 0,
+                                "completed_items": ["完成摄像头方向调整"],
+                                "remaining_items": [],
+                                "key_points": ["无"],
+                                "risks": [],
+                                "dependencies": [],
+                                "next_week_plan": [],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            weekly = prepare_weekly_package(env, "2026-06-03", "20260603-235500-weekly-five-types", weekly_facts)
+            weekly_view = read_report_view(weekly)["payload"]
+            weekly_report = read_package_report(weekly, "weekly")
+            self.assertEqual(weekly_view["projects"][0]["work_type"], "GMS")
+            self.assertEqual(weekly_view["projects"][0]["current_stage"], "内部全量测试完成")
+            self.assertEqual(weekly_view["documents"][0]["work_type"], "Other")
+            self.assertIn("｜GMS", weekly_report)
+            self.assertIn("## 三、Other", weekly_report)
 
 
 if __name__ == "__main__":

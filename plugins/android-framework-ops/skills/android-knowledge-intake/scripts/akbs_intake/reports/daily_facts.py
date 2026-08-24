@@ -20,6 +20,8 @@ from ..report_sessions import (
 from .document_work import (
     DOCUMENT_WORK_TYPE,
     clean_document_name,
+    normalize_standalone_work_type,
+    standalone_work_name,
     validate_daily_documents,
 )
 from .scope import ALLOWED_WORK_TYPES, PROJECT_WORK_TYPES, clean_scope_text, report_scope_key
@@ -188,14 +190,23 @@ def normalize_daily_document(value: dict[str, Any]) -> dict[str, Any]:
         field_present="tomorrow_focus" in value,
         work_items=work_items,
     )
-    return {
-        "work_type": DOCUMENT_WORK_TYPE,
-        "document_name": clean_document_name(value.get("document_name")),
+    work_type = normalize_standalone_work_type(value.get("work_type")) or DOCUMENT_WORK_TYPE
+    name = standalone_work_name({**value, "work_type": work_type})
+    row = {
+        "work_type": work_type,
         "today_topic": clean_scope_text(value.get("today_topic")) or topic_from_work_items(work_items),
         "current_result": clean_scope_text(value.get("current_result")) or result_from_work_items(work_items),
         "work_items": work_items,
         "tomorrow_focus": tomorrow_focus,
     }
+    if work_type == DOCUMENT_WORK_TYPE:
+        row["document_name"] = clean_document_name(name)
+    else:
+        row["work_name"] = name
+    platform = clean_scope_text(value.get("platform")).upper()
+    if platform:
+        row["platform"] = platform
+    return row
 
 
 def validate_daily_projects(
@@ -237,12 +248,12 @@ def validate_daily_projects(
             errors.append(f"{prefix}.customer 客户链与当前会话已确认身份不一致")
         work_type = clean_scope_text(row.get("work_type"))
         if work_type not in PROJECT_WORK_TYPES:
-            errors.append(f"{prefix}.work_type 只能是 Patch 或 App")
+            errors.append(f"{prefix}.work_type 只能是 Patch、App 或 GMS")
         app_name = clean_scope_text(row.get("app_name"))
         if work_type == "App" and not app_name:
             errors.append(f"{prefix}.app_name 类型为 App 时必须提供")
-        if work_type == "Patch" and app_name:
-            errors.append(f"{prefix}.app_name 类型为 Patch 时不得提供")
+        if work_type != "App" and app_name:
+            errors.append(f"{prefix}.app_name 仅类型为 App 时允许提供")
         scope = report_scope_key(row)
         if scope in seen_scopes:
             errors.append(f"{prefix} 与 projects[{seen_scopes[scope]}] 的统计对象重复")

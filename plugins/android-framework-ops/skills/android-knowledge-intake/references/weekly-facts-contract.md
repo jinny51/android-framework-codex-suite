@@ -87,7 +87,7 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
   ],
   "documents": [
     {
-      "work_type": "Document",
+      "work_type": "Doc",
       "document_name": "Android Framework Orchestrator 功能介绍文档",
       "week_summary": "本周完成功能介绍文档整理并进入评审。",
       "completed_this_week": 1,
@@ -110,17 +110,20 @@ Rules:
 - `project` must be a recognized TVD/TVE/TVA/TVI company project.
 - `customer` is the required direct customer. Optional `downstream_customer`
   means the direct customer's customer.
-- `work_type` is required and must be exactly `Patch` or `App`; do not infer it
-  from work-item wording. `App` requires `app_name`; `Patch` must not provide it.
+- Project `work_type` is `Patch`, `App`, or `GMS`; the five visible categories
+  are `Patch`, `App`, `GMS`, `Doc`, and `Other`. `App` requires `app_name`;
+  other project types must not provide it. GMS requires `current_stage` and does
+  not carry Patch/App total or ledger fields.
 - Each reporting scope appears exactly once. Patch identity is `project + direct
   customer + Patch`; App identity adds `app_name`. The same project may contain
   one Patch row and multiple differently named App rows. Feature names remain
   work items and do not create additional rows.
-- Standalone documentation belongs in `documents[]`. Its `work_type` is exactly
-  `Document`, `document_name` is required, and project/customer/App fields are
-  forbidden. Do not write “项目：文档”. Document work does not require project
+- Standalone work belongs in `documents[]`. Its `work_type` is `Doc`, `GMS`, or
+  `Other`; Doc requires `document_name`, while GMS/Other require `work_name`.
+  Project/customer/App fields are forbidden. Historical `Document` normalizes
+  to `Doc`. Standalone work does not require project
   role, requirement date, requirement source, or project total.
-- Document `completed_this_week` and `remaining` are non-negative integer work
+- Standalone `completed_this_week` and `remaining` are non-negative integer work
   counts. Positive counts require matching item arrays, and positive remaining
   requires `next_week_plan`.
 - `project_role` is required and must be `主责` or `协作`.

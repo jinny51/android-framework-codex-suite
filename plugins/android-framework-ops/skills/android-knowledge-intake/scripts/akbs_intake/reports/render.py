@@ -23,7 +23,12 @@ from akbs_intake.report_sessions import (
     report_downstream_customer_for_project,
 )
 from akbs_intake.reports.scope import report_scope_suffix
-from akbs_intake.reports.document_work import DOCUMENT_WORK_TYPE, clean_document_name
+from akbs_intake.reports.document_work import (
+    DOCUMENT_WORK_TYPE,
+    clean_document_name,
+    normalize_standalone_work_type,
+    standalone_work_name,
+)
 
 
 REPORT_PROJECT_MARKDOWN_RE = re.compile(
@@ -353,44 +358,44 @@ def daily_material_summary(
 
 
 def document_material_name(documents: list[dict[str, Any]], *, max_documents: int = 2) -> str:
-    names = [clean_document_name(row.get("document_name")) for row in documents]
+    names = [standalone_work_name(row) for row in documents]
     names = [name for name in names if name]
     if not names:
         return ""
     visible = names[:max_documents]
     if len(names) > max_documents:
-        visible.append(f"等 {len(names)} 份文档")
-    return "文档工作：" + "、".join(visible)
+        visible.append(f"等 {len(names)} 项工作")
+    return "、".join(visible)
 
 
 def daily_document_summary(documents: list[dict[str, Any]], *, max_documents: int = 2) -> str:
     parts = [
-        f"{clean_document_name(row.get('document_name'))}："
+        f"{standalone_work_name(row)}："
         f"{compact_text(str(row.get('current_result') or row.get('today_topic') or '需补充进展。'), 48)}"
         for row in documents[:max_documents]
-        if clean_document_name(row.get("document_name"))
+        if standalone_work_name(row)
     ]
     if len(documents) > max_documents:
-        parts.append(f"另有 {len(documents) - max_documents} 份文档。")
+        parts.append(f"另有 {len(documents) - max_documents} 项工作。")
     return compact_text("".join(parts), 220)
 
 
 def weekly_document_summary(documents: list[dict[str, Any]], *, max_documents: int = 2) -> str:
     parts = [
-        f"{clean_document_name(row.get('document_name'))}：本周完成 {int(row.get('completed_this_week', 0) or 0)} 项，"
+        f"{standalone_work_name(row)}：本周完成 {int(row.get('completed_this_week', 0) or 0)} 项，"
         f"剩余 {int(row.get('remaining', 0) or 0)} 项。"
         for row in documents[:max_documents]
-        if clean_document_name(row.get("document_name"))
+        if standalone_work_name(row)
     ]
     if len(documents) > max_documents:
-        parts.append(f"另有 {len(documents) - max_documents} 份文档。")
+        parts.append(f"另有 {len(documents) - max_documents} 项工作。")
     return compact_text("".join(parts), 220)
 
 
 def weekly_document_view_row(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "work_type": DOCUMENT_WORK_TYPE,
-        "document_name": clean_document_name(row.get("document_name")),
+    work_type = normalize_standalone_work_type(row.get("work_type")) or DOCUMENT_WORK_TYPE
+    result = {
+        "work_type": work_type,
         "week_summary": str(row.get("week_summary") or "需补充真实工作记录。"),
         "completed_this_week": f"本周完成 {int(row.get('completed_this_week', 0) or 0)} 项",
         "remaining": f"当前剩余 {int(row.get('remaining', 0) or 0)} 项",
@@ -401,6 +406,13 @@ def weekly_document_view_row(row: dict[str, Any]) -> dict[str, Any]:
         "dependencies": meaningful_fact_list(row.get("dependencies")) or ["无外部依赖事项。"],
         "next_week_plan": weekly_plan_items(row.get("next_week_plan")),
     }
+    if work_type == DOCUMENT_WORK_TYPE:
+        result["document_name"] = clean_document_name(row.get("document_name") or row.get("work_name"))
+    else:
+        result["work_name"] = standalone_work_name(row)
+    if row.get("platform"):
+        result["platform"] = str(row.get("platform"))
+    return result
 
 def weekly_material_summary(
     items: dict[str, list[tuple[str, str]]],
@@ -578,6 +590,9 @@ def weekly_scope_heading(row: dict[str, Any]) -> str:
     )
     if row.get("work_type") == "App":
         return f"{heading}｜App：{row.get('app_name') or '需成员确认'}"
+    if row.get("work_type") == "GMS":
+        display_name = str(row.get("display_name") or "").strip()
+        return f"{heading}｜GMS" + (f"：{display_name}" if display_name else "")
     return heading
 
 
@@ -592,7 +607,8 @@ def daily_scope_heading(row: dict[str, Any]) -> str:
 
 
 def document_scope_heading(row: dict[str, Any]) -> str:
-    return f"文档：{clean_document_name(row.get('document_name')) or '需成员确认'}"
+    work_type = normalize_standalone_work_type(row.get("work_type")) or DOCUMENT_WORK_TYPE
+    return f"{work_type}：{standalone_work_name(row) or '需成员确认'}"
 
 def weekly_risks(entries: list[tuple[str, str]]) -> list[str]:
     risks = [compact_text(desc, 120) for desc, progress in entries if progress_bucket(progress) == "blocked"]
@@ -661,8 +677,8 @@ def write_daily_report(
         lines += [
             f"### {document_scope_heading(row)}",
             "",
-            f"- 类型：{DOCUMENT_WORK_TYPE}",
-            f"- 今日主题：{row.get('today_topic') or '今日文档事项需成员确认'}",
+            f"- 类型：{normalize_standalone_work_type(row.get('work_type')) or DOCUMENT_WORK_TYPE}",
+            f"- 今日主题：{row.get('today_topic') or '今日事项需成员确认'}",
             f"- 当前结果：{row.get('current_result') or '当前结果需成员确认。'}",
             "",
         ]
@@ -722,6 +738,20 @@ def write_weekly_report(
     ]
     if weekly_projects:
         for row in weekly_projects:
+            if row.get("work_type") == "GMS":
+                lines += [
+                    f"### {weekly_scope_heading(row)}",
+                    "",
+                    str(row.get("week_summary") or "需补充真实工作记录。"),
+                    "",
+                    "- 类型：GMS",
+                    f"- 当前阶段：{row.get('current_stage') or '需成员确认'}",
+                    f"- 项目角色：{row.get('project_role') or '需成员确认'}",
+                    f"- 需求时间：{row.get('requirement_date') or '需成员确认'}",
+                    f"- 需求来源：{row.get('requirement_source') or '需成员确认'}",
+                    "",
+                ]
+                continue
             total_field = "work_total" if row.get("work_type") == "App" else "requirement_structure"
             total_value = row.get(total_field)
             if not total_value:
@@ -798,7 +828,7 @@ def write_weekly_report(
             "",
             str(row.get("week_summary") or "需补充真实工作记录。"),
             "",
-            f"- 类型：{DOCUMENT_WORK_TYPE}",
+            f"- 类型：{normalize_standalone_work_type(row.get('work_type')) or DOCUMENT_WORK_TYPE}",
             f"- 本周完成 {int(row.get('completed_this_week', 0) or 0)} 项",
             f"- 当前剩余 {int(row.get('remaining', 0) or 0)} 项",
             "",
@@ -852,7 +882,12 @@ def write_weekly_report(
         ]
     if document_rows:
         document_section = "三" if detail_rows else "二"
-        lines += [f"## {document_section}、文档工作", ""]
+        standalone_types = [
+            work_type
+            for work_type in ("Doc", "GMS", "Other")
+            if any((normalize_standalone_work_type(row.get("work_type")) or DOCUMENT_WORK_TYPE) == work_type for row in document_rows)
+        ]
+        lines += [f"## {document_section}、{' / '.join(standalone_types)}", ""]
         for row in document_rows:
             completed = meaningful_fact_list(row.get("completed_items"))
             unfinished = meaningful_fact_list(row.get("remaining_items"))
@@ -1038,7 +1073,13 @@ def report_view_payload(
                     "dependencies": meaningful_fact_list(row.get("dependencies")) or ["无外部依赖事项。"],
                     "next_week_plan": weekly_plan_items(row.get("next_week_plan")),
                 }, context["downstream_customer"])
-            if row.get("work_type") == "App":
+            if row.get("work_type") == "GMS":
+                project_row.pop("completed_this_week", None)
+                project_row.pop("remaining", None)
+                project_row["current_stage"] = str(row.get("current_stage") or "需成员确认")
+                if row.get("display_name"):
+                    project_row["display_name"] = str(row.get("display_name"))
+            elif row.get("work_type") == "App":
                 project_row["app_name"] = str(row.get("app_name") or "需成员确认")
                 if row.get("project_role") == "主责" and row.get("work_total_present"):
                     project_row["work_total"] = weekly_fact_count_text(

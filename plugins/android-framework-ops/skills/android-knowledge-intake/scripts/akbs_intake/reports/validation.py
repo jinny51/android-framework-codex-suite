@@ -13,8 +13,11 @@ from ..session_privacy import session_evidence_errors
 from .daily_facts import DAILY_FACT_SOURCES_SCHEMA, LEGACY_DAILY_FACT_SOURCES_SCHEMA
 from .document_work import (
     DOCUMENT_WORK_TYPE,
+    STANDALONE_WORK_TYPES,
     clean_document_name,
     clean_list as clean_document_list,
+    normalize_standalone_work_type,
+    standalone_work_name,
     validate_daily_documents,
 )
 from .render import (
@@ -55,7 +58,7 @@ FORBIDDEN_REPORT_VIEW_FIELDS = {
 }
 WEEKLY_ALLOWED_SOURCES = {"CR", "TL", "PM", "TE", "BSP"}
 WEEKLY_ALLOWED_PROJECT_ROLES = {"主责", "协作"}
-WEEKLY_ALLOWED_WORK_TYPES = {"Patch", "App"}
+WEEKLY_ALLOWED_WORK_TYPES = {"Patch", "App", "GMS"}
 WEEKLY_EMPTY_PLAN_VALUES = {"无", "无。", "暂无", "暂无。", "无下周计划", "暂无下周计划"}
 WEEKLY_COUNT_RE = re.compile(
     r"^(?P<label>共|本周完成|当前剩余)\s+(?P<total>\d+)\s*项(?:：(?P<parts>.+))?$"
@@ -67,7 +70,7 @@ OLD_DAILY_HOW_TEXT = "根据 Codex 会话记录、工程修改、命令执行和
 MISSING_PROJECT_GUIDANCE = (
     "当前会话未关联项目，请补充项目名和客户名；例如：TVE1086U 青鸾云；"
     "如有客户的客户：TVE1091U AOC 福建移动高清。"
-    "建议后续先创建项目，再在项目下创建开发会话。独立文档整理应使用 Document 类型并填写文档名称，"
+    "建议后续先创建项目，再在项目下创建开发会话。独立工作应使用 Doc、GMS 或 Other 并填写具体名称，"
     "不得把“文档”伪造成项目编号。"
 )
 
@@ -362,11 +365,11 @@ def weekly_project_identity_consistency_errors(
 def validate_daily_report_view_project(rel: str, index: int, project: dict[str, Any], errors: list[str]) -> None:
     work_type = str(project.get("work_type") or "").strip()
     if work_type not in WEEKLY_ALLOWED_WORK_TYPES:
-        errors.append(f"{rel} payload.projects[{index}].work_type 只能是 Patch 或 App")
+        errors.append(f"{rel} payload.projects[{index}].work_type 只能是 Patch、App 或 GMS")
     if work_type == "App" and not str(project.get("app_name") or "").strip():
         errors.append(f"{rel} payload.projects[{index}].app_name 类型为 App 时必须提供")
-    if work_type == "Patch" and project.get("app_name"):
-        errors.append(f"{rel} payload.projects[{index}].app_name 类型为 Patch 时不得提供")
+    if work_type != "App" and project.get("app_name"):
+        errors.append(f"{rel} payload.projects[{index}].app_name 仅类型为 App 时允许提供")
     for field in ("today_topic", "current_result"):
         if not project.get(field):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须提供")
@@ -531,15 +534,18 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
     for old_field in ("received_date", "source", "requirement_type", "expected_finish"):
         if old_field in project:
             errors.append(f"{rel} payload.projects[{index}].{old_field} 是旧周报字段，不得继续提供")
-    for field in (
+    required_fields = [
         "week_summary",
         "work_type",
         "project_role",
         "requirement_date",
         "requirement_source",
-        "completed_this_week",
-        "remaining",
-    ):
+    ]
+    if project.get("work_type") == "GMS":
+        required_fields.append("current_stage")
+    else:
+        required_fields.extend(["completed_this_week", "remaining"])
+    for field in required_fields:
         if not project.get(field):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须提供")
     role = project.get("project_role")
@@ -547,11 +553,11 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
         errors.append(f"{rel} payload.projects[{index}].project_role 只能是主责或协作")
     work_type = project.get("work_type")
     if work_type not in WEEKLY_ALLOWED_WORK_TYPES:
-        errors.append(f"{rel} payload.projects[{index}].work_type 只能是 Patch 或 App")
+        errors.append(f"{rel} payload.projects[{index}].work_type 只能是 Patch、App 或 GMS")
     if work_type == "App" and not str(project.get("app_name") or "").strip():
         errors.append(f"{rel} payload.projects[{index}].app_name 类型为 App 时必须提供")
-    if work_type == "Patch" and project.get("app_name"):
-        errors.append(f"{rel} payload.projects[{index}].app_name 类型为 Patch 时不得提供")
+    if work_type != "App" and project.get("app_name"):
+        errors.append(f"{rel} payload.projects[{index}].app_name 仅类型为 App 时允许提供")
     if role == "主责" and work_type == "Patch" and not project.get("requirement_structure"):
         errors.append(f"{rel} payload.projects[{index}].requirement_structure Patch 主责必须提供")
     if role == "主责" and work_type == "App" and not project.get("work_total"):
@@ -573,7 +579,10 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
         errors.append(f"{rel} payload.projects[{index}].week_summary 不得用下周计划代替本周进展")
     parsed_completed_total = 0
     parsed_remaining_total = 0
-    if work_type == "App":
+    if work_type == "GMS":
+        if any(project.get(field) for field in ("requirement_structure", "work_total", "ledger")):
+            errors.append(f"{rel} payload.projects[{index}] GMS 不得填写 Patch/App 总账字段")
+    elif work_type == "App":
         if project.get("requirement_structure"):
             errors.append(f"{rel} payload.projects[{index}].requirement_structure 类型为 App 时不得提供")
         parsed_scalars: dict[str, int] = {}
@@ -663,7 +672,8 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
         )
     if parsed_remaining_total > 0 and not effective_next_week_plan:
         errors.append(f"{rel} payload.projects[{index}].next_week_plan 有剩余事项时必须提供")
-    validate_weekly_report_view_ledger(rel, index, project, errors)
+    if work_type in {"Patch", "App"}:
+        validate_weekly_report_view_ledger(rel, index, project, errors)
 
 
 def validate_daily_report_view_documents(rel: str, documents: Any, errors: list[str]) -> None:
@@ -695,11 +705,12 @@ def validate_weekly_report_view_documents(rel: str, documents: Any, errors: list
         if not isinstance(document, dict):
             errors.append(f"{row_prefix} 必须是对象")
             continue
-        if document.get("work_type") != DOCUMENT_WORK_TYPE:
-            errors.append(f"{row_prefix}.work_type 必须是 Document")
-        name = clean_document_name(document.get("document_name"))
+        work_type = normalize_standalone_work_type(document.get("work_type"))
+        if work_type not in STANDALONE_WORK_TYPES:
+            errors.append(f"{row_prefix}.work_type 必须是 Doc、GMS 或 Other")
+        name = standalone_work_name(document)
         if not name:
-            errors.append(f"{row_prefix}.document_name 必须提供具体文档名称")
+            errors.append(f"{row_prefix} 必须提供具体 document_name 或 work_name")
         elif name.casefold() in seen:
             errors.append(f"{row_prefix} 与 {prefix}[{seen[name.casefold()]}] 的文档重复")
         else:

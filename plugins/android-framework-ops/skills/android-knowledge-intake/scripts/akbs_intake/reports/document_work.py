@@ -4,7 +4,9 @@ import re
 from typing import Any
 
 
-DOCUMENT_WORK_TYPE = "Document"
+DOCUMENT_WORK_TYPE = "Doc"
+LEGACY_DOCUMENT_WORK_TYPE = "Document"
+STANDALONE_WORK_TYPES = {DOCUMENT_WORK_TYPE, "GMS", "Other"}
 DOCUMENT_NAME_LIMIT = 80
 DOCUMENT_STATUS_VALUES = {"已完成", "处理中", "待验证", "阻塞"}
 DOCUMENT_NAME_PATTERNS = (
@@ -20,6 +22,18 @@ GENERIC_DOCUMENT_NAMES = {"文档", "整理文档", "项目文档", "开发文�
 
 def clean_document_text(value: Any) -> str:
     return " ".join(str(value or "").split())
+
+
+def normalize_standalone_work_type(value: Any) -> str:
+    work_type = clean_document_text(value)
+    return DOCUMENT_WORK_TYPE if work_type == LEGACY_DOCUMENT_WORK_TYPE else work_type
+
+
+def standalone_work_name(value: dict[str, Any]) -> str:
+    work_type = normalize_standalone_work_type(value.get("work_type"))
+    if work_type == DOCUMENT_WORK_TYPE:
+        return clean_document_name(value.get("document_name") or value.get("work_name"))
+    return clean_document_text(value.get("work_name") or value.get("document_name"))
 
 
 def clean_document_name(value: Any) -> str:
@@ -106,11 +120,12 @@ def validate_daily_documents(documents: Any, *, prefix: str = "documents") -> li
         if not isinstance(raw, dict):
             errors.append(f"{row_prefix} 必须是对象")
             continue
-        if clean_document_text(raw.get("work_type")) != DOCUMENT_WORK_TYPE:
-            errors.append(f"{row_prefix}.work_type 必须是 Document")
-        name = clean_document_name(raw.get("document_name"))
+        work_type = normalize_standalone_work_type(raw.get("work_type"))
+        if work_type not in STANDALONE_WORK_TYPES:
+            errors.append(f"{row_prefix}.work_type 必须是 Doc、GMS 或 Other")
+        name = standalone_work_name(raw)
         if not name:
-            errors.append(f"{row_prefix}.document_name 必须提供具体文档名称")
+            errors.append(f"{row_prefix} 必须提供具体 document_name 或 work_name")
         elif name.casefold() in seen:
             errors.append(f"{row_prefix} 与 {prefix}[{seen[name.casefold()]}] 的文档重复")
         else:
@@ -141,11 +156,12 @@ def validate_weekly_documents(documents: Any, *, prefix: str = "documents") -> l
         if not isinstance(raw, dict):
             errors.append(f"{row_prefix} 必须是对象")
             continue
-        if clean_document_text(raw.get("work_type")) != DOCUMENT_WORK_TYPE:
-            errors.append(f"{row_prefix}.work_type 必须是 Document")
-        name = clean_document_name(raw.get("document_name"))
+        work_type = normalize_standalone_work_type(raw.get("work_type"))
+        if work_type not in STANDALONE_WORK_TYPES:
+            errors.append(f"{row_prefix}.work_type 必须是 Doc、GMS 或 Other")
+        name = standalone_work_name(raw)
         if not name:
-            errors.append(f"{row_prefix}.document_name 必须提供具体文档名称")
+            errors.append(f"{row_prefix} 必须提供具体 document_name 或 work_name")
         elif name.casefold() in seen:
             errors.append(f"{row_prefix} 与 {prefix}[{seen[name.casefold()]}] 的文档重复")
         else:

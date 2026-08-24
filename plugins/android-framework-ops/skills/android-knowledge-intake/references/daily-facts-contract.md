@@ -2,7 +2,7 @@
 
 Use this contract only when authorized development evidence cannot resolve a
 daily work scope, when the inferred scope needs correction, or when the member
-explicitly overrides it. Normal high-confidence Patch/App/Document inference does not
+explicitly overrides it. Normal high-confidence Patch/App/GMS/Doc/Other inference does not
 require this file. Write it under:
 
 ```text
@@ -30,7 +30,7 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
   ],
   "documents": [
     {
-      "work_type": "Document",
+      "work_type": "Doc",
       "document_name": "Android Framework Orchestrator 功能介绍文档",
       "work_items": [
         {
@@ -53,13 +53,15 @@ Rules:
 - `projects[]` and `documents[]` are arrays; at least one must be non-empty.
 - In `projects[]`, `project` and direct `customer` are required. Optional
   `downstream_customer` means the direct customer's customer.
-- `work_type` is required and must be exactly `Patch` or `App`. Patch means
-  system-source customization; App means application or demo development.
+- Project `work_type` is `Patch`, `App`, or `GMS`. The five visible categories
+  are `Patch`, `App`, `GMS`, `Doc`, and `Other`.
   Explicit facts override automatic inference. Never infer from vague work-item
   wording alone.
-- `App` requires `app_name`; `Patch` must not provide it.
-- In `documents[]`, `work_type` must be `Document` and `document_name` is
-  required. Do not provide project, customer, downstream customer, or App name.
+- `App` requires `app_name`; other project types must not provide it.
+- In `documents[]`, `work_type` is `Doc`, `GMS`, or `Other`; provide a concrete
+  `document_name` for Doc or `work_name` for GMS/Other. Do not provide project,
+  customer, downstream customer, or App name. Historical `Document` normalizes
+  to `Doc`.
   Do not use “文档” as a fake company project code.
 - Scope identity is one Patch or one named App under a project/customer chain.
   The same project may contain one Patch and multiple differently named Apps.

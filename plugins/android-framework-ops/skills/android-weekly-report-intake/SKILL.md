@@ -35,8 +35,8 @@ Weekly facts are resolved in this order:
 4. Sanitized Codex session summaries only as supplementary evidence for work
    not represented by an effective daily report.
 
-Current daily rows carry the evidence-resolved or member-confirmed Patch/App
-project scope or standalone Document scope. Preserve that scope when rolling daily work into the weekly ledger;
+Current daily rows carry the evidence-resolved or member-confirmed Patch/App/GMS
+project scope or standalone Doc/GMS/Other scope. Preserve that scope when rolling daily work into the weekly ledger;
 do not classify by item wording. Historical daily rows without scope remain
 readable, but they do not prove `work_type`, so ask the member for that missing
 weekly fact.
@@ -67,7 +67,7 @@ Generate `reports/weekly.md` with this required structure:
   - 当前剩余
   - 重点说明
   - 风险 / 依赖
-- 文档工作（仅存在 Document 工作时）
+- Doc / GMS / Other（仅存在独立工作时）
   - 本周完成
   - 当前剩余
   - 重点说明
@@ -107,18 +107,18 @@ and carry `added`, `reopened`, `closed_without_change`, `removed`,
 Codex writes the ledger JSON and computes the displayed total and remaining.
 An explicit facts file must never reset an existing project's total.
 
-`类型` is required and must be exactly `Patch` or `App`. `Patch` means system
+The five visible categories are exactly `Patch`, `App`, `GMS`, `Doc`, and
+`Other`. Project rows use Patch, App, or GMS. `Patch` means system
 source customization normally delivered as patches. `App` means application
 or demo development and requires `App 名称`. Preserve the scope resolved by the
 daily workflow; do not reclassify it from weekly item wording. Ask the member
 only when the daily source is missing, conflicting, or lacks the App name.
 
-Standalone documentation is not a project block. It uses `work_type=Document`
-and a concrete `document_name`, appears under `文档工作`, and does not require
-project, customer, project role, requirement date, requirement source, or
-project totals. Its weekly block still records `本周完成`, `当前剩余`,
-`重点说明`, `风险 / 依赖`, and `下周计划`. Do not write “项目：文档” and do
-not add Document counts to Patch/App project demand totals.
+GMS project rows use `current_stage`, weekly progress, key points, risks,
+dependencies, and plans without Patch/App totals. Standalone Doc, GMS, and
+Other rows use a concrete `document_name` or `work_name` and do not require
+project/customer fields. Historical `Document` remains readable as `Doc`.
+Never add GMS, Doc, or Other counts to Patch/App project demand totals.
 
 `项目角色` is required and must be `主责` or `协作`. `需求时间` is required
 and uses `YYYY-MM-DD`. `需求来源` is required and must be exactly one of
@@ -159,13 +159,13 @@ as separate unordered lists under subsection 4.
 For multiple projects, repeat the same block per project. Do not use a large
 overview table in `本周概况`.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, `projects[]`, and `documents[]`; at least one array must be non-empty. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), required `work_type`, conditional `app_name`, `project_role`, `week_summary`, `requirement_date`, `requirement_source`, `completed_this_week`, `remaining`, `completed_items[]`, `remaining_items[]`, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`. A v5 row also carries structured `ledger`, human `project_change`, and `bsp_pending`. A Patch main row contains the computed `requirement_structure`; an App main row contains the computed `work_total`. Collaborators omit their corresponding total. Each document row contains `work_type=Document`, `document_name`, `week_summary`, completed/remaining counts and item arrays, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`, without project/customer fields.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, `projects[]`, and `documents[]`; at least one array must be non-empty. Patch/App project rows keep the existing total and ledger fields. GMS project rows carry `current_stage`, optional `display_name`, progress, key points, risks, dependencies, and plans without Patch/App totals. Standalone Doc/GMS/Other rows carry a concrete name, optional platform, progress, risks, dependencies, and plans.
 
 Weekly card identity is not the week range. `material_name` must preserve the
 customer chain, such as `TVE1086U（青鸾云）` or
 `TVE1091U（AOC → 福建移动高清）`; multiple projects must keep each project
 paired with its own customer chain. Standalone documentation uses
-`文档工作：<文档名称>`. `material_summary` must summarize each project's or
+`Doc：<文档名称>`. `material_summary` must summarize each project's or
 document's weekly completed and remaining state. The current read model emits
 `material_name`, `material_summary`, `projects`, and `documents`; it does not
 emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`,
@@ -227,17 +227,17 @@ Ask the main only whether each candidate is added, reopened, removed, or already
 covered; do not ask them to reconstruct the full report.
 
 Before running `--prepare`, `--upload`, or `--submit-latest`, distinguish
-Patch/App project work from standalone Document work. A project row requires a
-recognized project + customer pair; a Document row requires a concrete
-document name and no project/customer. Ask for project/customer only when the
-unresolved work is project work, and reply:
+Patch/App/GMS project work from standalone Doc/GMS/Other work. A project row
+requires a recognized project + customer pair; standalone work requires a
+concrete work name and no project/customer. Ask for project/customer only when
+the unresolved work is project work, and reply:
 
 ```text
 缺少项目名和客户名，请补充，例如：TVE1086U 青鸾云；如有客户的客户，继续写第三段，例如：TVE1091U AOC 福建移动高清。
 ```
 
 If it is standalone documentation, ask only for the concrete document name and
-use `Document`; never block it merely because no company project code exists.
+use `Doc`, `GMS`, or `Other`; never block it merely because no company project code exists.
 
 The weekly display date is the last workday of the period. A late weekly submission still displays the weekly period date, not the upload day.
 

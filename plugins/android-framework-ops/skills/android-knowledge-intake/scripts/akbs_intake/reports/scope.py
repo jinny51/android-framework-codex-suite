@@ -4,11 +4,16 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from .document_work import DOCUMENT_WORK_TYPE, document_name_from_text
+from .document_work import (
+    DOCUMENT_WORK_TYPE,
+    STANDALONE_WORK_TYPES,
+    document_name_from_text,
+    normalize_standalone_work_type,
+)
 
 
-PROJECT_WORK_TYPES = {"Patch", "App"}
-ALLOWED_WORK_TYPES = PROJECT_WORK_TYPES | {DOCUMENT_WORK_TYPE}
+PROJECT_WORK_TYPES = {"Patch", "App", "GMS"}
+ALLOWED_WORK_TYPES = PROJECT_WORK_TYPES | STANDALONE_WORK_TYPES
 
 EXPLICIT_PATCH_RE = re.compile(
     r"(?i)(?:类型|工作类型|开发类型)\s*[:：=]\s*patch\b|"
@@ -20,9 +25,17 @@ EXPLICIT_APP_RE = re.compile(
     r"(?:app|应用)\s*(?:名称|名)\s*[:：=]"
 )
 EXPLICIT_DOCUMENT_RE = re.compile(
-    r"(?i)(?:类型|工作类型|开发类型)\s*[:：=]\s*(?:document|文档)\b|"
-    r"(?:属于|这是|这项(?:工作|任务)?是|做的是)\s*(?:document|文档(?:整理|编写|工作)?)\b|"
+    r"(?i)(?:类型|工作类型|开发类型)\s*[:：=]\s*(?:doc|document|文档)\b|"
+    r"(?:属于|这是|这项(?:工作|任务)?是|做的是)\s*(?:doc|document|文档(?:整理|编写|工作)?)\b|"
     r"项目\s*[:：=]\s*文档\b"
+)
+EXPLICIT_GMS_RE = re.compile(
+    r"(?i)(?:类型|工作类型|开发类型)\s*[:：=]\s*gms\b|"
+    r"(?:属于|这是|这项(?:工作|任务)?是|做的是)\s*gms\b"
+)
+EXPLICIT_OTHER_RE = re.compile(
+    r"(?i)(?:类型|工作类型|开发类型)\s*[:：=]\s*other\b|"
+    r"(?:属于|这是|这项(?:工作|任务)?是|做的是)\s*other\b"
 )
 PATCH_TEXT_RE = re.compile(
     r"(?i)(?:frameworks/base|system_server|systemui|launcher3|settingsprovider|"
@@ -38,6 +51,10 @@ APP_TEXT_RE = re.compile(
 DOCUMENT_TEXT_RE = re.compile(
     r"(?i)(?:编写|撰写|整理|更新|完善|补充|维护|修订|输出|产出)\s*"
     r"[^，,。；;\n]{0,64}\s*文档\b"
+)
+GMS_TEXT_RE = re.compile(
+    r"(?i)(?:\bGMS\b|\bCTS(?:-Verifier)?\b|\bGTS\b|\bVTS\b|\bGSI\b|"
+    r"Camera\s+ITS|认证测试|正式送测|全量测试)"
 )
 APP_NAME_PATTERNS = (
     re.compile(r"(?i)(?:app|应用)\s*(?:名称|名)?\s*[:：=]\s*([^，,。；;|\n]{1,32})"),
@@ -150,7 +167,9 @@ def text_scope_inference(
     explicit_patch = allow_explicit and bool(EXPLICIT_PATCH_RE.search(text))
     explicit_app = allow_explicit and bool(EXPLICIT_APP_RE.search(text))
     explicit_document = allow_explicit and bool(EXPLICIT_DOCUMENT_RE.search(text))
-    if sum(bool(value) for value in (explicit_patch, explicit_app, explicit_document)) > 1:
+    explicit_gms = allow_explicit and bool(EXPLICIT_GMS_RE.search(text))
+    explicit_other = allow_explicit and bool(EXPLICIT_OTHER_RE.search(text))
+    if sum(bool(value) for value in (explicit_patch, explicit_app, explicit_document, explicit_gms, explicit_other)) > 1:
         return WorkScopeInference(basis=("conflicting_explicit_work_type",), conflict=True)
     if explicit_patch:
         return WorkScopeInference("Patch", basis=("explicit_work_type",))
@@ -162,11 +181,16 @@ def text_scope_inference(
             basis=("explicit_work_type",),
             document_name=document_name_from_text(text),
         )
+    if explicit_gms:
+        return WorkScopeInference("GMS", basis=("explicit_work_type",))
+    if explicit_other:
+        return WorkScopeInference("Other", basis=("explicit_work_type",))
 
     patch = bool(PATCH_TEXT_RE.search(text))
     app = bool(APP_TEXT_RE.search(text))
     document = bool(DOCUMENT_TEXT_RE.search(text))
-    if sum(bool(value) for value in (patch, app, document)) > 1:
+    gms = bool(GMS_TEXT_RE.search(text))
+    if sum(bool(value) for value in (patch, app, document, gms)) > 1:
         return WorkScopeInference(basis=("conflicting_development_evidence",), conflict=True)
     if patch:
         return WorkScopeInference("Patch", basis=("framework_development_terms",))
@@ -178,6 +202,8 @@ def text_scope_inference(
             basis=("document_work_terms",),
             document_name=document_name_from_text(text),
         )
+    if gms:
+        return WorkScopeInference("GMS", basis=("gms_test_terms",))
     return WorkScopeInference()
 
 
@@ -257,6 +283,8 @@ def report_scope_key(row: dict[str, Any]) -> tuple[str, str, str]:
 def report_scope_suffix(row: dict[str, Any]) -> str:
     if clean_scope_text(row.get("work_type")) == "App":
         return f"App：{clean_scope_text(row.get('app_name')) or '需成员确认'}"
-    if clean_scope_text(row.get("work_type")) == DOCUMENT_WORK_TYPE:
-        return f"Document：{clean_scope_text(row.get('document_name')) or '需成员确认'}"
+    standalone_type = normalize_standalone_work_type(row.get("work_type"))
+    if standalone_type in STANDALONE_WORK_TYPES:
+        name = clean_scope_text(row.get("document_name") or row.get("work_name")) or "需成员确认"
+        return f"{standalone_type}：{name}"
     return clean_scope_text(row.get("work_type")) or "需成员确认"
