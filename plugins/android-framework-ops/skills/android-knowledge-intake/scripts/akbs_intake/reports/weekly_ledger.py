@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 
-WEEKLY_LEDGER_SCHEMA = "akbs-weekly-project-ledger-v1"
+WEEKLY_LEDGER_SCHEMA = "akbs-weekly-project-ledger-v2"
 BUSINESS_COUNT_KEYS = ("demand", "migration", "bug")
 LEDGER_CHANGE_KEYS = (
     "added",
@@ -88,8 +88,14 @@ def empty_weekly_ledger(work_type: str) -> dict[str, Any]:
         "opening": False,
         "baseline_package_key": "",
         "baseline_week_range": "",
+        "project_completed": dict(empty) if isinstance(empty, dict) else empty,
         "changes": {key: dict(empty) if isinstance(empty, dict) else empty for key in LEDGER_CHANGE_KEYS},
         "bsp_pending": dict(empty) if isinstance(empty, dict) else 0,
+        "baseline": {
+            "total": dict(empty) if isinstance(empty, dict) else empty,
+            "android_remaining": dict(empty) if isinstance(empty, dict) else empty,
+            "bsp_pending": dict(empty) if isinstance(empty, dict) else 0,
+        },
     }
 
 
@@ -100,6 +106,7 @@ def normalize_weekly_ledger(value: Any, work_type: str) -> dict[str, Any]:
     result["opening"] = value.get("opening") is True
     result["baseline_package_key"] = clean_text(value.get("baseline_package_key"))
     result["baseline_week_range"] = clean_text(value.get("baseline_week_range"))
+    result["project_completed"] = normalize_ledger_count(value.get("project_completed"), work_type)
     changes = value.get("changes") if isinstance(value.get("changes"), dict) else {}
     result["changes"] = {
         key: normalize_ledger_count(changes.get(key), work_type)
@@ -189,6 +196,7 @@ def validate_v5_project_ledger(
         "opening",
         "baseline_package_key",
         "baseline_week_range",
+        "project_completed",
         "changes",
         "bsp_pending",
     }
@@ -199,6 +207,13 @@ def validate_v5_project_ledger(
         errors.append(f"{project}.ledger.schema 必须是 {WEEKLY_LEDGER_SCHEMA}")
     if not isinstance(raw_ledger.get("opening"), bool):
         errors.append(f"{project}.ledger.opening 必须是 true 或 false")
+    errors.extend(
+        raw_ledger_count_errors(
+            raw_ledger.get("project_completed", 0 if work_type == "App" else {}),
+            work_type=work_type,
+            field_path=f"{project}.ledger.project_completed",
+        )
+    )
     changes = raw_ledger.get("changes")
     if not isinstance(changes, dict):
         errors.append(f"{project}.ledger.changes 必须是对象")
@@ -229,6 +244,8 @@ def validate_v5_project_ledger(
             errors.append(f"{project}.ledger 只有主责可以新建项目或修改项目总量和流转")
         if nonzero_ledger_count(ledger["bsp_pending"]):
             errors.append(f"{project}.ledger.bsp_pending 只由主责维护")
+        if nonzero_ledger_count(ledger["project_completed"]):
+            errors.append(f"{project}.ledger.project_completed 只由主责确认项目全员完成量")
         if previous:
             if ledger["baseline_package_key"] != clean_text(previous.get("_package_key")):
                 errors.append(f"{project}.ledger.baseline_package_key 必须绑定上一份有效周报")
@@ -262,16 +279,24 @@ def validate_v5_project_ledger(
         ) or int(ledger["bsp_pending"] or 0) > 0:
             errors.append(f"{project}.ledger App 暂不支持 BSP 跟踪")
         current_total = int(row.get("work_total", 0) or 0)
-        current_completed = int(row.get("completed_this_week_total", 0) or 0)
+        member_completed = int(row.get("completed_this_week_total", 0) or 0)
+        project_completed = int(ledger["project_completed"] or 0)
+        if project_completed < member_completed:
+            errors.append(f"{project}.ledger.project_completed 不能小于主责个人本周完成")
         current_remaining = int(row.get("remaining_total", 0) or 0)
         prior_total = int(previous.get("work_total", 0) or 0) if previous else current_total
         prior_remaining = int(previous.get("remaining_total", 0) or 0) if previous else current_total
+        ledger["baseline"] = {
+            "total": prior_total,
+            "android_remaining": prior_remaining,
+            "bsp_pending": 0,
+        }
         expected_total = prior_total + int(normalized_changes["added"]) - int(normalized_changes["removed"])
         expected_remaining = (
             prior_remaining
             + int(normalized_changes["added"])
             + int(normalized_changes["reopened"])
-            - current_completed
+            - project_completed
             - int(normalized_changes["closed_without_change"])
             - int(normalized_changes["removed"])
         )
@@ -282,7 +307,10 @@ def validate_v5_project_ledger(
         return
 
     current_total = normalize_business_counts(row.get("requirement_structure_counts"))
-    current_completed = normalize_business_counts(row.get("completed_this_week_counts"))
+    member_completed = normalize_business_counts(row.get("completed_this_week_counts"))
+    project_completed = ledger["project_completed"]
+    if any(project_completed[key] < member_completed[key] for key in BUSINESS_COUNT_KEYS):
+        errors.append(f"{project}.ledger.project_completed 不能小于主责个人本周完成")
     current_remaining = normalize_business_counts(row.get("remaining_counts"))
     if has_legacy_bsp(row.get("requirement_structure_counts")):
         errors.append(f"{project}.requirement_structure v5 不再把 BSP 当作事项类型")
@@ -302,6 +330,12 @@ def validate_v5_project_ledger(
         prior_remaining = current_total
         prior_bsp = zero_business_counts()
 
+    ledger["baseline"] = {
+        "total": dict(prior_total),
+        "android_remaining": dict(prior_remaining),
+        "bsp_pending": dict(prior_bsp),
+    }
+
     expected_total = subtract_counts(
         add_counts(prior_total, normalized_changes["added"]),
         normalized_changes["removed"],
@@ -309,7 +343,7 @@ def validate_v5_project_ledger(
     available = add_counts(prior_remaining, normalized_changes["added"], normalized_changes["reopened"])
     expected_remaining = subtract_counts(
         available,
-        current_completed,
+        project_completed,
         normalized_changes["closed_without_change"],
         normalized_changes["removed"],
         normalized_changes["transferred_to_bsp"],

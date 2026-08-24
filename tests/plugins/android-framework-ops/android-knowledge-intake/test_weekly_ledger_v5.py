@@ -69,6 +69,7 @@ def ledger(
     opening: bool,
     baseline_package_key: str = "",
     baseline_week_range: str = "",
+    project_completed: dict[str, int] | None = None,
     change_counts: dict[str, dict[str, int]] | None = None,
     bsp_pending: dict[str, int] | None = None,
 ) -> dict:
@@ -77,6 +78,7 @@ def ledger(
         "opening": opening,
         "baseline_package_key": baseline_package_key,
         "baseline_week_range": baseline_week_range,
+        "project_completed": project_completed or dict(ZERO_PATCH),
         "changes": change_counts or changes(),
         "bsp_pending": bsp_pending or dict(ZERO_PATCH),
     }
@@ -185,6 +187,7 @@ def test_existing_main_must_bind_baseline_and_preserve_cumulative_total(tmp_path
             opening=False,
             baseline_package_key="20260816/member/current",
             baseline_week_range="20260810-20260816",
+            project_completed=patch_counts(demand=1, bug=2),
         ),
     )
 
@@ -210,6 +213,7 @@ def test_existing_main_change_formula_blocks_unexplained_remaining_gap(tmp_path:
             opening=False,
             baseline_package_key="20260816/member/current",
             baseline_week_range="20260810-20260816",
+            project_completed=patch_counts(bug=2),
             change_counts=change_counts,
         ),
     )
@@ -228,6 +232,33 @@ def test_existing_main_change_formula_blocks_unexplained_remaining_gap(tmp_path:
         previous_projects=previous,
     )
     assert rows[0]["remaining_total"] == 5
+
+
+def test_main_confirms_project_completion_including_collaborators(tmp_path: Path) -> None:
+    previous = previous_scope(total=patch_counts(bug=19), remaining=patch_counts(bug=1))
+    project = main_patch(
+        total=patch_counts(bug=31),
+        completed=patch_counts(bug=2),
+        remaining=dict(ZERO_PATCH),
+        ledger=ledger(
+            opening=False,
+            baseline_package_key="20260816/member/current",
+            baseline_week_range="20260810-20260816",
+            project_completed=patch_counts(bug=13),
+            change_counts=changes(added=patch_counts(bug=12)),
+        ),
+    )
+
+    rows = weekly.load_explicit_facts(
+        write_facts(tmp_path / "facts.json", project),
+        "20260817-20260823",
+        previous_projects=previous,
+    )
+
+    assert rows[0]["completed_this_week_counts"]["bug"] == 2
+    assert rows[0]["ledger"]["project_completed"]["bug"] == 13
+    assert rows[0]["ledger"]["baseline"]["android_remaining"]["bug"] == 1
+    assert rows[0]["remaining_total"] == 0
 
 
 def test_app_rework_must_be_declared_as_reopened(tmp_path: Path) -> None:
@@ -263,6 +294,7 @@ def test_app_rework_must_be_declared_as_reopened(tmp_path: Path) -> None:
             "opening": False,
             "baseline_package_key": "20260816/member/current",
             "baseline_week_range": "20260810-20260816",
+            "project_completed": 1,
             "changes": {key: 0 for key in weekly.LEDGER_CHANGE_KEYS},
             "bsp_pending": 0,
         },
@@ -433,6 +465,7 @@ def test_v5_builder_binds_effective_previous_package(
             opening=False,
             baseline_package_key="20260816/member/current",
             baseline_week_range="20260810-20260816",
+            project_completed=patch_counts(bug=2),
             change_counts=changes(added=patch_counts(bug=1)),
         ),
     )

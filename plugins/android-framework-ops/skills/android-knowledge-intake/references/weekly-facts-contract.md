@@ -28,10 +28,11 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
       "completed_this_week": {"demand": 3, "migration": 5},
       "remaining": {"demand": 4, "migration": 3, "bug": 12},
       "ledger": {
-        "schema": "akbs-weekly-project-ledger-v1",
+        "schema": "akbs-weekly-project-ledger-v2",
         "opening": true,
         "baseline_package_key": "",
         "baseline_week_range": "",
+        "project_completed": {"demand": 3, "migration": 5},
         "changes": {
           "added": {},
           "reopened": {},
@@ -61,10 +62,11 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
       "completed_this_week": 3,
       "remaining": 7,
       "ledger": {
-        "schema": "akbs-weekly-project-ledger-v1",
+        "schema": "akbs-weekly-project-ledger-v2",
         "opening": true,
         "baseline_package_key": "",
         "baseline_week_range": "",
+        "project_completed": 3,
         "changes": {
           "added": 0,
           "reopened": 0,
@@ -144,6 +146,10 @@ Rules:
   effective previous-week report.
 - Only the main may provide non-zero ledger changes. Collaborators keep every
   change at zero and report only personal completion and remaining work.
+- `project_completed` is the main-confirmed sum of this week's completion from
+  the main and every collaborator. It cannot be smaller than the main's own
+  completion. The team reporter independently checks it against submitted
+  member rows.
 - `added` increases project total and Android remaining. `reopened` increases
   Android remaining without changing total. `closed_without_change` closes an
   accepted item without counting it as Android completion. `removed` removes
@@ -156,7 +162,7 @@ Rules:
 ```text
 current total = previous total + added - removed
 current Android remaining = previous Android remaining + added + reopened
-                            - all member completion - closed without change
+                            - project_completed - closed without change
                             - removed - transferred to BSP
 current BSP pending = previous BSP pending + transferred to BSP - BSP closed
 ```

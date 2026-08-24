@@ -207,9 +207,15 @@ For an existing main scope, the v5 gate calculates:
 ```text
 current total = previous total + added - removed
 current Android remaining = previous Android remaining + added + reopened
-                            - completed - closed_without_change
+                            - project_completed - closed_without_change
                             - removed - transferred_to_bsp
 ```
+
+`project_completed` is machine-only in the member Markdown: the main confirms
+the project-wide total after collecting collaborator progress, while each
+visible `本周完成` line remains that member's personal completion. Management
+aggregation must reject a mismatch between the main-confirmed value and the sum
+of submitted member rows.
 
 The baseline package key and week range must match the current effective
 previous-week report. A mismatch, an unexplained count gap, a total reset, or a

@@ -398,7 +398,7 @@ patch_package_unification_v1 = 1.0.139
 queue_information_completion_v1 = 1.0.139
 patch_package_subject_v2 = 1.0.140
 verification_acceptance_v2 = 1.0.142
-weekly_project_ledger_v2 = 1.0.155
+weekly_project_ledger_v2 = 1.0.156
 ```
 
 The required capabilities come from package contents, not from the current plugin release.

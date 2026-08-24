@@ -469,6 +469,18 @@ def validate_weekly_report_view_ledger(
         return
     if ledger.get("schema") != WEEKLY_LEDGER_SCHEMA:
         errors.append(f"{prefix}.schema 必须是 {WEEKLY_LEDGER_SCHEMA}")
+    expected_ledger_fields = {
+        "schema",
+        "opening",
+        "baseline_package_key",
+        "baseline_week_range",
+        "project_completed",
+        "changes",
+        "bsp_pending",
+        "baseline",
+    }
+    if set(ledger) != expected_ledger_fields:
+        errors.append(f"{prefix} 必须提供固定的 v2 台账字段")
     if not isinstance(ledger.get("opening"), bool):
         errors.append(f"{prefix}.opening 必须是布尔值")
     for field in ("baseline_package_key", "baseline_week_range"):
@@ -489,8 +501,15 @@ def validate_weekly_report_view_ledger(
     if set(changes) != expected_changes:
         errors.append(f"{prefix}.changes 必须提供固定的六类流转字段")
     work_type = project.get("work_type")
-    values = [changes.get(key) for key in expected_changes]
+    values = [ledger.get("project_completed"), *(changes.get(key) for key in expected_changes)]
     values.append(ledger.get("bsp_pending"))
+    baseline = ledger.get("baseline")
+    if not isinstance(baseline, dict) or set(baseline) != {"total", "android_remaining", "bsp_pending"}:
+        errors.append(f"{prefix}.baseline 必须提供 total、android_remaining 和 bsp_pending")
+        baseline_values: list[Any] = []
+    else:
+        baseline_values = [baseline.get("total"), baseline.get("android_remaining"), baseline.get("bsp_pending")]
+    values.extend(baseline_values)
     if work_type == "App":
         if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in values):
             errors.append(f"{prefix} App 流转计数必须是非负整数")
