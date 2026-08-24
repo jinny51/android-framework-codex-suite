@@ -23,7 +23,11 @@ from .render import (
     report_markdown_from_view,
 )
 from .render_binding import REPORT_RENDER_BINDING_SCHEMA
-from .weekly_facts import WEEKLY_FACT_SOURCES_SCHEMA, LEGACY_WEEKLY_FACT_SOURCES_SCHEMA
+from .weekly_facts import (
+    LEGACY_WEEKLY_FACT_SOURCES_SCHEMA,
+    WEEKLY_FACT_SOURCES_SCHEMA,
+)
+from .weekly_ledger import WEEKLY_LEDGER_SCHEMA
 
 
 RequireFile = Callable[[Any, str], Path | None]
@@ -450,6 +454,60 @@ def parse_weekly_scalar_count_text(
     return int(match.group("total"))
 
 
+def validate_weekly_report_view_ledger(
+    rel: str,
+    index: int,
+    project: dict[str, Any],
+    errors: list[str],
+) -> None:
+    ledger = project.get("ledger")
+    if ledger is None:
+        return
+    prefix = f"{rel} payload.projects[{index}].ledger"
+    if not isinstance(ledger, dict):
+        errors.append(f"{prefix} 必须是对象")
+        return
+    if ledger.get("schema") != WEEKLY_LEDGER_SCHEMA:
+        errors.append(f"{prefix}.schema 必须是 {WEEKLY_LEDGER_SCHEMA}")
+    if not isinstance(ledger.get("opening"), bool):
+        errors.append(f"{prefix}.opening 必须是布尔值")
+    for field in ("baseline_package_key", "baseline_week_range"):
+        if not isinstance(ledger.get(field), str):
+            errors.append(f"{prefix}.{field} 必须是字符串")
+    changes = ledger.get("changes")
+    if not isinstance(changes, dict):
+        errors.append(f"{prefix}.changes 必须是对象")
+        return
+    expected_changes = {
+        "added",
+        "reopened",
+        "closed_without_change",
+        "removed",
+        "transferred_to_bsp",
+        "bsp_closed",
+    }
+    if set(changes) != expected_changes:
+        errors.append(f"{prefix}.changes 必须提供固定的六类流转字段")
+    work_type = project.get("work_type")
+    values = [changes.get(key) for key in expected_changes]
+    values.append(ledger.get("bsp_pending"))
+    if work_type == "App":
+        if any(not isinstance(value, int) or isinstance(value, bool) or value < 0 for value in values):
+            errors.append(f"{prefix} App 流转计数必须是非负整数")
+    else:
+        for value in values:
+            if not isinstance(value, dict) or set(value) != {"demand", "migration", "bug"}:
+                errors.append(f"{prefix} Patch 流转计数必须只包含 demand/migration/bug")
+                break
+            if any(not isinstance(count, int) or isinstance(count, bool) or count < 0 for count in value.values()):
+                errors.append(f"{prefix} Patch 流转计数必须是非负整数")
+                break
+    if not isinstance(project.get("project_change"), str) or not project.get("project_change"):
+        errors.append(f"{rel} payload.projects[{index}].project_change 必须提供")
+    if not isinstance(project.get("bsp_pending"), str) or not project.get("bsp_pending"):
+        errors.append(f"{rel} payload.projects[{index}].bsp_pending 必须提供")
+
+
 def validate_weekly_report_view_project(rel: str, index: int, project: dict[str, Any], errors: list[str]) -> None:
     for old_field in ("received_date", "source", "requirement_type", "expected_finish"):
         if old_field in project:
@@ -551,6 +609,12 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
             for category in ("demand", "migration", "bug", "bsp"):
                 if completed[category] + remaining[category] > total[category]:
                     errors.append(f"{rel} payload.projects[{index}].{category} 本周完成加当前剩余不能超过项目总量")
+        if project.get("ledger") is not None:
+            for field in ("requirement_structure", "remaining"):
+                if parsed_counts.get(field, {}).get("bsp", 0) > 0:
+                    errors.append(
+                        f"{rel} payload.projects[{index}].{field} v5 不得把 BSP 当作事项类型"
+                    )
     for field in ("completed_items", "remaining_items", "key_points", "risks", "dependencies", "next_week_plan"):
         if not isinstance(project.get(field), list):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须是数组")
@@ -580,6 +644,7 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
         )
     if parsed_remaining_total > 0 and not effective_next_week_plan:
         errors.append(f"{rel} payload.projects[{index}].next_week_plan 有剩余事项时必须提供")
+    validate_weekly_report_view_ledger(rel, index, project, errors)
 
 
 def validate_daily_report_view_documents(rel: str, documents: Any, errors: list[str]) -> None:

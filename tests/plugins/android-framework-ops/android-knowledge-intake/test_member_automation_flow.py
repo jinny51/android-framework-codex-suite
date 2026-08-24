@@ -1985,7 +1985,14 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertEqual(result.evidence["source"], "akbs_api")
         self.assertEqual(result.evidence["daily_package_keys"], ["20260610/member01/current-daily"])
         self.assertEqual(result.evidence["previous_weekly_package_keys"], ["20260607/member01/current-weekly"])
-        self.assertEqual(result.evidence["missing_fields"], [])
+        self.assertEqual(
+            result.evidence["missing_fields"],
+            ["TVE1086U.scope_change_classification"],
+        )
+        self.assertEqual(
+            result.evidence["scope_change_candidates"],
+            [{"project": "TVE1086U", "items": ["新增开关功能"]}],
+        )
         self.assertEqual(row["requirement_structure_counts"], {"demand": 2, "migration": 1, "bug": 1, "bsp": 0})
         self.assertEqual(row["completed_this_week_counts"], {"demand": 2, "migration": 0, "bug": 0, "bsp": 0})
         self.assertEqual(row["remaining_counts"], {"demand": 0, "migration": 0, "bug": 1, "bsp": 0})

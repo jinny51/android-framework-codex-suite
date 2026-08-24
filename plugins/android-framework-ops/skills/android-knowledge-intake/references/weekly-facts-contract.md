@@ -14,7 +14,7 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
 
 ```json
 {
-  "schema": "akbs-weekly-work-facts-v4",
+  "schema": "akbs-weekly-work-facts-v5",
   "week_range": "20260601-20260607",
   "projects": [
     {
@@ -26,10 +26,25 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
       "requirement_source": "CR",
       "requirement_structure": {"demand": 7, "migration": 8, "bug": 15},
       "completed_this_week": {"demand": 3, "migration": 5},
-      "remaining": {"demand": 4, "migration": 3},
+      "remaining": {"demand": 4, "migration": 3, "bug": 12},
+      "ledger": {
+        "schema": "akbs-weekly-project-ledger-v1",
+        "opening": true,
+        "baseline_package_key": "",
+        "baseline_week_range": "",
+        "changes": {
+          "added": {},
+          "reopened": {},
+          "closed_without_change": {"bug": 1},
+          "removed": {},
+          "transferred_to_bsp": {"bug": 2},
+          "bsp_closed": {}
+        },
+        "bsp_pending": {"bug": 2}
+      },
       "completed_items": ["完成系统接口联调", "移植状态栏策略补丁"],
       "remaining_items": ["完成客户验收"],
-      "key_points": ["攻克状态同步时序问题"],
+      "key_points": ["1 项无需修改关闭，2 项 Bug 已转 BSP"],
       "risks": [],
       "dependencies": ["等待客户提供验收环境"],
       "next_week_plan": ["完成客户验收并关闭剩余问题"]
@@ -45,6 +60,21 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
       "work_total": 10,
       "completed_this_week": 3,
       "remaining": 7,
+      "ledger": {
+        "schema": "akbs-weekly-project-ledger-v1",
+        "opening": true,
+        "baseline_package_key": "",
+        "baseline_week_range": "",
+        "changes": {
+          "added": 0,
+          "reopened": 0,
+          "closed_without_change": 0,
+          "removed": 0,
+          "transferred_to_bsp": 0,
+          "bsp_closed": 0
+        },
+        "bsp_pending": 0
+      },
       "completed_items": ["完成串口协议接入"],
       "remaining_items": ["完成整机链路验证"],
       "key_points": ["完成原生服务和产品模块接入"],
@@ -100,22 +130,51 @@ Rules:
   integers without Patch categories.
 - A Patch main requires `requirement_structure`; an App main requires integer
   `work_total`. Collaborators may omit the corresponding total.
-- Patch count objects use only `demand`, `migration`, `bug`, and optional `bsp`.
-  Display labels are `需求`, `移植`, `Bug`, and `BSP`.
+- Patch 项目总量、本周完成和 Android 当前剩余只使用 `demand`、
+  `migration`、`bug`。`BSP` 是责任状态，不是事项类型；转 BSP 后保留原始
+  需求/移植/Bug 分类，并写入 `ledger.bsp_pending`。
 - `需求` means a customer requirement the team has not implemented before;
   `移植` means reusing or porting a requirement already implemented before;
   `Bug` means defect work.
-- `BSP` is allowed only in project total and current remaining. It must never
-  appear as a positive completion count. Work completed by the Android team is
-  `需求`, `移植`, or `Bug`, not `BSP`.
+- `ledger` is required for every v5 project row. Codex writes it; members do not
+  hand-edit the JSON.
+- A main row for a new scope uses `opening=true`, provides the initial total,
+  and leaves the baseline fields empty. Existing scopes use `opening=false`
+  and bind `baseline_package_key` and `baseline_week_range` to the current
+  effective previous-week report.
+- Only the main may provide non-zero ledger changes. Collaborators keep every
+  change at zero and report only personal completion and remaining work.
+- `added` increases project total and Android remaining. `reopened` increases
+  Android remaining without changing total. `closed_without_change` closes an
+  accepted item without counting it as Android completion. `removed` removes
+  an open duplicate/invalid/out-of-scope item from both total and remaining.
+  `transferred_to_bsp` removes work from Android remaining and adds it to BSP
+  tracking. `bsp_closed` closes BSP-tracked work without adding Android
+  completion.
+- Existing-scope totals and remaining counts are calculated and checked as:
+
+```text
+current total = previous total + added - removed
+current Android remaining = previous Android remaining + added + reopened
+                            - all member completion - closed without change
+                            - removed - transferred to BSP
+current BSP pending = previous BSP pending + transferred to BSP - BSP closed
+```
+
+- Explicit v4/v3 facts may open a scope only when no previous scope exists.
+  They cannot replace an existing scope because that would bypass the previous
+  baseline; use v5 instead.
+- Automatic rolling writes unmatched existing-scope work to
+  `weekly_fact_sources.scope_change_candidates`. Ask the main to classify only
+  those exact items before producing v5 facts.
 - A positive count line must contain at least one positive `demand`,
-  `migration`, or `bug`; `BSP` cannot be the only business category.
+  `migration`, or `bug`.
 - Zero categories may be omitted. The generated line total is always the sum
   of its categories.
 - Old `custom` or `定制` counts are invalid. They cannot be split into
   `需求` and `移植` automatically; the member must confirm the split.
-- App counts must satisfy `completed_this_week + remaining <= work_total` when
-  the total is present. Patch and App quantities are never added together.
+- App ledger changes use non-negative integers. App does not support BSP
+  tracking. Patch and App quantities are never added together.
 - `key_points` records external project news, scope changes, or a key
   difficulty overcome this week. Use `["无"]` when there is none.
 - When completed or remaining count is positive, provide the corresponding

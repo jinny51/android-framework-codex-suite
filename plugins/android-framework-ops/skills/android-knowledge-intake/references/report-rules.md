@@ -119,7 +119,7 @@ effective daily reports from AKBS, carry the current previous-week project
 ledger forward, apply report replacement chains, and use sessions only to
 supplement work absent from effective daily reports. `weekly_fact_sources`
 records this provenance. Missing ledger fields block upload and are completed
-through the explicit `akbs-weekly-work-facts-v4` contract. Requirement
+through the explicit `akbs-weekly-work-facts-v5` contract. Requirement
 source is created when the member receives the demand and must not be inferred
 from daily-report wording.
 
@@ -139,15 +139,23 @@ from daily-report wording.
 - 项目角色：主责 / 协作 中选择一个
 - 需求时间：2026-06-18
 - 需求来源：CR / TL / PM / TE / BSP 中选择一个
-- 共 18 项：需求 4、移植 4、Bug 8、BSP 2（主责必填，协作可省略）
+- 本周变化：新增 2 项（需求 2）、转 BSP 2 项（Bug 2）（仅主责确认）
+- 共 18 项：需求 6、移植 4、Bug 8（主责显示，协作省略）
 - 本周完成 5 项：需求 2、移植 2、Bug 1
-- 当前剩余 5 项：需求 1、移植 2、BSP 2
+- 当前剩余 3 项：需求 1、移植 2
+- BSP 跟踪 2 项：Bug 2
 
 `需求`表示团队以前没有做过的客户需求，`移植`表示复用或移植团队以前做过的
 客户需求，`Bug`表示缺陷处理。不要保留`定制`父分类。Bug 修复补丁的移植仍计
-`Bug`。`BSP`仅统计项目总量或当前剩余中的 BSP 负责项，不得作为本周完成项。
+`Bug`。`BSP`是责任状态，不是事项类型；转 BSP 后保留原需求/移植/Bug 分类，
+从 Android 当前剩余中扣除并单独跟踪，不得作为本周完成项。
 旧`定制`计数不能自动拆分，必须由成员确认。正数计数行至少包含一项`需求`、
 `移植`或`Bug`，为 0 的分类省略，行总数必须等于分类之和。
+
+新项目初始总量及后续新增、重新打开、无需修改关闭、移出、转 BSP 和 BSP 关闭
+只能由主责确认。协作只填写个人完成和个人剩余；发现文档外事项时先标记待主责
+确认，不得自行修改项目总量。Codex 绑定上一份有效周报并自动计算当前总量和剩余；
+显式事实也不得绕过上周基线。
 
 以上分类只用于 `Patch`。`App` 使用独立的简单计数，不填写需求、移植、Bug
 或 BSP 分类：主责填写`共 N 项`，所有成员填写`本周完成 N 项`和`当前剩余 N 项`。

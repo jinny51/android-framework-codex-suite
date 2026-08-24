@@ -44,7 +44,7 @@ weekly fact.
 Do not count Codex sessions as requirements. If the effective reports cannot
 prove project role, requirement date, requirement source, project totals, or
 remaining-item identity, local check must fail with exact missing fields. Ask the member
-only for those facts, write an `akbs-weekly-work-facts-v4` JSON file under
+only for those facts, write an `akbs-weekly-work-facts-v5` JSON file under
 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/`, and regenerate
 with `--weekly-facts`. Read `../android-knowledge-intake/references/weekly-facts-contract.md`
 when this fact-completion path is needed. Do not ask the member to repair a
@@ -53,10 +53,11 @@ large part of generated Markdown manually.
 Use `需求`, `移植`, and `Bug` as the three business categories; do not retain a
 `定制` parent category. `需求` means a customer requirement the team has not
 implemented before. `移植` means reusing or porting a requirement already
-implemented before. A migrated Bug fix remains `Bug`. `BSP` is reserved for
-explicitly BSP-owned or BSP-dependent total/remaining work and must never be a
-positive `本周完成` category. Old `定制` totals cannot be split automatically;
-ask the member to confirm `需求` versus `移植`.
+implemented before. A migrated Bug fix remains `Bug`. `BSP` is a responsibility
+state, not a business category: keep the original `需求`、`移植` or `Bug` type,
+remove transferred work from Android remaining, and show it separately as
+`BSP 跟踪`. Old `定制` totals cannot be split automatically; ask the member to
+confirm `需求` versus `移植`.
 
 Generate `reports/weekly.md` with this required structure:
 
@@ -92,10 +93,19 @@ The weekly Markdown baseline is the project block format:
 - 项目角色：主责
 - 需求时间：2026-06-18
 - 需求来源：CR
-- 共 18 项：需求 4、移植 4、Bug 8、BSP 2
+- 本周变化：新增 2 项（需求 2）、转 BSP 2 项（Bug 2）
+- 共 18 项：需求 6、移植 4、Bug 8
 - 本周完成 5 项：需求 2、移植 2、Bug 1
-- 当前剩余 5 项：需求 1、移植 2、BSP 2
+- 当前剩余 3 项：需求 1、移植 2
+- BSP 跟踪 2 项：Bug 2
 ```
+
+The visible Markdown keeps one compact `本周变化` line and omits zero change
+types. The structured v5 facts bind the current effective previous-week package
+and carry `added`, `reopened`, `closed_without_change`, `removed`,
+`transferred_to_bsp`, and `bsp_closed`. Members confirm the business facts;
+Codex writes the ledger JSON and computes the displayed total and remaining.
+An explicit facts file must never reset an existing project's total.
 
 `类型` is required and must be exactly `Patch` or `App`. `Patch` means system
 source customization normally delivered as patches. `App` means application
@@ -114,6 +124,13 @@ not add Document counts to Patch/App project demand totals.
 and uses `YYYY-MM-DD`. `需求来源` is required and must be exactly one of
 `CR`, `TL`, `PM`, `TE`, or `BSP`. Every member provides `本周完成` and
 `当前剩余`; only `协作` may omit the `共 N 项` total line.
+
+The main owns the initial project total and every later total or responsibility
+change. A collaborator reports personal completion and personal remaining only;
+non-zero project ledger changes from a collaborator are rejected. When a
+collaborator completes an out-of-list item, keep it pending until the main
+confirms whether it is added, reopened, or already covered by the project
+ledger.
 
 For `Patch`, the main member uses the existing category breakdown. Positive
 count lines must contain at least one `需求`, `移植`, or `Bug`. Omit zero
@@ -142,7 +159,7 @@ as separate unordered lists under subsection 4.
 For multiple projects, repeat the same block per project. Do not use a large
 overview table in `本周概况`.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, `projects[]`, and `documents[]`; at least one array must be non-empty. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), required `work_type`, conditional `app_name`, `project_role`, `week_summary`, `requirement_date`, `requirement_source`, `completed_this_week`, `remaining`, `completed_items[]`, `remaining_items[]`, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`. A Patch main row also contains `requirement_structure`; an App main row contains `work_total`. Collaborators may omit their corresponding total. Each document row contains `work_type=Document`, `document_name`, `week_summary`, completed/remaining counts and item arrays, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`, without project/customer fields.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, `projects[]`, and `documents[]`; at least one array must be non-empty. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), required `work_type`, conditional `app_name`, `project_role`, `week_summary`, `requirement_date`, `requirement_source`, `completed_this_week`, `remaining`, `completed_items[]`, `remaining_items[]`, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`. A v5 row also carries structured `ledger`, human `project_change`, and `bsp_pending`. A Patch main row contains the computed `requirement_structure`; an App main row contains the computed `work_total`. Collaborators omit their corresponding total. Each document row contains `work_type=Document`, `document_name`, `week_summary`, completed/remaining counts and item arrays, `key_points[]`, `risks[]`, `dependencies[]`, and `next_week_plan[]`, without project/customer fields.
 
 Weekly card identity is not the week range. `material_name` must preserve the
 customer chain, such as `TVE1086U（青鸾云）` or
@@ -184,6 +201,24 @@ normalized weekly facts. `report_render_binding` binds both files to the weekly
 fact hash. Never repair only one file. Update the facts and regenerate.
 `--prepare` returns failure when local validation fails, and submission always
 revalidates before HTTP.
+
+For an existing main scope, the v5 gate calculates:
+
+```text
+current total = previous total + added - removed
+current Android remaining = previous Android remaining + added + reopened
+                            - completed - closed_without_change
+                            - removed - transferred_to_bsp
+```
+
+The baseline package key and week range must match the current effective
+previous-week report. A mismatch, an unexplained count gap, a total reset, or a
+legacy explicit facts file targeting an existing scope blocks package creation
+and therefore also blocks upload.
+When automatic rolling finds work that does not match an item remaining from
+last week, `weekly_fact_sources.scope_change_candidates` lists the exact items.
+Ask the main only whether each candidate is added, reopened, removed, or already
+covered; do not ask them to reconstruct the full report.
 
 Before running `--prepare`, `--upload`, or `--submit-latest`, distinguish
 Patch/App project work from standalone Document work. A project row requires a

@@ -15,15 +15,15 @@
 
 当前日报已携带由工作证据自动判定或成员确认的 Patch/App 项目范围、App 名称或独立 Document 文档范围，周报按该范围归并，不再根据事项文字重新猜类型。旧日报缺少范围字段时仍可读取，但不能证明周报类型，必须由成员补齐。
 
-如果类型、App 名称（仅 App）、文档名称（仅 Document）、项目角色、需求时间、需求来源、主责总量或剩余事项身份仍缺失，本地检查会列出准确字段并阻止上传。成员只补这些事实，Codex 将其写入 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/` 下的 `akbs-weekly-work-facts-v4` JSON，再通过 `--weekly-facts <path>` 重新生成；不再要求成员大面积手改 Markdown。
+如果类型、App 名称（仅 App）、文档名称（仅 Document）、项目角色、需求时间、需求来源、主责总量、项目流转或剩余事项身份仍缺失，本地检查会列出准确字段并阻止上传。成员只确认缺失事实，Codex 将其写入 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/` 下的 `akbs-weekly-work-facts-v5` JSON，再通过 `--weekly-facts <path>` 重新生成；不要求成员手改 JSON 或 Markdown。v5 显式事实必须绑定上一份有效周报，不能绕过上周台账重新填写总量。
 
 `report_view.json` 是同一份周报正文的 UI 读模型（UI read model），使用 `schema=akbs-report-view-human-v1`，至少包含 `report_type=weekly`、`week_range`、`display_date`、`material_name`、`material_summary`、`member_alias`、`member_name`、`projects[]` 和 `documents[]`。项目行保留 Patch/App 项目台账；文档行使用 `work_type=Document`、`document_name`、完成/剩余数量和详情数组，不填写项目、客户、项目角色或需求字段。Document 数量不并入项目需求统计。周报包只归档，不进入知识库沉淀候选。
 
 `类型`只允许 `Patch` 或 `App`。Patch 按“项目 + 直接客户”形成一个统计对象；App 再加 `App 名称`形成统计对象。同一公司项目可以有一个 Patch 和多个不同 App，但不得重复同一 Patch 或同一 App。普通功能名称写在完成项、剩余项或下周计划中。没有下周动作时 `next_week_plan` 使用空数组，Markdown 不显示该统计对象的计划块，不用“无”占位。生成和 `--submit-latest` 都会在 HTTP 前重新执行这些校验。
 
-Patch 不再保留“定制”父分类，直接使用需求、移植和 Bug：以前没做过的客户需求计需求，以前做过并复用或移植的客户需求计移植，缺陷处理计 Bug。BSP 只能出现在 Patch 总量和当前剩余，不得出现在本周完成统计中。App 只填写简单总量、完成量和剩余量，不套用 Patch 分类；两类数量不得相加。
+Patch 不再保留“定制”父分类，直接使用需求、移植和 Bug：以前没做过的客户需求计需求，以前做过并复用或移植的客户需求计移植，缺陷处理计 Bug。BSP 是责任状态而不是事项类型；转 BSP 后保留原需求/移植/Bug 分类，从 Android 当前剩余中扣除，并单独显示 `BSP 跟踪`。App 使用简单总量、完成量和剩余量，不套用 Patch 分类；两类数量不得相加。
 
-成员周报以范文为基线：`本周概况` 先按项目写项目名称、直接客户、可选客户的客户、项目角色、需求时间、需求来源、本周完成和当前剩余；主责还要写项目总量，协作可以省略。`需求来源`只允许 `CR`、`TL`、`PM`、`TE`、`BSP`。`项目详情`依次写 `1. 本周完成`、`2. 当前剩余`、`3. 重点说明`、`4. 风险 / 依赖`；最后写 `下周计划`。多项目时重复同一项目块，不用大表格堆字段。成员可以说 `TVE1086U 青鸾云`，也可以说 `TVE1091U AOC 福建移动高清`；后者识别为项目 `TVE1091U`、直接客户 `AOC`、客户的客户 `福建移动高清`。直接客户和下游客户不得跨层当作别名。缺项目或直接客户时提交会被本地校验拦住；补齐结构化事实后重新生成 Markdown 和 JSON，不单独手改其中一份。
+成员周报以项目块为基线。主责负责新项目初始总量及后续新增、重新打开、无需修改关闭、移出、转 BSP 和 BSP 关闭；协作只报个人完成和个人剩余，不能修改项目总账。Markdown 只增加一行紧凑的 `本周变化`，总量、Android 当前剩余和 BSP 跟踪由上周基线自动计算。`需求来源`只允许 `CR`、`TL`、`PM`、`TE`、`BSP`。`项目详情`依次写 `1. 本周完成`、`2. 当前剩余`、`3. 重点说明`、`4. 风险 / 依赖`；最后写 `下周计划`。多项目时重复同一项目块，不用大表格堆字段。
 
 `reports/weekly.md` 中项目名每次出现都加粗，包括概况正文、完成项、剩余项、风险、依赖和下周计划，不只处理标题；只加粗项目名，客户链保持普通文字。`report_view.json` 的项目与摘要字段保持纯文本，不写 Markdown 标记。
 

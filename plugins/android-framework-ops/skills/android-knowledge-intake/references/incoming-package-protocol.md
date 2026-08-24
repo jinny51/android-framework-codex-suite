@@ -201,7 +201,9 @@ keys, unique project and document counts, work-scope count, a sanitized facts ha
 client resolves current AKBS daily reports and the current previous-week report
 before local submitted replacement leaves; sessions only supplement missing
 daily coverage. Non-empty `missing_fields` fails local upload validation and is
-closed through an explicit `akbs-weekly-work-facts-v4` artifact. Old
+closed through an explicit `akbs-weekly-work-facts-v5` artifact. V5 binds the
+effective previous-week package and records main-owned project changes, so
+explicit facts cannot reset an existing total or hide a remaining-count gap. Old
 `custom`/`定制` counts are rejected because they cannot be split into `需求`
 and `移植` without member confirmation.
 
@@ -396,6 +398,7 @@ patch_package_unification_v1 = 1.0.139
 queue_information_completion_v1 = 1.0.139
 patch_package_subject_v2 = 1.0.140
 verification_acceptance_v2 = 1.0.142
+weekly_project_ledger_v2 = 1.0.155
 ```
 
 The required capabilities come from package contents, not from the current plugin release.

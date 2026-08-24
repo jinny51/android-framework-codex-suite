@@ -514,6 +514,61 @@ def weekly_fact_count_text(row: dict[str, Any], key: str, *, include_bsp: bool, 
     return format_requirement_counts(counts, include_bsp=include_bsp, label=label)
 
 
+def weekly_ledger_event_text(value: Any, *, work_type: str, label: str) -> str:
+    if work_type == "App":
+        total = int(value or 0)
+        return f"{label} {total} 项"
+    counts = normalize_fact_counts(value)
+    total = sum(counts[key] for key in ("demand", "migration", "bug"))
+    labels = {"demand": "需求", "migration": "移植", "bug": "Bug"}
+    parts = [f"{labels[key]} {counts[key]}" for key in labels if counts[key] > 0]
+    return f"{label} {total} 项" + (f"（{'、'.join(parts)}）" if parts else "")
+
+
+def weekly_ledger_change_text(row: dict[str, Any]) -> str:
+    ledger = row.get("ledger") if isinstance(row.get("ledger"), dict) else {}
+    changes = ledger.get("changes") if isinstance(ledger.get("changes"), dict) else {}
+    work_type = str(row.get("work_type") or "Patch")
+    labels = {
+        "added": "新增",
+        "reopened": "重新打开",
+        "closed_without_change": "无需修改关闭",
+        "removed": "移出",
+        "transferred_to_bsp": "转 BSP",
+        "bsp_closed": "BSP 关闭",
+    }
+    parts: list[str] = []
+    if ledger.get("opening") is True:
+        parts.append("新项目建账")
+    for key, label in labels.items():
+        value = changes.get(key, 0 if work_type == "App" else {})
+        total = int(value or 0) if work_type == "App" else sum(
+            normalize_fact_counts(value)[category]
+            for category in ("demand", "migration", "bug")
+        )
+        if total > 0:
+            parts.append(weekly_ledger_event_text(value, work_type=work_type, label=label))
+    return "、".join(parts) or "无"
+
+
+def weekly_bsp_pending_text(row: dict[str, Any]) -> str:
+    ledger = row.get("ledger") if isinstance(row.get("ledger"), dict) else {}
+    return weekly_ledger_event_text(
+        ledger.get("bsp_pending", {}),
+        work_type=str(row.get("work_type") or "Patch"),
+        label="BSP 跟踪",
+    )
+
+
+def weekly_bsp_pending_total(row: dict[str, Any]) -> int:
+    ledger = row.get("ledger") if isinstance(row.get("ledger"), dict) else {}
+    value = ledger.get("bsp_pending", {})
+    if row.get("work_type") == "App":
+        return int(value or 0)
+    counts = normalize_fact_counts(value)
+    return sum(counts[key] for key in ("demand", "migration", "bug"))
+
+
 def weekly_scope_heading(row: dict[str, Any]) -> str:
     context = row_customer_context(row)
     heading = project_customer_heading(
@@ -693,6 +748,11 @@ def write_weekly_report(
                 f"- 需求时间：{row.get('requirement_date') or '需成员确认'}",
                 f"- 需求来源：{row.get('requirement_source') or '需成员确认'}",
                 *(
+                    [f"- 本周变化：{weekly_ledger_change_text(row)}"]
+                    if isinstance(row.get("ledger"), dict) and row.get("project_role") == "主责"
+                    else []
+                ),
+                *(
                     [f"- {total_value}"]
                     if row.get("project_role") == "主责"
                     and (
@@ -704,6 +764,11 @@ def write_weekly_report(
                 ),
                 f"- {completed_value}",
                 f"- {remaining_value}",
+                *(
+                    [f"- {weekly_bsp_pending_text(row)}"]
+                    if isinstance(row.get("ledger"), dict) and weekly_bsp_pending_total(row) > 0
+                    else []
+                ),
                 "",
             ]
     else:
@@ -983,6 +1048,10 @@ def report_view_payload(
                 project_row["requirement_structure"] = weekly_fact_count_text(
                     row, "requirement_structure_counts", include_bsp=True, label="共"
                 )
+            if row.get("ledger_present"):
+                project_row["ledger"] = dict(row.get("ledger") or {})
+                project_row["project_change"] = weekly_ledger_change_text(row)
+                project_row["bsp_pending"] = weekly_bsp_pending_text(row)
             projects.append(project_row)
         payload.update(
             {

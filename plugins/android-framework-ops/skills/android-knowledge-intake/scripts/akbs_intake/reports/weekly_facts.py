@@ -27,14 +27,22 @@ from .document_work import (
     validate_weekly_documents,
 )
 from .scope import PROJECT_WORK_TYPES, report_scope_key
+from .weekly_ledger import (
+    BUSINESS_COUNT_KEYS,
+    LEDGER_CHANGE_KEYS,
+    WEEKLY_LEDGER_SCHEMA,
+    matching_previous_scope,
+    normalize_weekly_ledger,
+    validate_v5_project_ledger,
+)
 
 
-WEEKLY_FACTS_SCHEMA = "akbs-weekly-work-facts-v4"
+WEEKLY_FACTS_SCHEMA = "akbs-weekly-work-facts-v5"
+PREVIOUS_WEEKLY_FACTS_SCHEMA = "akbs-weekly-work-facts-v4"
 LEGACY_WEEKLY_FACTS_SCHEMA = "akbs-weekly-project-facts-v3"
 WEEKLY_FACT_SOURCES_SCHEMA = "akbs-weekly-fact-sources-v2"
 LEGACY_WEEKLY_FACT_SOURCES_SCHEMA = "akbs-weekly-fact-sources-v1"
 COUNT_KEYS = ("demand", "migration", "bug", "bsp")
-BUSINESS_COUNT_KEYS = ("demand", "migration", "bug")
 ALLOWED_PROJECT_ROLES = {"主责", "协作"}
 ALLOWED_SOURCES = {"CR", "TL", "PM", "TE", "BSP"}
 MISSING_VALUES = {"", "unknown", "需成员确认", "需成员补充", "待确认"}
@@ -371,6 +379,7 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
     raw_completed = value.get("completed_this_week_counts", value.get("completed_this_week"))
     raw_remaining = value.get("remaining_counts", value.get("remaining"))
     work_type = clean_text(value.get("work_type") or value.get("type"), "需成员确认")
+    ledger = normalize_weekly_ledger(value.get("ledger"), work_type)
     raw_work_total = value.get("work_total")
     completed_items = clean_list(value.get("completed_items"))
     remaining_items = clean_list(value.get("remaining_items"))
@@ -393,6 +402,9 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
         "remaining_counts": normalize_counts(raw_remaining),
         "completed_this_week_total": normalize_scalar_count(raw_completed),
         "remaining_total": normalize_scalar_count(raw_remaining),
+        "ledger_present": isinstance(value.get("ledger"), dict),
+        "ledger": ledger,
+        "bsp_pending_counts": ledger["bsp_pending"],
         "legacy_custom_counts": {
             "requirement_structure": legacy_custom_count(raw_structure),
             "completed_this_week": legacy_custom_count(raw_completed),
@@ -410,6 +422,8 @@ def _weekly_project_row(value: dict[str, Any]) -> dict[str, Any]:
         row["work_total"] = count_total(row["requirement_structure_counts"])
         row["completed_this_week_total"] = count_total(row["completed_this_week_counts"])
         row["remaining_total"] = count_total(row["remaining_counts"])
+    elif work_type == "App":
+        row["bsp_pending_counts"] = 0
     return row
 
 
@@ -475,6 +489,7 @@ def load_explicit_facts(
     *,
     expected_project_customers: dict[str, Any] | None = None,
     include_documents: bool = False,
+    previous_projects: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     payload = read_json_file(path)
     if payload.get("schema") == "akbs-weekly-project-facts-v1":
@@ -488,7 +503,11 @@ def load_explicit_facts(
             f"{WEEKLY_FACTS_SCHEMA}"
         )
     schema = payload.get("schema")
-    if schema not in {WEEKLY_FACTS_SCHEMA, LEGACY_WEEKLY_FACTS_SCHEMA}:
+    if schema not in {
+        WEEKLY_FACTS_SCHEMA,
+        PREVIOUS_WEEKLY_FACTS_SCHEMA,
+        LEGACY_WEEKLY_FACTS_SCHEMA,
+    }:
         raise SystemExit(f"weekly facts schema 必须是 {WEEKLY_FACTS_SCHEMA}")
     if clean_text(payload.get("week_range")) != week_key:
         raise SystemExit(f"weekly facts week_range 必须等于 {week_key}")
@@ -662,7 +681,25 @@ def load_explicit_facts(
             errors.append(f"{project}.remaining_items 当前剩余大于 0 时必须提供")
         if remaining_total > 0 and not clean_list(item.get("next_week_plan")):
             errors.append(f"{project}.next_week_plan 当前有剩余时必须提供")
-        normalized.append(_weekly_project_row(item))
+        normalized_row = _weekly_project_row(item)
+        previous, previous_ambiguous = matching_previous_scope(
+            normalized_row,
+            previous_projects or {},
+        )
+        if schema == WEEKLY_FACTS_SCHEMA:
+            validate_v5_project_ledger(
+                item,
+                normalized_row,
+                previous,
+                previous_ambiguous=previous_ambiguous,
+                errors=errors,
+            )
+        elif previous is not None or previous_ambiguous:
+            errors.append(
+                f"{project}.ledger 已有上周台账的项目必须使用 {WEEKLY_FACTS_SCHEMA}；"
+                "旧显式事实不得绕过上周基线"
+            )
+        normalized.append(normalized_row)
     for conflict in project_customer_identity_conflicts(normalized, expected_project_customers or {}):
         errors.append(
             f"{conflict['project']}.customer 客户链与当前会话已确认的项目身份不一致；"
@@ -798,6 +835,8 @@ def _previous_week_projects(items: list[dict[str, Any]]) -> dict[str, list[dict[
             project = find_company_project(row["project"])
             if project:
                 row["project"] = project
+                row["_package_key"] = clean_text(item.get("package_key"))
+                row["_week_range"] = clean_text(item.get("week_range"))
                 result.setdefault(project, []).append(row)
     return result
 
@@ -886,11 +925,16 @@ def _history_project_row(
     current_remaining = list(prior_remaining)
     completed_items: list[str] = []
     current_unfinished: list[str] = []
+    unmatched_existing_scope = False
+    scope_change_candidates: list[str] = []
 
     for record in sorted(daily_records, key=lambda item: item.get("date", "")):
         text = record["text"]
         is_completed = progress_completed(record.get("progress"))
         matched = next((item for item in prior_remaining if same_item(text, item)), "")
+        if previous and not matched:
+            unmatched_existing_scope = True
+            add_unique(scope_change_candidates, text)
         if work_type == "App":
             if is_completed:
                 add_unique(completed_items, text)
@@ -985,6 +1029,7 @@ def _history_project_row(
         "risks": risks or ["无超过 3 天无进展事项。"],
         "dependencies": dependencies or ["无外部依赖事项。"],
         "next_week_plan": plans,
+        "_scope_change_candidates": scope_change_candidates,
     }
     missing: list[str] = []
     for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
@@ -1010,6 +1055,8 @@ def _history_project_row(
         missing.append(f"{project}.next_week_plan")
     if previous and row_count(prior, "remaining_counts") > len(prior_remaining) and daily_records:
         missing.append(f"{project}.remaining_item_identity")
+    if unmatched_existing_scope:
+        missing.append(f"{project}.scope_change_classification")
     return row, missing
 
 
@@ -1209,13 +1256,20 @@ def build_weekly_facts(
 ) -> WeeklyFactsResult:
     missing_fields: list[str] = []
     if explicit_path:
+        _, weekly_items, history_provenance = load_history(config, start, end)
+        previous = _previous_week_projects(weekly_items)
         projects, documents = load_explicit_facts(
             expanded_path(explicit_path),
             week_key,
             expected_project_customers=project_customers,
             include_documents=True,
+            previous_projects=previous,
         )
-        provenance: dict[str, Any] = {"source": "explicit_weekly_facts", "daily_package_keys": [], "previous_weekly_package_keys": []}
+        provenance = {
+            **history_provenance,
+            "source": "explicit_weekly_facts",
+            "daily_package_keys": [],
+        }
         for row in projects:
             missing_fields.extend(_project_missing_fields(row))
     elif synthetic:
@@ -1313,6 +1367,14 @@ def build_weekly_facts(
         "work_scope_count": len(projects) + len(documents),
         "missing_fields": sorted(set(missing_fields)),
         "identity_conflicts": identity_conflicts,
+        "scope_change_candidates": [
+            {
+                "project": clean_text(row.get("project")),
+                "items": clean_list(row.get("_scope_change_candidates")),
+            }
+            for row in projects
+            if clean_list(row.get("_scope_change_candidates"))
+        ],
         "facts_sha256": facts_hash(projects, documents),
     }
     return WeeklyFactsResult(projects, documents, evidence)

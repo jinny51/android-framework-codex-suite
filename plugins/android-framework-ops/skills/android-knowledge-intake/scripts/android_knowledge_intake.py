@@ -692,7 +692,7 @@ def parse_args() -> argparse.Namespace:
             sub.add_argument(
                 "--weekly-facts",
                 default="",
-                help="authoritative akbs-weekly-work-facts-v4 JSON for unresolved project or document facts",
+                help="authoritative akbs-weekly-work-facts-v5 JSON for unresolved project, ledger, or document facts",
             )
             sub.add_argument(
                 "--replace-weekly-run-id",
