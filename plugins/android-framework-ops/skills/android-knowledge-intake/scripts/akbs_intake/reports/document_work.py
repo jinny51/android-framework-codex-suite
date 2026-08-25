@@ -6,7 +6,9 @@ from typing import Any
 
 DOCUMENT_WORK_TYPE = "Doc"
 LEGACY_DOCUMENT_WORK_TYPE = "Document"
-STANDALONE_WORK_TYPES = {DOCUMENT_WORK_TYPE, "GMS", "Other"}
+DOCUMENT_WORK_TYPES = {DOCUMENT_WORK_TYPE}
+STANDALONE_WORK_TYPES = {"Other"}
+NON_PROJECT_WORK_TYPES = DOCUMENT_WORK_TYPES | STANDALONE_WORK_TYPES
 DOCUMENT_NAME_LIMIT = 80
 DOCUMENT_STATUS_VALUES = {"已完成", "处理中", "待验证", "阻塞"}
 DOCUMENT_NAME_PATTERNS = (
@@ -111,28 +113,55 @@ def validate_work_items(work_items: Any, *, prefix: str, old_how_text: str = "")
 
 
 def validate_daily_documents(documents: Any, *, prefix: str = "documents") -> list[str]:
-    if not isinstance(documents, list):
+    return _validate_daily_non_project_rows(
+        documents,
+        prefix=prefix,
+        allowed_types=DOCUMENT_WORK_TYPES,
+        expected="Doc",
+        identity_label="文档",
+    )
+
+
+def validate_daily_standalone_work(rows: Any, *, prefix: str = "standalone_work") -> list[str]:
+    return _validate_daily_non_project_rows(
+        rows,
+        prefix=prefix,
+        allowed_types=STANDALONE_WORK_TYPES,
+        expected="Other",
+        identity_label="独立工作",
+    )
+
+
+def _validate_daily_non_project_rows(
+    rows: Any,
+    *,
+    prefix: str,
+    allowed_types: set[str],
+    expected: str,
+    identity_label: str,
+) -> list[str]:
+    if not isinstance(rows, list):
         return [f"{prefix} 必须是数组"]
     errors: list[str] = []
     seen: dict[str, int] = {}
-    for index, raw in enumerate(documents):
+    for index, raw in enumerate(rows):
         row_prefix = f"{prefix}[{index}]"
         if not isinstance(raw, dict):
             errors.append(f"{row_prefix} 必须是对象")
             continue
         work_type = normalize_standalone_work_type(raw.get("work_type"))
-        if work_type not in STANDALONE_WORK_TYPES:
-            errors.append(f"{row_prefix}.work_type 必须是 Doc、GMS 或 Other")
+        if work_type not in allowed_types:
+            errors.append(f"{row_prefix}.work_type 必须是 {expected}")
         name = standalone_work_name(raw)
         if not name:
             errors.append(f"{row_prefix} 必须提供具体 document_name 或 work_name")
         elif name.casefold() in seen:
-            errors.append(f"{row_prefix} 与 {prefix}[{seen[name.casefold()]}] 的文档重复")
+            errors.append(f"{row_prefix} 与 {prefix}[{seen[name.casefold()]}] 的{identity_label}重复")
         else:
             seen[name.casefold()] = index
         for forbidden in ("project", "customer", "customer_name", "downstream_customer", "app_name"):
             if clean_document_text(raw.get(forbidden)):
-                errors.append(f"{row_prefix}.{forbidden} 文档工作不得伪造项目或客户字段")
+                errors.append(f"{row_prefix}.{forbidden} {identity_label}不得伪造项目或客户字段")
         for field in ("today_topic", "current_result"):
             if not clean_document_text(raw.get(field)):
                 errors.append(f"{row_prefix}.{field} 必须提供")
@@ -147,28 +176,55 @@ def validate_daily_documents(documents: Any, *, prefix: str = "documents") -> li
 
 
 def validate_weekly_documents(documents: Any, *, prefix: str = "documents") -> list[str]:
-    if not isinstance(documents, list):
+    return _validate_weekly_non_project_rows(
+        documents,
+        prefix=prefix,
+        allowed_types=DOCUMENT_WORK_TYPES,
+        expected="Doc",
+        identity_label="文档",
+    )
+
+
+def validate_weekly_standalone_work(rows: Any, *, prefix: str = "standalone_work") -> list[str]:
+    return _validate_weekly_non_project_rows(
+        rows,
+        prefix=prefix,
+        allowed_types=STANDALONE_WORK_TYPES,
+        expected="Other",
+        identity_label="独立工作",
+    )
+
+
+def _validate_weekly_non_project_rows(
+    rows: Any,
+    *,
+    prefix: str,
+    allowed_types: set[str],
+    expected: str,
+    identity_label: str,
+) -> list[str]:
+    if not isinstance(rows, list):
         return [f"{prefix} 必须是数组"]
     errors: list[str] = []
     seen: dict[str, int] = {}
-    for index, raw in enumerate(documents):
+    for index, raw in enumerate(rows):
         row_prefix = f"{prefix}[{index}]"
         if not isinstance(raw, dict):
             errors.append(f"{row_prefix} 必须是对象")
             continue
         work_type = normalize_standalone_work_type(raw.get("work_type"))
-        if work_type not in STANDALONE_WORK_TYPES:
-            errors.append(f"{row_prefix}.work_type 必须是 Doc、GMS 或 Other")
+        if work_type not in allowed_types:
+            errors.append(f"{row_prefix}.work_type 必须是 {expected}")
         name = standalone_work_name(raw)
         if not name:
             errors.append(f"{row_prefix} 必须提供具体 document_name 或 work_name")
         elif name.casefold() in seen:
-            errors.append(f"{row_prefix} 与 {prefix}[{seen[name.casefold()]}] 的文档重复")
+            errors.append(f"{row_prefix} 与 {prefix}[{seen[name.casefold()]}] 的{identity_label}重复")
         else:
             seen[name.casefold()] = index
         for forbidden in ("project", "customer", "customer_name", "downstream_customer", "app_name"):
             if clean_document_text(raw.get(forbidden)):
-                errors.append(f"{row_prefix}.{forbidden} 文档工作不得伪造项目或客户字段")
+                errors.append(f"{row_prefix}.{forbidden} {identity_label}不得伪造项目或客户字段")
         for field in ("week_summary", "completed_this_week", "remaining"):
             if field in {"completed_this_week", "remaining"}:
                 value = raw.get(field)

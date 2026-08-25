@@ -99,6 +99,21 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
       "dependencies": [],
       "next_week_plan": []
     }
+  ],
+  "standalone_work": [
+    {
+      "work_type": "Other",
+      "work_name": "团队共用 GMS ATS 环境搭建",
+      "week_summary": "完成双 Worker 压测并进入分片联调。",
+      "completed_this_week": 1,
+      "remaining": 1,
+      "completed_items": ["完成双 Worker 压测"],
+      "remaining_items": ["跨 Worker 分片联调"],
+      "key_points": ["无"],
+      "risks": [],
+      "dependencies": ["依赖分片能力"],
+      "next_week_plan": ["继续联调"]
+    }
   ]
 }
 ```
@@ -106,33 +121,38 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
 Rules:
 
 - `week_range` must equal the generated weekly period.
-- `projects[]` and `documents[]` are arrays; at least one must be non-empty.
+- `projects[]`, `documents[]`, and `standalone_work[]` are arrays; at least one
+  must be non-empty.
 - `project` must be a recognized TVD/TVE/TVA/TVI company project.
 - `customer` is the required direct customer. Optional `downstream_customer`
   means the direct customer's customer.
-- Project `work_type` is `Patch`, `App`, or `GMS`; the five visible categories
+- Project `work_type` is `Patch`, `App`, `GMS`, `Doc`, or `Other`; the five visible categories
   are `Patch`, `App`, `GMS`, `Doc`, and `Other`. `App` requires `app_name`;
-  other project types must not provide it. GMS requires `current_stage` and does
-  not carry Patch/App total or ledger fields.
+  other project types must not provide it. GMS requires `current_stage`.
+  GMS/Doc/Other project rows do not carry Patch/App total or ledger fields.
 - Each reporting scope appears exactly once. Patch identity is `project + direct
   customer + Patch`; App identity adds `app_name`. The same project may contain
-  one Patch row and multiple differently named App rows. Feature names remain
+  one Patch row, multiple differently named App rows, and one scope for each of
+  GMS, Doc, and Other. Feature names remain
   work items and do not create additional rows.
-- Standalone work belongs in `documents[]`. Its `work_type` is `Doc`, `GMS`, or
-  `Other`; Doc requires `document_name`, while GMS/Other require `work_name`.
-  Project/customer/App fields are forbidden. Historical `Document` normalizes
-  to `Doc`. Standalone work does not require project
+- A non-project document belongs in `documents[]`, uses only `work_type=Doc`,
+  and requires `document_name`. Other non-project work belongs in
+  `standalone_work[]`, uses only `work_type=Other`, and requires `work_name`.
+  GMS is always project-bound. Project/customer/App fields are forbidden in
+  both non-project arrays. Historical `Document` normalizes to `Doc`.
+  Non-project work does not require project
   role, requirement date, requirement source, or project total.
-- Standalone `completed_this_week` and `remaining` are non-negative integer work
+- Non-project `completed_this_week` and `remaining` are non-negative integer work
   counts. Positive counts require matching item arrays, and positive remaining
   requires `next_week_plan`.
 - `project_role` is required and must be `主责` or `协作`.
 - `requirement_date` is required and uses `YYYY-MM-DD`.
 - `requirement_source` is required and must be one of `CR`, `TL`, `PM`, `TE`,
   or `BSP`. Do not infer it from daily-report wording.
-- `completed_this_week` and `remaining` are required for every member. For a
+- `completed_this_week` and `remaining` are required for every Patch/App member. For a
   Patch row they are category objects. For an App row they are non-negative
-  integers without Patch categories.
+  integers without Patch categories. Project GMS/Doc/Other use progress and
+  item arrays instead of Patch/App counts.
 - A Patch main requires `requirement_structure`; an App main requires integer
   `work_total`. Collaborators may omit the corresponding total.
 - Patch 项目总量、本周完成和 Android 当前剩余只使用 `demand`、
@@ -141,7 +161,7 @@ Rules:
 - `需求` means a customer requirement the team has not implemented before;
   `移植` means reusing or porting a requirement already implemented before;
   `Bug` means defect work.
-- `ledger` is required for every v5 project row. Codex writes it; members do not
+- `ledger` is required for every v5 Patch/App project row. Codex writes it; members do not
   hand-edit the JSON.
 - A main row for a new scope uses `opening=true`, provides the initial total,
   and leaves the baseline fields empty. Existing scopes use `opening=false`

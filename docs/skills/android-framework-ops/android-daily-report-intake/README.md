@@ -10,13 +10,13 @@
 - `materials/display/report_view.json`
 - `materials/evidence/work_findings.json`
 
-`report_view.json` 是同一份日报正文的 UI 读模型。五个分类固定为 `Patch`、`App`、`GMS`、`Doc`、`Other`。Patch/App/GMS 项目行保留项目和客户链；独立 Doc/GMS/Other 行使用具体 `document_name` 或 `work_name`，不伪造项目或客户。历史 `Document` 兼容读取为 `Doc`。每个范围都包含 `today_topic`、`current_result`、`work_items[]` 和 `tomorrow_focus[]`。
+`report_view.json` 是同一份日报正文的 UI 读模型。五个分类固定为 `Patch`、`App`、`GMS`、`Doc`、`Other`。凡挂靠项目的工作都进入 `projects[]` 并保留项目和客户链；无项目文档进入 `documents[]/Doc`，其他无项目工作进入 `standalone_work[]/Other`。GMS 必须挂靠项目。历史 `Document` 兼容读取为 `Doc`。每个范围都包含 `today_topic`、`current_result`、`work_items[]` 和 `tomorrow_focus[]`。
 
 日报卡片不使用日期当标题。`material_name` 写项目 + 客户链路，例如 `TVE1086U（青鸾云）` 或 `TVE1091U（AOC → 福建移动高清）`；多项目时每个项目都带自己的客户链路。`material_summary` 写今日主题，例如 `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`。新包不得再写已废弃的 `report_view` 字段，例如 `display_title`、`ui_card`、`one_line_summary`、顶层 `work_items`、`risks` 或 `outputs`。
 
 日报项目行必须同时有公司项目名和直接客户。成员可以说 `TVE1086U 青鸾云`，也可以说 `TVE1091U AOC 福建移动高清`；后者识别为项目 `TVE1091U`、直接客户 `AOC`、客户的客户 `福建移动高清`。直接客户和下游客户不得跨层当作别名。缺项目或直接客户时提交会被本地校验拦住。
 
-Codex 优先采用成员明确分类，否则根据源码、产物和工作语义进行高置信度判断；只有冲突或名称缺失时才询问。GMS 可表示正式项目测试或独立测试环境，Doc 表示独立文档，Other 表示其余具体工作。存在处理中、待验证或阻塞事项时，该范围必须填写明日重点。
+Codex 优先采用成员明确分类，否则根据源码、产物和工作语义进行高置信度判断；只有冲突或名称缺失时才询问。具体项目认证测试使用 GMS；团队共用 ATS 环境等无项目工作使用 `standalone_work[]/Other`。存在处理中、待验证或阻塞事项时，该范围必须填写明日重点。
 
 正常生成先由共享内核自动识别并按范围绑定工作项。`$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` 下的 `akbs-daily-work-facts-v2` 只用于补齐未决字段、纠正判定或记录成员显式覆盖；显式事实优先于自动判定。一个混合会话若不能可靠绑定各事项，必须补齐范围事实，不得猜测拆分。
 

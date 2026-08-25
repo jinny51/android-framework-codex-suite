@@ -13,13 +13,13 @@
 
 周报统计周期固定为周一至周日，起止日期都纳入统计；补交日期不改变日报所属日期，也不能导致周一日报被漏掉。周报事实优先读取 AKBS 中本周当前有效日报和上一周当前有效周报；API 不可用时回退到本机 `submitted` 包，并按替换链只选补交后的叶节点。Codex session 只补充有效日报未覆盖的事项，不能再把“一段会话”统计成“一项需求”。跨日长会话按消息日期和文件活跃时间补扫。
 
-当前日报已携带由工作证据自动判定或成员确认的 Patch/App/GMS 项目范围，以及独立 Doc/GMS/Other 范围。周报按该范围归并，不再根据事项文字重新猜类型。
+当前日报已携带项目范围、无项目 Doc 和无项目 Other 的数组归属。周报按该归属归并，不再根据事项文字重新猜类型；GMS 始终是项目范围。
 
 如果类型、App 名称（仅 App）、文档名称（仅 Document）、项目角色、需求时间、需求来源、主责总量、项目流转或剩余事项身份仍缺失，本地检查会列出准确字段并阻止上传。成员只确认缺失事实，Codex 将其写入 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/` 下的 `akbs-weekly-work-facts-v5` JSON，再通过 `--weekly-facts <path>` 重新生成；不要求成员手改 JSON 或 Markdown。v5 显式事实必须绑定上一份有效周报，不能绕过上周台账重新填写总量。
 
-`report_view.json` 是同一份周报正文的 UI 读模型。Patch/App 项目继续使用项目台账；GMS 项目使用 `current_stage` 和进展信息；独立 Doc/GMS/Other 使用具体名称和详情数组。GMS、Doc、Other 不并入 Patch/App 数量。周报包只归档，不进入知识库沉淀候选。
+`report_view.json` 是同一份周报正文的 UI 读模型。Patch/App 项目继续使用项目台账；项目 GMS 使用 `current_stage` 和进展信息，项目 Doc/Other 也保留项目客户身份并使用进展信息；无项目 Doc 使用 `documents[]`，无项目 Other 使用 `standalone_work[]`。GMS、Doc、Other 不并入 Patch/App 数量。周报包只归档，不进入知识库沉淀候选。
 
-五个分类固定为 `Patch`、`App`、`GMS`、`Doc`、`Other`。Patch/App 台账规则保持不变；GMS 项目不填写 Patch/App 总量，改用当前阶段；独立 Doc/GMS/Other 不伪造项目。生成和 `--submit-latest` 都会在 HTTP 前重新执行校验。
+五个分类固定为 `Patch`、`App`、`GMS`、`Doc`、`Other`。Patch/App 台账规则保持不变；GMS 项目不填写 Patch/App 总量，改用当前阶段，标题固定为“项目 + 客户｜GMS”；无项目 Doc/Other 使用各自数组，禁止独立 GMS。生成和 `--submit-latest` 都会在 HTTP 前重新执行校验。
 
 Patch 不再保留“定制”父分类，直接使用需求、移植和 Bug：以前没做过的客户需求计需求，以前做过并复用或移植的客户需求计移植，缺陷处理计 Bug。BSP 是责任状态而不是事项类型；转 BSP 后保留原需求/移植/Bug 分类，从 Android 当前剩余中扣除，并单独显示 `BSP 跟踪`。App 使用简单总量、完成量和剩余量，不套用 Patch 分类；两类数量不得相加。
 

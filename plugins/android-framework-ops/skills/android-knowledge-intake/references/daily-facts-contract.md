@@ -43,6 +43,22 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
       ],
       "tomorrow_focus": []
     }
+  ],
+  "standalone_work": [
+    {
+      "work_type": "Other",
+      "work_name": "团队共用 GMS ATS 环境搭建",
+      "work_items": [
+        {
+          "name": "完成双 Worker 验证",
+          "did": ["完成 CTS 多机协同验证"],
+          "how": ["运行测试并核对 Worker 状态"],
+          "result": "基础链路通过，分片联调中",
+          "status": "处理中"
+        }
+      ],
+      "tomorrow_focus": ["继续跨 Worker 分片联调"]
+    }
   ]
 }
 ```
@@ -50,21 +66,23 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
 Rules:
 
 - `report_date` must equal the generated daily date.
-- `projects[]` and `documents[]` are arrays; at least one must be non-empty.
+- `projects[]`, `documents[]`, and `standalone_work[]` are arrays; at least one
+  must be non-empty.
 - In `projects[]`, `project` and direct `customer` are required. Optional
   `downstream_customer` means the direct customer's customer.
-- Project `work_type` is `Patch`, `App`, or `GMS`. The five visible categories
+- Project `work_type` is `Patch`, `App`, `GMS`, `Doc`, or `Other`. The five visible categories
   are `Patch`, `App`, `GMS`, `Doc`, and `Other`.
   Explicit facts override automatic inference. Never infer from vague work-item
   wording alone.
 - `App` requires `app_name`; other project types must not provide it.
-- In `documents[]`, `work_type` is `Doc`, `GMS`, or `Other`; provide a concrete
-  `document_name` for Doc or `work_name` for GMS/Other. Do not provide project,
-  customer, downstream customer, or App name. Historical `Document` normalizes
-  to `Doc`.
+- In `documents[]`, `work_type` is only `Doc` and a concrete `document_name` is
+  required. In `standalone_work[]`, `work_type` is only `Other` and a concrete
+  `work_name` is required. Neither array carries project/customer/App fields.
+  GMS is always project-bound. Historical `Document` normalizes to `Doc`.
   Do not use “文档” as a fake company project code.
-- Scope identity is one Patch or one named App under a project/customer chain.
-  The same project may contain one Patch and multiple differently named Apps.
+- Scope identity is project/customer + work type; App additionally includes its
+  name. The same project may contain one Patch, multiple differently named
+  Apps, and one scope for each of GMS, Doc, and Other.
 - Document scope identity is its concrete document name. Merge repeated work on
   the same document instead of creating duplicate rows.
 - When a project has only one scope, `work_items`, `today_topic`,

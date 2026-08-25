@@ -17,14 +17,15 @@ Default policy: preserve work facts locally first, then upload only packages tha
 
 Daily and weekly generation have no "future submission" mode. A daily package date later than the current local date must stop with "不能提交未来日期的日报，请重新生成正确日期的日报。". A weekly package whose anchor date is later than the current local date, or whose `week_range` is later than the current local week, must stop with "不能提交未来周期的周报，请重新生成正确周期的周报。". Older daily dates and older weekly periods are late submissions and are allowed.
 
-Daily and weekly report bodies are the primary human-readable product. Generate `reports/daily.md` and `reports/weekly.md` with the Codex office report templates. The five categories are exactly `Patch`, `App`, `GMS`, `Doc`, and `Other`. Project scopes use Patch, App, or GMS; App requires its name and GMS weekly rows use `current_stage` instead of Patch/App totals. Standalone Doc, GMS, and Other require a concrete name and do not fabricate project/customer identity. Resolve scope from explicit member context or high-confidence evidence, and ask only when evidence conflicts or remains incomplete. Patch/App total and BSP rules remain unchanged; GMS, Doc, and Other never contribute to Patch/App demand totals. Also write `materials/display/report_view.json` with parallel `projects[]` and protocol-compatible `documents[]`; historical `Document` normalizes to `Doc`. Keep `work_findings.json` as evidence for audit and later analysis.
+Daily and weekly report bodies are the primary human-readable product. Generate `reports/daily.md` and `reports/weekly.md` with the Codex office report templates. The five categories are exactly `Patch`, `App`, `GMS`, `Doc`, and `Other`. Array ownership is independent of category: every project-bound row uses `projects[]`; a non-project document uses `documents[]`; other non-project work uses `standalone_work[]`. Project rows may use all five categories, App requires its name, and GMS weekly rows use `current_stage` instead of Patch/App totals. GMS is always project-bound. A shared ATS environment without a customer project is `standalone_work[]/Other`, not GMS. Resolve scope from explicit member context or high-confidence evidence, and ask only when evidence conflicts or remains incomplete. Patch/App total and BSP rules remain unchanged; GMS, Doc, and Other never contribute to Patch/App demand totals. Historical `Document` normalizes to `Doc`. Keep `work_findings.json` as evidence for audit and later analysis.
 
 Daily scope facts use `akbs-daily-work-facts-v2` under
 `$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/`; read
 `references/daily-facts-contract.md`. Normal generation first infers scope from
 authorized development evidence; explicit facts complete, correct, or override
-only unresolved results. The same project may contain one Patch and multiple
-named Apps; standalone documents are identified by document name. The scope flows into weekly history so weekly does not guess type
+only unresolved results. The same project may contain one Patch, multiple
+named Apps, and unique GMS/Doc/Other scopes; non-project documents and Other
+work are identified by their concrete names. The scope flows into weekly history so weekly does not guess type
 from text. `report_render_binding` binds the normalized fact hash,
 Markdown, and `report_view.json`; local validation also rerenders Markdown and
 requires exact equality. `--prepare` returns non-zero on local-check failure,
@@ -35,7 +36,8 @@ Weekly generation uses effective AKBS report facts before sessions: current dail
 Weekly project identity is one canonical company project plus one direct customer
 and an optional downstream customer. Reporting scopes add required type: Patch
 is unique under that identity, while App also adds required App name. The same
-project may therefore have one Patch and multiple differently named App rows.
+project may therefore have one Patch, multiple differently named App rows, and
+one scope for each of GMS, Doc, and Other.
 Feature-module names remain inside work-item and plan arrays. Enforcement uses
 canonical project shape, scope uniqueness, the customer chain confirmed by current context, and same-source
 package evidence; it does not enumerate module names. Empty next-week plans use

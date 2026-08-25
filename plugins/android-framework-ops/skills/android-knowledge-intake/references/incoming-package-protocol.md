@@ -166,6 +166,7 @@ Real report generation requires explicit per-run consent before any session read
       {
         "project": "TVE1086U",
         "customer": "青鸾云",
+        "work_type": "Patch",
         "today_topic": "锁屏鼠标位置刷新",
         "current_result": "已完成基础验证",
         "work_items": [
@@ -174,7 +175,8 @@ Real report generation requires explicit per-run consent before any session read
         "tomorrow_focus": ["继续回归验证"]
       }
     ],
-    "documents": []
+    "documents": [],
+    "standalone_work": []
   }
 }
 ```
@@ -184,12 +186,14 @@ the direct customer's customer. Thus `TVE1091U AOC 福建移动高清` is repres
 as `project=TVE1091U`, `customer=AOC`, and
 `downstream_customer=福建移动高清`; direct and downstream names are not aliases.
 
-Daily and weekly report payloads contain parallel `projects[]` and `documents[]`
-arrays, with at least one non-empty. Project rows use only `Patch` or `App` and
-retain canonical project/customer identity. Standalone document rows use
-`work_type=Document`, require `document_name`, and must not carry project or
-customer fields. For `report_type=weekly`, each project row contains the current
-project ledger fields; each document row contains `week_summary`, plain
+Daily and weekly report payloads contain parallel `projects[]`, `documents[]`,
+and `standalone_work[]` arrays, with at least one non-empty. Every project-bound
+row uses `projects[]`, may use `Patch`, `App`, `GMS`, `Doc`, or `Other`, and
+retains canonical project/customer identity. Non-project documents use
+`documents[]/Doc/document_name`; other non-project work uses
+`standalone_work[]/Other/work_name`. GMS is always project-bound. For
+`report_type=weekly`, Patch/App project rows contain ledger fields, while
+GMS/Doc/Other project rows contain progress fields; each non-project row contains `week_summary`, plain
 completed/remaining counts and item arrays, `key_points`, `risks`,
 `dependencies`, and `next_week_plan`. `display_date` is the last workday of the
 week range, not the upload day. Daily work items use fixed-enum status
@@ -197,7 +201,7 @@ week range, not the upload day. Daily work items use fixed-enum status
 
 Every new `weekly_trace` also carries `weekly_fact_sources` evidence with
 `schema=akbs-weekly-fact-sources-v2`, the exact `week_range`, source package
-keys, unique project and document counts, work-scope count, a sanitized facts hash, and `missing_fields`. The member
+keys, unique project, document, and standalone-work counts, work-scope count, a sanitized facts hash, and `missing_fields`. The member
 client resolves current AKBS daily reports and the current previous-week report
 before local submitted replacement leaves; sessions only supplement missing
 daily coverage. Non-empty `missing_fields` fails local upload validation and is
@@ -399,6 +403,7 @@ queue_information_completion_v1 = 1.0.139
 patch_package_subject_v2 = 1.0.140
 verification_acceptance_v2 = 1.0.142
 weekly_project_ledger_v2 = 1.0.156
+report_scope_containers_v1 = 1.0.158
 ```
 
 The required capabilities come from package contents, not from the current plugin release.

@@ -100,8 +100,8 @@
 ```
 
 日报按工作范围分块。五个分类固定为 Patch、App、GMS、Doc、Other。Patch
-表示系统源码定制，App 表示应用或 demo 开发，GMS 表示认证测试，Doc 表示
-独立文档，Other 表示其他具体工作。
+表示系统源码定制，App 表示应用或 demo 开发，GMS 表示项目认证测试，Doc 表示
+文档，Other 表示其他具体工作。分类不决定数组归属：凡挂靠项目都写入 `projects[]`。
 同一项目可有一个 Patch 和多个不同 App；App 必须写 App 名称。只要范围内有
 `处理中`、`待验证`或`阻塞`事项，就必须填写该范围的明日重点；成员明确说明
 “无”时，必须原样保留为 `- 无`，不得转为空值或阻止提交。日报不填写
@@ -110,8 +110,9 @@
 类型判定优先使用成员明确说明，其次使用高置信度开发证据。SystemUI、Launcher、
 Settings 和 Framework 服务等系统源码修改属于 Patch；独立交付的应用或 demo
 属于 App。证据一致时自动填写并可按范围拆分；证据冲突、仅有模糊事项文字或
-无法确定 App 名称或独立工作名称时才询问成员。Doc/GMS/Other 独立工作使用
-`documents[]`，不得伪造成项目。周报继承日报范围，不重新猜测。
+无法确定 App 名称或非项目工作名称时才询问成员。无项目 Doc 使用
+`documents[]`；无项目、非文档工作使用 `standalone_work[]/Other`。GMS 必须
+挂靠项目，不得把共享 ATS 环境写成独立 GMS。周报继承日报范围，不重新猜测。
 
 ## Weekly Template
 
@@ -168,8 +169,9 @@ from daily-report wording.
 使用“项目 + 直接客户 + App + App 名称”。同一正式项目可以有一个 Patch 和多个
 不同 App，但不得重复同一 Patch 或同一 App。普通功能名称仍属于事项，不单独拆行。
 
-独立工作写入平级 `documents[]`：Doc 使用 `document_name`，GMS/Other 使用 `work_name`
-必填，不填写项目、客户、项目角色、需求时间、需求来源或项目总量。它使用简单的
+无项目文档写入 `documents[]/Doc` 并使用 `document_name`；其他无项目工作写入
+`standalone_work[]/Other` 并使用 `work_name`。二者不填写项目、客户、项目角色、
+需求时间、需求来源或项目总量，并使用简单的
 本周完成/当前剩余计数，并沿用完成详情、剩余详情、重点说明、风险/依赖和下周计划。
 GMS、Doc、Other 数量不得并入 Patch/App 项目需求统计。
 
@@ -246,7 +248,7 @@ Report card fields are authoritative:
 - `material_summary`：日报写各项目或文档的“今日主题”；周报写各项目或文档的“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
 - Daily project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/today_topic/current_result/work_items/tomorrow_focus`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
 - Weekly project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/project_role/week_summary/requirement_date/requirement_source/[requirement_structure/work_total]/completed_this_week/remaining/completed_items/remaining_items/key_points/risks/dependencies/next_week_plan`.
-- Daily and weekly standalone rows live in `documents[]`; Doc uses `document_name`, GMS/Other use `work_name`, and none contain project/customer fields.
+- Daily and weekly non-project Doc rows live in `documents[]` and use `document_name`; non-project Other rows live in `standalone_work[]` and use `work_name`. GMS never lives outside `projects[]`.
 - The current read model does not emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.
 
 Daily scope identity and work-item assignment flow into weekly history so the

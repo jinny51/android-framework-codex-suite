@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 
-AKBS_RULES_CONTRACT_VERSION = "2026-08-24.2"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.157"
+AKBS_RULES_CONTRACT_VERSION = "2026-08-25.1"
+ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.158"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -84,6 +84,10 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
     "weekly_project_ledger_v2": {
         "min_plugin_version": "1.0.156",
         "description": "weekly reports bind the effective previous-week scope, restrict project changes to the main member, and separate Android remaining from BSP tracking",
+    },
+    "report_scope_containers_v1": {
+        "min_plugin_version": "1.0.158",
+        "description": "project-bound work uses projects, non-project Doc uses documents, and non-project Other uses standalone_work; GMS is project-only",
     },
     "report_render_binding_v1": {
         "min_plugin_version": "1.0.151",

@@ -141,8 +141,10 @@ def build_report_package(
         project_customers[str(item["project"])] = context
     weekly_projects: list[dict[str, Any]] = []
     weekly_documents: list[dict[str, Any]] = []
+    weekly_standalone_work: list[dict[str, Any]] = []
     daily_projects: list[dict[str, Any]] = []
     daily_documents: list[dict[str, Any]] = []
+    daily_standalone_work: list[dict[str, Any]] = []
     daily_fact_evidence_path = ""
     weekly_fact_evidence_path = ""
     items = session_items
@@ -158,6 +160,7 @@ def build_report_package(
         )
         daily_projects = daily_facts.projects
         daily_documents = daily_facts.documents
+        daily_standalone_work = daily_facts.standalone_work
         if daily_projects:
             items = daily_project_rows_to_items(daily_projects)
             for row in daily_projects:
@@ -188,6 +191,7 @@ def build_report_package(
         )
         weekly_projects = weekly_facts.projects
         weekly_documents = weekly_facts.documents
+        weekly_standalone_work = weekly_facts.standalone_work
         if weekly_projects:
             items = project_rows_to_items(weekly_projects)
             for row in weekly_projects:
@@ -255,19 +259,28 @@ def build_report_package(
             if fact_customers[0].get("downstream_customer"):
                 project_payload["downstream_customer"] = fact_customers[0]["downstream_customer"]
     documents = daily_documents if report_type == "daily" else weekly_documents
-    if documents:
+    standalone_work = daily_standalone_work if report_type == "daily" else weekly_standalone_work
+    if documents or standalone_work:
         project_payload["non_project_work"] = True
         project_payload["documents"] = [
             str(row.get("document_name") or "")
             for row in documents
             if row.get("document_name")
         ]
+        project_payload["standalone_work"] = [
+            str(row.get("work_name") or "")
+            for row in standalone_work
+            if row.get("work_name")
+        ]
         if not (daily_projects if report_type == "daily" else weekly_projects):
             report_project = ""
             project_payload["project"] = "unknown"
             project_payload["projects"] = []
             project_payload.setdefault("checked_sources", ["authorized_report_sessions", "structured_facts"])
-            project_payload.setdefault("limits", ["Document work does not require project or customer identity"])
+            project_payload.setdefault(
+                "limits",
+                ["Non-project documents and standalone work do not require project or customer identity"],
+            )
     package_dir.mkdir(parents=True, exist_ok=True)
     write_report(
         package_dir,
@@ -283,6 +296,8 @@ def build_report_package(
         daily_projects,
         weekly_documents,
         daily_documents,
+        weekly_standalone_work,
+        daily_standalone_work,
     )
     project_path = write_default_evidence(
         package_dir,
@@ -326,6 +341,8 @@ def build_report_package(
         daily_projects,
         weekly_documents,
         daily_documents,
+        weekly_standalone_work,
+        daily_standalone_work,
     )
     fact_sources_path = daily_fact_evidence_path or weekly_fact_evidence_path
     fact_sources_payload = daily_facts.evidence if report_type == "daily" else weekly_facts.evidence
@@ -351,7 +368,7 @@ def build_report_package(
         report_project,
         project_path,
         display_path,
-        bool(documents),
+        bool(documents or standalone_work),
     )
     if report_type in {"daily", "weekly"} and replace_report_run_id:
         replacement = next((item for item in report_duplicates if item["run_id"] == replace_report_run_id), {})

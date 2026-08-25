@@ -424,11 +424,15 @@ def weekly_material_summary(
     if weekly_projects:
         parts = []
         for row in weekly_projects[:max_projects]:
-            completed = weekly_fact_count_text(row, "completed_this_week_counts", include_bsp=False)
-            remaining = weekly_fact_count_text(row, "remaining_counts", include_bsp=True)
             risk_text = "有风险" if meaningful_fact_list(row.get("risks"), {"无超过 3 天无进展事项。"}) else "无明确风险"
             scope = f" / {row.get('app_name')}" if row.get("work_type") == "App" else ""
-            parts.append(f"{row['project']}{scope}：本周完成 {completed}，剩余 {remaining}，{risk_text}。")
+            if row.get("work_type") in {"GMS", "Doc", "Other"}:
+                progress = compact_text(str(row.get("week_summary") or row.get("current_stage") or "需补充进展"), 72)
+                parts.append(f"{row['project']}{scope}：{progress}，{risk_text}。")
+            else:
+                completed = weekly_fact_count_text(row, "completed_this_week_counts", include_bsp=False)
+                remaining = weekly_fact_count_text(row, "remaining_counts", include_bsp=True)
+                parts.append(f"{row['project']}{scope}：本周完成 {completed}，剩余 {remaining}，{risk_text}。")
         if len(weekly_projects) > max_projects:
             parts.append(f"另有 {len(weekly_projects) - max_projects} 个项目。")
         return compact_text("".join(parts), 220)
@@ -590,10 +594,8 @@ def weekly_scope_heading(row: dict[str, Any]) -> str:
     )
     if row.get("work_type") == "App":
         return f"{heading}｜App：{row.get('app_name') or '需成员确认'}"
-    if row.get("work_type") == "GMS":
-        display_name = str(row.get("display_name") or "").strip()
-        return f"{heading}｜GMS" + (f"：{display_name}" if display_name else "")
-    return heading
+    work_type = str(row.get("work_type") or "").strip()
+    return f"{heading}｜{work_type}" if work_type else heading
 
 
 def daily_scope_heading(row: dict[str, Any]) -> str:
@@ -630,13 +632,16 @@ def write_daily_report(
     daily_work_items: dict[str, list[dict[str, Any]]] | None = None,
     daily_projects: list[dict[str, Any]] | None = None,
     daily_documents: list[dict[str, Any]] | None = None,
+    daily_standalone_work: list[dict[str, Any]] | None = None,
 ) -> None:
     items = normalized_report_items(items)
     project_rows = daily_projects or []
     document_rows = daily_documents or []
-    if not items and not project_rows and not document_rows:
+    standalone_rows = daily_standalone_work or []
+    non_project_rows = [*document_rows, *standalone_rows]
+    if not items and not project_rows and not non_project_rows:
         items = {MISSING_REPORT_PROJECT: [("未形成有效工作记录", "需补充真实工作记录")]}
-    if not project_rows and not document_rows:
+    if not project_rows and not non_project_rows:
         for project, entries in sorted(items.items()):
             context = report_customer_context_for_project(project, project_customers)
             work_rows = (daily_work_items or {}).get(project) or [
@@ -673,7 +678,7 @@ def write_daily_report(
             f"- 当前结果：{row.get('current_result') or '当前结果需成员确认。'}",
             "",
         ]
-    for row in document_rows:
+    for row in non_project_rows:
         lines += [
             f"### {document_scope_heading(row)}",
             "",
@@ -685,7 +690,7 @@ def write_daily_report(
     lines += ["## 二、今日工作", ""]
     all_rows = [
         *((row, daily_scope_heading(row)) for row in project_rows),
-        *((row, document_scope_heading(row)) for row in document_rows),
+        *((row, document_scope_heading(row)) for row in non_project_rows),
     ]
     for row, heading in all_rows:
         lines += [f"### {heading}", ""]
@@ -726,26 +731,33 @@ def write_weekly_report(
     project_customers: dict[str, Any] | None = None,
     weekly_projects: list[dict[str, Any]] | None = None,
     weekly_documents: list[dict[str, Any]] | None = None,
+    weekly_standalone_work: list[dict[str, Any]] | None = None,
 ) -> None:
     items = normalized_report_items(items)
     document_rows = weekly_documents or []
-    if not items and not weekly_projects and not document_rows:
+    standalone_rows = weekly_standalone_work or []
+    non_project_rows = [*document_rows, *standalone_rows]
+    if not items and not weekly_projects and not non_project_rows:
         items = {MISSING_REPORT_PROJECT: [("未形成有效工作记录", "需补充真实工作记录")]}
-    ledgers = [] if document_rows and not items else project_ledger_rows(items, project_customers)
+    ledgers = [] if non_project_rows and not items else project_ledger_rows(items, project_customers)
     lines += [
         "## 一、本周概况",
         "",
     ]
     if weekly_projects:
         for row in weekly_projects:
-            if row.get("work_type") == "GMS":
+            if row.get("work_type") in {"GMS", "Doc", "Other"}:
                 lines += [
                     f"### {weekly_scope_heading(row)}",
                     "",
                     str(row.get("week_summary") or "需补充真实工作记录。"),
                     "",
-                    "- 类型：GMS",
-                    f"- 当前阶段：{row.get('current_stage') or '需成员确认'}",
+                    f"- 类型：{row.get('work_type')}",
+                    *(
+                        [f"- 当前阶段：{row.get('current_stage') or '需成员确认'}"]
+                        if row.get("work_type") == "GMS"
+                        else []
+                    ),
                     f"- 项目角色：{row.get('project_role') or '需成员确认'}",
                     f"- 需求时间：{row.get('requirement_date') or '需成员确认'}",
                     f"- 需求来源：{row.get('requirement_source') or '需成员确认'}",
@@ -822,7 +834,7 @@ def write_weekly_report(
                 f"- {format_requirement_counts(remaining_counts, include_bsp=True, label='当前剩余')}",
                 "",
             ]
-    for row in document_rows:
+    for row in non_project_rows:
         lines += [
             f"### {document_scope_heading(row)}",
             "",
@@ -880,15 +892,15 @@ def write_weekly_report(
             *(f"- {item}" for item in dependencies),
             "",
         ]
-    if document_rows:
+    if non_project_rows:
         document_section = "三" if detail_rows else "二"
         standalone_types = [
             work_type
-            for work_type in ("Doc", "GMS", "Other")
-            if any((normalize_standalone_work_type(row.get("work_type")) or DOCUMENT_WORK_TYPE) == work_type for row in document_rows)
+            for work_type in ("Doc", "Other")
+            if any((normalize_standalone_work_type(row.get("work_type")) or DOCUMENT_WORK_TYPE) == work_type for row in non_project_rows)
         ]
         lines += [f"## {document_section}、{' / '.join(standalone_types)}", ""]
-        for row in document_rows:
+        for row in non_project_rows:
             completed = meaningful_fact_list(row.get("completed_items"))
             unfinished = meaningful_fact_list(row.get("remaining_items"))
             key_points = meaningful_fact_list(row.get("key_points")) or ["无"]
@@ -920,7 +932,7 @@ def write_weekly_report(
                 *(f"- {item}" for item in dependencies),
                 "",
             ]
-    plan_section = "四" if detail_rows and document_rows else "三"
+    plan_section = "四" if detail_rows and non_project_rows else "三"
     lines += [f"## {plan_section}、下周计划", ""]
     plan_rows = weekly_projects or [
         {
@@ -948,7 +960,7 @@ def write_weekly_report(
             *(f"- {plan}" for plan in plans),
             "",
         ]
-    for row in document_rows:
+    for row in non_project_rows:
         plans = weekly_plan_items(row.get("next_week_plan"))
         if not plans:
             continue
@@ -973,17 +985,25 @@ def report_view_payload(
     daily_projects: list[dict[str, Any]] | None = None,
     weekly_documents: list[dict[str, Any]] | None = None,
     daily_documents: list[dict[str, Any]] | None = None,
+    weekly_standalone_work: list[dict[str, Any]] | None = None,
+    daily_standalone_work: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     items = normalized_report_items(items)
-    document_rows = daily_documents or [] if report_type == "daily" else weekly_documents or []
+    document_rows = (daily_documents or []) if report_type == "daily" else (weekly_documents or [])
+    standalone_rows = (
+        (daily_standalone_work or [])
+        if report_type == "daily"
+        else (weekly_standalone_work or [])
+    )
+    non_project_rows = [*document_rows, *standalone_rows]
     has_project_facts = bool(daily_projects) if report_type == "daily" else bool(weekly_projects)
-    if document_rows and not has_project_facts:
+    if non_project_rows and not has_project_facts:
         items = {}
-    if not items and not document_rows:
+    if not items and not non_project_rows:
         items = {MISSING_REPORT_PROJECT: [("未形成有效工作记录", "需补充真实工作记录")]}
     project_material_name = report_project_customer_title(items, project_customers) if items else ""
-    document_name = document_material_name(document_rows)
-    material_name = "、".join(value for value in (project_material_name, document_name) if value)
+    non_project_name = document_material_name(non_project_rows)
+    material_name = "、".join(value for value in (project_material_name, non_project_name) if value)
     project_summary = (
         daily_material_summary(items)
         if report_type == "daily" and items
@@ -992,9 +1012,9 @@ def report_view_payload(
         else ""
     )
     document_summary = (
-        daily_document_summary(document_rows)
+        daily_document_summary(non_project_rows)
         if report_type == "daily"
-        else weekly_document_summary(document_rows)
+        else weekly_document_summary(non_project_rows)
     )
     material_summary = compact_text("".join(value for value in (project_summary, document_summary) if value), 220)
     payload: dict[str, Any] = {
@@ -1011,7 +1031,13 @@ def report_view_payload(
     if report_type == "daily":
         if daily_projects:
             projects = [dict(row) for row in daily_projects]
-            payload.update({"projects": projects, "documents": [dict(row) for row in document_rows]})
+            payload.update(
+                {
+                    "projects": projects,
+                    "documents": [dict(row) for row in document_rows],
+                    "standalone_work": [dict(row) for row in standalone_rows],
+                }
+            )
             return {"kind": "report_view", "payload": payload}
         projects: list[dict[str, Any]] = []
         for project, entries in sorted(items.items()):
@@ -1042,6 +1068,7 @@ def report_view_payload(
             {
                 "projects": projects,
                 "documents": [dict(row) for row in document_rows],
+                "standalone_work": [dict(row) for row in standalone_rows],
             }
         )
         return {"kind": "report_view", "payload": payload}
@@ -1073,12 +1100,11 @@ def report_view_payload(
                     "dependencies": meaningful_fact_list(row.get("dependencies")) or ["无外部依赖事项。"],
                     "next_week_plan": weekly_plan_items(row.get("next_week_plan")),
                 }, context["downstream_customer"])
-            if row.get("work_type") == "GMS":
+            if row.get("work_type") in {"GMS", "Doc", "Other"}:
                 project_row.pop("completed_this_week", None)
                 project_row.pop("remaining", None)
-                project_row["current_stage"] = str(row.get("current_stage") or "需成员确认")
-                if row.get("display_name"):
-                    project_row["display_name"] = str(row.get("display_name"))
+                if row.get("work_type") == "GMS":
+                    project_row["current_stage"] = str(row.get("current_stage") or "需成员确认")
             elif row.get("work_type") == "App":
                 project_row["app_name"] = str(row.get("app_name") or "需成员确认")
                 if row.get("project_role") == "主责" and row.get("work_total_present"):
@@ -1098,12 +1124,13 @@ def report_view_payload(
             {
                 "projects": projects,
                 "documents": [weekly_document_view_row(row) for row in document_rows],
+                "standalone_work": [weekly_document_view_row(row) for row in standalone_rows],
             }
         )
         return {"kind": "report_view", "payload": payload}
 
     projects: list[dict[str, Any]] = []
-    ledgers = [] if document_rows and not items else project_ledger_rows(items, project_customers)
+    ledgers = [] if non_project_rows and not items else project_ledger_rows(items, project_customers)
     for ledger in ledgers:
         project = str(ledger["project"])
         customer = str(ledger["customer_name"])
@@ -1143,6 +1170,7 @@ def report_view_payload(
         {
             "projects": projects,
             "documents": [weekly_document_view_row(row) for row in document_rows],
+            "standalone_work": [weekly_document_view_row(row) for row in standalone_rows],
         }
     )
     return {"kind": "report_view", "payload": payload}
@@ -1161,6 +1189,8 @@ def write_report(
     daily_projects: list[dict[str, Any]] | None = None,
     weekly_documents: list[dict[str, Any]] | None = None,
     daily_documents: list[dict[str, Any]] | None = None,
+    weekly_standalone_work: list[dict[str, Any]] | None = None,
+    daily_standalone_work: list[dict[str, Any]] | None = None,
 ) -> Path:
     report_path = package_dir / f"{report_type}.md"
     view = report_view_payload(
@@ -1177,6 +1207,8 @@ def write_report(
         daily_projects,
         weekly_documents,
         daily_documents,
+        weekly_standalone_work,
+        daily_standalone_work,
     )
     report_path.write_text(report_markdown_from_view(view["payload"]), encoding="utf-8")
     return report_path
@@ -1193,25 +1225,39 @@ def report_markdown_from_view(view: dict[str, Any]) -> str:
     lines = [f"# {title_key}_{view.get('member_name') or '需成员确认'}_{title}", ""]
     projects = view.get("projects") if isinstance(view.get("projects"), list) else []
     documents = view.get("documents") if isinstance(view.get("documents"), list) else []
+    standalone_work = view.get("standalone_work") if isinstance(view.get("standalone_work"), list) else []
     if report_type == "daily":
-        write_daily_report(lines, {}, [], daily_projects=projects, daily_documents=documents)
+        write_daily_report(
+            lines,
+            {},
+            [],
+            daily_projects=projects,
+            daily_documents=documents,
+            daily_standalone_work=standalone_work,
+        )
     else:
-        normalized_documents = []
-        for row in documents:
-            if not isinstance(row, dict):
-                continue
-            copied = dict(row)
-            completed_match = re.fullmatch(r"本周完成\s+(\d+)\s*项", str(row.get("completed_this_week") or ""))
-            remaining_match = re.fullmatch(r"当前剩余\s+(\d+)\s*项", str(row.get("remaining") or ""))
-            copied["completed_this_week"] = int(completed_match.group(1)) if completed_match else 0
-            copied["remaining"] = int(remaining_match.group(1)) if remaining_match else 0
-            normalized_documents.append(copied)
+        def normalized_weekly_non_project(rows: list[Any]) -> list[dict[str, Any]]:
+            normalized: list[dict[str, Any]] = []
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                copied = dict(row)
+                completed_match = re.fullmatch(r"本周完成\s+(\d+)\s*项", str(row.get("completed_this_week") or ""))
+                remaining_match = re.fullmatch(r"当前剩余\s+(\d+)\s*项", str(row.get("remaining") or ""))
+                copied["completed_this_week"] = int(completed_match.group(1)) if completed_match else 0
+                copied["remaining"] = int(remaining_match.group(1)) if remaining_match else 0
+                normalized.append(copied)
+            return normalized
+
+        normalized_documents = normalized_weekly_non_project(documents)
+        normalized_standalone_work = normalized_weekly_non_project(standalone_work)
         write_weekly_report(
             lines,
             {},
             [],
             weekly_projects=projects,
             weekly_documents=normalized_documents,
+            weekly_standalone_work=normalized_standalone_work,
         )
     return emphasize_report_project_names("\n".join(lines).rstrip() + "\n")
 
@@ -1230,6 +1276,8 @@ def write_report_view(
     daily_projects: list[dict[str, Any]] | None = None,
     weekly_documents: list[dict[str, Any]] | None = None,
     daily_documents: list[dict[str, Any]] | None = None,
+    weekly_standalone_work: list[dict[str, Any]] | None = None,
+    daily_standalone_work: list[dict[str, Any]] | None = None,
 ) -> str:
     rel = materials_rel("display", "report_view.json")
     write_json(
@@ -1248,6 +1296,8 @@ def write_report_view(
             daily_projects,
             weekly_documents,
             daily_documents,
+            weekly_standalone_work,
+            daily_standalone_work,
         ),
     )
     return rel

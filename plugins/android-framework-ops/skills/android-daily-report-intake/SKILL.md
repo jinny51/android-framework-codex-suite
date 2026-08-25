@@ -38,15 +38,14 @@ headings and body text. Bold only the project name, for example
 Markdown presentation rule only. Keep project and customer values in
 `report_view.json` as plain text without Markdown markers.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, `projects[]`, and `documents[]`; at least one of the two arrays must be non-empty. Each project row contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, and `tomorrow_focus[]`. Project work uses `Patch`, `App`, or `GMS`. Standalone rows use `Doc`, `GMS`, or `Other`, a concrete `document_name` or `work_name`, and optional platform context. Historical `Document` remains readable as `Doc`. Every work item contains `name`, `did[]`, `how[]`, `result`, and fixed-enum `status`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, and `standalone_work[]`; at least one array must be non-empty. Every project-bound row belongs in `projects[]` and contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, and `tomorrow_focus[]`. Project work uses `Patch`, `App`, `GMS`, `Doc`, or `Other`. Only a non-project document belongs in `documents[]` with `work_type=Doc` and `document_name`. A non-project, non-document activity belongs in `standalone_work[]` with `work_type=Other` and `work_name`. Historical `Document` remains readable as `Doc`. Every work item contains `name`, `did[]`, `how[]`, `result`, and fixed-enum `status`.
 
 Each daily row is one work scope. The five visible categories are exactly
 `Patch`, `App`, `GMS`, `Doc`, and `Other`. Patch and App keep their existing
-meaning; App requires `app_name`. GMS may be a formal project scope or an
-independent named test environment. Doc requires a concrete document name.
-Other requires a concrete work name. Independent GMS, Doc, and Other rows live
-in `documents[]` for protocol compatibility and must not pretend to be a
-project.
+meaning; App requires `app_name`. GMS is always project-bound. A project-bound
+Doc or Other row also stays in `projects[]`. Only a non-project Doc uses
+`documents[]`; only a non-project Other uses `standalone_work[]`. A shared GMS
+ATS environment with no customer project is `Other` standalone work, not GMS.
 Resolve it in this order:
 
 1. An explicit type or App name stated by the member in the current development
@@ -56,8 +55,8 @@ Resolve it in this order:
    modules, Gradle application builds, and APK/AAB outputs.
 3. Explicit document actions such as 编写、整理、更新 or 完善 a named document
    resolve to `Doc` when no project development scope conflicts.
-4. Explicit GMS testing or certification evidence resolves to `GMS`; explicit
-   independent work outside Patch, App, GMS, and Doc resolves to `Other`.
+4. Explicit GMS testing or certification evidence resolves to project-bound
+   `GMS`; explicit non-project work outside documentation resolves to `Other`.
 5. Never decide from vague work-item wording alone. If evidence conflicts, App
    is clear but its name is not, or a standalone category is clear but its name is not, ask
    only for the unresolved fact.
@@ -82,14 +81,15 @@ pass it with `--daily-facts`. Read
 take precedence over inferred scope. For multiple unresolved scopes under one
 project, assign each work item to its scope explicitly.
 
-Daily card identity is not the date. Project identity preserves the customer chain, such as `TVE1086U（青鸾云）` or `TVE1091U（AOC → 福建移动高清）`; standalone documentation uses `文档工作：<文档名称>`. Multiple scopes use `、`. `material_summary` is a short daily progress summary. The current read model emits `material_name`, `material_summary`, `projects`, and `documents`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
+Daily card identity is not the date. Project identity preserves the customer chain, such as `TVE1086U（青鸾云）` or `TVE1091U（AOC → 福建移动高清）`; non-project documents and standalone work use their concrete names. Multiple scopes use `、`. `material_summary` is a short daily progress summary. The current read model emits `material_name`, `material_summary`, `projects`, `documents`, and `standalone_work`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
 
-Daily Patch/App/GMS project rows must include a recognized company project and direct customer. A third segment is optional and means the direct customer's customer: parse `TVE1091U AOC 福建移动高清` as project `TVE1091U`, customer `AOC`, and downstream customer `福建移动高清`. Keep `TVE1086U 青鸾云` compatible as a two-segment identity. If project or direct customer is missing, local submit must stop; never merge direct and downstream customers as aliases. A standalone Doc/GMS/Other row must not carry project/customer placeholders and does not require either field.
+Every project row, including Patch/App/GMS/Doc/Other, must include a recognized company project and direct customer. A third segment is optional and means the direct customer's customer: parse `TVE1091U AOC 福建移动高清` as project `TVE1091U`, customer `AOC`, and downstream customer `福建移动高清`. Keep `TVE1086U 青鸾云` compatible as a two-segment identity. If project or direct customer is missing, local submit must stop; never merge direct and downstream customers as aliases. Non-project `documents[]` and `standalone_work[]` rows must not carry project/customer placeholders.
 
 Before running `--prepare`, `--upload`, or `--submit-latest`, first decide
-whether the work is project development or standalone work. Patch/App/GMS
-requires a recognized project + customer pair. Doc/GMS/Other standalone work
-requires a concrete work name and does not require project/customer. Only when
+whether the work is project-bound, a non-project document, or other non-project
+work. All project-bound types require a recognized project + customer pair.
+Non-project Doc requires a document name; non-project Other requires a work
+name. GMS without project/customer is invalid. Only when
 neither a valid project scope nor a valid standalone scope can be established should Codex stop
 and reply:
 
@@ -112,7 +112,7 @@ the identity, continue daily generation.
 If identity exists but the evidence still cannot resolve the scope, ask only:
 
 ```text
-请确认这项工作属于 Patch、App、GMS、Doc 还是 Other；如果是 App，请提供 App 名称；如果是独立 GMS、Doc 或 Other，请提供具体工作名称。
+请确认这项工作属于 Patch、App、GMS、Doc 还是 Other；如果挂靠项目，请提供项目和客户；如果是 App，请提供 App 名称；无项目文档请提供文档名称，其他无项目工作请提供具体工作名称。
 ```
 
 Do not put raw commands, plugin cache paths, Codex session names, JSON fragments, shell output, package keys, case ids, or source paths into UI display fields. If evidence is missing, write clear human text such as `需补充`, not fabricated facts.

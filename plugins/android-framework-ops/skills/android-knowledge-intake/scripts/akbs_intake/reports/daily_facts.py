@@ -23,6 +23,7 @@ from .document_work import (
     normalize_standalone_work_type,
     standalone_work_name,
     validate_daily_documents,
+    validate_daily_standalone_work,
 )
 from .scope import ALLOWED_WORK_TYPES, PROJECT_WORK_TYPES, clean_scope_text, report_scope_key
 
@@ -40,6 +41,7 @@ OLD_DAILY_HOW_TEXT = "根据 Codex 会话记录、工程修改、命令执行和
 class DailyFactsResult:
     projects: list[dict[str, Any]]
     documents: list[dict[str, Any]]
+    standalone_work: list[dict[str, Any]]
     evidence: dict[str, Any]
 
 
@@ -248,7 +250,7 @@ def validate_daily_projects(
             errors.append(f"{prefix}.customer 客户链与当前会话已确认身份不一致")
         work_type = clean_scope_text(row.get("work_type"))
         if work_type not in PROJECT_WORK_TYPES:
-            errors.append(f"{prefix}.work_type 只能是 Patch、App 或 GMS")
+            errors.append(f"{prefix}.work_type 只能是 Patch、App、GMS、Doc 或 Other")
         app_name = clean_scope_text(row.get("app_name"))
         if work_type == "App" and not app_name:
             errors.append(f"{prefix}.app_name 类型为 App 时必须提供")
@@ -303,7 +305,12 @@ def load_explicit_facts(
     daily_work_items: dict[str, list[dict[str, Any]]],
     expected_project_customers: dict[str, Any] | None = None,
     include_documents: bool = False,
-) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    include_all_scopes: bool = False,
+) -> (
+    list[dict[str, Any]]
+    | tuple[list[dict[str, Any]], list[dict[str, Any]]]
+    | tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]
+):
     payload = read_json_file(path)
     schema = payload.get("schema")
     if schema not in {DAILY_FACTS_SCHEMA, LEGACY_DAILY_FACTS_SCHEMA}:
@@ -312,14 +319,17 @@ def load_explicit_facts(
         raise SystemExit(f"daily facts report_date 必须等于 {report_date.isoformat()}")
     raw_projects = payload.get("projects")
     raw_documents = payload.get("documents", [])
+    raw_standalone_work = payload.get("standalone_work", [])
     if not isinstance(raw_projects, list):
         raise SystemExit("daily facts projects 必须是数组")
     if not isinstance(raw_documents, list):
         raise SystemExit("daily facts documents 必须是数组")
-    if schema == LEGACY_DAILY_FACTS_SCHEMA and raw_documents:
-        raise SystemExit(f"文档工作必须改用 {DAILY_FACTS_SCHEMA}")
-    if not raw_projects and not raw_documents:
-        raise SystemExit("daily facts projects 和 documents 至少提供一项")
+    if not isinstance(raw_standalone_work, list):
+        raise SystemExit("daily facts standalone_work 必须是数组")
+    if schema == LEGACY_DAILY_FACTS_SCHEMA and (raw_documents or raw_standalone_work):
+        raise SystemExit(f"非项目工作必须改用 {DAILY_FACTS_SCHEMA}")
+    if not raw_projects and not raw_documents and not raw_standalone_work:
+        raise SystemExit("daily facts projects、documents 和 standalone_work 至少提供一项")
     project_names = [
         find_company_project(clean_scope_text(item.get("project"))) or clean_scope_text(item.get("project"))
         for item in raw_projects
@@ -337,14 +347,20 @@ def load_explicit_facts(
         if isinstance(item, dict)
     ]
     documents = [normalize_daily_document(item) for item in raw_documents if isinstance(item, dict)]
+    standalone_work = [normalize_daily_document(item) for item in raw_standalone_work if isinstance(item, dict)]
     errors = validate_daily_projects(projects, expected_project_customers=expected_project_customers)
     errors.extend(validate_daily_documents(documents))
+    errors.extend(validate_daily_standalone_work(standalone_work))
     if len(projects) != len(raw_projects):
         errors.append("projects 中每一项都必须是对象")
     if len(documents) != len(raw_documents):
         errors.append("documents 中每一项都必须是对象")
+    if len(standalone_work) != len(raw_standalone_work):
+        errors.append("standalone_work 中每一项都必须是对象")
     if errors:
         raise SystemExit("daily facts 校验失败: " + "；".join(errors))
+    if include_all_scopes:
+        return projects, documents, standalone_work
     return (projects, documents) if include_documents else projects
 
 
@@ -360,19 +376,19 @@ def fallback_projects(
     scopes_by_project: dict[str, list[dict[str, Any]]] = {}
     if not synthetic:
         for scope in inferred_scopes:
-            if clean_scope_text(scope.get("work_type")) == DOCUMENT_WORK_TYPE:
-                continue
             raw_project = clean_scope_text(scope.get("project"))
-            project = find_company_project(raw_project) or raw_project
-            if project:
-                scopes_by_project.setdefault(project, []).append(scope)
-    has_document_scopes = any(
-        clean_scope_text(scope.get("work_type")) == DOCUMENT_WORK_TYPE
+            project = find_company_project(raw_project)
+            if not project:
+                continue
+            scopes_by_project.setdefault(project, []).append(scope)
+    has_non_project_scopes = any(
+        not find_company_project(clean_scope_text(scope.get("project")))
+        and clean_scope_text(scope.get("work_type")) in {DOCUMENT_WORK_TYPE, "Other"}
         for scope in inferred_scopes
     )
     item_projects = (
         {project for project in project_items if find_company_project(project)}
-        if has_document_scopes
+        if has_non_project_scopes
         else set(project_items)
     )
     project_names = sorted(item_projects | set(scopes_by_project))
@@ -409,7 +425,10 @@ def fallback_projects(
 def fallback_documents(*, inferred_scopes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     documents: list[dict[str, Any]] = []
     for scope in inferred_scopes:
-        if clean_scope_text(scope.get("work_type")) != DOCUMENT_WORK_TYPE:
+        if (
+            clean_scope_text(scope.get("work_type")) != DOCUMENT_WORK_TYPE
+            or find_company_project(clean_scope_text(scope.get("project")))
+        ):
             continue
         raw_items = scope.get("work_items")
         work_items = (
@@ -430,9 +449,41 @@ def fallback_documents(*, inferred_scopes: list[dict[str, Any]]) -> list[dict[st
     return documents
 
 
-def facts_hash(projects: list[dict[str, Any]], documents: list[dict[str, Any]]) -> str:
+def fallback_standalone_work(*, inferred_scopes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for scope in inferred_scopes:
+        if (
+            clean_scope_text(scope.get("work_type")) != "Other"
+            or find_company_project(clean_scope_text(scope.get("project")))
+        ):
+            continue
+        raw_items = scope.get("work_items")
+        work_items = (
+            [normalize_work_item(item) for item in raw_items if isinstance(item, dict)]
+            if isinstance(raw_items, list)
+            else []
+        )
+        work_name = clean_scope_text(scope.get("work_name")) or topic_from_work_items(work_items)
+        rows.append(
+            {
+                "work_type": "Other",
+                "work_name": work_name,
+                "today_topic": topic_from_work_items(work_items),
+                "current_result": result_from_work_items(work_items),
+                "work_items": work_items,
+                "tomorrow_focus": focus_from_work_items(work_items),
+            }
+        )
+    return rows
+
+
+def facts_hash(
+    projects: list[dict[str, Any]],
+    documents: list[dict[str, Any]],
+    standalone_work: list[dict[str, Any]],
+) -> str:
     payload = json.dumps(
-        {"projects": projects, "documents": documents},
+        {"projects": projects, "documents": documents, "standalone_work": standalone_work},
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -456,13 +507,13 @@ def build_daily_facts(
     inferred_scopes = inferred_scopes or []
     if explicit_path:
         path = expanded_path(explicit_path)
-        projects, documents = load_explicit_facts(
+        projects, documents, standalone_work = load_explicit_facts(
             path,
             report_date,
             project_items=project_items,
             daily_work_items=daily_work_items,
             expected_project_customers=project_customers,
-            include_documents=True,
+            include_all_scopes=True,
         )
         source = "explicit_daily_facts"
         source_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -475,20 +526,32 @@ def build_daily_facts(
             inferred_scopes=inferred_scopes,
         )
         documents = fallback_documents(inferred_scopes=inferred_scopes)
+        standalone_work = fallback_standalone_work(inferred_scopes=inferred_scopes)
         inference_complete = bool(inferred_scopes) and all(
-            clean_scope_text(row.get("work_type")) in ALLOWED_WORK_TYPES
-            and (
-                (clean_scope_text(row.get("work_type")) == "Patch")
-                or (
-                    clean_scope_text(row.get("work_type")) == "App"
-                    and bool(clean_scope_text(row.get("app_name")))
+            (
+                (
+                    bool(find_company_project(clean_scope_text(row.get("project"))))
+                    and clean_scope_text(row.get("work_type")) in PROJECT_WORK_TYPES
+                    and (
+                        clean_scope_text(row.get("work_type")) != "App"
+                        or bool(clean_scope_text(row.get("app_name")))
+                    )
                 )
                 or (
-                    clean_scope_text(row.get("work_type")) == DOCUMENT_WORK_TYPE
-                    and bool(clean_document_name(row.get("document_name")))
+                    not find_company_project(clean_scope_text(row.get("project")))
+                    and (
+                        (
+                            clean_scope_text(row.get("work_type")) == DOCUMENT_WORK_TYPE
+                            and bool(clean_document_name(row.get("document_name")))
+                        )
+                        or (
+                            clean_scope_text(row.get("work_type")) == "Other"
+                            and bool(clean_scope_text(row.get("work_name")))
+                        )
+                    )
                 )
+                and not bool(row.get("inference_conflict"))
             )
-            and not bool(row.get("inference_conflict"))
             for row in inferred_scopes
         )
         if synthetic:
@@ -510,6 +573,9 @@ def build_daily_facts(
         for row in documents:
             if not clean_document_name(row.get("document_name")):
                 missing_fields.append("document.document_name")
+        for row in standalone_work:
+            if not clean_scope_text(row.get("work_name")):
+                missing_fields.append("standalone_work.work_name")
     scope_inference = []
     if not explicit_path and not synthetic:
         for row in inferred_scopes:
@@ -523,6 +589,8 @@ def build_daily_facts(
                 item["app_name"] = clean_scope_text(row.get("app_name"))
             if clean_document_name(row.get("document_name")):
                 item["document_name"] = clean_document_name(row.get("document_name"))
+            if clean_scope_text(row.get("work_name")):
+                item["work_name"] = clean_scope_text(row.get("work_name"))
             scope_inference.append(item)
     evidence = {
         "schema": DAILY_FACT_SOURCES_SCHEMA,
@@ -531,12 +599,13 @@ def build_daily_facts(
         "source_sha256": source_sha256,
         "project_count": len({clean_scope_text(row.get("project")) for row in projects}),
         "document_count": len(documents),
-        "work_scope_count": len(projects) + len(documents),
+        "standalone_work_count": len(standalone_work),
+        "work_scope_count": len(projects) + len(documents) + len(standalone_work),
         "missing_fields": sorted(set(missing_fields)),
         "scope_inference": scope_inference,
-        "facts_sha256": facts_hash(projects, documents),
+        "facts_sha256": facts_hash(projects, documents, standalone_work),
     }
-    return DailyFactsResult(projects, documents, evidence)
+    return DailyFactsResult(projects, documents, standalone_work, evidence)
 
 
 def project_rows_to_items(projects: list[dict[str, Any]]) -> dict[str, list[tuple[str, str]]]:

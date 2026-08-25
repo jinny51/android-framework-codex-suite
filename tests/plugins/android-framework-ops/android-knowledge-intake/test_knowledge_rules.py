@@ -149,8 +149,8 @@ class KnowledgeRulesTest(unittest.TestCase):
         )
 
         current = current_plugin_version()
-        self.assertEqual(current, "1.0.157")
-        self.assertEqual(AKBS_RULES_CONTRACT_VERSION, "2026-08-24.2")
+        self.assertEqual(current, "1.0.158")
+        self.assertEqual(AKBS_RULES_CONTRACT_VERSION, "2026-08-25.1")
         matrix = source_version_compatibility_matrix()
         self.assertEqual(matrix["source_version_evidence"]["min_plugin_version"], "1.0.60")
         self.assertEqual(matrix["report_view_v1"]["min_plugin_version"], "1.0.61")
@@ -167,6 +167,7 @@ class KnowledgeRulesTest(unittest.TestCase):
         self.assertEqual(matrix["report_document_work_v1"]["min_plugin_version"], "1.0.153")
         self.assertEqual(matrix["daily_no_focus_marker_v1"]["min_plugin_version"], "1.0.154")
         self.assertEqual(matrix["weekly_project_ledger_v2"]["min_plugin_version"], "1.0.156")
+        self.assertEqual(matrix["report_scope_containers_v1"]["min_plugin_version"], "1.0.158")
         self.assertEqual(matrix["report_render_binding_v1"]["min_plugin_version"], "1.0.151")
         self.assertEqual(matrix["report_customer_hierarchy_v1"]["min_plugin_version"], "1.0.134")
         self.assertEqual(matrix["report_markdown_project_emphasis_v1"]["min_plugin_version"], "1.0.135")

@@ -3431,8 +3431,11 @@ class MemberAutomationFlowTests(unittest.TestCase):
     def test_daily_and_weekly_support_gms_doc_and_other_categories(self) -> None:
         load_intake_module()
         scope_module = importlib.import_module("akbs_intake.reports.scope")
+        document_module = importlib.import_module("akbs_intake.reports.document_work")
         self.assertEqual(scope_module.text_scope_inference(["类型：GMS，完成 CTS 全量测试。 "]).work_type, "GMS")
         self.assertEqual(scope_module.text_scope_inference(["类型：Other，协助摄像头调试。 "]).work_type, "Other")
+        self.assertTrue(any("必须是 Doc" in error for error in document_module.validate_daily_documents([{"work_type": "GMS"}])))
+        self.assertTrue(any("必须是 Other" in error for error in document_module.validate_daily_standalone_work([{"work_type": "GMS"}])))
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -3461,28 +3464,13 @@ class MemberAutomationFlowTests(unittest.TestCase):
                                     }
                                 ],
                                 "tomorrow_focus": ["继续 GTS 测试"],
-                            }
-                        ],
-                        "documents": [
-                            {
-                                "work_type": "GMS",
-                                "work_name": "自动化测试环境（Codex/ATS）",
-                                "platform": "M",
-                                "work_items": [
-                                    {
-                                        "name": "多机协同测试",
-                                        "did": ["完成双 Worker 验证"],
-                                        "how": ["运行 CTS 并核对 Worker 状态"],
-                                        "result": "联调中",
-                                        "status": "处理中",
-                                    }
-                                ],
-                                "tomorrow_focus": ["继续跨 Worker 分片联调"],
                             },
                             {
+                                "project": "TVE8802M",
+                                "customer": "客户B",
                                 "work_type": "Other",
-                                "work_name": "RK 摄像头协助",
-                                "platform": "R",
+                                "today_topic": "客户现场摄像头协助",
+                                "current_result": "方向调整已完成",
                                 "work_items": [
                                     {
                                         "name": "摄像头方向调整",
@@ -3495,6 +3483,39 @@ class MemberAutomationFlowTests(unittest.TestCase):
                                 "tomorrow_focus": [],
                             },
                         ],
+                        "documents": [
+                            {
+                                "work_type": "Doc",
+                                "document_name": "GMS ATS 环境搭建说明文档",
+                                "work_items": [
+                                    {
+                                        "name": "整理 ATS 环境说明",
+                                        "did": ["整理部署步骤和运行边界"],
+                                        "how": ["核对环境配置并形成说明"],
+                                        "result": "文档已完成",
+                                        "status": "已完成",
+                                    }
+                                ],
+                                "tomorrow_focus": [],
+                            }
+                        ],
+                        "standalone_work": [
+                            {
+                                "work_type": "Other",
+                                "work_name": "团队共用 GMS ATS 环境搭建",
+                                "platform": "M",
+                                "work_items": [
+                                    {
+                                        "name": "多机协同测试",
+                                        "did": ["完成双 Worker 验证"],
+                                        "how": ["运行 CTS 并核对 Worker 状态"],
+                                        "result": "联调中",
+                                        "status": "处理中",
+                                    }
+                                ],
+                                "tomorrow_focus": ["继续跨 Worker 分片联调"],
+                            },
+                        ],
                     },
                     ensure_ascii=False,
                 ),
@@ -3502,8 +3523,14 @@ class MemberAutomationFlowTests(unittest.TestCase):
             )
             daily = prepare_daily_package(env, "2026-06-03", "20260603-235000-daily-five-types", daily_facts)
             daily_view = read_report_view(daily)["payload"]
+            daily_report = read_package_report(daily, "daily")
             self.assertEqual(daily_view["projects"][0]["work_type"], "GMS")
-            self.assertEqual([row["work_type"] for row in daily_view["documents"]], ["GMS", "Other"])
+            self.assertEqual([row["work_type"] for row in daily_view["projects"]], ["GMS", "Other"])
+            self.assertEqual([row["work_type"] for row in daily_view["documents"]], ["Doc"])
+            self.assertEqual([row["work_type"] for row in daily_view["standalone_work"]], ["Other"])
+            self.assertIn("### **TVE1067M1** 客户A｜GMS", daily_report)
+            self.assertIn("- 类型：GMS", daily_report)
+            self.assertNotIn("GMS：需成员确认", daily_report)
 
             weekly_facts = root / "weekly-five-types.json"
             weekly_facts.write_text(
@@ -3527,22 +3554,52 @@ class MemberAutomationFlowTests(unittest.TestCase):
                                 "risks": [],
                                 "dependencies": ["依赖实验室受理"],
                                 "next_week_plan": ["正式送测"],
-                            }
-                        ],
-                        "documents": [
+                            },
                             {
+                                "project": "TVE8802M",
+                                "customer": "客户B",
                                 "work_type": "Other",
-                                "work_name": "RK 摄像头协助",
-                                "platform": "R",
-                                "week_summary": "完成摄像头方向和 HDR 协助。",
-                                "completed_this_week": 1,
-                                "remaining": 0,
+                                "project_role": "主责",
+                                "requirement_date": "2026-06-01",
+                                "requirement_source": "TL",
+                                "week_summary": "完成客户现场摄像头协助。",
                                 "completed_items": ["完成摄像头方向调整"],
                                 "remaining_items": [],
                                 "key_points": ["无"],
                                 "risks": [],
                                 "dependencies": [],
                                 "next_week_plan": [],
+                            },
+                        ],
+                        "documents": [
+                            {
+                                "work_type": "Doc",
+                                "document_name": "GMS ATS 环境搭建说明文档",
+                                "week_summary": "完成 ATS 环境搭建说明整理。",
+                                "completed_this_week": 1,
+                                "remaining": 0,
+                                "completed_items": ["整理部署步骤和运行边界"],
+                                "remaining_items": [],
+                                "key_points": ["无"],
+                                "risks": [],
+                                "dependencies": [],
+                                "next_week_plan": [],
+                            }
+                        ],
+                        "standalone_work": [
+                            {
+                                "work_type": "Other",
+                                "work_name": "团队共用 GMS ATS 环境搭建",
+                                "platform": "M",
+                                "week_summary": "完成双 Worker 压测。",
+                                "completed_this_week": 1,
+                                "remaining": 1,
+                                "completed_items": ["完成双 Worker 压测"],
+                                "remaining_items": ["跨 Worker 分片联调"],
+                                "key_points": ["无"],
+                                "risks": [],
+                                "dependencies": ["依赖分片能力"],
+                                "next_week_plan": ["继续联调"],
                             }
                         ],
                     },
@@ -3555,9 +3612,13 @@ class MemberAutomationFlowTests(unittest.TestCase):
             weekly_report = read_package_report(weekly, "weekly")
             self.assertEqual(weekly_view["projects"][0]["work_type"], "GMS")
             self.assertEqual(weekly_view["projects"][0]["current_stage"], "内部全量测试完成")
-            self.assertEqual(weekly_view["documents"][0]["work_type"], "Other")
-            self.assertIn("｜GMS", weekly_report)
-            self.assertIn("## 三、Other", weekly_report)
+            self.assertEqual([row["work_type"] for row in weekly_view["projects"]], ["GMS", "Other"])
+            self.assertEqual(weekly_view["documents"][0]["work_type"], "Doc")
+            self.assertEqual(weekly_view["standalone_work"][0]["work_type"], "Other")
+            self.assertIn("### **TVE1067M1** 客户A｜GMS", weekly_report)
+            self.assertIn("- 类型：GMS", weekly_report)
+            self.assertNotIn("GMS：", weekly_report)
+            self.assertIn("## 三、Doc / Other", weekly_report)
 
 
 if __name__ == "__main__":

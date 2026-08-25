@@ -35,8 +35,8 @@ Weekly facts are resolved in this order:
 4. Sanitized Codex session summaries only as supplementary evidence for work
    not represented by an effective daily report.
 
-Current daily rows carry the evidence-resolved or member-confirmed Patch/App/GMS
-project scope or standalone Doc/GMS/Other scope. Preserve that scope when rolling daily work into the weekly ledger;
+Current daily rows carry project-bound Patch/App/GMS/Doc/Other scopes,
+non-project Doc scopes, and non-project Other scopes. Preserve the owning array when rolling daily work into the weekly ledger;
 do not classify by item wording. Historical daily rows without scope remain
 readable, but they do not prove `work_type`, so ask the member for that missing
 weekly fact.
@@ -67,7 +67,7 @@ Generate `reports/weekly.md` with this required structure:
   - 当前剩余
   - 重点说明
   - 风险 / 依赖
-- Doc / GMS / Other（仅存在独立工作时）
+- Doc / Other（仅存在非项目工作时）
   - 本周完成
   - 当前剩余
   - 重点说明
@@ -108,16 +108,18 @@ Codex writes the ledger JSON and computes the displayed total and remaining.
 An explicit facts file must never reset an existing project's total.
 
 The five visible categories are exactly `Patch`, `App`, `GMS`, `Doc`, and
-`Other`. Project rows use Patch, App, or GMS. `Patch` means system
+`Other`. Every project-bound category uses `projects[]`. `Patch` means system
 source customization normally delivered as patches. `App` means application
 or demo development and requires `App 名称`. Preserve the scope resolved by the
 daily workflow; do not reclassify it from weekly item wording. Ask the member
 only when the daily source is missing, conflicting, or lacks the App name.
 
 GMS project rows use `current_stage`, weekly progress, key points, risks,
-dependencies, and plans without Patch/App totals. Standalone Doc, GMS, and
-Other rows use a concrete `document_name` or `work_name` and do not require
-project/customer fields. Historical `Document` remains readable as `Doc`.
+dependencies, and plans without Patch/App totals. Project-bound Doc and Other
+also use progress details without Patch/App totals. A non-project Doc uses
+`documents[]/document_name`; a non-project Other uses
+`standalone_work[]/work_name`. GMS is never non-project. Historical `Document`
+remains readable as `Doc`.
 Never add GMS, Doc, or Other counts to Patch/App project demand totals.
 
 `项目角色` is required and must be `主责` or `协作`. `需求时间` is required
@@ -159,7 +161,7 @@ as separate unordered lists under subsection 4.
 For multiple projects, repeat the same block per project. Do not use a large
 overview table in `本周概况`.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, `projects[]`, and `documents[]`; at least one array must be non-empty. Patch/App project rows keep the existing total and ledger fields. GMS project rows carry `current_stage`, optional `display_name`, progress, key points, risks, dependencies, and plans without Patch/App totals. Standalone Doc/GMS/Other rows carry a concrete name, optional platform, progress, risks, dependencies, and plans.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, and `standalone_work[]`; at least one array must be non-empty. Patch/App project rows keep the existing total and ledger fields. GMS project rows carry `current_stage`, progress, key points, risks, dependencies, and plans without Patch/App totals. Project GMS titles are exactly `项目 + 客户｜GMS`; `display_name`, `model`, `work_name`, and `document_name` never replace that identity. Project-bound Doc/Other are progress scopes. Non-project Doc and Other use their own arrays and concrete names.
 
 Weekly card identity is not the week range. `material_name` must preserve the
 customer chain, such as `TVE1086U（青鸾云）` or
@@ -188,8 +190,8 @@ within their own levels, never across the customer chain.
 There must be exactly one `projects[]` row for each reporting scope. A Patch
 scope is `project + direct customer + Patch`; an App scope is `project + direct
 customer + App + app_name`. The same formal project may therefore contain one
-Patch row and multiple App rows, but the same Patch or same App must not be
-duplicated. Feature names remain work items and do not create more rows. The
+Patch row, multiple App rows, and one scope for each GMS, Doc, and Other; no
+scope may be duplicated. Feature names remain work items and do not create more rows. The
 gate is structural, not a vocabulary blacklist: it validates the canonical
 project, customer chain, work scope, and same-source identity consistency.
 Generation and `--submit-latest` reject conflicts before HTTP.
@@ -227,17 +229,18 @@ Ask the main only whether each candidate is added, reopened, removed, or already
 covered; do not ask them to reconstruct the full report.
 
 Before running `--prepare`, `--upload`, or `--submit-latest`, distinguish
-Patch/App/GMS project work from standalone Doc/GMS/Other work. A project row
-requires a recognized project + customer pair; standalone work requires a
-concrete work name and no project/customer. Ask for project/customer only when
+project-bound work from non-project Doc and Other work. Every project row
+requires a recognized project + customer pair. A non-project document requires
+`document_name`; other non-project work requires `work_name`. Ask for project/customer only when
 the unresolved work is project work, and reply:
 
 ```text
 缺少项目名和客户名，请补充，例如：TVE1086U 青鸾云；如有客户的客户，继续写第三段，例如：TVE1091U AOC 福建移动高清。
 ```
 
-If it is standalone documentation, ask only for the concrete document name and
-use `Doc`, `GMS`, or `Other`; never block it merely because no company project code exists.
+If it is non-project documentation, ask only for the concrete document name and
+use `Doc`. If it is non-project, non-document work, use `Other` with a concrete
+work name. Never create GMS without a company project and customer.
 
 The weekly display date is the last workday of the period. A late weekly submission still displays the weekly period date, not the upload day.
 

@@ -6,14 +6,13 @@ from typing import Any
 
 from .document_work import (
     DOCUMENT_WORK_TYPE,
-    STANDALONE_WORK_TYPES,
+    NON_PROJECT_WORK_TYPES,
     document_name_from_text,
-    normalize_standalone_work_type,
 )
 
 
-PROJECT_WORK_TYPES = {"Patch", "App", "GMS"}
-ALLOWED_WORK_TYPES = PROJECT_WORK_TYPES | STANDALONE_WORK_TYPES
+PROJECT_WORK_TYPES = {"Patch", "App", "GMS", "Doc", "Other"}
+ALLOWED_WORK_TYPES = PROJECT_WORK_TYPES | NON_PROJECT_WORK_TYPES
 
 EXPLICIT_PATCH_RE = re.compile(
     r"(?i)(?:类型|工作类型|开发类型)\s*[:：=]\s*patch\b|"
@@ -281,10 +280,7 @@ def report_scope_key(row: dict[str, Any]) -> tuple[str, str, str]:
 
 
 def report_scope_suffix(row: dict[str, Any]) -> str:
-    if clean_scope_text(row.get("work_type")) == "App":
+    work_type = clean_scope_text(row.get("work_type"))
+    if work_type == "App":
         return f"App：{clean_scope_text(row.get('app_name')) or '需成员确认'}"
-    standalone_type = normalize_standalone_work_type(row.get("work_type"))
-    if standalone_type in STANDALONE_WORK_TYPES:
-        name = clean_scope_text(row.get("document_name") or row.get("work_name")) or "需成员确认"
-        return f"{standalone_type}：{name}"
-    return clean_scope_text(row.get("work_type")) or "需成员确认"
+    return work_type or "需成员确认"

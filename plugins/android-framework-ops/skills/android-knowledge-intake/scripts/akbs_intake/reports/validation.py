@@ -13,12 +13,14 @@ from ..session_privacy import session_evidence_errors
 from .daily_facts import DAILY_FACT_SOURCES_SCHEMA, LEGACY_DAILY_FACT_SOURCES_SCHEMA
 from .document_work import (
     DOCUMENT_WORK_TYPE,
+    DOCUMENT_WORK_TYPES,
     STANDALONE_WORK_TYPES,
     clean_document_name,
     clean_list as clean_document_list,
     normalize_standalone_work_type,
     standalone_work_name,
     validate_daily_documents,
+    validate_daily_standalone_work,
 )
 from .render import (
     REPORT_MISSING_CUSTOMER_VALUES,
@@ -58,7 +60,7 @@ FORBIDDEN_REPORT_VIEW_FIELDS = {
 }
 WEEKLY_ALLOWED_SOURCES = {"CR", "TL", "PM", "TE", "BSP"}
 WEEKLY_ALLOWED_PROJECT_ROLES = {"主责", "协作"}
-WEEKLY_ALLOWED_WORK_TYPES = {"Patch", "App", "GMS"}
+WEEKLY_ALLOWED_WORK_TYPES = {"Patch", "App", "GMS", "Doc", "Other"}
 WEEKLY_EMPTY_PLAN_VALUES = {"无", "无。", "暂无", "暂无。", "无下周计划", "暂无下周计划"}
 WEEKLY_COUNT_RE = re.compile(
     r"^(?P<label>共|本周完成|当前剩余)\s+(?P<total>\d+)\s*项(?:：(?P<parts>.+))?$"
@@ -70,7 +72,7 @@ OLD_DAILY_HOW_TEXT = "根据 Codex 会话记录、工程修改、命令执行和
 MISSING_PROJECT_GUIDANCE = (
     "当前会话未关联项目，请补充项目名和客户名；例如：TVE1086U 青鸾云；"
     "如有客户的客户：TVE1091U AOC 福建移动高清。"
-    "建议后续先创建项目，再在项目下创建开发会话。独立工作应使用 Doc、GMS 或 Other 并填写具体名称，"
+    "建议后续先创建项目，再在项目下创建开发会话。无项目文档使用 documents，其他无项目工作使用 standalone_work，"
     "不得把“文档”伪造成项目编号。"
 )
 
@@ -145,7 +147,7 @@ def report_project_customer_errors(
                 if previous_scope is not None:
                     row_errors.append(
                         f"{rel} payload.{label}[{index}] 与 [{previous_scope}] 的统计对象重复；"
-                        "同一 Patch 或 App 只能有一行"
+                        "同一项目工作范围只能有一行"
                     )
                 else:
                     seen_scopes[scope] = index
@@ -174,10 +176,13 @@ def validate_daily_project_inference(
     non_project_work = bool(project_payload.get("non_project_work"))
     if not inferred_projects and project == "unknown" and non_project_work:
         if not manifest.get("has_non_project_work"):
-            errors.append("Document 日报 manifest.has_non_project_work 必须为 true")
+            errors.append("非项目日报 manifest.has_non_project_work 必须为 true")
         documents = project_payload.get("documents")
-        if not isinstance(documents, list) or not any(clean_document_name(value) for value in documents):
-            errors.append("Document 日报 project_inference.documents 必须提供文档名称")
+        standalone_work = project_payload.get("standalone_work")
+        has_document = isinstance(documents, list) and any(clean_document_name(value) for value in documents)
+        has_standalone = isinstance(standalone_work, list) and any(str(value or "").strip() for value in standalone_work)
+        if not has_document and not has_standalone:
+            errors.append("非项目日报 project_inference 必须提供 documents 或 standalone_work 名称")
     elif not inferred_projects and project == "unknown":
         errors.append(f"project_inference.project 未识别到公司项目名。{MISSING_PROJECT_GUIDANCE}")
         if not isinstance(project_payload.get("checked_sources"), list) or not project_payload.get("checked_sources"):
@@ -243,7 +248,7 @@ def validate_daily_fact_sources(
     if payload.get("report_date") != manifest.get("date"):
         errors.append("daily_fact_sources.report_date 必须等于 manifest.date")
     counts: dict[str, int] = {}
-    for field in ("project_count", "document_count", "work_scope_count"):
+    for field in ("project_count", "document_count", "standalone_work_count", "work_scope_count"):
         try:
             count = int(payload.get(field) or 0)
         except (TypeError, ValueError):
@@ -251,8 +256,8 @@ def validate_daily_fact_sources(
         counts[field] = count
     if counts["work_scope_count"] < 1:
         errors.append("daily_fact_sources.work_scope_count 必须大于 0")
-    if counts["project_count"] + counts["document_count"] < 1:
-        errors.append("daily_fact_sources 必须至少包含一个项目或文档范围")
+    if counts["project_count"] + counts["document_count"] + counts["standalone_work_count"] < 1:
+        errors.append("daily_fact_sources 必须至少包含一个项目、文档或独立工作范围")
     missing = payload.get("missing_fields")
     if not isinstance(missing, list):
         errors.append("daily_fact_sources.missing_fields 必须是数组")
@@ -319,8 +324,12 @@ def validate_weekly_fact_sources(
         document_count = int(payload.get("document_count") or 0)
     except (TypeError, ValueError):
         document_count = 0
-    if project_count + document_count < 1:
-        errors.append("周报未形成项目或文档事实，请补充有效日报、上一周周报或 --weekly-facts")
+    try:
+        standalone_work_count = int(payload.get("standalone_work_count") or 0)
+    except (TypeError, ValueError):
+        standalone_work_count = 0
+    if project_count + document_count + standalone_work_count < 1:
+        errors.append("周报未形成项目、文档或独立工作事实，请补充有效日报、上一周周报或 --weekly-facts")
     missing = payload.get("missing_fields")
     if not isinstance(missing, list):
         errors.append("weekly_fact_sources.missing_fields 必须是数组")
@@ -365,7 +374,7 @@ def weekly_project_identity_consistency_errors(
 def validate_daily_report_view_project(rel: str, index: int, project: dict[str, Any], errors: list[str]) -> None:
     work_type = str(project.get("work_type") or "").strip()
     if work_type not in WEEKLY_ALLOWED_WORK_TYPES:
-        errors.append(f"{rel} payload.projects[{index}].work_type 只能是 Patch、App 或 GMS")
+        errors.append(f"{rel} payload.projects[{index}].work_type 只能是 Patch、App、GMS、Doc 或 Other")
     if work_type == "App" and not str(project.get("app_name") or "").strip():
         errors.append(f"{rel} payload.projects[{index}].app_name 类型为 App 时必须提供")
     if work_type != "App" and project.get("app_name"):
@@ -543,7 +552,7 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
     ]
     if project.get("work_type") == "GMS":
         required_fields.append("current_stage")
-    else:
+    elif project.get("work_type") in {"Patch", "App"}:
         required_fields.extend(["completed_this_week", "remaining"])
     for field in required_fields:
         if not project.get(field):
@@ -553,7 +562,7 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
         errors.append(f"{rel} payload.projects[{index}].project_role 只能是主责或协作")
     work_type = project.get("work_type")
     if work_type not in WEEKLY_ALLOWED_WORK_TYPES:
-        errors.append(f"{rel} payload.projects[{index}].work_type 只能是 Patch、App 或 GMS")
+        errors.append(f"{rel} payload.projects[{index}].work_type 只能是 Patch、App、GMS、Doc 或 Other")
     if work_type == "App" and not str(project.get("app_name") or "").strip():
         errors.append(f"{rel} payload.projects[{index}].app_name 类型为 App 时必须提供")
     if work_type != "App" and project.get("app_name"):
@@ -579,9 +588,11 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
         errors.append(f"{rel} payload.projects[{index}].week_summary 不得用下周计划代替本周进展")
     parsed_completed_total = 0
     parsed_remaining_total = 0
-    if work_type == "GMS":
+    if project.get("display_name") or project.get("model"):
+        errors.append(f"{rel} payload.projects[{index}].display_name/model 不得参与项目身份")
+    if work_type in {"GMS", "Doc", "Other"}:
         if any(project.get(field) for field in ("requirement_structure", "work_total", "ledger")):
-            errors.append(f"{rel} payload.projects[{index}] GMS 不得填写 Patch/App 总账字段")
+            errors.append(f"{rel} payload.projects[{index}] {work_type} 不得填写 Patch/App 总账字段")
     elif work_type == "App":
         if project.get("requirement_structure"):
             errors.append(f"{rel} payload.projects[{index}].requirement_structure 类型为 App 时不得提供")
@@ -670,7 +681,11 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
         errors.append(
             f"{rel} payload.projects[{index}].next_week_plan 不得使用“无”或空计划占位；没有下周动作时应使用空数组"
         )
-    if parsed_remaining_total > 0 and not effective_next_week_plan:
+    progress_remaining = (
+        work_type in {"GMS", "Doc", "Other"}
+        and any(str(value or "").strip() not in {"", "无明确剩余项"} for value in project.get("remaining_items", []))
+    )
+    if (parsed_remaining_total > 0 or progress_remaining) and not effective_next_week_plan:
         errors.append(f"{rel} payload.projects[{index}].next_week_plan 有剩余事项时必须提供")
     if work_type in {"Patch", "App"}:
         validate_weekly_report_view_ledger(rel, index, project, errors)
@@ -694,20 +709,44 @@ def validate_daily_report_view_documents(rel: str, documents: Any, errors: list[
                 )
 
 
-def validate_weekly_report_view_documents(rel: str, documents: Any, errors: list[str]) -> None:
-    prefix = f"{rel} payload.documents"
-    if not isinstance(documents, list):
+def validate_daily_report_view_standalone_work(rel: str, rows: Any, errors: list[str]) -> None:
+    prefix = f"{rel} payload.standalone_work"
+    errors.extend(validate_daily_standalone_work(rows, prefix=prefix))
+    if not isinstance(rows, list):
+        return
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        work_items = row.get("work_items") if isinstance(row.get("work_items"), list) else []
+        for item_index, item in enumerate(work_items):
+            if isinstance(item, dict) and OLD_DAILY_HOW_TEXT in clean_document_list(item.get("how")):
+                errors.append(
+                    f"{prefix}[{index}].work_items[{item_index}].how 不得使用固定套话，必须写实际处理方法"
+                )
+
+
+def validate_weekly_report_view_non_project(
+    rel: str,
+    rows: Any,
+    errors: list[str],
+    *,
+    collection: str,
+    allowed_types: set[str],
+    expected_type: str,
+) -> None:
+    prefix = f"{rel} payload.{collection}"
+    if not isinstance(rows, list):
         errors.append(f"{prefix} 必须是数组")
         return
     seen: dict[str, int] = {}
-    for index, document in enumerate(documents):
+    for index, document in enumerate(rows):
         row_prefix = f"{prefix}[{index}]"
         if not isinstance(document, dict):
             errors.append(f"{row_prefix} 必须是对象")
             continue
         work_type = normalize_standalone_work_type(document.get("work_type"))
-        if work_type not in STANDALONE_WORK_TYPES:
-            errors.append(f"{row_prefix}.work_type 必须是 Doc、GMS 或 Other")
+        if work_type not in allowed_types:
+            errors.append(f"{row_prefix}.work_type 必须是 {expected_type}")
         name = standalone_work_name(document)
         if not name:
             errors.append(f"{row_prefix} 必须提供具体 document_name 或 work_name")
@@ -758,6 +797,28 @@ def validate_weekly_report_view_documents(rel: str, documents: Any, errors: list
             errors.append(f"{row_prefix}.next_week_plan 当前有剩余时必须提供")
 
 
+def validate_weekly_report_view_documents(rel: str, documents: Any, errors: list[str]) -> None:
+    validate_weekly_report_view_non_project(
+        rel,
+        documents,
+        errors,
+        collection="documents",
+        allowed_types=DOCUMENT_WORK_TYPES,
+        expected_type="Doc",
+    )
+
+
+def validate_weekly_report_view_standalone_work(rel: str, rows: Any, errors: list[str]) -> None:
+    validate_weekly_report_view_non_project(
+        rel,
+        rows,
+        errors,
+        collection="standalone_work",
+        allowed_types=STANDALONE_WORK_TYPES,
+        expected_type="Other",
+    )
+
+
 def validate_report_view_payload(
     *,
     rel: str,
@@ -779,14 +840,18 @@ def validate_report_view_payload(
 
     projects = view.get("projects")
     documents = view.get("documents", [])
+    standalone_work = view.get("standalone_work", [])
     if not isinstance(projects, list):
         errors.append(f"{rel} payload.projects 必须是数组")
         projects = []
     if not isinstance(documents, list):
         errors.append(f"{rel} payload.documents 必须是数组")
         documents = []
-    if not projects and not documents:
-        errors.append(f"{rel} payload.projects 和 payload.documents 至少提供一项")
+    if not isinstance(standalone_work, list):
+        errors.append(f"{rel} payload.standalone_work 必须是数组")
+        standalone_work = []
+    if not projects and not documents and not standalone_work:
+        errors.append(f"{rel} payload.projects、payload.documents 和 payload.standalone_work 至少提供一项")
     if projects:
         errors.extend(
             report_project_customer_errors(
@@ -813,8 +878,10 @@ def validate_report_view_payload(
             validate_weekly_report_view_project(rel, index, project, errors)
     if report_type == "daily":
         validate_daily_report_view_documents(rel, documents, errors)
+        validate_daily_report_view_standalone_work(rel, standalone_work, errors)
     else:
         validate_weekly_report_view_documents(rel, documents, errors)
+        validate_weekly_report_view_standalone_work(rel, standalone_work, errors)
     if report_type == "daily" and view.get("report_date") != manifest.get("date"):
         errors.append(f"{rel} payload.report_date 必须等于 manifest.date")
     if report_type == "weekly":
