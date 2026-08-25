@@ -165,6 +165,8 @@ def normalize_daily_project(
         "today_topic": clean_scope_text(value.get("today_topic")) or topic_from_work_items(work_items),
         "current_result": clean_scope_text(value.get("current_result")) or result_from_work_items(work_items),
         "work_items": work_items,
+        "key_points": clean_list(value.get("key_points")),
+        "dependencies": clean_list(value.get("dependencies")),
         "tomorrow_focus": tomorrow_focus,
     }
     downstream = clean_scope_text(
@@ -199,6 +201,8 @@ def normalize_daily_document(value: dict[str, Any]) -> dict[str, Any]:
         "today_topic": clean_scope_text(value.get("today_topic")) or topic_from_work_items(work_items),
         "current_result": clean_scope_text(value.get("current_result")) or result_from_work_items(work_items),
         "work_items": work_items,
+        "key_points": clean_list(value.get("key_points")),
+        "dependencies": clean_list(value.get("dependencies")),
         "tomorrow_focus": tomorrow_focus,
     }
     if work_type == DOCUMENT_WORK_TYPE:
@@ -289,6 +293,12 @@ def validate_daily_projects(
             if status not in DAILY_STATUS_VALUES:
                 errors.append(f"{item_prefix}.status 必须是已完成、处理中、待验证或阻塞")
             unfinished = unfinished or status in {"处理中", "待验证", "阻塞"}
+        for field in ("key_points", "dependencies"):
+            values = row.get(field)
+            if not isinstance(values, list):
+                errors.append(f"{prefix}.{field} 必须是数组")
+            elif any(not isinstance(item, str) or not item.strip() for item in values):
+                errors.append(f"{prefix}.{field} 只能包含非空文本")
         focus = row.get("tomorrow_focus")
         if not isinstance(focus, list):
             errors.append(f"{prefix}.tomorrow_focus 必须是数组")
@@ -411,6 +421,8 @@ def fallback_projects(
                 "today_topic": topic_from_work_items(work_items),
                 "current_result": result_from_work_items(work_items),
                 "work_items": work_items,
+                "key_points": clean_list(scope.get("key_points")),
+                "dependencies": clean_list(scope.get("dependencies")),
                 "tomorrow_focus": focus_from_work_items(work_items),
             }
             app_name = clean_scope_text(scope.get("app_name"))
@@ -443,6 +455,8 @@ def fallback_documents(*, inferred_scopes: list[dict[str, Any]]) -> list[dict[st
                 "today_topic": topic_from_work_items(work_items),
                 "current_result": result_from_work_items(work_items),
                 "work_items": work_items,
+                "key_points": clean_list(scope.get("key_points")),
+                "dependencies": clean_list(scope.get("dependencies")),
                 "tomorrow_focus": focus_from_work_items(work_items),
             }
         )
@@ -471,6 +485,8 @@ def fallback_standalone_work(*, inferred_scopes: list[dict[str, Any]]) -> list[d
                 "today_topic": topic_from_work_items(work_items),
                 "current_result": result_from_work_items(work_items),
                 "work_items": work_items,
+                "key_points": clean_list(scope.get("key_points")),
+                "dependencies": clean_list(scope.get("dependencies")),
                 "tomorrow_focus": focus_from_work_items(work_items),
             }
         )

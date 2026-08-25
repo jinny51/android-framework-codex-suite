@@ -21,6 +21,8 @@ Generate `reports/daily.md` with the Codex office daily template:
 
 - 今日概况
 - 今日工作
+- 重点说明
+- 依赖 / 需协调
 - 明日重点
 
 Each `今日工作` item contains `做了什么`, `怎么做的`, `结果`, and `状态`.
@@ -38,7 +40,15 @@ headings and body text. Bold only the project name, for example
 Markdown presentation rule only. Keep project and customer values in
 `report_view.json` as plain text without Markdown markers.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, and `standalone_work[]`; at least one array must be non-empty. Every project-bound row belongs in `projects[]` and contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, and `tomorrow_focus[]`. Project work uses `Patch`, `App`, `GMS`, `Doc`, or `Other`. Only a non-project document belongs in `documents[]` with `work_type=Doc` and `document_name`. A non-project, non-document activity belongs in `standalone_work[]` with `work_type=Other` and `work_name`. Historical `Document` remains readable as `Doc`. Every work item contains `name`, `did[]`, `how[]`, `result`, and fixed-enum `status`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, and `standalone_work[]`; at least one array must be non-empty. Every project-bound row belongs in `projects[]` and contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, `key_points[]`, `dependencies[]`, and `tomorrow_focus[]`. Project work uses `Patch`, `App`, `GMS`, `Doc`, or `Other`. Only a non-project document belongs in `documents[]` with `work_type=Doc` and `document_name`. A non-project, non-document activity belongs in `standalone_work[]` with `work_type=Other` and `work_name`. Historical `Document` remains readable as `Doc`. Every work item contains `name`, `did[]`, `how[]`, `result`, and fixed-enum `status`.
+
+Every daily scope, including non-project Doc and Other, carries `key_points[]`
+and `dependencies[]`. `key_points` records explicit project news, scope
+changes, or a key difficulty overcome today. `dependencies` records explicit
+external dependencies or coordination needs. Both arrays are required in the
+normalized report but may be empty; an empty array must not block generation or
+submission. Do not invent either field from an ordinary unfinished item. In
+Markdown, render `无。` when all scopes are empty for that section.
 
 Each daily row is one work scope. The five visible categories are exactly
 `Patch`, `App`, `GMS`, `Doc`, and `Other`. Patch and App keep their existing
@@ -75,7 +85,8 @@ array or reject the report merely because unfinished work exists.
 Run normal generation first and let the shared kernel infer scope from the
 authorized evidence. Use `akbs-daily-work-facts-v2` under
 `$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` only to complete
-an unresolved scope, correct an inference, or make an explicit member override;
+an unresolved scope, correct an inference, preserve explicit key points or
+dependencies, or make an explicit member override;
 pass it with `--daily-facts`. Read
 `../android-knowledge-intake/references/daily-facts-contract.md`. Explicit facts
 take precedence over inferred scope. For multiple unresolved scopes under one

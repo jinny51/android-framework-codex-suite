@@ -612,6 +612,25 @@ def document_scope_heading(row: dict[str, Any]) -> str:
     work_type = normalize_standalone_work_type(row.get("work_type")) or DOCUMENT_WORK_TYPE
     return f"{work_type}：{standalone_work_name(row) or '需成员确认'}"
 
+
+def write_daily_scope_list(
+    lines: list[str],
+    *,
+    title: str,
+    rows: list[tuple[dict[str, Any], str]],
+    field: str,
+) -> None:
+    lines += [title, ""]
+    rendered = False
+    for row, heading in rows:
+        values = meaningful_fact_list(row.get(field))
+        if not values:
+            continue
+        rendered = True
+        lines += [f"### {heading}", "", *(f"- {value}" for value in values), ""]
+    if not rendered:
+        lines += ["无。", ""]
+
 def weekly_risks(entries: list[tuple[str, str]]) -> list[str]:
     risks = [compact_text(desc, 120) for desc, progress in entries if progress_bucket(progress) == "blocked"]
     return risks or ["无超过 3 天无进展事项。"]
@@ -662,6 +681,8 @@ def write_daily_report(
                 "today_topic": daily_topic_for_entries(entries),
                 "current_result": daily_result_for_entries(entries),
                 "work_items": work_rows,
+                "key_points": [],
+                "dependencies": [],
                 "tomorrow_focus": [next_step_for_entries(entries, "daily")],
             }
             if context.get("downstream_customer"):
@@ -712,7 +733,19 @@ def write_daily_report(
                 f"- {work_item.get('status') or '处理中'}",
                 "",
             ]
-    lines += ["## 三、明日重点", ""]
+    write_daily_scope_list(
+        lines,
+        title="## 三、重点说明",
+        rows=all_rows,
+        field="key_points",
+    )
+    write_daily_scope_list(
+        lines,
+        title="## 四、依赖 / 需协调",
+        rows=all_rows,
+        field="dependencies",
+    )
+    lines += ["## 五、明日重点", ""]
     for row, heading in all_rows:
         focus = row.get("tomorrow_focus") if isinstance(row.get("tomorrow_focus"), list) else []
         if not focus:
@@ -1061,6 +1094,8 @@ def report_view_payload(
                     "today_topic": daily_topic_for_entries(entries),
                     "current_result": daily_result_for_entries(entries),
                     "work_items": work_items,
+                    "key_points": [],
+                    "dependencies": [],
                     "tomorrow_focus": [next_step_for_entries(entries, "daily")],
                 }, context.get("downstream_customer", ""))
             )

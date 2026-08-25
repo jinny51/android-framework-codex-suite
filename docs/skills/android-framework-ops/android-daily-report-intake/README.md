@@ -10,7 +10,9 @@
 - `materials/display/report_view.json`
 - `materials/evidence/work_findings.json`
 
-`report_view.json` 是同一份日报正文的 UI 读模型。五个分类固定为 `Patch`、`App`、`GMS`、`Doc`、`Other`。凡挂靠项目的工作都进入 `projects[]` 并保留项目和客户链；无项目文档进入 `documents[]/Doc`，其他无项目工作进入 `standalone_work[]/Other`。GMS 必须挂靠项目。历史 `Document` 兼容读取为 `Doc`。每个范围都包含 `today_topic`、`current_result`、`work_items[]` 和 `tomorrow_focus[]`。
+`report_view.json` 是同一份日报正文的 UI 读模型。五个分类固定为 `Patch`、`App`、`GMS`、`Doc`、`Other`。凡挂靠项目的工作都进入 `projects[]` 并保留项目和客户链；无项目文档进入 `documents[]/Doc`，其他无项目工作进入 `standalone_work[]/Other`。GMS 必须挂靠项目。历史 `Document` 兼容读取为 `Doc`。每个范围都包含 `today_topic`、`current_result`、`work_items[]`、`key_points[]`、`dependencies[]` 和 `tomorrow_focus[]`。
+
+日报 Markdown 在“今日工作”后增加“重点说明”和“依赖 / 需协调”。`key_points[]` 只记录明确的项目外部消息、范围变化或当天攻克的关键难点，`dependencies[]` 只记录明确的外部依赖或协调事项。两个数组均允许为空；当全部范围为空时，对应 Markdown 章节显示“无”，不会阻止提交。
 
 日报卡片不使用日期当标题。`material_name` 写项目 + 客户链路，例如 `TVE1086U（青鸾云）` 或 `TVE1091U（AOC → 福建移动高清）`；多项目时每个项目都带自己的客户链路。`material_summary` 写今日主题，例如 `TVE1086U：今日处理锁屏鼠标位置刷新、云电脑崩溃排查。`。新包不得再写已废弃的 `report_view` 字段，例如 `display_title`、`ui_card`、`one_line_summary`、顶层 `work_items`、`risks` 或 `outputs`。
 

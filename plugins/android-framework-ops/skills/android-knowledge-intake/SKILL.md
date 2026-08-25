@@ -23,7 +23,9 @@ Daily scope facts use `akbs-daily-work-facts-v2` under
 `$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/`; read
 `references/daily-facts-contract.md`. Normal generation first infers scope from
 authorized development evidence; explicit facts complete, correct, or override
-only unresolved results. The same project may contain one Patch, multiple
+unresolved results and preserve explicit `key_points[]` or `dependencies[]`.
+Every daily project or non-project scope carries those two arrays, and both may
+be empty. The same project may contain one Patch, multiple
 named Apps, and unique GMS/Doc/Other scopes; non-project documents and Other
 work are identified by their concrete names. The scope flows into weekly history so weekly does not guess type
 from text. `report_render_binding` binds the normalized fact hash,
@@ -31,7 +33,7 @@ Markdown, and `report_view.json`; local validation also rerenders Markdown and
 requires exact equality. `--prepare` returns non-zero on local-check failure,
 and every submission revalidates before HTTP.
 
-Weekly generation uses effective AKBS report facts before sessions: current daily reports for the target week, then the current previous-week report as the rolling ledger, then local submitted replacement leaves when the API is unavailable. Sessions are supplementary and must never be counted as requirements. The weekly package writes `materials/evidence/weekly_fact_sources.json`; missing ledger facts make local check fail. Close only those missing fields with an `akbs-weekly-work-facts-v5` artifact and `weekly --weekly-facts <path>`. V5 binds the effective previous-week package, permits project total and responsibility changes only from the main member, and computes Android remaining plus BSP tracking. Older explicit facts cannot replace an existing scope. The artifact belongs under `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/`, not in this skill directory. Read `references/weekly-facts-contract.md` before creating it.
+Weekly generation uses effective AKBS report facts before sessions: current daily reports for the target week, then the current previous-week report as the rolling ledger, then local submitted replacement leaves when the API is unavailable. Sessions are supplementary and must never be counted as requirements. Merge current daily key points by scope. Treat current daily dependencies, legacy keyword matches, and previous-week dependencies as review candidates; expose them in `weekly_fact_sources.attention_review_candidates` and require member confirmation before submission. The weekly package writes `materials/evidence/weekly_fact_sources.json`; missing ledger or dependency-confirmation facts make local check fail. Close only those missing fields with an `akbs-weekly-work-facts-v5` artifact and `weekly --weekly-facts <path>`. V5 binds the effective previous-week package, permits project total and responsibility changes only from the main member, and computes Android remaining plus BSP tracking. Older explicit facts cannot replace an existing scope. The artifact belongs under `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/`, not in this skill directory. Read `references/weekly-facts-contract.md` before creating it.
 
 Weekly project identity is one canonical company project plus one direct customer
 and an optional downstream customer. Reporting scopes add required type: Patch

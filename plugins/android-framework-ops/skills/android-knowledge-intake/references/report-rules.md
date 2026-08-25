@@ -90,7 +90,17 @@
 状态：
 - 已完成 / 处理中 / 待验证 / 阻塞（只选一个）
 
-## 三、明日重点
+## 三、重点说明
+
+### **项目名** 客户名 [客户的客户]｜Patch / App：App 名称
+- 项目外部消息、范围变化或者今天攻克的关键难点。
+
+## 四、依赖 / 需协调
+
+### **项目名** 客户名 [客户的客户]｜Patch / App：App 名称
+- 明确依赖对象、卡点或者需要协调的事项。
+
+## 五、明日重点
 
 ### **项目名** 客户名 [客户的客户]｜Patch / App：App 名称
 - 明天优先处理什么。
@@ -106,6 +116,11 @@
 `处理中`、`待验证`或`阻塞`事项，就必须填写该范围的明日重点；成员明确说明
 “无”时，必须原样保留为 `- 无`，不得转为空值或阻止提交。日报不填写
 项目角色、需求时间、需求来源、项目总量或剩余量。
+
+每个范围都包含 `key_points[]` 和 `dependencies[]`。前者对应“重点说明”，
+记录明确的项目外部消息、范围变化或当天攻克的关键难点；后者对应“依赖 /
+需协调”，记录明确的外部依赖或协调事项。两个数组均允许为空；不得因为普通
+未完成事项而臆测内容。某一章节全部为空时，Markdown 写 `无。`。
 
 类型判定优先使用成员明确说明，其次使用高置信度开发证据。SystemUI、Launcher、
 Settings 和 Framework 服务等系统源码修改属于 Patch；独立交付的应用或 demo
@@ -124,6 +139,12 @@ records this provenance. Missing ledger fields block upload and are completed
 through the explicit `akbs-weekly-work-facts-v5` contract. Requirement
 source is created when the member receives the demand and must not be inferred
 from daily-report wording.
+
+For current-format daily reports, merge `key_points[]` by work scope as this
+week's key-point candidates. Collect `dependencies[]` by scope, but require the
+member to confirm which dependencies remain active before weekly submission.
+Legacy keyword matches and previous-week dependencies are compatibility
+candidates only; they are never silently accepted as current weekly facts.
 
 ```markdown
 # YYYYMMDD-YYYYMMDD_成员名_周报
@@ -246,7 +267,7 @@ Report card fields are authoritative:
 
 - `material_name`：项目 + 客户链路；独立文档写 `文档工作：<文档名称>`。多项目写 `TVE1086U（青鸾云）、TVE1091U（AOC → 福建移动高清）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
 - `material_summary`：日报写各项目或文档的“今日主题”；周报写各项目或文档的“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
-- Daily project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/today_topic/current_result/work_items/tomorrow_focus`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
+- Daily project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/today_topic/current_result/work_items/key_points/dependencies/tomorrow_focus`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
 - Weekly project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/project_role/week_summary/requirement_date/requirement_source/[requirement_structure/work_total]/completed_this_week/remaining/completed_items/remaining_items/key_points/risks/dependencies/next_week_plan`.
 - Daily and weekly non-project Doc rows live in `documents[]` and use `document_name`; non-project Other rows live in `standalone_work[]` and use `work_name`. GMS never lives outside `projects[]`.
 - The current read model does not emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.

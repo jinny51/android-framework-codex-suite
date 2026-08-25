@@ -498,12 +498,19 @@ def write_daily_facts(
     downstream_customer: str = "",
     work_type: str = "Patch",
     app_name: str = "",
+    key_points: list[str] | None = None,
+    dependencies: list[str] | None = None,
+    work_items: list[dict[str, object]] | None = None,
 ) -> Path:
     row = {
         "project": project,
         "customer": customer,
         "work_type": work_type,
+        "key_points": list(key_points or []),
+        "dependencies": list(dependencies or []),
     }
+    if work_items:
+        row["work_items"] = work_items
     if downstream_customer:
         row["downstream_customer"] = downstream_customer
     if app_name:
@@ -1954,11 +1961,14 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     {
                         "project": "TVE1086U",
                         "customer": "青鸾云",
+                        "work_type": "Patch",
                         "work_items": [
                             {"name": "状态栏策略修改", "result": "已完成并验证通过"},
                             {"name": "新增开关功能", "result": "已完成"},
                             {"name": "修复亮度同步问题", "result": "处理中"},
                         ],
+                        "key_points": ["客户确认新增验收范围"],
+                        "dependencies": ["等待 BSP 提供联调固件"],
                         "tomorrow_focus": ["完成亮度同步问题回归"],
                     }
                 ]
@@ -1987,7 +1997,10 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertEqual(result.evidence["previous_weekly_package_keys"], ["20260607/member01/current-weekly"])
         self.assertEqual(
             result.evidence["missing_fields"],
-            ["TVE1086U.scope_change_classification"],
+            [
+                "TVE1086U.Patch.dependencies_confirmation",
+                "TVE1086U.scope_change_classification",
+            ],
         )
         self.assertEqual(
             result.evidence["scope_change_candidates"],
@@ -1998,6 +2011,12 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertEqual(row["remaining_counts"], {"demand": 0, "migration": 0, "bug": 1, "bsp": 0})
         self.assertEqual(row["completed_items"], ["状态栏策略修改", "新增开关功能"])
         self.assertEqual(row["remaining_items"], ["修复亮度同步问题"])
+        self.assertEqual(row["key_points"], ["客户确认新增验收范围"])
+        self.assertEqual(row["dependencies"], ["等待 BSP 提供联调固件"])
+        self.assertEqual(
+            result.evidence["attention_review_candidates"],
+            [{"scope": "TVE1086U / Patch", "dependencies": ["等待 BSP 提供联调固件"]}],
+        )
         self.assertTrue(any("超过 3 天无进展" in item for item in row["risks"]))
 
     def test_weekly_history_includes_monday_boundary(self) -> None:
@@ -2032,6 +2051,73 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertEqual([item["report_date"] for item in daily_items], ["2026-06-08"])
         self.assertEqual(weekly_items, [])
         self.assertEqual(provenance["daily_package_keys"], ["20260608/member01/current-monday"])
+
+    def test_weekly_attention_candidates_include_non_project_scopes(self) -> None:
+        load_intake_module()
+        weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+        daily = {
+            "package_key": "20260610/member01/current-daily",
+            "package_kind": "daily_trace",
+            "report_date": "2026-06-10",
+            "standard_view": {
+                "projects": [],
+                "documents": [
+                    {
+                        "work_type": "Doc",
+                        "document_name": "接口说明文档",
+                        "work_items": [{"name": "完成接口说明", "result": "已完成"}],
+                        "key_points": ["评审范围已经统一"],
+                        "dependencies": ["等待 PM 完成评审"],
+                        "tomorrow_focus": [],
+                    }
+                ],
+                "standalone_work": [
+                    {
+                        "work_type": "Other",
+                        "work_name": "团队 ATS 环境",
+                        "work_items": [{"name": "完成 Worker 联调", "result": "处理中"}],
+                        "key_points": ["双 Worker 链路已打通"],
+                        "dependencies": ["需要补充两台测试设备"],
+                        "tomorrow_focus": ["继续分片验证"],
+                    }
+                ],
+            },
+        }
+
+        def fake_fetch(_config: dict[str, str], package_kind: str, _month: str) -> list[dict]:
+            return [daily] if package_kind == "daily_trace" else []
+
+        config = {
+            "member_alias": "member01",
+            "submission_api_base_url": "http://127.0.0.1:1/akbs/api",
+            "weekly_history_api_enabled": "true",
+        }
+        with patch.object(weekly_module, "fetch_current_report_items", side_effect=fake_fetch):
+            result = weekly_module.build_weekly_facts(
+                config,
+                dt.date(2026, 6, 8),
+                dt.date(2026, 6, 14),
+                "20260608-20260614",
+            )
+
+        self.assertEqual(result.documents[0]["key_points"], ["评审范围已经统一"])
+        self.assertEqual(result.documents[0]["dependencies"], ["等待 PM 完成评审"])
+        self.assertEqual(result.standalone_work[0]["key_points"], ["双 Worker 链路已打通"])
+        self.assertEqual(result.standalone_work[0]["dependencies"], ["需要补充两台测试设备"])
+        self.assertEqual(
+            result.evidence["missing_fields"],
+            [
+                "Doc:接口说明文档.dependencies_confirmation",
+                "Other:团队 ATS 环境.dependencies_confirmation",
+            ],
+        )
+        self.assertEqual(
+            result.evidence["attention_review_candidates"],
+            [
+                {"scope": "Doc / 接口说明文档", "dependencies": ["等待 PM 完成评审"]},
+                {"scope": "Other / 团队 ATS 环境", "dependencies": ["需要补充两台测试设备"]},
+            ],
+        )
 
     def test_weekly_local_history_fallback_selects_replacement_leaf(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2832,7 +2918,9 @@ class MemberAutomationFlowTests(unittest.TestCase):
             for text in (
                 "## 一、今日概况",
                 "## 二、今日工作",
-                "## 三、明日重点",
+                "## 三、重点说明",
+                "## 四、依赖 / 需协调",
+                "## 五、明日重点",
                 "### **TVE8402M** 合成客户一",
                 "- 今日主题：",
                 "- 当前结果：",
@@ -2891,8 +2979,10 @@ class MemberAutomationFlowTests(unittest.TestCase):
             daily_project = daily_view["payload"]["projects"][0]
             self.assertEqual(daily_project["project"], "TVE8402M")
             self.assertEqual(daily_project["customer"], "合成客户一")
-            for field in ("today_topic", "current_result", "work_items", "tomorrow_focus"):
+            for field in ("today_topic", "current_result", "work_items", "key_points", "dependencies", "tomorrow_focus"):
                 self.assertIn(field, daily_project)
+            self.assertEqual(daily_project["key_points"], [])
+            self.assertEqual(daily_project["dependencies"], [])
             daily_item = daily_project["work_items"][0]
             for field in ("name", "did", "how", "result", "status"):
                 self.assertIn(field, daily_item)
@@ -2949,6 +3039,38 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(weekly_manifest["files"]["display"], ["materials/display/report_view.json"])
             self.assertTrue((daily / "materials" / "evidence" / "work_findings.json").is_file())
             self.assertTrue((weekly / "materials" / "evidence" / "work_findings.json").is_file())
+
+    def test_daily_preserves_optional_attention_fields_in_both_views(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            knowledge_remote = seed_knowledge_remote(root)
+            env = write_member_config(root, knowledge_remote)
+            facts = write_daily_facts(
+                root / "artifacts" / "daily-attention.json",
+                key_points=["客户确认新增验收范围"],
+                dependencies=["等待 BSP 提供联调固件"],
+                work_items=[
+                    {
+                        "name": "完成输入链路验证",
+                        "did": ["完成属性映射和设备验证"],
+                        "how": ["按输入链路逐层核对并执行设备回归"],
+                        "result": "验证通过",
+                        "status": "已完成",
+                    }
+                ],
+            )
+
+            package = prepare_daily_package(env, "2026-06-03", "20260603-220000-daily-attention", facts)
+            report = read_package_report(package)
+            project = read_report_view(package)["payload"]["projects"][0]
+
+            self.assertIn("## 三、重点说明", report)
+            self.assertIn("- 客户确认新增验收范围", report)
+            self.assertIn("## 四、依赖 / 需协调", report)
+            self.assertIn("- 等待 BSP 提供联调固件", report)
+            self.assertIn("## 五、明日重点", report)
+            self.assertEqual(project["key_points"], ["客户确认新增验收范围"])
+            self.assertEqual(project["dependencies"], ["等待 BSP 提供联调固件"])
 
     def test_daily_and_weekly_submit_latest_use_canonical_submission_for_ordinary_and_replacement_packages(self) -> None:
         cases = (
@@ -3361,11 +3483,13 @@ class MemberAutomationFlowTests(unittest.TestCase):
             daily_report = read_package_report(daily)
             self.assertEqual(daily_view["projects"], [])
             self.assertEqual(daily_view["documents"][0]["work_type"], "Doc")
+            self.assertEqual(daily_view["documents"][0]["key_points"], [])
+            self.assertEqual(daily_view["documents"][0]["dependencies"], [])
             self.assertEqual(daily_view["documents"][0]["tomorrow_focus"], ["无"])
             self.assertTrue(daily_manifest["has_non_project_work"])
             self.assertNotIn("需成员补充项目名", daily_report)
             self.assertIn("### Doc：Android Framework Orchestrator 功能介绍文档", daily_report)
-            self.assertIn("## 三、明日重点", daily_report)
+            self.assertIn("## 五、明日重点", daily_report)
             self.assertIn("- 无", daily_report)
 
             write_codex_session(

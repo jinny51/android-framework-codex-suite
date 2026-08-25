@@ -340,6 +340,9 @@ def validate_weekly_fact_sources(
         errors.append("weekly_fact_sources.identity_conflicts 必须是数组")
     elif identity_conflicts:
         errors.append("周报项目客户链与当前会话已确认身份冲突，请修正结构化事实后重新生成")
+    attention_candidates = payload.get("attention_review_candidates", [])
+    if not isinstance(attention_candidates, list):
+        errors.append("weekly_fact_sources.attention_review_candidates 必须是数组")
 
 
 def weekly_project_identity_consistency_errors(
@@ -382,9 +385,16 @@ def validate_daily_report_view_project(rel: str, index: int, project: dict[str, 
     for field in ("today_topic", "current_result"):
         if not project.get(field):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须提供")
-    for field in ("work_items", "tomorrow_focus"):
+    for field in ("work_items", "key_points", "dependencies", "tomorrow_focus"):
         if not isinstance(project.get(field), list):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须是数组")
+    for field in ("key_points", "dependencies"):
+        values = project.get(field)
+        if isinstance(values, list) and any(
+            not isinstance(value, str) or not value.strip()
+            for value in values
+        ):
+            errors.append(f"{rel} payload.projects[{index}].{field} 只能包含非空文本")
     work_items = project.get("work_items") if isinstance(project.get("work_items"), list) else []
     if not work_items:
         errors.append(f"{rel} payload.projects[{index}].work_items 必须至少包含一项今日工作")

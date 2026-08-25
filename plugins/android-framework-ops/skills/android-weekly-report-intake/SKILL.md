@@ -41,6 +41,17 @@ do not classify by item wording. Historical daily rows without scope remain
 readable, but they do not prove `work_type`, so ask the member for that missing
 weekly fact.
 
+Current daily rows also carry optional `key_points[]` and `dependencies[]`.
+Merge and deduplicate this week's key points by work scope instead of carrying
+last week's key points forward. Treat daily dependencies, legacy keyword
+matches, and unresolved dependencies from the previous weekly report as
+candidates only. List those candidates from
+`weekly_fact_sources.attention_review_candidates` and ask the member which ones
+remain valid before submission. The confirmed weekly `dependencies[]` wins;
+never silently publish or discard an unconfirmed dependency. Historical daily
+rows without these arrays may use the existing keyword scan only as a candidate
+source.
+
 Do not count Codex sessions as requirements. If the effective reports cannot
 prove project role, requirement date, requirement source, project totals, or
 remaining-item identity, local check must fail with exact missing fields. Ask the member

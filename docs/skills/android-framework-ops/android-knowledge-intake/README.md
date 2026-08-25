@@ -68,9 +68,9 @@ python3 scripts/android_knowledge_intake.py --profile <member_alias> patch --pre
 
 `--upload` 生成并上传，`--submit-latest` 上传最近一个已准备包。日报按日期、周报按周周期保持唯一；替换必须显式提供被替换的运行编号。`--prepare` 本地校验失败时返回非零，上传与提交都会在 HTTP 前重新校验。
 
-日报优先根据成员明确说明和高置信度工作证据自动判定 `Patch`、`App` 或 `Document`。App 必须确定 App 名称，Document 必须确定文档名称且不要求项目/客户；只有证据冲突或缺失时才询问成员。`akbs-daily-work-facts-v2` 只用于补齐、纠正或显式覆盖未决范围。日报不填写项目角色、需求来源或数量台账。
+日报优先根据成员明确说明和高置信度工作证据自动判定 `Patch`、`App`、`GMS`、`Doc` 或 `Other`。App 必须确定 App 名称，无项目 Doc/Other 必须确定具体名称；只有证据冲突或缺失时才询问成员。`akbs-daily-work-facts-v2` 用于补齐、纠正或显式覆盖未决范围，也用于保存明确的 `key_points[]` 和 `dependencies[]`；所有日报范围都携带这两个可空数组。日报不填写项目角色、需求来源或数量台账。
 
-周报生成优先消费 AKBS 当前有效日报、上一周项目台账和文档进展，离线时只读取本机 submitted 替换链的当前叶节点；session 仅作补充，不参与需求总量口径。每个周报包写 `weekly_fact_sources` 证据，事实缺口会阻止上传。Codex 应只向成员追问缺失字段，生成 `akbs-weekly-work-facts-v5` artifact 后用 `--weekly-facts <path>` 重新生成。v5 绑定上一份有效周报，由主责声明本周流转并自动计算总量、Android 剩余和 BSP 跟踪；旧显式事实不得覆盖已有项目台账。旧`定制`数量不能自动拆成`需求`和`移植`。
+周报生成优先消费 AKBS 当前有效日报、上一周项目台账和文档进展，离线时只读取本机 submitted 替换链的当前叶节点；session 仅作补充，不参与需求总量口径。当前周日报的重点说明按范围去重汇总；日报依赖、旧日报关键词命中和上周依赖进入 `attention_review_candidates`，成员确认后才成为最终周报依赖。每个周报包写 `weekly_fact_sources` 证据，事实缺口会阻止上传。Codex 应只向成员追问缺失字段，生成 `akbs-weekly-work-facts-v5` artifact 后用 `--weekly-facts <path>` 重新生成。v5 绑定上一份有效周报，由主责声明本周流转并自动计算总量、Android 剩余和 BSP 跟踪；旧显式事实不得覆盖已有项目台账。旧`定制`数量不能自动拆成`需求`和`移植`。
 
 周报的`类型`只允许 `Patch` 或 `App`。同一公司项目保持一条客户链，但可以有一个 Patch 和多个不同 App；App 必须填写 App 名称。门禁按“项目 + 客户 + 类型 + App 名称（仅 App）”校验统计对象唯一性，以及展示身份与来源证据的一致性；冲突会在 HTTP 前失败。无下周动作时使用空计划数组，不渲染“无”占位项目块。
 

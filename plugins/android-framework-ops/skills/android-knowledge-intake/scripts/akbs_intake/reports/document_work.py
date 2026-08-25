@@ -165,6 +165,12 @@ def _validate_daily_non_project_rows(
         for field in ("today_topic", "current_result"):
             if not clean_document_text(raw.get(field)):
                 errors.append(f"{row_prefix}.{field} 必须提供")
+        for field in ("key_points", "dependencies"):
+            values = raw.get(field)
+            if not isinstance(values, list):
+                errors.append(f"{row_prefix}.{field} 必须是数组")
+            elif any(not isinstance(item, str) or not item.strip() for item in values):
+                errors.append(f"{row_prefix}.{field} 只能包含非空文本")
         item_errors, unfinished = validate_work_items(raw.get("work_items"), prefix=row_prefix)
         errors.extend(item_errors)
         focus = raw.get("tomorrow_focus")

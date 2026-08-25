@@ -15,6 +15,8 @@
 
 当前日报已携带项目范围、无项目 Doc 和无项目 Other 的数组归属。周报按该归属归并，不再根据事项文字重新猜类型；GMS 始终是项目范围。
 
+新版日报还为每个范围提供可为空的 `key_points[]` 和 `dependencies[]`。周报按范围汇总并去重本周重点说明，不再沿用上周重点说明；日报依赖、旧日报关键词命中和上周未解除依赖只作为候选，写入 `weekly_fact_sources.attention_review_candidates`，由成员确认仍然有效后再形成最终周报依赖。
+
 如果类型、App 名称（仅 App）、文档名称（仅 Document）、项目角色、需求时间、需求来源、主责总量、项目流转或剩余事项身份仍缺失，本地检查会列出准确字段并阻止上传。成员只确认缺失事实，Codex 将其写入 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/` 下的 `akbs-weekly-work-facts-v5` JSON，再通过 `--weekly-facts <path>` 重新生成；不要求成员手改 JSON 或 Markdown。v5 显式事实必须绑定上一份有效周报，不能绕过上周台账重新填写总量。
 
 `report_view.json` 是同一份周报正文的 UI 读模型。Patch/App 项目继续使用项目台账；项目 GMS 使用 `current_stage` 和进展信息，项目 Doc/Other 也保留项目客户身份并使用进展信息；无项目 Doc 使用 `documents[]`，无项目 Other 使用 `standalone_work[]`。GMS、Doc、Other 不并入 Patch/App 数量。周报包只归档，不进入知识库沉淀候选。

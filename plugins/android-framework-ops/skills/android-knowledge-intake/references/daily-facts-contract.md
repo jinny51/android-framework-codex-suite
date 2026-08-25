@@ -1,9 +1,10 @@
 # Daily Work Facts Contract
 
 Use this contract only when authorized development evidence cannot resolve a
-daily work scope, when the inferred scope needs correction, or when the member
-explicitly overrides it. Normal high-confidence Patch/App/GMS/Doc/Other inference does not
-require this file. Write it under:
+daily work scope, when the inferred scope needs correction, when explicit key
+points or dependencies must be preserved, or when the member explicitly
+overrides it. Normal high-confidence Patch/App/GMS/Doc/Other inference with no
+explicit attention facts does not require this file. Write it under:
 
 ```text
 $CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json
@@ -19,13 +20,17 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
     {
       "project": "TVE1086U",
       "customer": "青鸾云",
-      "work_type": "Patch"
+      "work_type": "Patch",
+      "key_points": ["客户确认新增验收范围"],
+      "dependencies": ["等待 BSP 提供联调固件"]
     },
     {
       "project": "TVE1086U",
       "customer": "青鸾云",
       "work_type": "App",
-      "app_name": "设备管理工具"
+      "app_name": "设备管理工具",
+      "key_points": [],
+      "dependencies": []
     }
   ],
   "documents": [
@@ -41,6 +46,8 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
           "status": "已完成"
         }
       ],
+      "key_points": [],
+      "dependencies": [],
       "tomorrow_focus": []
     }
   ],
@@ -57,6 +64,8 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
           "status": "处理中"
         }
       ],
+      "key_points": ["双 Worker 基础链路已通过"],
+      "dependencies": [],
       "tomorrow_focus": ["继续跨 Worker 分片联调"]
     }
   ]
@@ -83,6 +92,11 @@ Rules:
 - Scope identity is project/customer + work type; App additionally includes its
   name. The same project may contain one Patch, multiple differently named
   Apps, and one scope for each of GMS, Doc, and Other.
+- Every scope carries `key_points[]` and `dependencies[]`. Both fields are
+  arrays and may be empty. `key_points` records explicit external project news,
+  scope changes, or a key difficulty overcome today. `dependencies` records
+  explicit external dependencies or coordination needs. Do not infer either
+  field merely because work is unfinished.
 - Document scope identity is its concrete document name. Merge repeated work on
   the same document instead of creating duplicate rows.
 - When a project has only one scope, `work_items`, `today_topic`,

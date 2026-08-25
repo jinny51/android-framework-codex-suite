@@ -98,6 +98,34 @@ def clean_list(value: Any) -> list[str]:
     return result
 
 
+def attention_scope_key(work_type: Any, app_name: Any = "") -> tuple[str, str]:
+    normalized_type = clean_text(work_type)
+    normalized_app = clean_text(app_name).casefold() if normalized_type == "App" else ""
+    return normalized_type, normalized_app
+
+
+def daily_scope_attention(daily_meta: dict[str, Any], row: dict[str, Any]) -> dict[str, list[str]]:
+    scopes = daily_meta.get("attention_by_scope")
+    if not isinstance(scopes, dict):
+        return {"key_points": [], "dependencies": []}
+    value = scopes.get(attention_scope_key(row.get("work_type"), row.get("app_name")))
+    if not isinstance(value, dict):
+        return {"key_points": [], "dependencies": []}
+    return {
+        "key_points": clean_list(value.get("key_points")),
+        "dependencies": clean_list(value.get("dependencies")),
+    }
+
+
+def append_attention_values(target: dict[str, Any], field: str, value: Any) -> None:
+    rows = target.setdefault(field, [])
+    if not isinstance(rows, list):
+        rows = []
+        target[field] = rows
+    for item in clean_list(value):
+        add_unique(rows, item)
+
+
 def weekly_summary(value: Any, completed_items: list[str], remaining_items: list[str]) -> str:
     explicit = clean_text(value)
     if explicit and explicit not in MISSING_VALUES:
@@ -789,7 +817,8 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
             project = find_company_project(clean_text(raw_project.get("project")))
             if not project:
                 continue
-            metadata.setdefault(project, {})["customer"] = clean_text(
+            project_meta = metadata.setdefault(project, {})
+            project_meta["customer"] = clean_text(
                 raw_project.get("customer") or raw_project.get("customer_name"),
                 metadata.get(project, {}).get("customer", ""),
             )
@@ -799,13 +828,20 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
                 or raw_project.get("end_customer")
             )
             if downstream_customer:
-                metadata[project]["downstream_customer"] = downstream_customer
+                project_meta["downstream_customer"] = downstream_customer
             focuses = clean_list(raw_project.get("tomorrow_focus"))
             if focuses:
-                metadata[project]["latest_focus"] = focuses
+                project_meta["latest_focus"] = focuses
             work_items = raw_project.get("work_items") if isinstance(raw_project.get("work_items"), list) else []
             work_type = clean_text(raw_project.get("work_type"))
             app_name = clean_text(raw_project.get("app_name"))
+            attention_by_scope = project_meta.setdefault("attention_by_scope", {})
+            scope_attention = attention_by_scope.setdefault(
+                attention_scope_key(work_type, app_name),
+                {"key_points": [], "dependencies": []},
+            )
+            append_attention_values(scope_attention, "key_points", raw_project.get("key_points"))
+            append_attention_values(scope_attention, "dependencies", raw_project.get("dependencies"))
             for work_item in work_items:
                 if not isinstance(work_item, dict):
                     continue
@@ -860,6 +896,9 @@ def _daily_non_project_records(
             focuses = clean_list(raw_document.get("tomorrow_focus"))
             if focuses:
                 metadata.setdefault(name, {})["latest_focus"] = focuses
+            row_meta = metadata.setdefault(name, {})
+            append_attention_values(row_meta, "key_points", raw_document.get("key_points"))
+            append_attention_values(row_meta, "dependencies", raw_document.get("dependencies"))
             work_items = raw_document.get("work_items") if isinstance(raw_document.get("work_items"), list) else []
             for work_item in work_items:
                 if not isinstance(work_item, dict):
@@ -969,7 +1008,10 @@ def _history_document_row(
     for item in current_unfinished:
         add_unique(current_remaining, item)
     risks = clean_list(prior.get("risks"))
+    key_points = clean_list(daily_meta.get("key_points"))
     dependencies = clean_list(prior.get("dependencies"))
+    for item in clean_list(daily_meta.get("dependencies")):
+        add_unique(dependencies, item)
     for record in daily_records:
         progress = record.get("progress", "")
         if re.search(r"阻塞|失败|等待|依赖", progress):
@@ -987,10 +1029,11 @@ def _history_document_row(
         "remaining": len(current_remaining),
         "completed_items": completed_items,
         "remaining_items": current_remaining,
-        "key_points": clean_list(prior.get("key_points")) or ["无"],
+        "key_points": key_points or ["无"],
         "risks": risks or ["无超过 3 天无进展事项。"],
         "dependencies": dependencies or ["无外部依赖事项。"],
         "next_week_plan": plans,
+        "_dependency_review_candidates": list(dependencies),
     }
 
 
@@ -1107,7 +1150,11 @@ def _history_project_row(
         last_progress = max(recorded_dates) if recorded_dates else period_start - dt.timedelta(days=1)
         if (as_of - last_progress).days > 3:
             add_unique(risks, f"超过 3 天无进展：{item}（最后记录 {last_progress.isoformat()}）")
+    attention = daily_scope_attention(daily_meta, prior)
+    key_points = clean_list(attention.get("key_points"))
     dependencies = clean_list(prior.get("dependencies"))
+    for item in clean_list(attention.get("dependencies")):
+        add_unique(dependencies, item)
     for record in daily_records:
         if re.search(r"依赖|等待|客户确认|外部|第三方|\bBSP\b|测试反馈", f"{record['text']} {record.get('progress', '')}", re.IGNORECASE):
             add_unique(dependencies, record["text"])
@@ -1137,11 +1184,12 @@ def _history_project_row(
         "remaining_total": remaining_total if work_type == "App" else count_total(remaining_counts),
         "completed_items": completed_items,
         "remaining_items": current_remaining,
-        "key_points": clean_list(prior.get("key_points")) or ["无"],
+        "key_points": key_points or ["无"],
         "risks": risks or ["无超过 3 天无进展事项。"],
         "dependencies": dependencies or ["无外部依赖事项。"],
         "next_week_plan": plans,
         "_scope_change_candidates": scope_change_candidates,
+        "_dependency_review_candidates": list(dependencies),
     }
     missing: list[str] = []
     for field in ("customer", "work_type", "project_role", "requirement_date", "requirement_source"):
@@ -1175,6 +1223,10 @@ def _history_project_row(
         missing.append(f"{project}.remaining_item_identity")
     if unmatched_existing_scope:
         missing.append(f"{project}.scope_change_classification")
+    if dependencies:
+        scope = clean_text(row.get("work_type"), "unknown")
+        app = f".{clean_text(row.get('app_name'))}" if scope == "App" else ""
+        missing.append(f"{project}.{scope}{app}.dependencies_confirmation")
     return row, missing
 
 
@@ -1396,7 +1448,6 @@ def build_weekly_facts(
         provenance = {
             **history_provenance,
             "source": "explicit_weekly_facts",
-            "daily_package_keys": [],
         }
         for row in projects:
             missing_fields.extend(_project_missing_fields(row))
@@ -1493,6 +1544,12 @@ def build_weekly_facts(
         )
         missing_fields.extend(fallback_missing)
         provenance["source"] = "session_fallback" if not synthetic else "synthetic_fixture"
+    for row in documents:
+        if clean_list(row.get("_dependency_review_candidates")):
+            missing_fields.append(f"Doc:{clean_text(row.get('document_name'), 'unknown')}.dependencies_confirmation")
+    for row in standalone_work:
+        if clean_list(row.get("_dependency_review_candidates")):
+            missing_fields.append(f"Other:{clean_text(row.get('work_name'), 'unknown')}.dependencies_confirmation")
     identity_conflicts = project_customer_identity_conflicts(projects, project_customers or {})
     missing_fields.extend(
         f"{conflict['project']}.customer_identity_conflict"
@@ -1515,6 +1572,38 @@ def build_weekly_facts(
             }
             for row in projects
             if clean_list(row.get("_scope_change_candidates"))
+        ],
+        "attention_review_candidates": [
+            {
+                "scope": " / ".join(
+                    value
+                    for value in (
+                        clean_text(row.get("project")),
+                        clean_text(row.get("work_type")),
+                        clean_text(row.get("app_name")),
+                    )
+                    if value
+                ),
+                "dependencies": clean_list(row.get("_dependency_review_candidates")),
+            }
+            for row in projects
+            if clean_list(row.get("_dependency_review_candidates"))
+        ]
+        + [
+            {
+                "scope": f"Doc / {clean_text(row.get('document_name'))}",
+                "dependencies": clean_list(row.get("_dependency_review_candidates")),
+            }
+            for row in documents
+            if clean_list(row.get("_dependency_review_candidates"))
+        ]
+        + [
+            {
+                "scope": f"Other / {clean_text(row.get('work_name'))}",
+                "dependencies": clean_list(row.get("_dependency_review_candidates")),
+            }
+            for row in standalone_work
+            if clean_list(row.get("_dependency_review_candidates"))
         ],
         "facts_sha256": facts_hash(projects, documents, standalone_work),
     }

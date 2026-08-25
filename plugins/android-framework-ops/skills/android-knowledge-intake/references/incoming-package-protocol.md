@@ -172,6 +172,8 @@ Real report generation requires explicit per-run consent before any session read
         "work_items": [
           {"name": "锁屏鼠标位置刷新", "did": ["完成属性映射处理"], "how": ["按输入链路排查"], "result": "基础验证通过", "status": "已完成"}
         ],
+        "key_points": ["关键输入链路已经验证通过"],
+        "dependencies": [],
         "tomorrow_focus": ["继续回归验证"]
       }
     ],
@@ -192,6 +194,8 @@ row uses `projects[]`, may use `Patch`, `App`, `GMS`, `Doc`, or `Other`, and
 retains canonical project/customer identity. Non-project documents use
 `documents[]/Doc/document_name`; other non-project work uses
 `standalone_work[]/Other/work_name`. GMS is always project-bound. For
+`report_type=daily`, every project and non-project scope carries
+`key_points[]` and `dependencies[]`; both arrays may be empty. For
 `report_type=weekly`, Patch/App project rows contain ledger fields, while
 GMS/Doc/Other project rows contain progress fields; each non-project row contains `week_summary`, plain
 completed/remaining counts and item arrays, `key_points`, `risks`,
@@ -207,8 +211,12 @@ before local submitted replacement leaves; sessions only supplement missing
 daily coverage. Non-empty `missing_fields` fails local upload validation and is
 closed through an explicit `akbs-weekly-work-facts-v5` artifact. V5 binds the
 effective previous-week package and records main-owned project changes, so
-explicit facts cannot reset an existing total or hide a remaining-count gap. Old
-`custom`/`定制` counts are rejected because they cannot be split into `需求`
+explicit facts cannot reset an existing total or hide a remaining-count gap.
+Current daily `dependencies[]`, legacy keyword matches, and previous-week dependencies
+are exposed in `attention_review_candidates`; the member must confirm the
+current weekly dependency list before submission. Current daily `key_points[]`
+are merged and deduplicated by scope. Old `custom`/`定制` counts are rejected
+because they cannot be split into `需求`
 and `移植` without member confirmation.
 
 `work_findings` is required:
@@ -404,6 +412,7 @@ patch_package_subject_v2 = 1.0.140
 verification_acceptance_v2 = 1.0.142
 weekly_project_ledger_v2 = 1.0.156
 report_scope_containers_v1 = 1.0.158
+daily_attention_fields_v1 = 1.0.159
 ```
 
 The required capabilities come from package contents, not from the current plugin release.

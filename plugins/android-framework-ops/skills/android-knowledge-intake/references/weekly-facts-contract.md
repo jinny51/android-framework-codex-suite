@@ -206,6 +206,14 @@ current BSP pending = previous BSP pending + transferred to BSP - BSP closed
   tracking. Patch and App quantities are never added together.
 - `key_points` records external project news, scope changes, or a key
   difficulty overcome this week. Use `["无"]` when there is none.
+- Current effective daily `key_points[]` are merged and deduplicated by work
+  scope as the default weekly key points. Do not carry the previous week's key
+  points forward.
+- Daily `dependencies[]`, legacy dependency keyword matches, and unresolved
+  dependencies from the previous weekly report are candidates, not final
+  weekly facts. Review `weekly_fact_sources.attention_review_candidates` with
+  the member and write the confirmed current dependencies here. An explicit
+  empty `dependencies[]` means the member confirmed that none remain.
 - When completed or remaining count is positive, provide the corresponding
   item list. When remaining is positive, provide `next_week_plan`.
 - When there is no next-week action, use `next_week_plan: []`. Do not use `无`,
