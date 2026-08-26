@@ -7,6 +7,24 @@ description: Use to mount, remount, or restore Android remote build server Samba
 
 Use this skill only for WSL/CIFS access to Android source trees. It owns first-time mounting and reboot recovery. It does not run Android builds, authoritative git, adb deploy, or source edits beyond mount setup.
 
+## Remote-Only Source Contract
+
+The CIFS mount has exactly two consumers: a human performing source CRUD, and
+the local artifact bridge reading confirmed product outputs for local `adb`.
+It is not a Codex source workspace. Codex must not inspect, walk, search, edit,
+diff, patch, or run `git`, `repo`, checkpoints, or builds through the mount.
+
+All Codex operations involving Android source or `REMOTE_ROOT` metadata,
+including platform/project recognition, must run through the stable
+`android-remote-channel` tmux session. Direct SSH is allowed in this platform
+skill only for infrastructure: resolving SSH configuration/reachability,
+installing a public key, reading or updating Samba configuration, and reloading
+Samba. Infrastructure SSH must not inspect or mutate `REMOTE_ROOT`.
+
+The one-shot flow obtains source identity through the core inspection helper and
+`android-remote-channel`; mount and restore use mount metadata plus registered
+remote facts, never mounted source markers.
+
 Before changing or extending this skill's scripts, read `references/design.md`.
 It defines the non-expansion rules, platform/project recognition priority, and
 module boundaries.
@@ -14,13 +32,13 @@ module boundaries.
 ## Responsibilities
 
 - Bootstrap passwordless SSH for first-time server access by installing the local public key.
-- Discover a Samba URL from a user-provided SSH server and remote source path.
+- Discover a Samba URL from a user-provided SSH server and already confirmed remote source path.
 - If the remote SDK root is not covered by Samba config, configure a project-level Samba share by default, validate the config, reload/restart Samba, then continue mounting.
 - Mount remote Android SDK roots into stable WSL project folders.
 - Remember an already-mounted project path.
 - Remember the matching SSH host and remote source path so project build/deploy work can resume without asking.
 - Restore the exact same project path after Windows/WSL/device reboot.
-- Verify that the local WSL path is usable before handing off to project work.
+- Verify mount metadata before handoff without reading mounted Android source contents.
 
 The skill folder is `<path-to-this-skill>/`. Runtime mount memory is a separate local info directory on the WSL Linux filesystem: `$HOME/.servers/`.
 
@@ -51,7 +69,8 @@ rk     -> /home/<wsl-user>/work/rk
 Only use a different target when the user explicitly provides one.
 
 When the user explicitly states the real platform, treat that statement as the
-platform authority. Otherwise, inspect the remote source tree to determine the
+platform authority. Otherwise, inspect the remote source tree through
+`android-remote-channel` to determine the
 platform. The platform segment inside the remote path may be wrong, omitted, or
 non-standard and must not be used as a platform fallback. If source inspection
 cannot determine the platform, stop and ask the user for it. If source
@@ -143,11 +162,15 @@ or "mount it again" requests until the Reboot Recovery Flow has been tried. A
 remembered project restore is the fast path and normally does not need SSH,
 Samba discovery, Samba config inspection, or path re-derivation.
 
-Default goal: the user gives one remote SDK path and Codex mounts it into WSL. Do not ask the user to decide whether Samba is already configured. Try the full path-driven flow first, and stop only on hard blockers such as missing password, missing remote path, unresolved platform/project name after source inspection, failed SSH, insufficient remote sudo permission, invalid Samba config, Samba reload/restart failure, conflicting existing local mount, or local sudo failure.
+Default goal: the user gives one remote SDK path and Codex establishes the remote channel, obtains platform/project identity remotely, and mounts it into WSL for human/artifact access. Do not ask the user to decide whether Samba is already configured. Stop on a missing remote channel rather than falling back to direct source SSH or local mounted-tree inspection.
 
-If the real project folder does not exist yet, start Codex from `/home/<wsl-user>/work` and perform the mount from there. After the project path appears, switch/open the real project folder for development.
+If the real project folder does not exist yet, keep Codex in a local control
+workspace while performing mount infrastructure work. After the project path
+appears, tell the human that it is available to open for development; do not
+switch the Codex source workspace into the mounted tree.
 
-Preferred one-shot command:
+Before the one-shot command, set `ANDROID_REMOTE_CHANNEL_SCRIPT` and
+`ANDROID_REMOTE_SOURCE_INSPECTION_HELPER` to the installed core plugin entries.
 
 ```bash
 SKILL_DIR="<path-to-this-skill>"
@@ -197,7 +220,7 @@ What the one-shot command does:
 - Derives only the remote user, SSH seed, Samba user, and remote root from the path.
 - Resolves SSH candidates from the path user, explicit IP, WSL SSH config, and Windows/VSCode SSH config; validates candidates with short checks before choosing one.
 - Honors an explicit `--local-platform` override when the remote path uses the wrong platform directory.
-- Treats the user path as the remote source root, inspects the SDK over SSH, and uses key repository branches such as `frameworks/base` as the local SDK/project name when available.
+- Treats the user path as the remote source root, inspects the SDK through `android-remote-channel`, and uses key repository branches such as `frameworks/base` as the local SDK/project name when available.
 - Stops and asks for the platform or project name when neither user input nor source inspection can provide it.
 - Stops and asks when user-stated platform/project values conflict with source-tree evidence; do not silently prefer either side.
 - After the user confirms a conflict, continue with `--accept-platform-conflict` or `--accept-sdk-name-conflict` together with the explicit `--local-platform` or `--sdk-name`.
@@ -209,7 +232,7 @@ What the one-shot command does:
 - Never mount a parent share such as `//server/work` onto `/home/<wsl-user>/work/<platform>` unless the user explicitly requests platform-level mounting.
 - For project-level mounts, refuse to continue if `/home/<wsl-user>/work/<platform>` is already a mount point, because that indicates a previous parent-share mount that would pollute the platform folder.
 - Refuse to mount over a non-empty local target directory that is not already the same mount.
-- Verifies `/home/<wsl-user>/work/<platform>/<sdk>` is an Android source tree.
+- Verifies that `/home/<wsl-user>/work/<platform>/<sdk>` is backed by the registered CIFS source; it does not inspect Android markers through the mount.
 - Stores mount info, remote mapping, Samba credentials, account-level SSH/Samba/remote-sudo fallback passwords, and the global local-sudo fallback password under `.servers` for reboot recovery and project build/deploy handoff.
 
 If the one-shot command fails and a narrower step is needed, read `references/manual-recovery.md`.
@@ -242,7 +265,8 @@ SKILL_DIR="<path-to-this-skill>"
   --restore
 ```
 
-If the path is already usable, restore reports `MOUNT_OK ... already_usable=true` and does not need credentials.
+If the path is already mounted from the registered CIFS source, restore reports
+`MOUNT_OK ... already_mounted=true source_verified=true` and does not need credentials.
 
 If local sudo is needed in a non-interactive Codex session, restore first tries
 the saved local sudo fallback password. If the user supplied a replacement
@@ -287,7 +311,7 @@ reason to run first-time Samba discovery.
 本地路径: <LOCAL_PROJECT>
 远程路径: <REMOTE_ROOT>
 Samba 映射: <SAMBA_PROJECT_URL 或 SAMBA_SHARE_URL>
-项目识别: <platform>/<SDK_NAME>，来源如 source inspection、PROJECT_BRANCH、BRANCH_BUILDTYPE 或用户确认
+项目识别: <platform>/<SDK_NAME>，来源如 remote-channel inspection、PROJECT_BRANCH、BRANCH_BUILDTYPE 或用户确认
 恢复信息: <registry/credentials 是否已记录，是否可用于 reboot/Codex-restart restore>
 交接: <是否可交给 android-remote-build-deploy，或还缺什么>
 ```
@@ -309,14 +333,14 @@ Never persist a candidate into this skill automatically. Only update `SKILL.md`,
 ## Bundled Scripts
 
 - `scripts/install-ssh-key.sh`: install a local SSH public key on the remote account using the first-time SSH password, then verify passwordless SSH.
-- `scripts/resolve-ssh-candidate.sh`: derive and rank SSH targets from a remote path user, optional explicit IP, WSL SSH config, and Windows/VSCode SSH config; verifies the remote root with short checks.
+- `scripts/resolve-ssh-candidate.sh`: derive and rank SSH targets from a remote path user, optional explicit IP, WSL SSH config, and Windows/VSCode SSH config. Its direct remote-root probe is migration debt; reachability checks must not inspect source.
 - `scripts/plan-from-remote-path.sh`: derive only connection basics such as user, SSH host seed, Samba user, and remote root from `/home/<user>/...`; supports explicit local platform and SDK-name overrides without inventing them from path segments.
-- `scripts/inspect-android-sdk.sh`: quickly inspect a remote SDK source root over SSH; infer `rk`, `unisoc`, or `mtk` from high-signal source-tree evidence such as `device/rockchip`, `vendor/sprd`, `vendor/mediatek`, and `TARGET_BOARD_PLATFORM`. For the SDK/project name, prefer key-repo branches such as `frameworks/base`, platform `device/...`, `vendor/.../common`, `kernel`, or `u-boot` (for example `TVA10A2R`). Treat Android `PRODUCT_NAME`/lunch values as build product names, not business SDK/project names; use them only as diagnostic output. Use `BRANCH_BUILDTYPE` next. If platform or project name is still missing, return `PLATFORM_REQUIRED` or `SDK_NAME_REQUIRED` instead of falling back to the path. If explicit user input disagrees with source evidence, return `PLATFORM_CONFLICT` or `SDK_NAME_CONFLICT`.
-- `scripts/mount-from-remote-path.sh`: one-shot path-driven mount; resolves SSH candidates, installs SSH key, discovers or configures Samba, mounts, verifies, saves passwords, and remembers reboot recovery info; supports project-level mounting for remote/local platform mismatches.
+- `scripts/inspect-android-sdk.sh`: thin adapter to the core inspector through `android-remote-channel`; it never invokes SSH or reads CIFS source.
+- `scripts/mount-from-remote-path.sh`: infrastructure mount flow whose source identity comes from the remote-channel inspector.
 - `scripts/ensure-samba-share.sh`: check or create a Samba share covering a remote SDK path; defaults to project-level shares and only creates parent shares when the caller explicitly passes a parent `--share-name` and `--share-path`.
 - `scripts/discover-samba-share.sh`: read server Samba config over SSH and derive a Samba URL from a remote source path.
 - `scripts/mount-platform.sh`: low-level CIFS mount helper; normal project-level flows pass `--target /home/<wsl-user>/work/<platform>/<project>`, while the platform-folder default is only for explicit parent/platform share operations.
-- `scripts/restore-project-mount.sh`: list, remember, and restore exact project paths after reboot; stores remote source mapping, stores Samba credentials with `--remember-password`, and reuses saved local sudo/Samba fallback passwords when available.
+- `scripts/restore-project-mount.sh`: restore exact paths using neutral project identity and verified CIFS source.
 
 ## Safety Rules
 
@@ -326,7 +350,7 @@ Never persist a candidate into this skill automatically. Only update `SKILL.md`,
 - Do not ask the user to inspect Samba config manually; auto-configure it when needed, but stop and report if remote sudo/config validation/service reload fails.
 - Do not guess a parent/platform share from an old project or old server.
 - Do not unmount or replace an existing platform mount unless the user explicitly asks.
-- Do not run authoritative Android `git` or builds through CIFS.
-- Use WSL/CIFS paths for local source inspection and edits only.
+- Do not use CIFS for any Codex source read, write, search, edit, `git`, `repo`, patch, checkpoint, or build operation.
+- WSL/CIFS source inspection and edits are for humans only; Codex may read only confirmed product-output artifacts through the bridge.
 - If `sudo` requires a password locally, show the exact command or ask the user to run it.
-- After mount/restore succeeds, hand project work to `android-remote-build-deploy`.
+- After mount/restore succeeds, hand the registered remote identity to `android-framework-change-workflow` and `android-remote-build-deploy`; continue all Codex source work through `android-remote-channel`.

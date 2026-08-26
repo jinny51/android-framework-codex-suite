@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
-from typing import Any, Callable, Pattern
+from typing import Any, Callable, Optional, Pattern
 
 from android_framework_ops.patch_analysis import (
     changed_lines as patch_changed_lines,
@@ -12,8 +12,8 @@ from android_framework_ops.patch_analysis import (
 )
 from android_framework_ops.verification_evidence import has_authoritative_requirement_result
 
-RequireFile = Callable[[Any, str], Path | None]
-ReadReferencedJson = Callable[[Path, str], dict[str, Any] | None]
+RequireFile = Callable[[Any, str], Optional[Path]]
+ReadReferencedJson = Callable[[Path, str], Optional[dict[str, Any]]]
 ReadJsonFile = Callable[[Path], dict[str, Any]]
 LoadEvidence = Callable[[list[Any]], dict[str, dict[str, Any]]]
 ValidatePatchReadme = Callable[[Path], list[str]]

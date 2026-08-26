@@ -221,8 +221,8 @@ validate_guarded_output_entrypoints() {
     "plugins/android-framework-ops/skills/android-framework-change-workflow/scripts/collect_diagnostics.sh|--owned-create"
     "plugins/android-framework-ops/skills/android-framework-change-workflow/scripts/extract_video_frames.py|require_safe_artifact_path"
     "plugins/android-framework-ops/skills/android-remote-build-deploy/scripts/push_artifacts.py|require_safe_artifact_path"
-    "plugins/android-framework-ops/skills/android-remote-build-deploy/scripts/create-checkpoint.sh|guard_output_path"
-    "plugins/android-framework-ops/skills/android-remote-build-deploy/scripts/discover-project.sh|guard_output_path"
+    "plugins/android-framework-ops/skills/android-remote-build-deploy/scripts/remote-build-v2.py|require_safe_artifact_path"
+    "plugins/android-framework-ops/skills/android-framework-patch-capture/scripts/capture_remote_snapshot.py|require_safe_artifact_path"
     "plugins/codex-workspace-care/skills/codex-chat-history-context-extractor/scripts/extract_codex_context.py|require_safe_artifact_path"
   )
   for entry in "${entries[@]}"; do

@@ -1,25 +1,14 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CANONICAL = REPO_ROOT / "shared" / "android_source_access" / "remote_inspector.sh"
-RUNTIME_COPIES = (
-    REPO_ROOT
-    / "plugins"
-    / "android-mac-ops"
-    / "lib"
-    / "android_source_access"
-    / "remote_inspector.sh",
-    REPO_ROOT
-    / "plugins"
-    / "android-wsl-ops"
-    / "lib"
-    / "android_source_access"
-    / "remote_inspector.sh",
-)
+CANONICAL = REPO_ROOT / "plugins" / "android-framework-ops" / "lib" / "android_source_access" / "remote_inspector.sh"
+INSPECTION_HELPER = REPO_ROOT / "plugins" / "android-framework-ops" / "lib" / "android_framework_ops" / "remote_source_inspection.py"
 WSL_ENTRY = (
     REPO_ROOT
     / "plugins"
@@ -86,11 +75,11 @@ def parse_simple_env(stdout: str) -> dict[str, str]:
     return result
 
 
-def test_remote_inspector_runtime_copies_match_repository_owner() -> None:
-    expected = CANONICAL.read_bytes()
-    assert expected
-    for runtime_copy in RUNTIME_COPIES:
-        assert runtime_copy.read_bytes() == expected, runtime_copy
+def test_remote_inspector_has_one_core_runtime_owner() -> None:
+    assert CANONICAL.read_bytes()
+    assert not (REPO_ROOT / "shared/android_source_access/remote_inspector.sh").exists()
+    assert not (REPO_ROOT / "plugins/android-mac-ops/lib/android_source_access/remote_inspector.sh").exists()
+    assert not (REPO_ROOT / "plugins/android-wsl-ops/lib/android_source_access/remote_inspector.sh").exists()
 
 
 def test_platform_entries_are_thin_remote_inspector_adapters() -> None:
@@ -98,9 +87,11 @@ def test_platform_entries_are_thin_remote_inspector_adapters() -> None:
     mac = MAC_ENTRY.read_text(encoding="utf-8")
 
     for source in (wsl, mac):
-        assert "lib/android_source_access/remote_inspector.sh" in source
+        assert "ANDROID_REMOTE_SOURCE_INSPECTION_HELPER" in source
+        assert "ANDROID_REMOTE_CHANNEL_SCRIPT" in source
         assert "score_rk=0" not in source
         assert "first_assignment()" not in source
+        assert "ssh " not in source
     assert "remote_script='" not in wsl
 
 
@@ -117,17 +108,72 @@ def test_mtk_alias_and_project_branch_have_one_identity(tmp_path: Path) -> None:
     init_branch(root / "frameworks" / "base", "TVE1097M")
 
     outputs = []
-    for script in (CANONICAL, *RUNTIME_COPIES):
+    for script in (CANONICAL,):
         result = run_inspector(script, root)
         assert result.returncode == 0, result.stderr
         outputs.append(parse_simple_env(result.stdout))
 
-    assert outputs[0] == outputs[1] == outputs[2]
     assert outputs[0]["PLATFORM"] == "mtk"
     assert outputs[0]["SDK_NAME"] == "TVE1097M"
     assert outputs[0]["SOURCE_SDK_SOURCE"] == "project_branch"
     assert outputs[0]["TARGET_BOARD_PLATFORM"] == "mt8775"
     assert outputs[0]["PLATFORM_SCORE_MTK"] == "50"
+
+
+def test_core_helper_routes_inspection_through_fake_channel_v2(tmp_path: Path) -> None:
+    fake_channel = tmp_path / "fake-channel.py"
+    log = tmp_path / "args.txt"
+    fake_channel.write_text(
+        f"#!{sys.executable}\n"
+        "import os, pathlib, sys\n"
+        "pathlib.Path(os.environ['FAKE_CHANNEL_LOG']).write_text('\\n'.join(sys.argv[1:]), encoding='utf-8')\n"
+        "print('COMMAND_STARTED id=fake session=codex-android-0123456789abcdef')\n"
+        "print('REMOTE_ROOT=/srv/android/TVE1097M')\n"
+        "print('PLATFORM=mtk')\n"
+        "print('SDK_NAME=TVE1097M')\n"
+        "print('SOURCE_PLATFORM=mtk')\n"
+        "print('SOURCE_SDK_NAME=TVE1097M')\n"
+        "print('SOURCE_SDK_SOURCE=project_branch')\n"
+        "print('__CODEX_CMD_DONE id=fake state=completed rc=0')\n",
+        encoding="utf-8",
+    )
+    fake_channel.chmod(0o755)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(INSPECTION_HELPER),
+            "--channel-script",
+            str(fake_channel),
+            "--ssh-host",
+            "builder",
+            "--remote-root",
+            "/srv/android/TVE1097M",
+            "--command-id",
+            "fake-inspection",
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={**os.environ, "FAKE_CHANNEL_LOG": str(log)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    values = parse_simple_env(result.stdout)
+    assert values["PROJECT_IDENTITY_SCHEMA"] == "android-remote-project-identity-v1"
+    assert values["PROJECT_ID"] == "mtk-TVE1097M"
+    assert values["WORKSPACE_ID"] == "0123456789abcdef"
+    assert values["INSPECTION_TRANSPORT"] == "android-remote-channel-v2"
+    assert values["SSH_HOST"] == "builder"
+    assert values["REMOTE_ROOT"] == "/srv/android/TVE1097M"
+    logged = log.read_text(encoding="utf-8")
+    args = logged.splitlines()
+    assert args[:4] == ["--ssh-host", "builder", "--remote-root", "/srv/android/TVE1097M"]
+    assert "run" in args
+    assert "none" in args
+    assert "bash -s --" in logged
+    assert "score_rk=0" in logged
 
 
 def test_equal_platform_scores_keep_current_wsl_tie_break(tmp_path: Path) -> None:

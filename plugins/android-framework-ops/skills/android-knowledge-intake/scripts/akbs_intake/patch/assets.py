@@ -189,22 +189,6 @@ def patch_infos_from_paths(paths: list[str], project: str) -> list[PatchInfo]:
     return sorted(result.values(), key=lambda item: item.name)
 
 
-def discover_patches_from_cwd(project: str, date: dt.date) -> list[PatchInfo]:
-    candidates: dict[Path, PatchInfo] = {}
-    for pattern in ("*.patch", "patches/*.patch"):
-        for path in Path.cwd().glob(pattern):
-            if not path.is_file():
-                continue
-            try:
-                mdate = dt.datetime.fromtimestamp(path.stat().st_mtime).date()
-            except OSError:
-                continue
-            if mdate == date:
-                resolved = path.resolve()
-                candidates[resolved] = PatchInfo(path=resolved, name=resolved.name, project=project)
-    return sorted(candidates.values(), key=lambda item: item.name)
-
-
 def has_heading(text: str, heading: str) -> bool:
     return re.search(rf"^##\s+{re.escape(heading)}\s*$", text, re.M) is not None
 

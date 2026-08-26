@@ -55,6 +55,7 @@ trap 'rm -f "$entries_file"' EXIT
 
 if ! python3 - "$registry_dir" "$server_filter" "$smb_user_override" > "$entries_file" <<'PY'
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -91,10 +92,54 @@ try:
             mount_point = expand_home_path(str(item.get("mount_point") or ""))
             smb_path = str(item.get("smb_path") or share)
             smb_user = smb_user_override or str(item.get("smb_user") or default_user)
+            remote_share_root = str(item.get("remote_path") or "")
+            transport = str(item.get("mount_transport") or "smbfs")
+            if transport != "smbfs":
+                raise ValueError(f"{path}: share {share!r} 不是 smbfs transport")
+            if not remote_share_root.startswith("/"):
+                raise ValueError(f"{path}: share {share!r} 缺少绝对 remote_path")
+            projects = item.get("projects")
+            if not isinstance(projects, dict) or not projects:
+                raise ValueError(f"{path}: share {share!r} 缺少已登记 remote project facts")
+            project_ids = []
+            remote_roots = []
+            for project_name, project in sorted(projects.items()):
+                if not isinstance(project, dict):
+                    raise ValueError(f"{path}: project {project_name!r} 必须是对象")
+                remote_root = str(project.get("remote_root") or project.get("remote_path") or "")
+                ssh_host = str(project.get("ssh_host") or server)
+                platform = str(project.get("platform") or "")
+                bridge = expand_home_path(str(project.get("artifact_bridge_path") or project.get("local_path") or ""))
+                safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", str(project_name)).strip("-._")
+                expected_id = f"{platform.lower()}-{safe_name}"
+                actual_id = str(project.get("project_id") or expected_id)
+                if str(project.get("identity_schema") or data.get("identity_schema") or "android-remote-project-identity-v1") != "android-remote-project-identity-v1":
+                    raise ValueError(f"{path}: project {project_name!r} identity schema 不支持")
+                if ssh_host != server or actual_id != expected_id:
+                    raise ValueError(f"{path}: project {project_name!r} identity 与 platform/project 不一致")
+                if not remote_root.startswith("/") or not (remote_root == remote_share_root or remote_root.startswith(remote_share_root.rstrip("/") + "/")):
+                    raise ValueError(f"{path}: project {project_name!r} remote_root 不在 share remote_path 下")
+                if platform not in {"rk", "mtk", "unisoc"}:
+                    raise ValueError(f"{path}: project {project_name!r} platform 无效")
+                if not (bridge == mount_point or bridge.startswith(mount_point.rstrip("/") + "/")):
+                    raise ValueError(f"{path}: project {project_name!r} artifact bridge 不在 mount_point 下")
+                project_ids.append(actual_id)
+                remote_roots.append(remote_root)
             path_parts = smb_path.split("/")
             if any(not part or part in {".", ".."} for part in path_parts):
                 raise ValueError(f"{path}: share {share!r} 的 smb_path 非法")
-            values = (server, server_ip, smb_user, str(share), smb_path, mount_point)
+            values = (
+                server,
+                server_ip,
+                smb_user,
+                str(share),
+                smb_path,
+                mount_point,
+                ",".join(project_ids),
+                ",".join(remote_roots),
+                remote_share_root,
+                transport,
+            )
             if not all(values):
                 raise ValueError(f"{path}: share {share!r} 缺少恢复字段")
             if any("\t" in value or "\n" in value for value in values):
@@ -114,7 +159,7 @@ no_credentials=0
 failed=0
 entries=0
 
-while IFS=$'\t' read -r server server_ip smb_user share smb_path mount_point; do
+while IFS=$'\t' read -r server server_ip smb_user share smb_path mount_point project_ids remote_roots remote_share_root transport; do
   [ -n "$server" ] || continue
   entries=$((entries + 1))
 
@@ -130,11 +175,11 @@ while IFS=$'\t' read -r server server_ip smb_user share smb_path mount_point; do
   )"; then
     case "$mount_output" in
       *MOUNT_STATUS=already_mounted*)
-        echo "RESTORE_STATUS=already_mounted server=$server share=$share mount_point=$mount_point"
+        echo "RESTORE_STATUS=already_mounted server=$server share=$share mount_point=$mount_point project_ids=$project_ids remote_roots=$remote_roots transport=$transport source_verified=true"
         already=$((already + 1))
         ;;
       *)
-        echo "RESTORE_STATUS=mounted server=$server share=$share mount_point=$mount_point"
+        echo "RESTORE_STATUS=mounted server=$server share=$share mount_point=$mount_point project_ids=$project_ids remote_roots=$remote_roots transport=$transport source_verified=true"
         mounted=$((mounted + 1))
         ;;
     esac

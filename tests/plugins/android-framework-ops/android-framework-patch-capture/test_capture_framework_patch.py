@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -11,6 +14,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SKILL_DIR = REPO_ROOT / "plugins" / "android-framework-ops" / "skills" / "android-framework-patch-capture"
 SCRIPT = SKILL_DIR / "scripts" / "capture_framework_patch.py"
+LIB_ROOT = REPO_ROOT / "plugins" / "android-framework-ops" / "lib"
+if str(LIB_ROOT) not in sys.path:
+    sys.path.insert(0, str(LIB_ROOT))
+
+from android_framework_ops.remote_patch_snapshot import create_remote_patch_snapshot
 
 
 def load_patch_capture_module():
@@ -23,9 +31,60 @@ def load_patch_capture_module():
 
 
 def run(cmd: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedProcess[str]:
+    command = list(cmd)
+    env = os.environ.copy()
+    if len(command) > 1 and Path(command[1]) == SCRIPT and "--source-root" in command:
+        if "--workflow-contract" not in command:
+            command.extend(["--workflow-contract", "manual_import"])
+        else:
+            contract = command[command.index("--workflow-contract") + 1]
+            if contract == "current_codex_skill":
+                source_roots: list[Path] = []
+                while "--source-root" in command:
+                    index = command.index("--source-root")
+                    source_roots.append(Path(command[index + 1]).resolve())
+                    del command[index : index + 2]
+                if len(source_roots) != 1:
+                    raise AssertionError("current snapshot test helper expects one source root")
+                remote_root = source_roots[0]
+                workspace_id = hashlib.sha256(str(remote_root).encode()).hexdigest()[:16]
+                run_id = command[command.index("--run-id") + 1]
+                command_id = f"snapshot-{run_id}"[:128]
+                snapshot = create_remote_patch_snapshot(
+                    remote_root=remote_root,
+                    workspace_id=workspace_id,
+                    command_id=command_id,
+                    repository_paths=["."],
+                    generated_at_ns=time.time_ns(),
+                )
+                snapshot_path = Path(cwd) / f".{command_id}.json"
+                snapshot_path.write_text(
+                    json.dumps(snapshot, ensure_ascii=False, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                command.extend(
+                    [
+                        "--remote-snapshot",
+                        str(snapshot_path),
+                        "--snapshot-workspace-id",
+                        workspace_id,
+                        "--snapshot-command-id",
+                        command_id,
+                        "--snapshot-sha256",
+                        snapshot["snapshot_sha256"],
+                        "--remote-source-root",
+                        str(remote_root),
+                    ]
+                )
+                codex_home = Path(cwd) / ".codex-test-home"
+                env["CODEX_HOME"] = str(codex_home)
+                if "--out-dir" in command:
+                    output_index = command.index("--out-dir") + 1
+                    command[output_index] = str(codex_home / "artifacts" / command[output_index])
     result = subprocess.run(
-        cmd,
+        command,
         cwd=str(cwd),
+        env=env,
         check=False,
         text=True,
         stdout=subprocess.PIPE,
@@ -436,6 +495,8 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "out",
                     "--run-id",
                     "20260611-130000-patch",
+                    "--workflow-contract",
+                    "current_codex_skill",
                     "--platform",
                     "rk14",
                     "--feature",
@@ -479,6 +540,8 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "out",
                     "--run-id",
                     "20260611-131000-patch",
+                    "--workflow-contract",
+                    "current_codex_skill",
                     "--platform",
                     "rk14",
                     "--feature",
@@ -520,6 +583,8 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
                     "out",
                     "--run-id",
                     "20260611-131050-patch",
+                    "--workflow-contract",
+                    "current_codex_skill",
                     "--platform",
                     "rk14",
                     "--feature",

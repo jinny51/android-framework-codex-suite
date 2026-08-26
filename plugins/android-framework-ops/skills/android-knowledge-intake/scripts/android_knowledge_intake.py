@@ -171,8 +171,6 @@ from akbs_intake.config import (  # noqa: E402
 )
 from akbs_intake.report_sessions import (  # noqa: E402
     SessionWork,
-    git_branch_or_name as _report_git_branch_or_name,
-    git_root as _report_git_root,
     parse_sessions as _parse_sessions,
     report_customer_for_project,
     synthetic_sessions,
@@ -225,16 +223,8 @@ from akbs_intake.doctor import (  # noqa: E402
 )
 
 
-def git_root(path: str) -> Path | None:
-    return _report_git_root(path, run)
-
-
-def git_branch_or_name(path: str) -> str:
-    return _report_git_branch_or_name(path, run)
-
-
 def parse_sessions(config: dict[str, str], dates: set[dt.date]) -> list[SessionWork]:
-    return _parse_sessions(config, dates, run)
+    return _parse_sessions(config, dates)
 
 
 def discover_patches(config: dict[str, str], sessions: list[SessionWork], start: dt.date, end: dt.date) -> list[PatchInfo]:
@@ -243,8 +233,6 @@ def discover_patches(config: dict[str, str], sessions: list[SessionWork], start:
         sessions,
         start,
         end,
-        git_root=git_root,
-        git_branch_or_name=git_branch_or_name,
         patch_info_factory=lambda path, name, project: PatchInfo(path=path, name=name, project=project),
     )
 
@@ -666,8 +654,8 @@ def parse_args() -> argparse.Namespace:
         sub.add_argument("--run-id", help="override run id, format YYYYMMDD-HHMMSS[-suffix]")
         sub.add_argument("--schema-version", choices=[INCOMING_SCHEMA_VERSION], default="", help="incoming package schema version")
         if report_type == "patch":
-            sub.add_argument("--patch", dest="patches", action="append", default=[], help="patch file to include; repeatable")
-            sub.add_argument("--patch-package", dest="patch_packages", action="append", default=[], help="android-framework-patch-capture package directory to include; repeatable")
+            sub.add_argument("--patch", dest="patches", action="append", default=[], help="explicit manual_import/historical_import patch file; repeatable")
+            sub.add_argument("--patch-package", dest="patch_packages", action="append", default=[], help="explicit remote capture package under the Codex artifacts root; repeatable")
             sub.add_argument("--project", default="unknown", help="project name for framework_change incoming")
             sub.add_argument("--platform", default="", help="explicit platform for framework_change incoming: mtk, rk, unisoc, or unknown")
             sub.add_argument("--android-version", default="", help="explicit Android version for framework_change incoming, for example 14, 16, or 9.0")

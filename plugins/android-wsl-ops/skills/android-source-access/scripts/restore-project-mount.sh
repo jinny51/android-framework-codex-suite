@@ -66,6 +66,7 @@ LIST=false
 REMEMBER_PASSWORD=false
 REGISTRY_DIR="$HOME/.servers/projects"
 CREDENTIALS_DIR="$HOME/.servers/credentials"
+PROJECT_IDENTITY_SCHEMA="android-remote-project-identity-v1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ATOMIC_STATE="$(cd "$SCRIPT_DIR/../../../lib" && pwd)/akbs_plugin_state/atomic.py"
 
@@ -190,16 +191,36 @@ print_array_assignment() {
   printf " )\n"
 }
 
-project_usable() {
-  [[ -d "$PROJECT_PATH/build" || -d "$PROJECT_PATH/frameworks" || -d "$PROJECT_PATH/.repo" ]]
+project_id_for() {
+  local platform="$1" sdk_name="$2" safe_name
+  case "$platform" in unisoc|mtk|rk) ;; *) return 1 ;; esac
+  safe_name="$(printf "%s" "$sdk_name" | sed -E 's/[^A-Za-z0-9._-]+/-/g; s/^-+//; s/-+$//')"
+  [[ -n "$safe_name" ]] || return 1
+  printf "%s-%s" "$platform" "$safe_name"
+}
+
+registered_mount_source() {
+  local source target fstype rel
+  source="$(findmnt -T "$PROJECT_PATH" -n -o SOURCE 2>/dev/null || true)"
+  target="$(findmnt -T "$PROJECT_PATH" -n -o TARGET 2>/dev/null || true)"
+  fstype="$(findmnt -T "$PROJECT_PATH" -n -o FSTYPE 2>/dev/null || true)"
+  case "$fstype" in cifs|smb3) ;; *) return 1 ;; esac
+  [[ -n "$source" && -n "$target" && "$source" == //* ]] || return 1
+  rel="${PROJECT_PATH#"$target"}"
+  rel="${rel#/}"
+  [[ -z "$rel" ]] || source="${source%/}/$rel"
+  printf "%s" "$source"
 }
 
 remember_current_mount() {
-  project_usable || die "project path is not usable now, cannot remember mount: $PROJECT_PATH"
+  [[ -n "$REMOTE_SSH_HOST" ]] || die "--ssh-host is required with --remember-current"
+  [[ "$REMOTE_ROOT" == /* ]] || die "--remote-root must be absolute with --remember-current"
+  case "$PLATFORM" in unisoc|mtk|rk) ;; *) die "--platform must be unisoc, mtk, or rk with --remember-current" ;; esac
+  [[ -n "$SDK_NAME" ]] || die "--sdk-name is required with --remember-current"
 
   local source target fstype options rel project_share registry_file mount_user vers credentials_file existing_credentials old_project_path old_smb_user old_vers samba_server
-  local old_remote_ssh_host old_remote_root old_platform old_sdk_name
-  local -a paths shares versions ssh_hosts remote_roots platforms sdk_names
+  local old_remote_ssh_host old_remote_root old_platform old_sdk_name project_id
+  local -a paths shares versions ssh_hosts remote_roots platforms sdk_names project_ids identity_schemas mount_transports artifact_bridge_paths
   source="$(findmnt -T "$PROJECT_PATH" -n -o SOURCE 2>/dev/null || true)"
   target="$(findmnt -T "$PROJECT_PATH" -n -o TARGET 2>/dev/null || true)"
   fstype="$(findmnt -T "$PROJECT_PATH" -n -o FSTYPE 2>/dev/null || true)"
@@ -207,6 +228,7 @@ remember_current_mount() {
 
   [[ -n "$source" && -n "$target" ]] || die "no mount found for project: $PROJECT_PATH"
   [[ "$source" == //* || "$fstype" == cifs || "$fstype" == smb3 ]] || die "project is not on a Samba/CIFS source: $source"
+  project_id="$(project_id_for "$PLATFORM" "$SDK_NAME")" || die "cannot derive neutral project identity"
 
   mount_user="$(printf "%s" "$options" | tr ',' '\n' | awk -F= '$1=="username"{print $2; exit}')"
   SMB_USER="${SMB_USER:-$mount_user}"
@@ -242,6 +264,10 @@ remember_current_mount() {
     REMOTE_ROOTS=()
     PLATFORMS=()
     SDK_NAMES=()
+    PROJECT_IDS=()
+    PROJECT_IDENTITY_SCHEMAS=()
+    MOUNT_TRANSPORTS=()
+    ARTIFACT_BRIDGE_PATHS=()
     # shellcheck disable=SC1090
     source "$registry_file"
     existing_credentials="${SAMBA_CREDENTIALS_FILE:-}"
@@ -266,6 +292,10 @@ remember_current_mount() {
     if declare -p SDK_NAMES >/dev/null 2>&1; then
       sdk_names=("${SDK_NAMES[@]}")
     fi
+    if declare -p PROJECT_IDS >/dev/null 2>&1; then project_ids=("${PROJECT_IDS[@]}"); fi
+    if declare -p PROJECT_IDENTITY_SCHEMAS >/dev/null 2>&1; then identity_schemas=("${PROJECT_IDENTITY_SCHEMAS[@]}"); fi
+    if declare -p MOUNT_TRANSPORTS >/dev/null 2>&1; then mount_transports=("${MOUNT_TRANSPORTS[@]}"); fi
+    if declare -p ARTIFACT_BRIDGE_PATHS >/dev/null 2>&1; then artifact_bridge_paths=("${ARTIFACT_BRIDGE_PATHS[@]}"); fi
     for i in "${!paths[@]}"; do
       ssh_hosts[$i]="${ssh_hosts[$i]:-}"
       remote_roots[$i]="${remote_roots[$i]:-}"
@@ -273,6 +303,10 @@ remember_current_mount() {
       sdk_names[$i]="${sdk_names[$i]:-}"
       shares[$i]="${shares[$i]:-}"
       versions[$i]="${versions[$i]:-3.0}"
+      project_ids[$i]="${project_ids[$i]:-}"
+      identity_schemas[$i]="${identity_schemas[$i]:-$PROJECT_IDENTITY_SCHEMA}"
+      mount_transports[$i]="${mount_transports[$i]:-cifs}"
+      artifact_bridge_paths[$i]="${artifact_bridge_paths[$i]:-${paths[$i]}}"
     done
     old_remote_ssh_host="$REMOTE_SSH_HOST"
     old_remote_root="$REMOTE_ROOT"
@@ -316,6 +350,10 @@ remember_current_mount() {
     remote_roots[$found_index]="${REMOTE_ROOT:-${remote_roots[$found_index]:-}}"
     platforms[$found_index]="${PLATFORM:-${platforms[$found_index]:-}}"
     sdk_names[$found_index]="${SDK_NAME:-${sdk_names[$found_index]:-}}"
+    project_ids[$found_index]="$project_id"
+    identity_schemas[$found_index]="$PROJECT_IDENTITY_SCHEMA"
+    mount_transports[$found_index]="cifs"
+    artifact_bridge_paths[$found_index]="$PROJECT_PATH"
   else
     paths+=("$PROJECT_PATH")
     shares+=("$project_share")
@@ -324,6 +362,10 @@ remember_current_mount() {
     remote_roots+=("${REMOTE_ROOT:-}")
     platforms+=("${PLATFORM:-}")
     sdk_names+=("${SDK_NAME:-}")
+    project_ids+=("$project_id")
+    identity_schemas+=("$PROJECT_IDENTITY_SCHEMA")
+    mount_transports+=("cifs")
+    artifact_bridge_paths+=("$PROJECT_PATH")
   fi
 
   {
@@ -339,23 +381,23 @@ remember_current_mount() {
     print_array_assignment REMOTE_ROOTS "${remote_roots[@]}"
     print_array_assignment PLATFORMS "${platforms[@]}"
     print_array_assignment SDK_NAMES "${sdk_names[@]}"
+    print_array_assignment PROJECT_IDS "${project_ids[@]}"
+    print_array_assignment PROJECT_IDENTITY_SCHEMAS "${identity_schemas[@]}"
+    print_array_assignment MOUNT_TRANSPORTS "${mount_transports[@]}"
+    print_array_assignment ARTIFACT_BRIDGE_PATHS "${artifact_bridge_paths[@]}"
   } | atomic_state_write_private "$registry_file"
   chmod 600 "$registry_file"
 
   if [[ -n "$credentials_file" && -f "$credentials_file" ]]; then
-    echo "REMEMBER_OK project=$PROJECT_PATH registry=$registry_file credentials=stored credentials_file=$credentials_file"
+    echo "REMEMBER_OK project=$PROJECT_PATH project_id=$project_id registry=$registry_file credentials=stored credentials_file=$credentials_file"
   else
-    echo "REMEMBER_OK project=$PROJECT_PATH registry=$registry_file credentials=not_stored"
+    echo "REMEMBER_OK project=$PROJECT_PATH project_id=$project_id registry=$registry_file credentials=not_stored"
   fi
 }
 
 restore_project_mount() {
-  if project_usable; then
-    echo "MOUNT_OK project=$PROJECT_PATH already_usable=true"
-    return 0
-  fi
-
-  local registry_file share remembered_user remembered_vers requested_vers remembered_credentials cred_file base_opts versions vers last_err using_temp_cred file i found passwords_file local_sudo_file account_level_local_sudo_password saved_local_sudo_password
+  local registry_file share remembered_user remembered_vers requested_vers remembered_credentials cred_file base_opts versions vers last_err using_temp_cred credential_state file i found passwords_file local_sudo_file account_level_local_sudo_password saved_local_sudo_password
+  local remembered_ssh_host remembered_remote_root remembered_platform remembered_sdk_name remembered_project_id remembered_identity_schema remembered_transport remembered_bridge expected_project_id actual_source
   requested_vers="$PREFERRED_VERS"
   found=false
   shopt -s nullglob
@@ -367,6 +409,10 @@ restore_project_mount() {
     REMOTE_ROOTS=()
     PLATFORMS=()
     SDK_NAMES=()
+    PROJECT_IDS=()
+    PROJECT_IDENTITY_SCHEMAS=()
+    MOUNT_TRANSPORTS=()
+    ARTIFACT_BRIDGE_PATHS=()
     SAMBA_USER=""
     SAMBA_CREDENTIALS_FILE=""
     # shellcheck disable=SC1090
@@ -378,6 +424,14 @@ restore_project_mount() {
         remembered_user="${SAMBA_USER:-}"
         remembered_vers="${PREFERRED_VERS_LIST[$i]:-3.0}"
         remembered_credentials="${SAMBA_CREDENTIALS_FILE:-}"
+        remembered_ssh_host="${REMOTE_SSH_HOSTS[$i]:-}"
+        remembered_remote_root="${REMOTE_ROOTS[$i]:-}"
+        remembered_platform="${PLATFORMS[$i]:-}"
+        remembered_sdk_name="${SDK_NAMES[$i]:-}"
+        remembered_project_id="${PROJECT_IDS[$i]:-}"
+        remembered_identity_schema="${PROJECT_IDENTITY_SCHEMAS[$i]:-$PROJECT_IDENTITY_SCHEMA}"
+        remembered_transport="${MOUNT_TRANSPORTS[$i]:-cifs}"
+        remembered_bridge="${ARTIFACT_BRIDGE_PATHS[$i]:-${PROJECT_PATHS[$i]}}"
         found=true
         break 2
       fi
@@ -390,6 +444,23 @@ restore_project_mount() {
   PREFERRED_VERS="${requested_vers:-$remembered_vers}"
 
   [[ -n "$share" ]] || die "remembered mount is missing SAMBA_PROJECT_SHARE: $registry_file"
+  [[ -n "$remembered_ssh_host" ]] || die "remembered mount is missing REMOTE_SSH_HOST: $registry_file"
+  [[ "$remembered_remote_root" == /* ]] || die "remembered mount has invalid REMOTE_ROOT: $registry_file"
+  case "$remembered_platform" in unisoc|mtk|rk) ;; *) die "remembered mount has invalid PLATFORM: $registry_file" ;; esac
+  [[ -n "$remembered_sdk_name" ]] || die "remembered mount is missing SDK_NAME: $registry_file"
+  [[ "$remembered_identity_schema" == "$PROJECT_IDENTITY_SCHEMA" ]] || die "remembered mount has unsupported project identity schema: $remembered_identity_schema"
+  [[ "$remembered_transport" == cifs ]] || die "remembered mount has invalid transport: $remembered_transport"
+  [[ "$remembered_bridge" == "$PROJECT_PATH" ]] || die "remembered artifact bridge path does not match requested project: $remembered_bridge"
+  expected_project_id="$(project_id_for "$remembered_platform" "$remembered_sdk_name")" || die "cannot derive remembered project identity"
+  [[ -n "$remembered_project_id" ]] || remembered_project_id="$expected_project_id"
+  [[ "$remembered_project_id" == "$expected_project_id" ]] || die "remembered project identity does not match SSH_HOST/REMOTE_ROOT"
+
+  actual_source="$(registered_mount_source || true)"
+  if [[ -n "$actual_source" ]]; then
+    [[ "$actual_source" == "$share" ]] || die "project is mounted from unexpected CIFS source: actual=$actual_source expected=$share"
+    echo "MOUNT_OK project=$PROJECT_PATH project_id=$remembered_project_id already_mounted=true source_verified=true"
+    return 0
+  fi
   passwords_file="$(passwords_file_for_account "$SMB_USER" "$share")"
   load_saved_passwords "$passwords_file"
   account_level_local_sudo_password="$SAVED_LOCAL_SUDO_PASSWORD"
@@ -434,11 +505,7 @@ restore_project_mount() {
   mkdir -p "$PROJECT_PATH"
 
   if mountpoint -q "$PROJECT_PATH"; then
-    if project_usable; then
-      echo "MOUNT_OK project=$PROJECT_PATH already_mounted=true"
-      return 0
-    fi
-    die "project path is already a mount point but is not usable: $PROJECT_PATH"
+    die "project path is mounted but its CIFS source could not be verified: $PROJECT_PATH"
   fi
 
   if [[ -n "$(find "$PROJECT_PATH" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]; then
@@ -464,16 +531,14 @@ restore_project_mount() {
   for vers in "${versions[@]}"; do
     [[ -n "$vers" ]] || continue
     if mount -t cifs "$share" "$PROJECT_PATH" -o "$base_opts,vers=$vers" 2>/tmp/codex-source-cifs-mount.err; then
-      if project_usable; then
-        if [[ "$using_temp_cred" == true ]]; then
-          echo "MOUNT_OK project=$PROJECT_PATH vers=$vers credentials=temp"
-        else
-          echo "MOUNT_OK project=$PROJECT_PATH vers=$vers credentials=stored"
-        fi
+      actual_source="$(registered_mount_source || true)"
+      if [[ "$actual_source" == "$share" ]]; then
+        if [[ "$using_temp_cred" == true ]]; then credential_state=temp; else credential_state=stored; fi
+        echo "MOUNT_OK project=$PROJECT_PATH project_id=$remembered_project_id vers=$vers credentials=$credential_state source_verified=true"
         return 0
       fi
       umount "$PROJECT_PATH" 2>/dev/null || true
-      last_err="mounted but Android project markers were not found at $PROJECT_PATH"
+      last_err="mounted source verification failed: actual=${actual_source:-missing} expected=$share"
       continue
     fi
     last_err="$(tail -n 3 /tmp/codex-source-cifs-mount.err 2>/dev/null || true)"
@@ -488,7 +553,7 @@ list_remembered_mounts() {
     return 0
   fi
 
-  local found=false file project share user credentials credentials_state ssh_host remote_root platform sdk_name i
+  local found=false file project share user credentials credentials_state ssh_host remote_root platform sdk_name project_id transport bridge i
   shopt -s nullglob
   for file in "$REGISTRY_DIR"/*.env; do
     found=true
@@ -499,6 +564,9 @@ list_remembered_mounts() {
     REMOTE_ROOTS=()
     PLATFORMS=()
     SDK_NAMES=()
+    PROJECT_IDS=()
+    MOUNT_TRANSPORTS=()
+    ARTIFACT_BRIDGE_PATHS=()
     SAMBA_USER=""
     SAMBA_CREDENTIALS_FILE=""
     # shellcheck disable=SC1090
@@ -517,10 +585,13 @@ list_remembered_mounts() {
       remote_root="${REMOTE_ROOTS[$i]:-}"
       platform="${PLATFORMS[$i]:-}"
       sdk_name="${SDK_NAMES[$i]:-}"
+      project_id="${PROJECT_IDS[$i]:-}"
+      transport="${MOUNT_TRANSPORTS[$i]:-cifs}"
+      bridge="${ARTIFACT_BRIDGE_PATHS[$i]:-$project}"
       if [[ "$credentials_state" == stored ]]; then
-        echo "REMEMBERED_PROJECT project=$project share=$share user=$user ssh_host=$ssh_host remote_root=$remote_root platform=$platform sdk_name=$sdk_name credentials=stored credentials_file=$credentials registry=$file"
+        echo "REMEMBERED_PROJECT project=$project project_id=$project_id share=$share user=$user ssh_host=$ssh_host remote_root=$remote_root platform=$platform sdk_name=$sdk_name transport=$transport artifact_bridge=$bridge credentials=stored credentials_file=$credentials registry=$file"
       else
-        echo "REMEMBERED_PROJECT project=$project share=$share user=$user ssh_host=$ssh_host remote_root=$remote_root platform=$platform sdk_name=$sdk_name credentials=not_stored registry=$file"
+        echo "REMEMBERED_PROJECT project=$project project_id=$project_id share=$share user=$user ssh_host=$ssh_host remote_root=$remote_root platform=$platform sdk_name=$sdk_name transport=$transport artifact_bridge=$bridge credentials=not_stored registry=$file"
       fi
     done
   done

@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
+import os
 import re
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -46,6 +49,11 @@ from android_framework_ops.patch_analysis import (
     symbols_from_diff,
 )
 from android_framework_ops.project_registry import source_access_registry_clues as registry_source_access_registry_clues
+from android_framework_ops.remote_patch_snapshot import (
+    RemotePatchSnapshotError,
+    decode_snapshot_blob,
+    load_remote_patch_snapshot,
+)
 from android_framework_ops.verification_evidence import (
     build_delivery_contract_fields,
     has_authoritative_requirement_result,
@@ -69,9 +77,9 @@ REUSE_OUTCOMES = ("not_started", "reused_success", "adapted_success", "failed", 
 
 @dataclass
 class RepositoryCapture:
-    source_root: Path
+    source_root: str
     repo_path: str
-    git_info: dict[str, str]
+    git_info: dict[str, Any]
     diff_text: str
     facts: dict[str, Any]
     module: str
@@ -165,7 +173,7 @@ def collect_repository_captures(args: argparse.Namespace, platform: str, feature
         used_names.add(patch_name)
         captures.append(
             RepositoryCapture(
-                source_root=root,
+                source_root=str(root),
                 repo_path=repo_path,
                 git_info=git_metadata(root),
                 diff_text=diff_text,
@@ -180,6 +188,182 @@ def collect_repository_captures(args: argparse.Namespace, platform: str, feature
             "源码仓库只有文件权限变化，已过滤权限噪声，无法生成有效功能补丁；"
             f"文件: {'; '.join(skipped_mode_only_roots)}"
         )
+    return captures
+
+
+def _capture_from_diff(
+    *,
+    args: argparse.Namespace,
+    platform: str,
+    feature: str,
+    source_root: str,
+    repo_path: str,
+    git_info: dict[str, Any],
+    diff_text: str,
+    used_names: set[str],
+) -> RepositoryCapture | None:
+    filtered, mode_only_paths = filter_mode_only_diff_sections(diff_text)
+    if mode_only_paths and not filtered.strip():
+        return None
+    if not filtered.strip():
+        raise SystemExit(f"snapshot/patch artifact 没有可打包的 binary diff: {repo_path}")
+    facts = facts_from_diff(filtered)
+    facts["repo_path"] = repo_path
+    facts["modules"] = modules_from_files(prefixed_files(repo_path, facts["modified_files"]))
+    facts["symbols"] = symbols_from_diff(filtered)
+    module = slug(args.module or infer_module_for_repo(repo_path, facts["modified_files"]))
+    patch_name = f"{platform}-{module}@{feature}.patch"
+    if patch_name in used_names:
+        module = slug(repo_path.replace("/", "-"))
+        patch_name = f"{platform}-{module}@{feature}.patch"
+    if patch_name in used_names:
+        module = f"{module}-{sha1_text(source_root)[:8]}"
+        patch_name = f"{platform}-{module}@{feature}.patch"
+    if not PATCH_NAME_RE.fullmatch(patch_name):
+        raise SystemExit(f"生成的 patch 文件名不符合规范: {patch_name}")
+    used_names.add(patch_name)
+    return RepositoryCapture(
+        source_root=source_root,
+        repo_path=repo_path,
+        git_info=git_info,
+        diff_text=filtered,
+        facts=facts,
+        module=module,
+        patch_name=patch_name,
+        patch_rel=f"patches/{patch_name}",
+    )
+
+
+def collect_snapshot_captures(
+    args: argparse.Namespace,
+    platform: str,
+    feature: str,
+) -> tuple[list[RepositoryCapture], dict[str, Any]]:
+    try:
+        snapshot = load_remote_patch_snapshot(
+            args.remote_snapshot,
+            expected_workspace_id=args.snapshot_workspace_id,
+            expected_command_id=args.snapshot_command_id,
+            expected_remote_root=args.remote_source_root,
+            expected_sha256=args.snapshot_sha256,
+            now_ns=time.time_ns(),
+            max_age_ns=args.snapshot_max_age_seconds * 1_000_000_000,
+        )
+    except RemotePatchSnapshotError as exc:
+        raise SystemExit(f"remote snapshot 验证失败: {exc}") from exc
+    if len(snapshot["repositories"]) > 1 and args.module:
+        raise SystemExit("多源码仓库 snapshot 不接受单个 --module；模块名按每个远端仓库推断。")
+
+    captures: list[RepositoryCapture] = []
+    used_names: set[str] = set()
+    mode_only: list[str] = []
+    for repository in snapshot["repositories"]:
+        repo_path = str(repository["repo_path"])
+        head_diff = decode_snapshot_blob(repository["head_diff"], field=f"{repo_path}.head_diff")
+        untracked_diff = decode_snapshot_blob(
+            repository["untracked_diff"],
+            field=f"{repo_path}.untracked_diff",
+        )
+        try:
+            diff_text = (head_diff + untracked_diff).decode("utf-8")
+            status_text = decode_snapshot_blob(
+                repository["status"],
+                field=f"{repo_path}.status",
+            ).decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise SystemExit(f"remote snapshot Git 数据不是 UTF-8: {repo_path}") from exc
+        remotes = repository.get("remotes") if isinstance(repository.get("remotes"), list) else []
+        first_remote = ""
+        for remote in remotes:
+            urls = remote.get("fetch_urls") if isinstance(remote, dict) else []
+            if isinstance(urls, list) and urls:
+                first_remote = str(urls[0])
+                break
+        capture = _capture_from_diff(
+            args=args,
+            platform=platform,
+            feature=feature,
+            source_root=str(repository["root"]),
+            repo_path=repo_path,
+            git_info={
+                "root": str(repository["root"]),
+                "branch": str(repository["branch"]),
+                "head": str(repository["head"]),
+                "remote": first_remote,
+                "remotes": remotes,
+                "status": status_text,
+            },
+            diff_text=diff_text,
+            used_names=used_names,
+        )
+        if capture is None:
+            mode_only.append(repo_path)
+            continue
+        snapshot_changed = set(str(item) for item in repository["changed_files"])
+        diff_changed = set(capture.facts.get("modified_files", []))
+        if not diff_changed.issubset(snapshot_changed):
+            raise SystemExit(f"remote snapshot changed_files 与 binary diff 不一致: {repo_path}")
+        captures.append(capture)
+    if not captures:
+        suffix = f"；仅权限变化仓库: {', '.join(mode_only)}" if mode_only else ""
+        raise SystemExit(f"remote snapshot 没有可打包功能 diff{suffix}")
+    return captures, snapshot
+
+
+def _stable_patch_text(path: Path) -> tuple[str, str]:
+    try:
+        before = path.stat()
+        data = path.read_bytes()
+        after = path.stat()
+    except OSError as exc:
+        raise SystemExit(f"显式 patch artifact 无法读取: {path}: {exc}") from exc
+    identity = lambda item: (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns)
+    if identity(before) != identity(after):
+        raise SystemExit(f"显式 patch artifact 在读取期间发生变化: {path}")
+    try:
+        return data.decode("utf-8"), hashlib.sha256(data).hexdigest()
+    except UnicodeDecodeError as exc:
+        raise SystemExit(f"显式 patch artifact 不是 UTF-8 Git binary patch: {path}") from exc
+
+
+def collect_patch_artifact_captures(
+    args: argparse.Namespace,
+    platform: str,
+    feature: str,
+) -> list[RepositoryCapture]:
+    if len(args.patch_artifact) != len(args.patch_repo_path):
+        raise SystemExit("--patch-artifact 与 --patch-repo-path 必须一一对应")
+    if len(args.patch_artifact) > 1 and args.module:
+        raise SystemExit("多 patch artifact 不接受单个 --module")
+    captures: list[RepositoryCapture] = []
+    used_names: set[str] = set()
+    for raw_path, repo_path in zip(args.patch_artifact, args.patch_repo_path):
+        path = Path(raw_path).expanduser().resolve()
+        if not path.is_file():
+            raise SystemExit(f"--patch-artifact 文件不存在: {path}")
+        text, digest = _stable_patch_text(path)
+        capture = _capture_from_diff(
+            args=args,
+            platform=platform,
+            feature=feature,
+            source_root=args.remote_source_root or f"manual-import:{digest}",
+            repo_path=repo_path,
+            git_info={
+                "root": args.remote_source_root or "manual-import",
+                "branch": "",
+                "head": "",
+                "remote": "",
+                "remotes": [],
+                "status": "explicit immutable patch artifact",
+                "patch_artifact_sha256": digest,
+            },
+            diff_text=text,
+            used_names=used_names,
+        )
+        if capture is not None:
+            captures.append(capture)
+    if not captures:
+        raise SystemExit("显式 patch artifact 没有可打包功能 diff")
     return captures
 
 
@@ -244,7 +428,7 @@ def infer_capture_project_for_feature(
     return "unknown", project_inference_payload("unknown", [], checked_sources, raw_inputs, limits)
 
 
-def source_access_registry_clues(source_root: Path, registry_dir: Path | None = None) -> list[tuple[str, str]]:
+def source_access_registry_clues(source_root: str | Path, registry_dir: Path | None = None) -> list[tuple[str, str]]:
     return registry_source_access_registry_clues([source_root], registry_dir)
 
 
@@ -353,6 +537,8 @@ def merge_auto_verification_payload(base: dict[str, Any], incoming: dict[str, An
 
 
 def load_auto_verification_payload(args: argparse.Namespace) -> dict[str, Any]:
+    if args.workflow_contract == "current_codex_skill":
+        return {}
     payload: dict[str, Any] = {}
     for root in source_roots_for_auto_evidence(args):
         for rel in AUTO_VERIFICATION_EVIDENCE_NAMES:
@@ -803,8 +989,36 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Package one Android Framework feature into README, patches, and evidence assets.")
-    parser.add_argument("--source-root", action="append", default=[], help="Android source git repository. Repeat for multi-repository features. Default: current directory.")
-    parser.add_argument("--out-dir", default=".codex/patch-packages", help="Output root. Default: .codex/patch-packages")
+    parser.add_argument(
+        "--source-root",
+        action="append",
+        default=[],
+        help="Legacy local Git root for manual/historical import only. current_codex_skill rejects it.",
+    )
+    parser.add_argument(
+        "--remote-snapshot",
+        help="Immutable snapshot transferred by capture_remote_snapshot.py (current_codex_skill only).",
+    )
+    parser.add_argument("--snapshot-workspace-id", default="")
+    parser.add_argument("--snapshot-command-id", default="")
+    parser.add_argument("--snapshot-sha256", default="")
+    parser.add_argument("--snapshot-max-age-seconds", type=int, default=900)
+    parser.add_argument(
+        "--patch-artifact",
+        action="append",
+        default=[],
+        help="Explicit immutable Git binary patch for manual/historical import. Repeatable.",
+    )
+    parser.add_argument(
+        "--patch-repo-path",
+        action="append",
+        default=[],
+        help="Repository path corresponding to --patch-artifact. Repeatable.",
+    )
+    parser.add_argument(
+        "--out-dir",
+        help="Output root. current_codex_skill outputs must stay below $CODEX_HOME/artifacts.",
+    )
     parser.add_argument("--run-id", help="Output package id. Default: YYYYMMDD-HHMMSS-feature")
     parser.add_argument("--platform", required=True, help="Platform plus Android version token, for example rk14, mtk14, unisoc13.")
     parser.add_argument("--module", help="Patch module name. Default inferred from changed files.")
@@ -880,7 +1094,53 @@ def parse_args() -> argparse.Namespace:
     args.solution_summary = args.solution_summary.strip()
     if bool(args.problem_summary) != bool(args.solution_summary):
         parser.error("--problem-summary 和 --solution-summary 必须同时提供")
+    if args.snapshot_max_age_seconds <= 0 or args.snapshot_max_age_seconds > 86400:
+        parser.error("--snapshot-max-age-seconds 必须在 1..86400 范围")
+    snapshot_fields = (
+        args.remote_snapshot,
+        args.snapshot_workspace_id,
+        args.snapshot_command_id,
+        args.snapshot_sha256,
+        args.remote_source_root,
+    )
+    if args.workflow_contract == "current_codex_skill":
+        if args.source_root:
+            parser.error(
+                "current_codex_skill 禁止 --source-root；mounted Android source 不是 Codex 取证源，"
+                "请先通过 capture_remote_snapshot.py + android-remote-channel v2 生成 snapshot"
+            )
+        if args.patch_artifact or args.patch_repo_path:
+            parser.error("current_codex_skill 不接受 caller patch artifact；必须消费 channel snapshot")
+        if not all(snapshot_fields):
+            parser.error(
+                "current_codex_skill 必须提供 --remote-snapshot、snapshot workspace/command/sha256 "
+                "和 --remote-source-root"
+            )
+    else:
+        if args.remote_snapshot or any(snapshot_fields[1:4]):
+            parser.error("manual/historical import 应使用显式 --patch-artifact，不接受 current snapshot 参数")
+        if args.source_root and args.patch_artifact:
+            parser.error("--source-root 与 --patch-artifact 不能混用")
+        if args.patch_artifact and not args.patch_repo_path:
+            parser.error("--patch-artifact 必须配套 --patch-repo-path")
     return args
+
+
+def codex_artifacts_root() -> Path:
+    codex_home = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser()
+    return (codex_home / "artifacts").resolve()
+
+
+def require_current_package_root(path: Path) -> Path:
+    artifacts = codex_artifacts_root()
+    resolved = path.expanduser().resolve()
+    try:
+        resolved.relative_to(artifacts)
+    except ValueError as exc:
+        raise SystemExit(
+            f"current_codex_skill 补丁包必须写入 $CODEX_HOME/artifacts: {resolved}"
+        ) from exc
+    return resolved
 
 
 def main() -> int:
@@ -897,15 +1157,27 @@ def main() -> int:
         for error in scope_errors:
             print(error, file=sys.stderr)
         return 1
-    captures = collect_repository_captures(args, platform, feature)
+    snapshot_payload: dict[str, Any] | None = None
+    if args.workflow_contract == "current_codex_skill":
+        captures, snapshot_payload = collect_snapshot_captures(args, platform, feature)
+    elif args.patch_artifact:
+        captures = collect_patch_artifact_captures(args, platform, feature)
+    else:
+        captures = collect_repository_captures(args, platform, feature)
     resolved_project, project_inference = infer_capture_project_for_feature(args, captures, trusted_platform=platform_name)
     args.project = resolved_project
 
     now = dt.datetime.now()
     run_id = args.run_id or f"{now:%Y%m%d-%H%M%S}-feature"
-    out_root = Path(args.out_dir).expanduser()
+    out_root = (
+        Path(args.out_dir).expanduser()
+        if args.out_dir
+        else codex_artifacts_root() / "android-framework-patch-capture" / "packages"
+    )
     if not out_root.is_absolute():
         out_root = Path.cwd() / out_root
+    if args.workflow_contract == "current_codex_skill":
+        out_root = require_current_package_root(out_root)
     package_dir = require_safe_artifact_path(out_root / run_id, purpose="patch package output")
     if package_dir.exists():
         raise SystemExit(f"输出目录已存在: {package_dir}")
@@ -1014,6 +1286,18 @@ def main() -> int:
         },
     ]
     evidence_items.extend(collect_external_evidence(args, evidence_dir))
+    if snapshot_payload is not None:
+        write_json(evidence_dir / "remote-source-snapshot.json", snapshot_payload)
+        evidence_items.append(
+            {
+                "id": "remote-source-snapshot",
+                "kind": "remote_source_snapshot",
+                "path": "evidence/remote-source-snapshot.json",
+                "result": "INFO",
+                "scope": "feature",
+                "summary": "immutable source facts generated through android-remote-channel v2",
+            }
+        )
 
     patch_items = [
         {
@@ -1085,6 +1369,15 @@ def main() -> int:
         "patches": patch_items,
         "evidence": evidence_items,
     }
+    if snapshot_payload is not None:
+        manifest["source_snapshot"] = {
+            "path": "evidence/remote-source-snapshot.json",
+            "schema": snapshot_payload["schema"],
+            "workspace_id": snapshot_payload["workspace_id"],
+            "command_id": snapshot_payload["command_id"],
+            "remote_root": snapshot_payload["remote_root"],
+            "sha256": snapshot_payload["snapshot_sha256"],
+        }
     write_json(package_dir / "manifest.json", manifest)
     write_json(
         evidence_dir / "changed-files.json",

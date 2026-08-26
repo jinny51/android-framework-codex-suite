@@ -31,8 +31,14 @@ def main() -> int:
     if not mapping:
         raise SystemExit(f"no registered remote mapping for project: {args.project}")
     output_fields = (
+        ("PROJECT_ID", "project_id"),
         ("SSH_HOST", "ssh_host"),
         ("REMOTE_ROOT", "remote_root"),
+        ("PROJECT_ROOT", "project_root"),
+        ("WORKING_SUBPATH", "working_subpath"),
+        ("REMOTE_WORKING_PATH", "remote_working_path"),
+        ("ARTIFACT_BRIDGE_PATH", "artifact_bridge_path"),
+        ("MOUNT_TRANSPORT", "mount_transport"),
         ("PLATFORM", "platform"),
         ("SDK_NAME", "sdk_name"),
         ("MAPPING_REGISTRY", "registry_path"),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -13,6 +14,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SKILL_DIR = REPO_ROOT / "plugins" / "android-wsl-ops" / "skills" / "android-source-access"
 SCRIPT_DIR = SKILL_DIR / "scripts"
+INSPECTION_HELPER = (
+    REPO_ROOT / "plugins" / "android-framework-ops" / "lib" / "android_framework_ops" / "remote_source_inspection.py"
+)
 
 
 def run_script(script: str, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
@@ -94,6 +98,14 @@ def remember_args(project: Path, registry_file: Path, credential_file: Path) -> 
         "--project",
         str(project),
         "--remember-current",
+        "--ssh-host",
+        "builder",
+        "--remote-root",
+        f"/srv/android/{project.name}",
+        "--platform",
+        "unisoc",
+        "--sdk-name",
+        project.name,
         "--registry-dir",
         str(registry_file.parent),
         "--credentials-dir",
@@ -157,6 +169,7 @@ class WslSourceAccessScriptsTests(unittest.TestCase):
             self.assertEqual(credential_file.read_bytes(), credential_original)
             self.assertNotIn("do-not-log-this-secret", result.stdout + result.stderr)
 
+    @unittest.skipUnless(shutil.which("flock"), "flock is required for registry locking")
     def test_concurrent_registry_updates_keep_both_projects(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -223,6 +236,7 @@ class WslSourceAccessScriptsTests(unittest.TestCase):
             self.assertEqual(inspect.returncode, 0, inspect.stderr)
             self.assertEqual(set(inspect.stdout.splitlines()), {str(first_project), str(second_project)})
 
+    @unittest.skipUnless(shutil.which("flock"), "flock is required for registry locking")
     def test_remembered_registry_and_credentials_keep_existing_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -245,6 +259,10 @@ class WslSourceAccessScriptsTests(unittest.TestCase):
             self.assertIn("SAMBA_SERVER=server\n", registry)
             self.assertIn("SAMBA_USER=member\n", registry)
             self.assertIn(f"PROJECT_PATHS=( {project} )\n", registry)
+            self.assertIn("PROJECT_IDENTITY_SCHEMAS=( android-remote-project-identity-v1 )\n", registry)
+            self.assertIn("PROJECT_IDS=( unisoc-TVE1088U )\n", registry)
+            self.assertIn("MOUNT_TRANSPORTS=( cifs )\n", registry)
+            self.assertIn(f"ARTIFACT_BRIDGE_PATHS=( {project} )\n", registry)
             self.assertIn(f"SAMBA_CREDENTIALS_FILE={credential_file}\n", registry)
             self.assertEqual(stat.S_IMODE(registry_file.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE(credential_file.stat().st_mode), 0o600)
@@ -316,6 +334,44 @@ class WslSourceAccessScriptsTests(unittest.TestCase):
         self.assertIn("This is the default", mount_help.stdout)
         self.assertEqual(invalid_accept.returncode, 2)
         self.assertIn("--accept-platform-conflict requires --platform", invalid_accept.stderr)
+
+    def test_wsl_inspection_adapter_uses_fake_remote_channel(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            channel = root / "fake-channel.py"
+            log = root / "channel.log"
+            channel.write_text(
+                f"#!{sys.executable}\n"
+                "import os, pathlib, sys\n"
+                "pathlib.Path(os.environ['FAKE_CHANNEL_LOG']).write_text('\\0'.join(sys.argv[1:]), encoding='utf-8')\n"
+                "print('COMMAND_STARTED id=fake session=codex-android-0123456789abcdef')\n"
+                "print('REMOTE_ROOT=/srv/android/TVA10A2R')\n"
+                "print('PLATFORM=rk')\n"
+                "print('SDK_NAME=TVA10A2R')\n"
+                "print('SOURCE_PLATFORM=rk')\n"
+                "print('SOURCE_SDK_NAME=TVA10A2R')\n"
+                "print('SOURCE_SDK_SOURCE=project_branch')\n",
+                encoding="utf-8",
+            )
+            channel.chmod(0o755)
+
+            result = run_script(
+                "inspect-android-sdk.sh",
+                "--ssh-host",
+                "builder",
+                "--remote-root",
+                "/srv/android/TVA10A2R",
+                "--channel-script",
+                str(channel),
+                "--inspection-helper",
+                str(INSPECTION_HELPER),
+                env={"FAKE_CHANNEL_LOG": str(log)},
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("INSPECTION_TRANSPORT=android-remote-channel-v2", result.stdout)
+            self.assertIn("PROJECT_ID=rk-TVA10A2R", result.stdout)
+            self.assertIn("run", log.read_text(encoding="utf-8"))
 
     def test_project_level_dry_run_targets_home_work_platform_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

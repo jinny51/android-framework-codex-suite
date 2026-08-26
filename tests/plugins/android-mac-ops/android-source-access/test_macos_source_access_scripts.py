@@ -15,6 +15,9 @@ from typing import Dict, Optional
 REPO_ROOT = Path(__file__).resolve().parents[4]
 SKILL_DIR = REPO_ROOT / "plugins" / "android-mac-ops" / "skills" / "android-source-access"
 SCRIPT_DIR = SKILL_DIR / "scripts"
+INSPECTION_HELPER = (
+    REPO_ROOT / "plugins" / "android-framework-ops" / "lib" / "android_framework_ops" / "remote_source_inspection.py"
+)
 
 
 def run_script(
@@ -40,8 +43,15 @@ def make_fake_bin(root: Path) -> Path:
     fake_bin.mkdir()
     (fake_bin / "mount").write_text(
         "#!/usr/bin/env bash\n"
-        "if [ \"$#\" -eq 0 ]; then printf '%s' \"${FAKE_MOUNT_LIST:-}\"; exit 0; fi\n"
-        "printf '%s\\n' \"$*\" >> \"$FAKE_MOUNT_LOG\"\n",
+        "if [ \"$#\" -eq 0 ]; then\n"
+        "  printf '%s' \"${FAKE_MOUNT_LIST:-}\"\n"
+        "  [ ! -f \"$FAKE_MOUNT_STATE\" ] || cat \"$FAKE_MOUNT_STATE\"\n"
+        "  exit 0\n"
+        "fi\n"
+        "printf '%s\\n' \"$*\" >> \"$FAKE_MOUNT_LOG\"\n"
+        "if [ \"${1:-}\" = -t ] && [ \"${2:-}\" = smbfs ]; then\n"
+        "  printf '%s on %s (smbfs, nodev, nosuid)\\n' \"$3\" \"$4\" > \"$FAKE_MOUNT_STATE\"\n"
+        "fi\n",
         encoding="utf-8",
     )
     (fake_bin / "security").write_text(
@@ -69,6 +79,7 @@ def script_env(root: Path, fake_bin: Path) -> Dict[str, str]:
         "CODEX_CREDENTIALS_DIR": str(root / "home" / ".servers" / "credentials"),
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
         "FAKE_MOUNT_LOG": str(root / "mount.log"),
+        "FAKE_MOUNT_STATE": str(root / "mount.state"),
         "FAKE_SECURITY_LOG": str(root / "security.log"),
     }
 
@@ -93,6 +104,26 @@ def install_python_instrumentation(fake_bin: Path, prelude: str) -> None:
         encoding="utf-8",
     )
     python.chmod(python.stat().st_mode | stat.S_IXUSR)
+
+
+def make_fake_channel(root: Path, *, remote_root: str, platform: str, sdk_name: str) -> tuple[Path, Path]:
+    channel = root / "fake-channel.py"
+    log = root / "fake-channel.log"
+    channel.write_text(
+        f"#!{sys.executable}\n"
+        "import os, pathlib, sys\n"
+        "pathlib.Path(os.environ['FAKE_CHANNEL_LOG']).write_text('\\0'.join(sys.argv[1:]), encoding='utf-8')\n"
+        "print('COMMAND_STARTED id=fake session=codex-android-0123456789abcdef')\n"
+        f"print('REMOTE_ROOT={remote_root}')\n"
+        f"print('PLATFORM={platform}')\n"
+        f"print('SDK_NAME={sdk_name}')\n"
+        f"print('SOURCE_PLATFORM={platform}')\n"
+        f"print('SOURCE_SDK_NAME={sdk_name}')\n"
+        "print('SOURCE_SDK_SOURCE=project_branch')\n",
+        encoding="utf-8",
+    )
+    channel.chmod(0o755)
+    return channel, log
 
 
 def register_args(
@@ -391,6 +422,12 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
                 registry["shares"]["TVE1088U"]["smb_path"],
                 "unisoc/huiwei_uis7885_5g",
             )
+            project_entry = registry["shares"]["TVE1088U"]["projects"]["TVE1088U"]
+            self.assertEqual(registry["identity_schema"], "android-remote-project-identity-v1")
+            self.assertEqual(project_entry["project_id"], "unisoc-TVE1088U")
+            self.assertEqual(project_entry["ssh_host"], "test61")
+            self.assertEqual(project_entry["remote_root"], "/home/test61/unisoc/huiwei_uis7885_5g")
+            self.assertEqual(project_entry["mount_transport"], "smbfs")
 
             restore = run_script(
                 "restore-mounts.sh",
@@ -402,6 +439,7 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
             )
             self.assertEqual(restore.returncode, 0, restore.stderr)
             self.assertIn("RESTORE_STATUS=mounted server=test61 share=TVE1088U", restore.stdout)
+            self.assertIn("source_verified=true", restore.stdout)
             self.assertIn("RESTORE_SUMMARY mounted=1", restore.stdout)
             mount_log = Path(env["FAKE_MOUNT_LOG"]).read_text(encoding="utf-8")
             self.assertIn(
@@ -444,6 +482,27 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("--smb-path 必须是相对服务器的 SMB 路径", result.stderr)
 
+    def test_restore_rejects_existing_mount_from_different_smb_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = make_fake_bin(root)
+            env = script_env(root, fake_bin)
+            registry_dir = root / "projects"
+            mount_point = Path(env["ANDROID_WORK_ROOT"]) / "unisoc" / "TVE1088U"
+            register = run_script(
+                "register-project.sh",
+                *register_args(env, registry_dir, share="TVE1088U", project="TVE1088U"),
+                env=env,
+            )
+            self.assertEqual(register.returncode, 0, register.stderr)
+            env["FAKE_MOUNT_LIST"] = f"//other/share on {mount_point} (smbfs, nodev)\n"
+
+            restore = run_script("restore-mounts.sh", "--registry-dir", str(registry_dir), env=env)
+
+            self.assertEqual(restore.returncode, 4)
+            self.assertIn("RESTORE_STATUS=failed", restore.stdout)
+            self.assertIn("actual=//other/share", restore.stderr)
+
     def test_restore_does_not_report_success_without_json_entries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -467,17 +526,12 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
             registry_dir = root / "projects"
             mount_point = Path(env["ANDROID_WORK_ROOT"]) / "unisoc" / "TVE1088U"
             registry_dir.mkdir()
-            (registry_dir / "test61.json").write_text(
-                json.dumps(
-                    {
-                        "server": "test61",
-                        "server_ip": "192.168.100.23",
-                        "smb_user": "test61",
-                        "shares": {"TVE1088U": {"mount_point": str(mount_point), "projects": {}}},
-                    }
-                ),
-                encoding="utf-8",
+            register = run_script(
+                "register-project.sh",
+                *register_args(env, registry_dir, share="TVE1088U", project="TVE1088U"),
+                env=env,
             )
+            self.assertEqual(register.returncode, 0, register.stderr)
 
             result = run_script("restore-mounts.sh", "--registry-dir", str(registry_dir), env=env)
 
@@ -485,37 +539,65 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
             self.assertIn("RESTORE_STATUS=no_credentials", result.stdout)
             self.assertIn("no_credentials=1", result.stdout)
 
-    def test_local_project_scan_works_without_gnu_find(self) -> None:
+    def test_remote_inspection_uses_fake_channel_without_reading_mount(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            project = root / "share" / "TVA10A2R"
-            (project / "build").mkdir(parents=True)
-            (project / "frameworks").mkdir()
-            (project / "device" / "rockchip").mkdir(parents=True)
+            mount_point = root / "human-mount"
+            mount_point.mkdir()
+            channel, channel_log = make_fake_channel(
+                root,
+                remote_root="/srv/android/TVA10A2R",
+                platform="rk",
+                sdk_name="TVA10A2R",
+            )
 
             result = run_script(
                 "detect-projects.sh",
+                "--ssh-host",
+                "builder",
+                "--remote-root",
+                "/srv/android/TVA10A2R",
                 "--mount-point",
-                str(root / "share"),
-                "--max-depth",
-                "2",
+                str(mount_point),
+                "--channel-script",
+                str(channel),
+                "--inspection-helper",
+                str(INSPECTION_HELPER),
+                env={"FAKE_CHANNEL_LOG": str(channel_log)},
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn(f"PROJECT_PATH={project}", result.stdout)
+            self.assertIn("INSPECTION_TRANSPORT=android-remote-channel-v2", result.stdout)
             self.assertIn("PLATFORM=rk", result.stdout)
+            self.assertIn(f"ARTIFACT_BRIDGE_PATH={mount_point}", result.stdout)
+            self.assertIn("run", channel_log.read_text(encoding="utf-8"))
 
-    def test_project_level_mount_root_is_detected(self) -> None:
+    def test_project_level_remote_root_is_not_rederived_from_mount_basename(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            project = Path(tmp) / "work" / "mtk" / "TVE1065M"
-            (project / "build").mkdir(parents=True)
-            (project / "frameworks").mkdir()
-            (project / "vendor" / "mediatek").mkdir(parents=True)
+            root = Path(tmp)
+            channel, channel_log = make_fake_channel(
+                root,
+                remote_root="/home/test35/work/mtk/u_mt8xxx_tablet",
+                platform="mtk",
+                sdk_name="TVE1065M",
+            )
 
-            result = run_script("detect-projects.sh", "--mount-point", str(project), "--max-depth", "1")
+            result = run_script(
+                "detect-projects.sh",
+                "--ssh-host",
+                "test35",
+                "--remote-root",
+                "/home/test35/work/mtk/u_mt8xxx_tablet",
+                "--channel-script",
+                str(channel),
+                "--inspection-helper",
+                str(INSPECTION_HELPER),
+                env={"FAKE_CHANNEL_LOG": str(channel_log)},
+            )
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn(f"PROJECT_PATH={project}", result.stdout)
+            self.assertIn("REMOTE_ROOT=/home/test35/work/mtk/u_mt8xxx_tablet", result.stdout)
+            self.assertNotIn("u_mt8xxx_tablet/TVE1065M", result.stdout)
             self.assertIn("PLATFORM=mtk", result.stdout)
 
     def test_scripts_and_docs_are_bash32_and_reference_consistent(self) -> None:
@@ -533,9 +615,10 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
             self.assertEqual(syntax.returncode, 0, f"{script}: {syntax.stderr}")
 
         detect_text = (SCRIPT_DIR / "detect-projects.sh").read_text(encoding="utf-8")
-        local_scan = detect_text.split("# ── 扫描项目目录 ──", 1)[1]
-        self.assertNotIn("-maxdepth", local_scan)
-        self.assertNotIn("-mindepth", local_scan)
+        self.assertNotIn("os.walk", detect_text)
+        self.assertNotIn("/.repo", detect_text)
+        self.assertNotRegex(detect_text, r"(?m)^\s*ssh\s")
+        self.assertIn("ANDROID_REMOTE_CHANNEL_SCRIPT", detect_text)
 
         docs = [
             SKILL_DIR / "SKILL.md",

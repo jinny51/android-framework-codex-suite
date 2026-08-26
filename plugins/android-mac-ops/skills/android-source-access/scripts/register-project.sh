@@ -79,6 +79,12 @@ done
 [ -n "$platform" ]            || die 2 "--platform 是必需的"
 [ -n "$project_path" ]        || die 2 "--project-path 是必需的"
 [ -n "$remote_project_path" ] || die 2 "--remote-project-path 是必需的"
+[ -n "$remote_share_path" ]   || die 2 "--remote-share-path 是必需的"
+case "$remote_share_path" in /*) ;; *) die 2 "--remote-share-path 必须是绝对路径" ;; esac
+case "$remote_project_path" in
+  "$remote_share_path"|"$remote_share_path"/*) ;;
+  *) die 2 "--remote-project-path 必须等于或位于 --remote-share-path 下" ;;
+esac
 smb_user="${smb_user:-$server}"
 smb_path="${smb_path:-$share}"
 
@@ -118,12 +124,15 @@ plugin_lib="$(cd "$(dirname "$0")/../../../lib" && pwd)"
 status="$(PYTHONPATH="$plugin_lib${PYTHONPATH:+:$PYTHONPATH}" python3 - "$registry_file" "$server" "$server_ip" "$smb_user" "$share" "$smb_path" "$mount_point" \
   "$remote_share_path" "$project" "$project_path" "$platform" "$remote_project_path" <<'PY'
 import os
+import re
 import sys
 from pathlib import Path
 
 from akbs_plugin_state.atomic import update_json
 
 f, srv, ip, smb_user, sh, smb_path, mp, rsp, proj, pp, plat, rpp = sys.argv[1:]
+identity_schema = "android-remote-project-identity-v1"
+project_id = f"{plat.lower()}-{re.sub(r'[^A-Za-z0-9._-]+', '-', proj).strip('-._')}"
 
 
 def portable_home_path(value):
@@ -138,6 +147,7 @@ def update_registry(data):
     data["server"] = srv
     data["server_ip"] = ip
     data["smb_user"] = smb_user
+    data["identity_schema"] = identity_schema
     data.setdefault("shares", {}).setdefault(sh, {
         "mount_point": mp,
         "remote_path": rsp,
@@ -148,10 +158,17 @@ def update_registry(data):
     data["shares"][sh]["smb_path"] = smb_path
     data["shares"][sh]["remote_path"] = rsp
     data["shares"][sh]["smb_user"] = smb_user
+    data["shares"][sh]["mount_transport"] = "smbfs"
     data["shares"][sh]["projects"][proj] = {
+        "identity_schema": identity_schema,
+        "project_id": project_id,
+        "ssh_host": srv,
         "platform": plat,
         "local_path": portable_home_path(pp),
-        "remote_path": rpp
+        "artifact_bridge_path": portable_home_path(pp),
+        "mount_transport": "smbfs",
+        "remote_path": rpp,
+        "remote_root": rpp,
     }
     data["shares"][sh]["mount_point"] = portable_home_path(mp)
 
@@ -170,3 +187,11 @@ echo "PROJECT=$project"
 echo "PLATFORM=$platform"
 echo "SSH_HOST=$server"
 echo "REMOTE_ROOT=$remote_project_path"
+echo "PROJECT_IDENTITY_SCHEMA=android-remote-project-identity-v1"
+python3 - "$platform" "$project" <<'PY'
+import re
+import sys
+print("PROJECT_ID=" + sys.argv[1].lower() + "-" + re.sub(r"[^A-Za-z0-9._-]+", "-", sys.argv[2]).strip("-._"))
+PY
+echo "MOUNT_TRANSPORT=smbfs"
+echo "ARTIFACT_BRIDGE_PATH=$project_path"

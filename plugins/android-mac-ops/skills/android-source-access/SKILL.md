@@ -7,14 +7,28 @@ description: "Use to mount, remount, or restore Android remote build server Samb
 
 Use this skill to access Android remote build server source trees on macOS through Samba/SMB. Like the WSL platform skill, it maps each project to `$HOME/work/<platform>/<project>` by default. It owns Samba share discovery, macOS native SMB mounting, project verification, and project mapping registry.
 
+## Remote-Only Source Contract
+
+The mounted Android path has exactly two consumers: a human performing source
+CRUD, and the local artifact bridge reading confirmed product outputs for local
+`adb`. It is not a Codex source workspace. Codex must not walk, inspect, search,
+edit, diff, patch, or run `git`, `repo`, or builds through the SMB mount.
+
+All Codex operations involving Android source or `REMOTE_ROOT` metadata,
+including platform/project recognition, must run through the stable
+`android-remote-channel` tmux session. Direct SSH is allowed here only for
+infrastructure: resolving SSH configuration/reachability, installing a public
+key, reading or updating Samba configuration, and reloading Samba. Infrastructure
+SSH must not inspect or mutate `REMOTE_ROOT`.
+
 ## Boundary
 
 This skill owns:
 
 - Samba share discovery on remote build servers (read `/etc/samba/smb.conf` over SSH).
 - macOS native SMB mount (`mount -t smbfs`), no extra software required.
-- Post-mount project detection: scan the mounted tree to identify Android source projects.
-- Platform inference from source evidence (not from directory names).
+- Mount metadata validation without reading mounted Android source contents.
+- Registration of platform/project facts supplied by the user or by a remote-channel source inspection.
 - Project mapping registry under `~/.servers/projects/<server>.json`.
 - Remount/recovery from saved projects.
 - Passwords in macOS Keychain, with password-free references under `~/.servers/credentials/`.
@@ -27,21 +41,26 @@ Do not use this skill for:
 
 ## Platform Difference from WSL
 
-Both platform plugins use the same local project shape: `$HOME/work/<platform>/<project>`. The differences are implementation details:
+Both platform plugins use the same local project shape for the human/artifact mount: `$HOME/work/<platform>/<project>`. The differences are implementation details:
 
 - WSL mounts with `mount.cifs` and local sudo; macOS mounts with native SMB and normally needs no sudo.
 - WSL keeps verified local credentials in its platform state; macOS stores passwords in Keychain.
-- Both infer platform and project from source evidence, never from remote path text alone.
+- Both receive platform and project facts from remote-channel source inspection, never from local mounted-tree inspection or remote path text alone.
 - Project-level Samba shares are the default. A parent share is an explicit exception, not a separate macOS directory model.
 
 ## Flow
 
 ```
-1. discover-samba-share.sh  → 列出服务器 Samba 共享和远端路径
-2. mount-share.sh           → 挂载项目 share 到 $HOME/work/<platform>/<project>
-3. detect-projects.sh       → 验证挂载根或显式父 share 内的 Android 项目 + 平台
-4. register-project.sh      → 注册到 ~/.servers/projects/<server>.json
+1. resolve SSH_HOST + explicit REMOTE_ROOT
+2. ensure android-remote-channel and inspect platform/project remotely
+3. discover-samba-share.sh  → 列出服务器 Samba 共享和远端路径
+4. mount-share.sh           → 挂载项目 share 到 $HOME/work/<platform>/<project>
+5. register-project.sh      → 注册已确认的 remote identity 到 ~/.servers/projects/<server>.json
 ```
+
+`detect-projects.sh` is a compatibility-named remote-only adapter. It requires
+the core inspection helper and `android-remote-channel`; it never walks the
+mounted tree or invokes SSH directly.
 
 恢复流程：
 
@@ -113,7 +132,7 @@ Do not package credentials when distributing this skill.
 
 ## Platform Detection
 
-Platform is determined by source evidence inside the project:
+Platform is determined by source evidence inspected on `REMOTE_ROOT` through `android-remote-channel`:
 - `device/rockchip` → `rk`
 - `vendor/sprd` or `device/sprd` → `unisoc`
 - `vendor/mediatek` → `mtk`
@@ -122,7 +141,7 @@ Directory names (e.g., `unisoc/`, `rk3576/`) are NOT used as platform signals.
 
 ## Project Naming
 
-Project/SDK name is determined by:
+Project/SDK name is determined by a remote-channel inspection of:
 1. Key repo branches: `frameworks/base`, platform `device/...`, `vendor/.../common`, `kernel`
 2. `BRANCH_BUILDTYPE` from build config
 3. Ask user if neither works
@@ -146,7 +165,7 @@ $HOME/work/unisoc/TVE1088U/  → project root
 
 - `scripts/discover-samba-share.sh`: discover available Samba shares from remote server's `/etc/samba/smb.conf` over SSH.
 - `scripts/mount-share.sh`: mount a Samba share via macOS native `mount -t smbfs`.
-- `scripts/detect-projects.sh`: scan a mounted share tree to identify Android projects and infer platforms.
+- `scripts/detect-projects.sh`: invoke the core inspector through `android-remote-channel` without reading the mount.
 - `scripts/register-project.sh`: register project mapping in `~/.servers/projects/<server>.json`.
 - `scripts/unmount-share.sh`: unmount a Samba share.
 - `scripts/restore-mounts.sh`: remount all projects from the local registry (reboot/restart recovery).
@@ -160,17 +179,25 @@ $HOME/work/unisoc/TVE1088U/  → project root
   "server": "test61",
   "server_ip": "192.168.100.23",
   "smb_user": "test61",
+  "identity_schema": "android-remote-project-identity-v1",
   "shares": {
     "TVE1088U": {
       "mount_point": "$HOME/work/unisoc/TVE1088U",
       "smb_path": "unisoc/huiwei_uis7885_5g",
       "remote_path": "/home/test61/unisoc/huiwei_uis7885_5g",
       "smb_user": "test61",
+      "mount_transport": "smbfs",
       "projects": {
         "TVE1088U": {
+          "identity_schema": "android-remote-project-identity-v1",
+          "project_id": "unisoc-TVE1088U",
+          "ssh_host": "test61",
           "platform": "unisoc",
           "local_path": "$HOME/work/unisoc/TVE1088U",
-          "remote_path": "/home/test61/unisoc/huiwei_uis7885_5g"
+          "artifact_bridge_path": "$HOME/work/unisoc/TVE1088U",
+          "mount_transport": "smbfs",
+          "remote_path": "/home/test61/unisoc/huiwei_uis7885_5g",
+          "remote_root": "/home/test61/unisoc/huiwei_uis7885_5g"
         }
       }
     }
@@ -180,8 +207,10 @@ $HOME/work/unisoc/TVE1088U/  → project root
 
 ## Handoff
 
-After successful mount + register, hand project work to `android-remote-build-deploy`
-with `SSH_HOST`, `REMOTE_ROOT`, `PLATFORM`, and `SDK_NAME`.
+After successful remote-channel inspection, mount, and register, hand project
+work to `android-framework-change-workflow` and `android-remote-build-deploy`
+with `SSH_HOST`, `REMOTE_ROOT`, `PLATFORM`, and `SDK_NAME`. Continue all Codex
+source work through the same remote channel.
 
 ## Output
 
@@ -203,5 +232,6 @@ Samba 共享: //192.168.100.23/unisoc/huiwei_uis7885_5g
 - Use `$HOME/akbs` as the default `AKBS_ROOT` and `$HOME/work` as the default `ANDROID_WORK_ROOT`; never mount Android source below AKBS_ROOT.
 - Never put credentials in skills, repo files, or build scripts.
 - Do not unmount or replace an existing mount unless the user explicitly asks.
-- Do not run authoritative Android `git` or builds through the SMB mount.
+- Do not use the SMB mount for any Codex source read, write, search, edit, `git`, `repo`, patch, checkpoint, or build operation.
+- Use the mount only for human source CRUD and confirmed product-output artifact delivery.
 - If the mount target directory is non-empty, refuse to mount over it.

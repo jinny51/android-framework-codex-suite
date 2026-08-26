@@ -1,6 +1,6 @@
 {
   "name": "android-wsl-ops",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "WSL platform layer for Android Framework Samba/CIFS source access.",
   "author": {
     "name": "Jinny Android Framework Team",

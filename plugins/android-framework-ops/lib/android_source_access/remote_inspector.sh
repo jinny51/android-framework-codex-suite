@@ -14,6 +14,7 @@ case "$inspection_mode" in
 esac
 
 [ -d "$root" ] || { echo "REMOTE_ROOT_MISSING path=$root" >&2; exit 3; }
+root="$(cd "$root" && pwd -P)"
 if [ ! -d "$root/frameworks/base" ] && [ ! -d "$root/build" ] && [ ! -d "$root/.repo" ]; then
   if [ "$inspection_mode" = strict ]; then
     echo "ANDROID_MARKERS_MISSING path=$root" >&2
@@ -204,6 +205,7 @@ fi
 
 printf "PLATFORM=%q\n" "$platform"
 printf "SDK_NAME=%q\n" "$sdk_name"
+printf "REMOTE_ROOT=%q\n" "$root"
 printf "SOURCE_PLATFORM=%q\n" "$source_platform"
 printf "SOURCE_SDK_NAME=%q\n" "$source_sdk_name"
 printf "SOURCE_SDK_SOURCE=%q\n" "$source_sdk_source"

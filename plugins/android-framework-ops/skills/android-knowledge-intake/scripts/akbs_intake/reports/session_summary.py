@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 from pathlib import Path
 from typing import Any, Callable
 
 from android_framework_ops.knowledge_rules import find_company_project, find_company_projects
 
-from akbs_intake.config import parse_bool
+from akbs_intake.config import expanded_path, parse_bool
 from akbs_intake.report_sessions import (
     NOISE_TEXT_RE,
     SessionWork,
@@ -25,8 +26,6 @@ from akbs_intake.reports.scope import (
 from akbs_intake.reports.document_work import DOCUMENT_WORK_TYPE, clean_document_name
 
 
-GitRoot = Callable[[str], Path | None]
-GitBranchOrName = Callable[[str], str]
 DAILY_STATUS_VALUES = ("已完成", "处理中", "待验证", "阻塞")
 DAILY_METHOD_MISSING = "未从授权会话中提取到具体处理过程，需成员补充。"
 
@@ -520,38 +519,44 @@ def discover_patches(
     start,
     end,
     *,
-    git_root: GitRoot,
-    git_branch_or_name: GitBranchOrName,
     patch_info_factory: Callable[[Path, str, str], Any],
 ) -> list[Any]:
     if not parse_bool(config.get("include_patches", "true")):
         return []
-    roots: set[Path] = set()
-    for session in sessions:
-        if session.cwd and Path(session.cwd).exists():
-            root = git_root(session.cwd)
-            roots.add(root if root else Path(session.cwd))
-            roots.add(Path(session.cwd))
     patches: dict[Path, Any] = {}
-    for base in sorted(roots):
-        if not base.exists():
-            continue
-        candidates: list[Path] = []
-        for pattern in ("*.patch", "patches/*.patch"):
+    if sessions:
+        out_dir = expanded_path(config.get("out_dir", "$CODEX_HOME/artifacts/android-knowledge-intake"))
+        artifacts_root = out_dir.parent
+        for manifest_path in artifacts_root.glob("**/manifest.json"):
             try:
-                candidates.extend(path.resolve() for path in base.glob(pattern))
-            except OSError:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, TypeError):
                 continue
-        for path in candidates:
+            if not isinstance(manifest, dict) or manifest.get("package_type") != "framework_feature_patch":
+                continue
+            created_at = str(manifest.get("created_at") or "")
             try:
-                mdate = path.stat().st_mtime
-            except OSError:
+                capture_date = dt.datetime.fromisoformat(created_at.replace("Z", "+00:00")).date()
+            except ValueError:
                 continue
-            patch_date = dt.datetime.fromtimestamp(mdate).date()
-            if not (start <= patch_date <= end):
+            if not (start <= capture_date <= end):
                 continue
-            project = git_branch_or_name(str(git_root(str(path.parent)) or base))
-            patches[path] = patch_info_factory(path, path.name, project)
+            project = find_company_project(str(manifest.get("project") or ""))
+            if not project and len(sessions) == 1:
+                project = sessions[0].project
+            for item in manifest.get("patches") or []:
+                if not isinstance(item, dict):
+                    continue
+                rel = str(item.get("path") or "")
+                if not rel:
+                    continue
+                path = (manifest_path.parent / rel).resolve()
+                try:
+                    path.relative_to(artifacts_root.resolve())
+                except ValueError:
+                    continue
+                if path.is_file() and path.suffix == ".patch":
+                    patches[path] = patch_info_factory(path, path.name, project)
     return sorted(patches.values(), key=lambda item: item.name)
 
 

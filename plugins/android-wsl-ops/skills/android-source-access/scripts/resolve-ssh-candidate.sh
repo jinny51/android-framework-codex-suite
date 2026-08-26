@@ -149,8 +149,9 @@ fi
 
 check_ssh_ready() {
   local target="$1"
-  ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$target" \
-    "test -d $(printf '%q' "$remote_root")" >/dev/null 2>&1
+  # Infrastructure reachability only. REMOTE_ROOT inspection belongs to the
+  # stable android-remote-channel session.
+  ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$target" true >/dev/null 2>&1
 }
 
 check_port_open() {

@@ -4,7 +4,16 @@ This package is a local handoff artifact. One package represents one Framework f
 
 `android-framework-patch-intake` submits the whole feature package through the server submission channel as incoming, using the shared `android-knowledge-intake` kernel. The user's local `akbs-curation-maintainer` skill later decides whether and how material enters the knowledge repository.
 
-Project metadata is an applicability boundary. If project clues conflict across `--project`, source roots, git metadata, WSL source-access registry, summary, or diff text, the capture package must keep `project=unknown`, preserve all candidate TVD/TVE/TVA/TVI models in `project_inference.candidates`, and record the conflict in `project_inference.limits`.
+Project metadata is an applicability boundary. If project clues conflict across `--project`, the verified remote snapshot, Git metadata, the platform-neutral source-access registry, summary, or diff text, the capture package must keep `project=unknown`, preserve all candidate TVD/TVE/TVA/TVI models in `project_inference.candidates`, and record the conflict in `project_inference.limits`.
+
+For `current_codex_skill`, all source facts come from an immutable
+`android-remote-patch-snapshot-v1` created inside `android-remote-channel` v2.
+The snapshot binds the canonical remote root, workspace and command identities,
+Git/repo status, HEAD/branch/remotes, staged and unstaged binary diffs, final
+HEAD-relative binary diff, untracked inventory/content patch, changed files,
+per-blob hashes, generation time, and a canonical snapshot SHA-256. The local
+packager verifies every field and copies the validated snapshot into package
+evidence. It never accepts `--source-root` or a caller patch for this workflow.
 
 The manifest `project` field stores only the normalized company model. Branch suffixes, customer suffixes, build branches, business labels, module labels, Chinese descriptions, and other non-standard trailing text must stay in `project_inference` evidence. For example, `TVE1067M1_H031` becomes `TVE1067M1`, `TVE1086U_MAIN_HANGYAN` becomes `TVE1086U`, and `TVE1091U福建移动高清` becomes `TVE1091U`.
 
@@ -13,7 +22,7 @@ Patch capture filters diff sections that contain only file mode metadata, such a
 ## Directory
 
 ```text
-.codex/patch-packages/YYYYMMDD-HHMMSS-feature/
+$CODEX_HOME/artifacts/android-framework-patch-capture/packages/<run-id>/
 ├── manifest.json
 ├── README.md
 ├── patches/
@@ -25,6 +34,7 @@ Patch capture filters diff sections that contain only file mode metadata, such a
     ├── patch-problem-summary.json
     ├── risk-surface.json
     ├── coding-standard-check.json
+    ├── remote-source-snapshot.json
     ├── build-result.json
     ├── verification-result.json
     ├── search-before-change.json
@@ -44,24 +54,32 @@ There is no `patches/*.readme.md` in the capture package. The README is feature-
   "project": "TVE8402M",
   "summary": "功能摘要",
   "status": "candidate",
-  "implementation_origin": "manual",
-  "workflow_contract": "manual_import",
+  "implementation_origin": "codex",
+  "workflow_contract": "current_codex_skill",
   "captured_by": "codex",
   "coding_standard_check": {
-    "required": true,
-    "mode": "capture_gate",
+    "required": false,
+    "mode": "development_safety_net",
     "path": "evidence/coding-standard-check.json",
     "result": "PASS"
   },
   "related_report_run_ids": ["20260601-210000-daily"],
+  "source_snapshot": {
+    "path": "evidence/remote-source-snapshot.json",
+    "schema": "android-remote-patch-snapshot-v1",
+    "workspace_id": "0123456789abcdef",
+    "command_id": "patch-snapshot-20260826",
+    "remote_root": "/home/test61/unisoc/project",
+    "sha256": "64-hex-sha256"
+  },
   "source_roots": [
-    "/home/<wsl-user>/work/rk/TVE8402M/frameworks/base",
-    "/home/<wsl-user>/work/rk/TVE8402M/packages/apps/Settings"
+    "/home/test61/unisoc/project/frameworks/base",
+    "/home/test61/unisoc/project/packages/apps/Settings"
   ],
   "git_repositories": [
     {
       "repo_path": "frameworks/base",
-      "root": "/home/<wsl-user>/work/rk/TVE8402M/frameworks/base",
+      "root": "/home/test61/unisoc/project/frameworks/base",
       "git": {
         "branch": "feature/TVE8402M-policy",
         "remote": "ssh://example/frameworks/base.git",
@@ -72,8 +90,8 @@ There is no `patches/*.readme.md` in the capture package. The README is feature-
   "project_inference": {
     "project": "TVE8402M",
     "recognized": true,
-    "basis": ["source_root: /home/<wsl-user>/work/rk/TVE8402M"],
-    "checked_sources": ["命令参数 project", "source_root", "repo_path", "git branch", "git remote"],
+    "basis": ["source_root: /home/test61/unisoc/project"],
+    "checked_sources": ["命令参数 project", "remote snapshot", "repo_path", "git branch", "git remote"],
     "limits": [],
     "recognition_scope": "TVD/TVE/TVA/TVI"
   },
@@ -113,12 +131,12 @@ There is no `patches/*.readme.md` in the capture package. The README is feature-
       "id": "rk14-frameworks-base@display-policy-settings-entry",
       "path": "patches/rk14-frameworks-base@display-policy-settings-entry.patch",
       "repo_path": "frameworks/base",
-      "source_root": "/home/<wsl-user>/work/rk/TVE8402M/frameworks/base",
+      "source_root": "/home/test61/unisoc/project/frameworks/base",
       "content_sha1": "40-hex-sha1",
       "status": "candidate",
       "reuse_hint": false,
-      "implementation_origin": "manual",
-      "workflow_contract": "manual_import",
+      "implementation_origin": "codex",
+      "workflow_contract": "current_codex_skill",
       "captured_by": "codex",
       "facts": {
         "content_sha1": "40-hex-sha1",
@@ -217,13 +235,10 @@ unknown          未记录：历史包或异常场景没有形成明确决策。
 
 ## Remote Build To Local ADB Evidence
 
-When Android work is built on a remote server and delivered to a local USB device, the deploy executor should write:
-
-```text
-<source-root>/.codex/evidence/latest-build-delivery.json
-```
-
-`capture_framework_patch.py` reads this file automatically from each `--source-root` and merges it into `verification-result.json`. The expected shape is:
+When Android work is built on a remote server and delivered to a local USB
+device, pass the build/deploy receipt explicitly with `--build-result`. Current
+capture must not read `.codex` evidence through a mounted source root. The
+expected receipt shape is:
 
 ```json
 {
@@ -302,7 +317,7 @@ Recognition priority:
 
 1. Explicit `--project` containing a scoped company project model.
 2. Feature package project or patch item project.
-3. Source context: `source_root`, `repo_path`, git branch, git remote, local mount path, or the WSL source-access registry.
+3. Source context: verified remote snapshot root, `repo_path`, Git branch, Git remote, or the platform-neutral source-access registry.
 4. README/diff/summary text.
 
 Generic labels such as `android16`, `Camera2`, or `mtk android16 Camera2` are checked inputs, not project names. When no company project model is found, write `project: "unknown"` and preserve the checked sources in `project_inference`.

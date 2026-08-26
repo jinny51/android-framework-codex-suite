@@ -10,12 +10,29 @@ from typing import Iterable
 
 
 REGISTRY_FIELDS = (
+    ("project_id", "source-access registry project_id"),
     ("sdk_name", "source-access registry sdk_name"),
     ("remote_root", "source-access registry remote_root"),
     ("share", "source-access registry share"),
     ("platform", "source-access registry platform"),
     ("ssh_host", "source-access registry ssh_host"),
 )
+
+
+def project_id_component(value: str) -> str:
+    component = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "").strip())
+    return re.sub(r"-+", "-", component).strip("-._")
+
+
+def derive_project_id(entry: dict[str, str]) -> str:
+    explicit = project_id_component(entry.get("project_id", ""))
+    if explicit:
+        return explicit
+    platform = project_id_component(entry.get("platform", "").lower()) or "android"
+    project = project_id_component(entry.get("sdk_name", ""))
+    if not project:
+        project = project_id_component(Path(entry.get("local_path", "")).name) or "unknown"
+    return f"{platform}-{project}"
 
 
 def expand_home_path(value: str) -> str:
@@ -59,6 +76,7 @@ def env_registry_entries(path: Path) -> list[dict[str, str]]:
         "remote_root": parse_shell_array(text, "REMOTE_ROOTS"),
         "platform": parse_shell_array(text, "PLATFORMS"),
         "sdk_name": parse_shell_array(text, "SDK_NAMES"),
+        "project_id": parse_shell_array(text, "PROJECT_IDS"),
     }
     entries: list[dict[str, str]] = []
     for index, local_path in enumerate(arrays["local_path"]):
@@ -66,6 +84,8 @@ def env_registry_entries(path: Path) -> list[dict[str, str]]:
         for key, values in arrays.items():
             if key != "local_path" and index < len(values):
                 entry[key] = values[index]
+        entry["mount_transport"] = "cifs"
+        entry["project_id"] = derive_project_id(entry)
         entries.append(entry)
     return entries
 
@@ -102,7 +122,10 @@ def json_registry_entries(path: Path) -> list[dict[str, str]]:
                 "platform": str(raw_project.get("platform") or "").strip(),
                 "sdk_name": str(project_name).strip(),
                 "ssh_host": ssh_host,
+                "project_id": str(raw_project.get("project_id") or "").strip(),
+                "mount_transport": "smbfs",
             }
+            entry["project_id"] = derive_project_id(entry)
             entries.append({key: value for key, value in entry.items() if value})
     return entries
 
@@ -144,10 +167,18 @@ def resolve_project_mapping(
 
     _, selected, local_root = max(matches, key=lambda item: item[0])
     result = dict(selected)
-    remote_root = result.get("remote_root", "")
+    registered_remote_root = result.get("remote_root", "")
     relative = target.relative_to(local_root)
-    if remote_root and relative.parts:
-        result["remote_root"] = posixpath.join(remote_root, *relative.parts)
+    working_subpath = relative.as_posix() if relative.parts else "."
+    result["project_root"] = registered_remote_root
+    result["artifact_bridge_path"] = str(local_root)
+    result["working_subpath"] = working_subpath
+    result["remote_working_path"] = (
+        posixpath.join(registered_remote_root, *relative.parts)
+        if registered_remote_root and relative.parts
+        else registered_remote_root
+    )
+    result["project_id"] = derive_project_id(result)
     result["local_path"] = str(target)
     return result
 

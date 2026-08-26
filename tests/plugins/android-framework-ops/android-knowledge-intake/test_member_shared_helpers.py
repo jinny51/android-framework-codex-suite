@@ -52,6 +52,7 @@ def test_project_registry_reads_current_wsl_env_contract(tmp_path: Path) -> None
         registry,
     )
     assert clues == [
+        ("source-access registry project_id", "rk-TVA10A2R"),
         ("source-access registry sdk_name", "TVA10A2R"),
         ("source-access registry remote_root", "/home/test35/rk/TVA10A2R"),
         ("source-access registry share", "TVA10A2R"),

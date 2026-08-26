@@ -6,7 +6,7 @@ macOS 原生 Android 服务器源码接入 skill。
 
 ## 用途
 
-该 skill 用于在 macOS 上通过 SMB/Samba 访问 Android 远程构建服务器源码。它负责发现 Samba 共享、挂载共享、扫描挂载树识别 Android 项目、推断平台，并登记本地路径到远程 Linux 源码路径的映射。
+该 skill 在 macOS 上提供 SMB/Samba 人工源码 CRUD 和产物桥。平台/项目识别由核心 helper 通过 `android-remote-channel` 在远程执行，平台脚本不扫描挂载源码。
 
 macOS 和 WSL 使用同一目录模型：源码默认挂到 `$HOME/work/<平台>/<项目>`。差异只在挂载和凭据实现：WSL 使用 CIFS 和本机 sudo，macOS 使用原生 SMB 和 Keychain。两边都不能从远端目录名直接猜平台或项目名。
 

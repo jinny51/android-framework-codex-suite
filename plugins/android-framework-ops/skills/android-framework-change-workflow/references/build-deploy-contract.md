@@ -63,7 +63,7 @@ Common framework artifacts:
 - Permission/config XML changes may require partition sync and reboot.
 - Overlay changes affect overlay APK or product/vendor/system overlay files.
 
-Use `scripts/artifact_probe.py` on out directories when artifact location is uncertain.
+`scripts/artifact_probe.py` is retired and exits 64. Do not recursively search a mounted output tree by basename. The remote build profile must provide the exact artifact path, and the validated remote artifact manifest must bind that path before the artifact bridge is read.
 
 ## After Delivery
 

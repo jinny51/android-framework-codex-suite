@@ -1,182 +1,214 @@
 ---
 name: android-remote-build-deploy
-description: "Use after Android source access is healthy on WSL or macOS and the source-access registry maps the local project to a remote Linux build root. Owns platform-neutral remote build setup, persistent build sessions, build profiles, artifact discovery, local adb deployment, and build-delivery evidence. Does not mount source or decide whether a Framework requirement is complete."
+description: "Use after Android source access has registered a remote Linux project. Owns channel-v2 remote discovery, profiles, checkpoints, module builds, artifact manifests, mounted artifact verification, and local adb delivery on WSL or macOS."
 ---
 
 # Android Remote Build Deploy
 
-Use this core skill for the build and delivery portion of Android Framework work on both WSL and macOS. Platform plugins only mount source and maintain the source-access registry; this skill consumes that registry and keeps one build/deploy implementation.
+Use this skill for the build and delivery portion of Android Framework work.
+Linux remains authoritative for source, Git/repo state, build configuration,
+build execution, and artifact identity. The administrator workstation owns only
+registry resolution, the narrow artifact bridge, and local adb.
+
+## Remote-Only Source Contract
+
+The mounted Android path is not a Codex source workspace. It exists for human
+source CRUD and as a narrowly scoped artifact bridge from a confirmed remote
+`PRODUCT_OUT` to local `adb`. Codex must not inspect source, infer modules from
+local Android.bp/Android.mk files, generate wrappers through the mount, or run
+source search, edits, Git, repo, checkpoints, or builds locally.
+
+Every build-side source operation runs at canonical `PROJECT_ROOT` through
+`android-remote-channel` protocol v2. Discovery, inference, and plans use the
+channel; remote `.codex` installation, profile writes, checkpoints, source
+writes, and builds use its exclusive project lock. Direct SSH is not a fallback.
+
+Local code may read only a manifest-confirmed artifact below the registered
+artifact bridge. Local destination memory, manifests, and delivery evidence
+belong under `$CODEX_HOME/artifacts/android-remote-build-deploy/<project-id>`.
 
 ## Boundary
 
 This skill owns:
 
-- resolving a mounted local project to its registered SSH host and remote source root
-- discovering the remote Android build target
-- creating project-local `.codex` build profiles and wrappers
-- running authoritative builds on the remote Linux source tree
-- using `android-remote-channel` for persistent SSH/tmux execution
-- locating build artifacts in the mounted source tree
-- pushing artifacts with the administrator machine's local `adb`
-- writing build-delivery evidence for patch capture
+- consuming the registered `SSH_HOST`, `PROJECT_ROOT`, `WORKING_SUBPATH`,
+  `PROJECT_ID`, and `ARTIFACT_BRIDGE_PATH`
+- installing a content-addressed runtime atomically under
+  `PROJECT_ROOT/.codex/remote-v2`
+- remote discovery and remote Android.bp/Android.mk profile inference
+- atomic remote configuration and profiles
+- remote checkpoints, including staged and unstaged Git changes
+- stable-command-ID module or explicit vendor full builds
+- remote-generated artifact manifests and local bridge re-verification
+- local adb delivery and build-delivery evidence
 
-It does not own:
+It does not own source mounting, Framework diagnosis, requirement acceptance,
+rollback decisions, or Git history changes requested by the user.
 
-- WSL CIFS or macOS SMB mounting; use the platform `android-source-access` skill
-- Framework diagnosis, code changes, final behavior verification, or rollback decisions; use `android-framework-change-workflow`
-- remote-device `adb`; devices are reached from the local WSL or macOS host
-- Git history changes unless the user explicitly requests them
+## Identity
 
-## Inputs
-
-Start from the current Android project path. The source-access registry under `$HOME/.servers/projects` is authoritative for:
-
-- local project path
-- SSH host
-- remote source root
-- platform
-- project name
-
-Both current registry formats are supported by the same resolver: WSL ENV registry and macOS JSON registry.
+Resolve a registry entry without converting a nested working path into a build
+root:
 
 ```bash
-python3 "<skill>/scripts/resolve_remote_mapping.py" \
-  --project "$PWD" \
-  > /tmp/android-project-remote-mapping.env
-source /tmp/android-project-remote-mapping.env
+python3 "<skill>/scripts/resolve_remote_mapping.py" --project "$HUMAN_SOURCE_PATH"
 ```
 
-Do not derive a remote path from local directory names when a registry mapping exists.
+Consume these fields:
 
-## Project Memory
+- `PROJECT_ROOT`: canonical build-workspace candidate registered for the project
+- `WORKING_SUBPATH`: path below the project root used for changed-file context
+- `REMOTE_WORKING_PATH`: diagnostic composition of the two fields
+- `PROJECT_ID`: stable local artifact-memory key
+- `ARTIFACT_BRIDGE_PATH`: mounted project root used only after manifest validation
 
-Project-local `.codex` files are build/deploy memory, not plugin source:
+The remote channel performs the final server identity and `realpath` canonicalization.
 
-- `.codex/build-push.config.sh`: SSH host, remote root, lunch target, product output
-- `.codex/build-push.sh`: remote plan/build wrapper
-- `.codex/build-session.sh`: sourceable persistent-session wrapper
-- `.codex/build-push.profiles.sh`: project build profiles
-- `.codex/build-push.memory.sh`: successful remote build memory
-- `.codex/artifact-destinations.json`: artifact-to-device destinations
-- `.codex/evidence/latest-build-delivery.json`: patch-capture evidence
-
-Generated output must stay in the project `.codex` directory or the configured Codex artifact directory. Never write output into this skill directory or plugin cache.
-
-## Setup
-
-Validate the registered mapping, then discover the remote build environment:
+## Formal entry
 
 ```bash
-"<skill>/scripts/discover-project.sh" \
-  --ssh-host "$SSH_HOST" \
-  --remote-root "$REMOTE_ROOT" \
-  --output /tmp/android-project-discovery.env
+ENTRY="<skill>/scripts/remote-build-v2.py"
+COMMON=(
+  --ssh-host "$SSH_HOST"
+  --project-root "$PROJECT_ROOT"
+  --working-subpath "$WORKING_SUBPATH"
+  --project-id "$PROJECT_ID"
+)
 ```
 
-Generate the project-local wrappers through the mounted source tree:
+### Install
 
 ```bash
-"<skill>/scripts/generate-build-push.sh" \
-  --repo "$PWD" \
-  --discovery-file /tmp/android-project-discovery.env
+python3 "$ENTRY" "${COMMON[@]}" install
 ```
 
-The generator runs on both macOS Bash 3.2 and WSL Bash. Generated build wrappers run on the remote Linux build server.
+Installation is content-addressed and atomically swaps
+`.codex/remote-v2/current`. If a legacy `.codex/build-push.sh` exists,
+installation fails with `LEGACY_WRAPPER_REVIEW_REQUIRED`. Inspect it, then use
+`--preserve-legacy` to install alongside it. That mode never overwrites the old
+wrapper and records its SHA-256 and known freshness/touch/destination
+capabilities. This prevents a test61-style wrapper from being silently degraded.
 
-## Profiles
+Every independent `install`, `configure`, and `profile-set` invocation uses a
+fresh ensure command id because remote runtime/config/profile state may have
+been cleaned after an earlier channel command completed. These operations are
+atomic and idempotent. Within one invocation, one uncertain SSH transport
+failure retries the identical id and payload to attach; finite wait timeout
+`124` returns immediately and is never silently doubled. Existing releases are
+verified file-by-file for expected SHA-256 and mode plus `release.sha256`;
+`REMOTE_V2_RELEASE_TAMPERED` is a hard stop and the evidence is not overwritten.
 
-Infer a profile from changed source paths when the caller has not supplied one:
+### Discover and configure
 
 ```bash
-"<skill>/scripts/infer-profile.sh" \
-  --repo "$PWD" \
-  --path frameworks/base/packages/SystemUI/src/com/example/File.java \
-  > /tmp/android-profile.env
+python3 "$ENTRY" "${COMMON[@]}" --preserve-legacy discover
+
+python3 "$ENTRY" "${COMMON[@]}" --preserve-legacy configure \
+  --envsetup build/envsetup.sh \
+  --lunch uis7885_2h10_native-userdebug-native \
+  --product-out out/target/product/uis7885_2h10 \
+  --build-entry debug_Jide.sh
 ```
 
-Store confirmed modules and artifacts in the project profile file:
+Discovery reads only the remote project. Configuration is an exclusive,
+atomic remote update. `--build-entry` is retained for an explicitly requested
+vendor full build; normal Framework delivery uses module builds.
+
+### Infer and register a profile
 
 ```bash
-"<skill>/scripts/generate-build-push.sh" \
-  --repo "$PWD" \
-  --only-profile \
-  --profile systemui \
-  --modules SystemUI \
-  --artifacts SystemUI.apk
+python3 "$ENTRY" "${COMMON[@]}" --preserve-legacy infer-profile \
+  --path services/core/java/com/example/File.java
+
+python3 "$ENTRY" "${COMMON[@]}" --preserve-legacy profile-set \
+  --profile framework-services \
+  --modules services \
+  --artifact 'services=out/target/product/uis7885_2h10/system/framework/services.jar|/system/framework/services.jar'
 ```
 
-Use stable requirement-oriented names such as `systemui`, `launcher3`, `settings`, `framework-services`, `framework-res`, or `bootimage`.
+Inference combines `WORKING_SUBPATH` with each changed path and inspects build
+files remotely. A profile must store exact artifact paths; basename searches are
+not accepted. Repeat `--artifact` for multiple outputs. Optional `--touch-path`
+preserves projects whose established incremental build requires touching a
+source or resource first.
 
-## Build
-
-Ensure the sourceable build-session wrapper exists on the remote source tree:
+### Plan and checkpoint
 
 ```bash
-"<skill>/scripts/ensure-build-session.sh" \
-  --repo "$PWD" \
-  --ssh-host "$SSH_HOST" \
-  --remote-root "$REMOTE_ROOT"
+python3 "$ENTRY" "${COMMON[@]}" --preserve-legacy plan \
+  --profile framework-services
+
+python3 "$ENTRY" "${COMMON[@]}" --preserve-legacy checkpoint \
+  --name before-services-build \
+  --purpose "preserve staged, unstaged, and untracked work"
 ```
 
-Use `android-remote-channel` for repeated commands and long builds. Initialize the build environment once in the remote tmux session, then reuse it:
+Checkpoint creation is an exclusive channel operation. It never inspects Git or
+repo state through the mount.
+
+### Build
+
+Use a stable command ID that the caller persists for the build transaction:
 
 ```bash
-source .codex/build-session.sh
-codex_session_init
-codex_session_build --profile systemui
+BUILD_COMMAND_ID="req-123-services-001"
+python3 "$ENTRY" "${COMMON[@]}" --preserve-legacy build \
+  --profile framework-services \
+  --command-id "$BUILD_COMMAND_ID"
 ```
 
-For a single foreground operation, the remote wrapper can run directly:
+The same ID and same command attach after a disconnect; they do not rebuild.
+The build runs with the exclusive project lock. The remote runtime records the
+build time window, requires each exact artifact to be freshly produced, hashes
+the file remotely, and creates
+`android-remote-build-artifact-manifest-v1`. The formal entry validates the
+closed context and saves manifests under:
 
-```bash
-ssh "$SSH_HOST" "cd '$REMOTE_ROOT' && bash .codex/build-push.sh plan --profile systemui"
-ssh "$SSH_HOST" "cd '$REMOTE_ROOT' && bash .codex/build-push.sh build --profile systemui"
+```text
+$CODEX_HOME/artifacts/android-remote-build-deploy/<project-id>/manifests/<command-id>/
 ```
 
-Do not run authoritative Android builds through the mounted local tree. On failure, return the wrapper's bounded `KEY_ERRORS` and saved log path.
+`--mode full` is allowed only with a confirmed vendor `--build-entry`; module
+mode is the default.
 
-Create a remote checkpoint before a broad or risky build/deploy attempt:
+## Local adb delivery
 
-```bash
-"<skill>/scripts/create-checkpoint.sh" \
-  --ssh-host "$SSH_HOST" \
-  --remote-root "$REMOTE_ROOT" \
-  --name before-systemui-build \
-  --purpose "preserve current Framework diff before build"
-```
-
-## Deploy
-
-Push from local WSL or macOS with the shared Python executor:
+Delivery is fail-closed. `push_artifacts.py` requires the remote manifest,
+trusted build context, and the registered mounted project root. It derives the
+local file path from the remote path, rejects symlink escape, rechecks size and
+SHA-256, then copies and re-hashes it into a private local staging directory.
+Local adb receives that private snapshot rather than the mutable SMB/CIFS path,
+closing the verification-to-push race.
 
 ```bash
 python3 "<skill>/scripts/push_artifacts.py" \
-  --artifact "$PWD/$PRODUCT_OUT_REL/$ARTIFACT_REL" \
-  --product-out "$PWD/$PRODUCT_OUT_REL" \
-  --destinations-file "$PWD/.codex/artifact-destinations.json" \
+  --artifact-manifest "$LOCAL_MANIFEST" \
+  --artifact-bridge-root "$ARTIFACT_BRIDGE_PATH" \
+  --expected-module services \
+  --expected-workspace-id "$WORKSPACE_ID" \
+  --expected-command-id "$BUILD_COMMAND_ID" \
+  --remote-source-root "$CANONICAL_PROJECT_ROOT" \
+  --remote-build-profile framework-services \
+  --product-out "$ARTIFACT_BRIDGE_PATH/out/target/product/uis7885_2h10" \
+  --destinations-file "$CODEX_HOME/artifacts/android-remote-build-deploy/$PROJECT_ID/artifact-destinations.json" \
+  --evidence-out "$CODEX_HOME/artifacts/android-remote-build-deploy/$PROJECT_ID/latest-build-delivery.json" \
   --learn-destinations \
-  --remote-build-host "$SSH_HOST" \
-  --remote-source-root "$REMOTE_ROOT" \
-  --remote-build-command "bash .codex/build-push.sh build --profile systemui" \
-  --remote-build-profile systemui \
-  --remote-artifact "$REMOTE_ROOT/$PRODUCT_OUT_REL/$ARTIFACT_REL" \
-  --artifact-transfer "mounted SMB/CIFS product output" \
-  --adb-serial "<serial>"
+  --adb-serial "$ADB_SERIAL"
 ```
 
-Set `ADB` when the executable is not on `PATH`. WSL may point it at `adb.exe`; macOS uses the native `adb` executable. The executor handles path conversion only when Windows `adb.exe` is selected.
+`ADB` may name Windows `adb.exe` under WSL; macOS uses native adb. Unverified
+legacy artifacts are accepted only with `--compat-unverified --dry-run`; that
+mode cannot invoke adb or produce a delivery PASS.
 
-Reboot or restart only as required by the caller, artifact type, or established project memory. `adb root`, remount, push, reboot, boot wait, and immediate device health are delivery evidence, not final requirement verification. The generated evidence uses `contract_version=akbs-verification-evidence/v2`, `scope=build_delivery`, and `requirement_acceptance=unverified`; a delivery `result=PASS` must not be promoted to requirement acceptance.
+Delivery evidence remains `scope=build_delivery` and
+`requirement_acceptance=unverified`. Return control to
+`android-framework-change-workflow` for behavior acceptance.
 
-## Output
+## Legacy CLI policy
 
-Return:
-
-- local project, SSH host, remote source root, platform, project, and registry path
-- profile, modules, artifacts, product output, and build log
-- build result and bounded key errors
-- local artifact path and remote artifact identity
-- adb serial, push destinations, reboot/restart result
-- `.codex/evidence/latest-build-delivery.json` path
-
-Hand control back to `android-framework-change-workflow` for requirement-specific verification, regression checks, rollback decisions, diagnostic cleanup, and final completion reporting.
+- `discover-project.sh`, `ensure-build-session.sh`, `infer-profile.sh`, and
+  `create-checkpoint.sh` are thin remote-v2 shims and require explicit remote
+  project identity.
+- Mounted `--repo` flows fail with exit `64`.
+- `generate-build-push.sh` is retired and always fails with migration guidance.
+- No legacy entry contains direct SSH or reads/writes mounted Android source.

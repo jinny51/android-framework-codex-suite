@@ -14,7 +14,6 @@ from akbs_intake.reports.identity import related_report_project_clues, same_day_
 from akbs_intake.search_usage import patch_search_feature_tokens, search_payload_has_member_decision, search_usage_payload
 from akbs_intake.patch.assets import (
     copy_patch_assets,
-    discover_patches_from_cwd,
     patch_infos_from_paths,
     patch_readme_usable_for_inference,
     synthetic_patch_info,
@@ -105,6 +104,19 @@ def build_patch_package(
             "直接 --patch 只允许单个独立补丁。多个补丁必须先用补丁采集技能（android-framework-patch-capture）"
             "按功能生成补丁包（patch package）；一个补丁包只能对应一个功能。"
         )
+    if patch_paths and workflow_contract_override not in {"manual_import", "historical_import"}:
+        raise SystemExit(
+            "直接 --patch 只允许显式 manual_import 或 historical_import；当前 Codex 工作流请使用 --patch-package。"
+        )
+    artifact_input_root = expanded_path(config["out_dir"]).parent.resolve()
+    for raw_package in patch_package_paths or []:
+        capture_package = Path(raw_package).expanduser().resolve()
+        try:
+            capture_package.relative_to(artifact_input_root)
+        except ValueError:
+            raise SystemExit(
+                f"--patch-package 必须位于 Codex artifacts 根目录下: {artifact_input_root}"
+            ) from None
     run_id = run_id or f"{ymd(date)}-{local_now(config):%H%M%S}-patch"
     scope_errors = patch_capture_package_scope_errors(patch_package_paths, summary, run_id)
     if scope_errors:
@@ -152,13 +164,14 @@ def build_patch_package(
         patches = [synthetic_patch_info(package_dir, date, project, config)]
         summary = summary if summary != "管理员手动归档补丁" else "合成测试补丁包"
         status = "candidate" if status == "validated" else status
-    elif not patch_entries:
-        patches = discover_patches_from_cwd(project, date)
     else:
         patches = []
     if not patches:
         if not patch_entries:
-            raise SystemExit("patch 模式未找到补丁，请使用 --patch/--patch-package 指定，或在当前目录/patches 下放置当天修改的 .patch 文件。")
+            raise SystemExit(
+                "patch 模式必须显式使用 --patch-package（remote capture artifact），"
+                "或在 manual_import/historical_import 中显式使用 --patch；不会从 cwd 自动发现补丁。"
+            )
     else:
         patch_entries.extend(copy_patch_assets(package_dir, patches, config, status=status, reuse_hint=status == "validated", note="管理员手动归档补丁"))
         patch_sources.extend([{"name": item.name, "source": str(item.path), "project": item.project} for item in patches])

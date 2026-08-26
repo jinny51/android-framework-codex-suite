@@ -9,17 +9,46 @@ Use this skill when a Framework feature is ready to be packaged as a reviewable 
 
 Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-framework-patch-intake` submits a valuable patch package through the server submission channel. The user's local `akbs-curation-maintainer` skill decides whether it later enters the knowledge repository.
 
+## Remote-Only Source Contract
+
+For Codex-authored work, Android source and source-tree metadata are authoritative
+only on `REMOTE_ROOT`. Patch capture must obtain `git status`, staged and
+unstaged binary diffs, branch, HEAD, remotes, repo paths, and changed-file facts
+from an immutable snapshot created through the stable `android-remote-channel`
+tmux session. Source-mutating preparation uses the exclusive project lock.
+
+The mounted Android path is only for human source CRUD and as an artifact bridge
+for confirmed build outputs used by local `adb`. Codex must not run this capture script against a
+mounted source root, inspect a mounted `.git`/`.repo`, read source evidence from
+mounted `.codex` files, or write a capture package below the mounted project.
+Local capture processing may read only a channel-produced snapshot, explicit
+non-source evidence, or a human-supplied immutable patch artifact. Packages and
+evidence belong under a safe `$CODEX_HOME/artifacts` location.
+
+Direct SSH is not permitted for capture. All remote source and Git operations go
+through `android-remote-channel`; a missing snapshot/channel is a hard stop.
+
+`capture_remote_snapshot.py` is the only current-workflow source entry. It embeds
+the deterministic snapshot generator in one protocol-v2 command, runs it with
+the exclusive workspace lock, transfers the resulting read-only JSON only after
+the channel command completes, and verifies its workspace id, command id,
+canonical remote root, age, closed schema, blob hashes, and snapshot SHA-256.
+`capture_framework_patch.py` rejects `--source-root` and caller patch files for
+`current_codex_skill`. `manual_import` and `historical_import` may instead
+consume an explicit immutable Git binary patch with `--patch-artifact` and its
+matching `--patch-repo-path`.
+
 The generated package includes patch content `sha1` for server-side deduplication. If a known daily/weekly incoming run produced the work context, pass `--related-report-run-id <run_id>` so intake can preserve an explicit report link. Weekly links are provenance only; weekly packages are not knowledge repository materialization candidates.
 
 Search evidence is development evidence, not a curation decision. `workflow_contract`, not `implementation_origin`, controls the pre-change search gate. A `current_codex_skill` package must record pre-change knowledge search before source edits. If no usable knowledge was found, record `--reuse-decision not_found` instead of omitting search evidence. If search has hits, close the search usage decision with `--reuse-decision reuse`, `adapt`, `reference_only`, `not_applicable`, or `not_found`; do not leave it as `unknown`. Record `--reuse-target`, `--reuse-match`, `--reuse-mismatch`, or `--reuse-reason` when a hit influenced the implementation. If no pre-change search happened, record that fact and keep the current-workflow package out of `validated`; do not invent a search record.
 
 `--implementation-origin` records who wrote the code. `--workflow-contract` records how the patch entered AKBS. They are independent: a manually written change can still be processed under `current_codex_skill`, while a truthful already-implemented import uses `manual_import` or `historical_import`. Import workflows may preserve missing pre-change search without earning search-loop credit. Never relabel either field to bypass a gate.
 
-`--project` is a high-priority hint only when it contains a company project anchor in the current recognition scope (`TVD`, `TVE`, `TVA`, or `TVI`). If `--project` is omitted or contains a generic label such as `mtk android16 Camera2`, the capture script must continue looking at source roots, repository paths, git branches/remotes, the WSL source-access registry, and feature README/diff/summary text before falling back to `unknown`.
+`--project` is a high-priority hint only when it contains a company project anchor in the current recognition scope (`TVD`, `TVE`, `TVA`, or `TVI`). If `--project` is omitted or contains a generic label such as `mtk android16 Camera2`, capture must continue looking at remote snapshot metadata, repository paths, git branches/remotes, the platform-neutral source-access registry, and feature README/diff/summary text before falling back to `unknown`.
 
 The structured project field must contain only the normalized company model. Any text outside that model is evidence text, not part of `project`: branch suffixes, customer suffixes, build branches, business labels, module labels, Chinese descriptions, and other non-standard trailing text stay in `project_inference.raw_inputs` or `basis`. Examples: `TVE1067M1_H031` -> `TVE1067M1`, `TVE1086U_MAIN_HANGYAN` -> `TVE1086U`, `TVE1091U福建移动高清` -> `TVE1091U`. Do not truncate `TVE1067M1` to `TVE1067M`; those are different projects.
 
-Project inference must be conservative. If `--project`, source roots, repository paths, git branches/remotes, WSL source-access registry, feature summary, or diff text expose multiple different TVD/TVE/TVA/TVI project models, the package must write `project=unknown`, preserve all candidates in `project_inference.candidates`, and record the conflict in `project_inference.limits`; `android-framework-patch-intake` keeps it out of `validated` status until the member-side Codex resolves the ambiguity and regenerates one complete patch package.
+Project inference must be conservative. If `--project`, remote snapshot metadata, repository paths, git branches/remotes, the platform-neutral source-access registry, feature summary, or diff text expose multiple different TVD/TVE/TVA/TVI project models, the package must write `project=unknown`, preserve all candidates in `project_inference.candidates`, and record the conflict in `project_inference.limits`; `android-framework-patch-intake` keeps it out of `validated` status until the member-side Codex resolves the ambiguity and regenerates one complete patch package.
 
 Patch capture uses the plugin rules module (`android_framework_ops.knowledge_rules`) before writing a package. The same project normalization, platform/Android version parsing, aggregate package detection, pre-change knowledge search classification, search usage decision closure checks, and patch asset pollution basics are reused by `android-framework-patch-intake` through the shared intake kernel during upload preparation. These checks are deterministic gates only; admin-side local curation still owns new knowledge, merge, archive, reject, and knowledge validity decisions. Server upload entrypoints must not load this module.
 
@@ -31,14 +60,31 @@ Patch capture uses the plugin rules module (`android_framework_ops.knowledge_rul
 - `android-daily-report-intake` and `android-weekly-report-intake`: own daily and weekly report incoming packages.
 - `android-knowledge-intake`: owns the shared kernel, setup, doctor, current configuration, and plugin update checks.
 
-## Quick Command
+## Current Workflow
 
-From the Android source git repository with local changes. Repeat `--source-root` when one feature spans multiple repo-managed Git repositories:
+First create and transfer one immutable snapshot. Repeat `--repo-path` when one
+feature spans multiple repo-managed Git repositories:
+
+```bash
+python3 "scripts/capture_remote_snapshot.py" \
+  --ssh-host "$SSH_HOST" \
+  --remote-root "$REMOTE_ROOT" \
+  --repo-path frameworks/base \
+  --repo-path packages/apps/Settings \
+  --command-id "$PATCH_SNAPSHOT_COMMAND_ID"
+```
+
+The command returns JSON containing `snapshot`, `snapshot_sha256`,
+`workspace_id`, `command_id`, and `remote_root`. Pass those exact values to the
+local packager:
 
 ```bash
 python3 "scripts/capture_framework_patch.py" \
-  --source-root /work/android/frameworks/base \
-  --source-root /work/android/packages/apps/Settings \
+  --remote-snapshot "$SNAPSHOT" \
+  --snapshot-sha256 "$SNAPSHOT_SHA256" \
+  --snapshot-workspace-id "$WORKSPACE_ID" \
+  --snapshot-command-id "$COMMAND_ID" \
+  --remote-source-root "$REMOTE_ROOT" \
   --platform rk14 \
   --feature display-policy-settings-entry \
   --summary "调整显示策略和设置入口" \
@@ -62,10 +108,11 @@ python3 "scripts/capture_framework_patch.py" \
   --build-result /path/to/build-result.json
 ```
 
-The script writes:
+Current packages are written below `$CODEX_HOME/artifacts` and include the
+validated snapshot as evidence:
 
 ```text
-.codex/patch-packages/YYYYMMDD-HHMMSS-feature/
+$CODEX_HOME/artifacts/android-framework-patch-capture/packages/<run-id>/
 ├── manifest.json
 ├── README.md
 ├── patches/
@@ -77,10 +124,25 @@ The script writes:
     ├── patch-problem-summary.json
     ├── risk-surface.json
     ├── coding-standard-check.json
+    ├── remote-source-snapshot.json
     ├── build-result.json
     ├── verification-result.json
     ├── search-before-change.json
     └── package-check.json
+```
+
+For a truthful existing-code import, do not manufacture a channel identity.
+Consume the human-supplied immutable patch explicitly:
+
+```bash
+python3 "scripts/capture_framework_patch.py" \
+  --workflow-contract manual_import \
+  --implementation-origin manual \
+  --patch-artifact /path/to/frameworks-base.patch \
+  --patch-repo-path frameworks/base \
+  --platform rk14 \
+  --feature existing-feature \
+  --summary "既有功能补丁导入"
 ```
 
 To submit later with `android-framework-patch-intake`, pass the whole capture package directory so
@@ -89,7 +151,7 @@ search-before-change, build, verification, and package-check evidence are preser
 ```bash
 python3 "<android-knowledge-intake shared kernel>/scripts/android_knowledge_intake.py" \
   --profile <member_alias> patch --prepare \
-  --patch-package .codex/patch-packages/<run-id>/ \
+  --patch-package "$CODEX_HOME/artifacts/android-framework-patch-capture/packages/<run-id>" \
   --project "TVE8402M" \
   --summary "补丁摘要" \
   --status candidate
@@ -100,14 +162,14 @@ python3 "<android-knowledge-intake shared kernel>/scripts/android_knowledge_inta
 Project recognition priority is:
 
 1. Explicit `--project` containing a `TVE`/`TVA`/`TVI` project model.
-2. Source context from the active git tree: `source_root`, git branch, git remote, and remembered WSL source-access registry entries.
+2. Source context from the remote-channel snapshot: remote root, repo path, git branch, git remote, and platform-neutral source-access registry entries.
 3. Feature package text: summary, feature name, README, repository paths, and diffs.
 
 Do not write generic labels such as `android16`, `Camera2`, or `mtk android16 Camera2` as the package project. Preserve them only as checked inference inputs.
 
-Before packaging, inspect `git status --short` for every source repository and preserve unrelated user work. Package only the intended feature change set. If unrelated files are dirty, stop and ask whether to split, stash, or include them.
+Before packaging, inspect `git status --short` for every source repository through the remote channel and preserve unrelated user work. Package only the intended feature change set. If unrelated files are dirty, stop and ask whether to split, stash, or include them.
 
-One capture package represents one feature. If the feature spans multiple repo-managed Git repositories, pass every affected repository with repeated `--source-root`; the package will contain one root `README.md` and one patch per affected repository. The skill, not the member, must write the function-boundary explanation into the generated README: function target, module scope, key anchors, and how each repository-level patch serves the same function target. If those facts are missing or the relationship cannot be explained from source changes, summary, and evidence, stop and ask the member for the missing factual input before generating or uploading the package.
+One capture package represents one feature. If the feature spans multiple repo-managed Git repositories, pass every affected remote repository with repeated `--repo-path` to `capture_remote_snapshot.py`; the package will contain one root `README.md` and one patch per affected repository. The skill, not the member, must write the function-boundary explanation into the generated README: function target, module scope, key anchors, and how each repository-level patch serves the same function target. If those facts are missing or the relationship cannot be explained from source changes, summary, and evidence, stop and ask the member for the missing factual input before generating or uploading the package.
 
 Before generating a package for intake, Codex must derive the actual requirement problem and implemented solution from the current request, diff, and verification evidence, then pass both `--problem-summary` and `--solution-summary`. The two arguments are a pair. They are not member-authored JSON overrides: the capture script validates them and writes the generated `patch-problem-summary.json`. Module-based inference remains a compatibility fallback for local draft or candidate material, but a generic low-confidence fallback is not sufficient reason to hand-edit generated JSON or stop permanently. Rerun the same capture command with the factual pair instead.
 
@@ -149,7 +211,11 @@ The generated feature README should contain facts first. Do not overclaim reuse,
 - remote build server, remote source path, artifact path, artifact SHA1, local transfer, local adb serial, and device delivery action when the member workflow spans a remote build server and a local device
 - risk and rollback notes
 
-When `android-remote-build-deploy/scripts/push_artifacts.py` has written `.codex/evidence/latest-build-delivery.json` under a source root, `capture_framework_patch.py` reads it automatically and merges it into `verification-result.json`. Automatic build/delivery evidence remains `scope=build_delivery` and `requirement_acceptance=unverified`; it can support a candidate package but cannot by itself satisfy `validated`. Requirement-level `scope=feature` and `requirement_acceptance=accepted` are emitted only when explicit device-behavior or qualified equivalent verification is present. Manual `--remote-build-*`, `--artifact-transfer`, `--local-artifact`, and `--adb-*` arguments remain available when automatic evidence cannot be collected.
+Current capture never reads `.codex` evidence through a mounted source root.
+Pass the build/delivery receipt explicitly with `--build-result`, or provide the
+structured `--remote-build-*`, `--artifact-transfer`, `--local-artifact`, and
+`--adb-*` facts. Build delivery remains `scope=build_delivery` and
+`requirement_acceptance=unverified`; it cannot by itself satisfy `validated`.
 
 `validated`, `candidate`, `draft`, `failed`, `blocked`, and platform labels are useful hints, not final truth. Future `android-framework-change-workflow` or knowledge-search skills should dynamically judge applicability from the stored facts.
 

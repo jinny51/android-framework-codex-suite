@@ -76,4 +76,6 @@ Before final reporting:
 4. Downgrade logs if they should remain for future field debugging.
 5. Keep permanent logs only when they add operational value and match local logging style.
 
-Use `scripts/diagnostic_log_audit.py <source-root>` as a final sweep.
+Use `scripts/diagnostic_log_audit.py --ssh-host <host> --remote-root <root>
+--path <changed-file>` as a bounded final sweep through `android-remote-channel`.
+Repeat `--path` for all changed source files; never pass a mounted source root.

@@ -42,6 +42,7 @@ usage() {
   4  mount 命令执行失败
   5  缺少密码
   6  挂载成功但 Keychain 保存失败
+  7  已有或新建挂载的实际 SMB source 与请求不一致
 USAGE_EOF
 }
 
@@ -63,6 +64,41 @@ server=
 save_creds=0
 non_interactive=0
 script_dir="$(cd "$(dirname "$0")" && pwd)"
+
+mounted_smb_source() {
+  local target="$1" line marker
+  marker=" on $target ("
+  while IFS= read -r line; do
+    case "$line" in
+      *"$marker"*) printf "%s" "${line%%"$marker"*}"; return 0 ;;
+    esac
+  done < <(mount 2>/dev/null || true)
+  return 1
+}
+
+normalized_smb_source() {
+  python3 - "$1" <<'PY'
+import posixpath
+import sys
+import urllib.parse
+
+value = sys.argv[1].strip().replace("\\040", " ")
+if value.startswith("smb://"):
+    value = "//" + value[6:]
+body = value[2:] if value.startswith("//") else value
+authority, slash, path = body.partition("/")
+if "@" in authority:
+    authority = authority.rsplit("@", 1)[1]
+authority = urllib.parse.unquote(authority).lower()
+path = urllib.parse.unquote(path)
+path = posixpath.normpath("/" + path).lstrip("/") if slash else ""
+print("//" + authority + ("/" + path if path and path != "." else ""))
+PY
+}
+
+smb_sources_match() {
+  [ "$(normalized_smb_source "$1")" = "$(normalized_smb_source "$2")" ]
+}
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -107,11 +143,14 @@ case "$mount_point" in
   *) die 2 "Android 源码挂载点必须位于 Android work root 下: ${work_root}" ;;
 esac
 
-# 检查是否已挂载
-if mount | grep -q " on $mount_point (" 2>/dev/null; then
+# 检查是否已挂载，并核对实际 SMB source。
+actual_source="$(mounted_smb_source "$mount_point" || true)"
+if [ -n "$actual_source" ]; then
+  smb_sources_match "$actual_source" "$share" || die 7 "挂载点已由其他 SMB source 占用: actual=${actual_source} expected=${share}"
   echo "MOUNT_POINT=$mount_point"
   echo "MOUNT_STATUS=already_mounted"
   echo "SHARE_URL=$share"
+  echo "MOUNT_SOURCE=$actual_source"
   exit 0
 fi
 
@@ -183,6 +222,12 @@ if [ "$mount_ok" = false ]; then
 fi
 rm -f "$mount_error_file"
 
+actual_source="$(mounted_smb_source "$mount_point" || true)"
+if [ -z "$actual_source" ] || ! smb_sources_match "$actual_source" "$share"; then
+  umount "$mount_point" >/dev/null 2>&1 || true
+  die 7 "SMB 挂载返回成功但 source 核对失败: actual=${actual_source:-missing} expected=${share}"
+fi
+
 # 挂载成功，保存凭据（如果 --save-credentials）
 if [ "$save_creds" -eq 1 ] && [ "$guest" -ne 1 ] && [ -n "$remote_user" ] && [ -n "$server" ]; then
   # shellcheck disable=SC1091
@@ -207,3 +252,4 @@ mount_url=""
 echo "MOUNT_POINT=$mount_point"
 echo "MOUNT_STATUS=mounted"
 echo "SHARE_URL=$share"
+echo "MOUNT_SOURCE=$actual_source"

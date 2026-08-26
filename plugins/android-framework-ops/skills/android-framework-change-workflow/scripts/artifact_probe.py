@@ -1,56 +1,21 @@
 #!/usr/bin/env python3
-"""Locate common Android framework build artifacts under an out directory."""
+"""Retired local artifact basename scanner."""
 
 from __future__ import annotations
 
-import argparse
-from pathlib import Path
+import sys
 
 
-DEFAULT_NAMES = [
-    "framework.jar",
-    "services.jar",
-    "framework-res.apk",
-    "SystemUI.apk",
-    "Launcher3.apk",
-    "Launcher3QuickStep.apk",
-]
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("root", help="Build output root to search")
-    parser.add_argument("--name", action="append", help="Artifact filename to search for")
-    parser.add_argument("--max-results", type=int, default=80)
-    return parser.parse_args()
+MIGRATION_MESSAGE = (
+    "artifact_probe.py is retired: local recursive basename scans of mounted Android output "
+    "are forbidden. Resolve an exact artifact path from the remote build profile and "
+    "validated remote artifact manifest."
+)
 
 
 def main() -> int:
-    args = parse_args()
-    root = Path(args.root)
-    names = set(args.name or DEFAULT_NAMES)
-    if not root.exists():
-        print(f"Root does not exist: {root}")
-        return 2
-
-    matches: list[Path] = []
-    for path in root.rglob("*"):
-        if path.is_file() and path.name in names:
-            matches.append(path)
-            if len(matches) >= args.max_results:
-                break
-
-    if not matches:
-        print("No matching artifacts found.")
-        return 1
-
-    for path in sorted(matches):
-        try:
-            stat = path.stat()
-            print(f"{path}\t{stat.st_size} bytes")
-        except OSError:
-            print(path)
-    return 0
+    print(MIGRATION_MESSAGE, file=sys.stderr)
+    return 64
 
 
 if __name__ == "__main__":

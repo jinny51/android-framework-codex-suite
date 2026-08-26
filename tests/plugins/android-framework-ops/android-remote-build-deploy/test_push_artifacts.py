@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -35,6 +36,39 @@ DIAGNOSTICS_SCRIPT = (
     / "collect_diagnostics.sh"
 )
 CANONICAL_OUTPUT_HELPER = REPO_ROOT.parent / "maintainer" / "scripts" / "akbs_outputs.py"
+LIB_ROOT = REPO_ROOT / "plugins" / "android-framework-ops" / "lib"
+if str(LIB_ROOT) not in sys.path:
+    sys.path.insert(0, str(LIB_ROOT))
+
+from android_framework_ops.remote_artifact_manifest import create_remote_artifact_manifest
+
+
+def write_artifact_manifest(
+    root: Path,
+    artifact: Path,
+    *,
+    profile: str = "framework-services",
+    module: str = "services",
+    workspace_id: str = "workspace-test",
+    command_id: str = "build-test-001",
+) -> Path:
+    now = time.time_ns()
+    started = now - 2_000_000_000
+    mtime = now - 1_000_000_000
+    os.utime(artifact, ns=(mtime, mtime))
+    payload = create_remote_artifact_manifest(
+        artifact,
+        remote_root=root,
+        module=module,
+        profile=profile,
+        workspace_id=workspace_id,
+        command_id=command_id,
+        build_started_ns=started,
+        build_finished_ns=now,
+    )
+    path = root / f"{command_id}.manifest.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
 
 
 def parse_shell_output(text: str) -> dict[str, str]:
@@ -163,6 +197,7 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
                             "--dest",
                             "/system/framework/services.jar",
                             "--dry-run",
+                            "--compat-unverified",
                             "--evidence-out",
                             str(target),
                         ],
@@ -203,6 +238,7 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
                     "--dest",
                     "/system/framework/services.jar",
                     "--dry-run",
+                    "--compat-unverified",
                     "--evidence-out",
                     str(target),
                 ],
@@ -240,6 +276,7 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
                     "--dest",
                     "/system/framework/services.jar",
                     "--dry-run",
+                    "--compat-unverified",
                     "--evidence-out",
                     str(target),
                 ],
@@ -281,6 +318,7 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
                     "--dest",
                     "/system/framework/services.jar",
                     "--dry-run",
+                    "--compat-unverified",
                     "--evidence-out",
                     str(target),
                 ],
@@ -306,7 +344,10 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
             with self.subTest(command=command[0]):
                 result = subprocess.run(command, check=False, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn("不能写入", result.stderr)
+                if command[0] in {str(DISCOVERY_SCRIPT), str(CHECKPOINT_SCRIPT)}:
+                    self.assertIn("remote-v2", result.stderr)
+                else:
+                    self.assertIn("不能写入", result.stderr)
                 self.assertFalse(target.exists())
 
     def test_writes_remote_local_delivery_evidence(self) -> None:
@@ -315,6 +356,7 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
             artifact = root / "out" / "target" / "product" / "tve" / "system" / "framework" / "services.jar"
             artifact.parent.mkdir(parents=True)
             artifact.write_text("jar", encoding="utf-8")
+            manifest = write_artifact_manifest(root, artifact)
             fake_adb = root / "adb"
             fake_adb.write_text("#!/usr/bin/env bash\necho adb \"$@\"\n", encoding="utf-8")
             fake_adb.chmod(0o755)
@@ -328,6 +370,20 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
                     str(PUSH_SCRIPT),
                     "--artifact",
                     str(artifact),
+                    "--artifact-manifest",
+                    str(manifest),
+                    "--artifact-bridge-root",
+                    str(root),
+                    "--expected-module",
+                    "services",
+                    "--expected-workspace-id",
+                    "workspace-test",
+                    "--expected-command-id",
+                    "build-test-001",
+                    "--remote-source-root",
+                    str(root.resolve()),
+                    "--remote-build-profile",
+                    "framework-services",
                     "--dest",
                     "/system/framework/services.jar",
                     "--adb-serial",
@@ -337,18 +393,10 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
                     str(evidence),
                     "--remote-build-host",
                     "builder01",
-                    "--remote-source-root",
-                    "/build/android/TVE8402M",
                     "--remote-build-command",
                     "bash .codex/build-push.sh build --profile framework-services",
-                    "--remote-build-profile",
-                    "framework-services",
-                    "--remote-artifact",
-                    "/build/android/TVE8402M/out/target/product/tve/system/framework/services.jar",
-                    "--artifact-sha1",
-                    "0123456789abcdef0123456789abcdef01234567",
                     "--artifact-transfer",
-                    "scp builder01:/build/android/TVE8402M/out/target/product/tve/system/framework/services.jar services.jar",
+                    "registered artifact bridge",
                 ],
                 cwd=str(root),
                 env=env,
@@ -366,7 +414,8 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
             self.assertEqual(payload["scope"], "build_delivery")
             self.assertEqual(payload["requirement_acceptance"], "unverified")
             self.assertEqual(payload["remote_build"]["host"], "builder01")
-            self.assertEqual(payload["remote_build"]["artifacts"][0]["sha1"], "0123456789abcdef0123456789abcdef01234567")
+            self.assertTrue(payload["remote_build"]["manifest_verified"])
+            self.assertEqual(payload["remote_build"]["artifacts"][0]["module"], "services")
             self.assertEqual(payload["local_delivery"]["adb_serial"], "ABC123")
             self.assertEqual(payload["local_delivery"]["local_artifacts"], [str(artifact.resolve())])
             self.assertIn("push", payload["local_delivery"]["adb_actions"][0])
@@ -378,12 +427,18 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
             artifact = product_out / "system" / "framework" / "services.jar"
             artifact.parent.mkdir(parents=True)
             artifact.write_text("jar", encoding="utf-8")
+            manifest = write_artifact_manifest(root, artifact)
             fake_adb = root / "adb"
-            fake_adb.write_text("#!/usr/bin/env bash\necho adb \"$@\"\n", encoding="utf-8")
+            fake_adb.write_text(
+                "#!/usr/bin/env bash\nprintf 'adb %s\\n' \"$*\" >> \"$ADB_TEST_LOG\"\n",
+                encoding="utf-8",
+            )
             fake_adb.chmod(0o755)
+            adb_log = root / "adb.log"
             destinations = root / ".codex" / "artifact-destinations.json"
             env = os.environ.copy()
             env["ADB"] = str(fake_adb)
+            env["ADB_TEST_LOG"] = str(adb_log)
 
             result = subprocess.run(
                 [
@@ -391,6 +446,20 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
                     str(PUSH_SCRIPT),
                     "--artifact",
                     str(artifact),
+                    "--artifact-manifest",
+                    str(manifest),
+                    "--artifact-bridge-root",
+                    str(root),
+                    "--expected-module",
+                    "services",
+                    "--expected-workspace-id",
+                    "workspace-test",
+                    "--expected-command-id",
+                    "build-test-001",
+                    "--remote-source-root",
+                    str(root.resolve()),
+                    "--remote-build-profile",
+                    "framework-services",
                     "--product-out",
                     str(product_out),
                     "--destinations-file",
@@ -409,6 +478,10 @@ class PushArtifactsEvidenceTests(unittest.TestCase):
                 json.loads(destinations.read_text(encoding="utf-8")),
                 {"system/framework/services.jar": "/system/framework/services.jar"},
             )
+            push_lines = [line for line in adb_log.read_text().splitlines() if " push " in line]
+            self.assertEqual(len(push_lines), 1)
+            self.assertIn("codex-verified-artifacts-", push_lines[0])
+            self.assertNotIn(str(artifact), push_lines[0])
 
 
 class RemoteMappingTests(unittest.TestCase):
@@ -456,6 +529,12 @@ class RemoteMappingTests(unittest.TestCase):
 
             self.assertEqual(values["SSH_HOST"], "builder01")
             self.assertEqual(values["REMOTE_ROOT"], "/srv/android/TVA10A2R")
+            self.assertEqual(values["PROJECT_ROOT"], "/srv/android/TVA10A2R")
+            self.assertEqual(values["REMOTE_WORKING_PATH"], "/srv/android/TVA10A2R")
+            self.assertEqual(values["WORKING_SUBPATH"], ".")
+            self.assertEqual(values["PROJECT_ID"], "rk-TVA10A2R")
+            self.assertEqual(Path(values["ARTIFACT_BRIDGE_PATH"]), project.resolve())
+            self.assertEqual(values["MOUNT_TRANSPORT"], "cifs")
             self.assertEqual(values["PLATFORM"], "rk")
 
     def test_resolves_macos_json_registry_and_nested_path(self) -> None:
@@ -491,7 +570,16 @@ class RemoteMappingTests(unittest.TestCase):
             values = self.run_resolver(nested, registry)
 
             self.assertEqual(values["SSH_HOST"], "builder02")
-            self.assertEqual(values["REMOTE_ROOT"], "/srv/android/TVE1086M/frameworks/base")
+            self.assertEqual(values["REMOTE_ROOT"], "/srv/android/TVE1086M")
+            self.assertEqual(values["PROJECT_ROOT"], "/srv/android/TVE1086M")
+            self.assertEqual(values["WORKING_SUBPATH"], "frameworks/base")
+            self.assertEqual(
+                values["REMOTE_WORKING_PATH"],
+                "/srv/android/TVE1086M/frameworks/base",
+            )
+            self.assertEqual(values["PROJECT_ID"], "mtk-TVE1086M")
+            self.assertEqual(Path(values["ARTIFACT_BRIDGE_PATH"]), project.resolve())
+            self.assertEqual(values["MOUNT_TRANSPORT"], "smbfs")
             self.assertEqual(values["SDK_NAME"], "TVE1086M")
 
 

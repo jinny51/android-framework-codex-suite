@@ -317,10 +317,6 @@ fi
 
 echo "MOUNT_PLAN remote=$REMOTE_ROOT ssh=$SSH_HOST platform=${PLATFORM:-pending} sdk=${SDK_NAME:-pending} local=${LOCAL_PROJECT:-pending}"
 
-remote_root_probe_path() {
-  printf "%s" "$REMOTE_ROOT"
-}
-
 choose_ssh_host() {
   local i candidate candidate_server candidate_passwords_file install_output install_status
   local -a candidates servers
@@ -335,8 +331,7 @@ choose_ssh_host() {
   for i in "${!candidates[@]}"; do
     candidate="${candidates[$i]}"
     candidate_server="${servers[$i]:-${candidate#*@}}"
-    if ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$candidate" \
-      "test -d $(printf '%q' "$(remote_root_probe_path)")" >/dev/null 2>&1; then
+    if ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$candidate" true >/dev/null 2>&1; then
       SSH_HOST="$candidate"
       if [ "$server_name_user_provided" -eq 0 ]; then
         server_name="$candidate_server"
@@ -364,8 +359,7 @@ choose_ssh_host() {
       printf "%s\n" "$install_output"
     fi
     if [ "$install_status" -eq 0 ]; then
-      if ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$candidate" \
-        "test -d $(printf '%q' "$(remote_root_probe_path)")" >/dev/null 2>&1; then
+      if ssh -o BatchMode=yes -o ConnectTimeout="$connect_timeout" "$candidate" true >/dev/null 2>&1; then
         SSH_HOST="$candidate"
         if printf "%s\n" "$install_output" | grep -q '^SSH_KEY_INSTALLED '; then
           ssh_password_verified=1
@@ -530,11 +524,8 @@ if grep -q '^LOCAL_SUDO_AUTH mode=password$' "$mount_output"; then
   local_sudo_password_verified=1
 fi
 
-if [ ! -d "$LOCAL_PROJECT/build" ] && [ ! -d "$LOCAL_PROJECT/frameworks" ] && [ ! -d "$LOCAL_PROJECT/.repo" ]; then
-  echo "PROJECT_MARKERS_MISSING local=$LOCAL_PROJECT" >&2
-  echo "FAILED_HINT: 挂载成功了，但目标目录不像 Android 源码树；请确认远端 SDK 路径是否正确。" >&2
-  exit 1
-fi
+# Do not inspect the mounted source tree. Platform/project facts came from the
+# remote-channel inspection; mount-platform already verified the CIFS mount.
 
 if [ "$save_credentials" -eq 1 ] && [ "$samba_password_verified" -eq 1 ] && [ -n "$samba_password" ]; then
   echo "NOTICE: storing Samba credentials for reboot recovery under $HOME/.servers/credentials/" >&2

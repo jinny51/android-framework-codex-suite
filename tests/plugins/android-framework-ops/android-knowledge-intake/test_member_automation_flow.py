@@ -1091,7 +1091,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 executable, args = exec_calls[0]
                 self.assertEqual(executable, sys.executable)
                 self.assertEqual(args[0], sys.executable)
-                self.assertEqual(args[1], str(script_path))
+                self.assertEqual(Path(args[1]).resolve(), script_path.resolve())
                 self.assertEqual(args[2:], sys.argv[1:])
                 self.assertEqual(os.environ["CODEX_REPORT_PLUGIN_REEXEC_ATTEMPTED"], "1")
             finally:
@@ -2615,7 +2615,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
         self.assertTrue(callable(module.write_report))
         self.assertTrue(callable(module.write_report_view))
 
-    def test_daily_records_discovered_patch_without_formal_patch_assets(self) -> None:
+    def test_daily_does_not_discover_cwd_patch_without_capture_artifact(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             remote = seed_knowledge_remote(root)
@@ -2678,13 +2678,14 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(result["local_check"]["status"], "PASS")
             self.assertEqual(manifest["package_kind"], "daily_trace")
             self.assertFalse((package / "patches").exists())
-            self.assertTrue(
+            self.assertFalse(
                 any(
-                    item["kind"] == "possible_framework_change"
-                    and item["title"] == "mtk15-frameworks-base@statusbar-policy.patch"
-                    and "需要 patch-capture 补齐 case/variant/风险/验证证据" in item["missing_evidence"]
+                    item["title"] == "mtk15-frameworks-base@statusbar-policy.patch"
                     for item in findings["payload"]["items"]
                 )
+            )
+            self.assertTrue(
+                any(item["kind"] == "possible_framework_change" for item in findings["payload"]["items"])
             )
 
     def test_doctor_strict_passes_for_gray_profile_when_synthetic_is_explicitly_allowed(self) -> None:
@@ -2812,13 +2813,17 @@ class MemberAutomationFlowTests(unittest.TestCase):
                         "--source-root",
                         str(source_root),
                         "--out-dir",
-                        "capture-out",
+                        str(root / "artifacts" / "android-framework-patch-capture"),
                         "--run-id",
                         "20260601-120000-patch",
                         "--platform",
                         "mtk15",
                         "--feature",
                         "volume-dialog-position",
+                        "--workflow-contract",
+                        "manual_import",
+                        "--implementation-origin",
+                        "manual",
                         "--summary",
                         "通知音量弹窗位置适配",
                         "--project",
@@ -3401,6 +3406,8 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     "20260601-231000-patch",
                     "--patch",
                     str(patch_file),
+                    "--workflow-contract",
+                    "manual_import",
                     "--project",
                     "Generic Framework",
                     "--summary",

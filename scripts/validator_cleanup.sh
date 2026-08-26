@@ -25,7 +25,10 @@ validator_cleanup_install() {
   VALIDATOR_CLEANUP_REPO_ROOT="$(cd "$repo_root" && pwd)"
   VALIDATOR_CLEANUP_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/validator_hygiene.py"
   local -a cleanup_paths=()
-  mapfile -t cleanup_paths < <(
+  local cleanup_path
+  while IFS= read -r cleanup_path; do
+    cleanup_paths+=("$cleanup_path")
+  done < <(
     PYTHONDONTWRITEBYTECODE=1 python3 "$VALIDATOR_CLEANUP_HELPER" create \
       --repo-root "$VALIDATOR_CLEANUP_REPO_ROOT"
   )

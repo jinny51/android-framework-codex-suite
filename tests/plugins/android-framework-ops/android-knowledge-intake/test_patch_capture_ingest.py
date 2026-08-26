@@ -26,7 +26,9 @@ def write_json(path: Path, payload: dict) -> None:
 
 
 def prepare_patch_package(*args, **kwargs):
-    """Delegate current patch-package fixture setup to the public builder."""
+    """Delegate fixtures while making every direct patch an explicit manual import."""
+    if kwargs.get("patch_paths") and "workflow_contract" not in kwargs:
+        kwargs["workflow_contract"] = "manual_import"
     return intake.prepare_patch_package(*args, **kwargs)
 
 
@@ -484,6 +486,49 @@ class PatchCaptureIngestTests(unittest.TestCase):
             "timezone": "Asia/Shanghai",
             "synthetic_data": "false",
         }
+
+    def test_patch_builder_never_discovers_implicit_cwd_patch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            mounted = root / "mounted-android"
+            mounted.mkdir()
+            (mounted / "rk14-frameworks-base@must-not-discover.patch").write_text(
+                "mounted source patch\n", encoding="utf-8"
+            )
+
+            with patch.object(Path, "cwd", return_value=mounted), self.assertRaises(SystemExit) as ctx:
+                intake.prepare_patch_package(
+                    dt.date(2026, 8, 26),
+                    self.config(root),
+                    run_id="20260826-120000-patch",
+                    patch_paths=[],
+                    patch_package_paths=[],
+                    project="TVE1088U",
+                    status="candidate",
+                    schema_version="1",
+                )
+
+            self.assertIn("不会从 cwd 自动发现补丁", str(ctx.exception))
+
+    def test_direct_patch_requires_explicit_manual_or_historical_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patch_path = root / "rk14-frameworks-base@manual.patch"
+            patch_path.write_text("manual patch\n", encoding="utf-8")
+
+            with self.assertRaises(SystemExit) as ctx:
+                intake.prepare_patch_package(
+                    dt.date(2026, 8, 26),
+                    self.config(root),
+                    run_id="20260826-120100-patch",
+                    patch_paths=[str(patch_path)],
+                    patch_package_paths=[],
+                    project="TVE1088U",
+                    status="candidate",
+                    schema_version="1",
+                )
+
+            self.assertIn("manual_import 或 historical_import", str(ctx.exception))
 
     def test_patch_facts_extract_added_xml_string_resource_names(self) -> None:
         facts = intake.patch_facts_from_text(
@@ -1123,7 +1168,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
             search_evidence = json.loads((package / "materials" / "evidence" / "search_before_change.json").read_text(encoding="utf-8"))
             manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
             payload = search_evidence["payload"]
-            self.assertEqual(manifest["workflow_contract"], "current_codex_skill")
+            self.assertEqual(manifest["workflow_contract"], "manual_import")
             self.assertTrue(payload["searched"])
             self.assertEqual(payload["reuse_decision"], "adapt")
             self.assertEqual(payload["queries"], ["显示策略 split screen"])
@@ -2012,7 +2057,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 self.config(root),
                 run_id="20260608-121000-template-companion",
                 patch_paths=[str(standalone_patch)],
-                patch_package_paths=[str(create_capture_package(root))],
+                patch_package_paths=[str(create_capture_package(root, workflow_contract="manual_import"))],
                 project="TVE1067M",
                 summary="功能级说明合格但补丁说明未补齐",
                 status="validated",

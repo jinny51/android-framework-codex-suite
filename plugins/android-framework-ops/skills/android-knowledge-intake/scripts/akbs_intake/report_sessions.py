@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import random
 import re
-import subprocess
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 try:
     from zoneinfo import ZoneInfo
@@ -20,6 +20,7 @@ from android_framework_ops.knowledge_rules import (
     canonical_company_project,
     find_company_project,
 )
+from android_framework_ops.project_registry import expand_home_path, registry_entries
 from akbs_intake.config import expanded_path
 from akbs_intake.reports.common import week_bounds, ymd
 from akbs_intake.reports.scope import path_scope_inference
@@ -31,8 +32,6 @@ from akbs_intake.session_privacy import (
     session_extraction_workspace,
 )
 
-
-RunCommand = Callable[[list[str]], subprocess.CompletedProcess[str]]
 
 REMOTE_PATH_RE = re.compile(r"(?:/[A-Za-z0-9_.@+-]+){2,}")
 NOISE_TEXT_RE = re.compile(
@@ -75,6 +74,8 @@ class SessionWork:
     thread_name: str = ""
     cwd: str = ""
     project: str = "未识别项目"
+    project_id: str = ""
+    registered_android_mount: bool = False
     messages: list[str] = field(default_factory=list)
     outcomes: list[str] = field(default_factory=list)
     commands: list[str] = field(default_factory=list)
@@ -204,26 +205,35 @@ def should_skip_session(work: SessionWork) -> bool:
     return is_noise_session(work)
 
 
-def git_root(path: str, run_command: RunCommand) -> Path | None:
-    if not path:
-        return None
-    cp = run_command(["git", "-C", path, "rev-parse", "--show-toplevel"])
-    if cp.returncode != 0:
-        return None
-    root = cp.stdout.strip()
-    return Path(root) if root else None
-
-
-def git_branch_or_name(path: str, run_command: RunCommand) -> str:
-    cp = run_command(["git", "-C", path, "branch", "--show-current"])
-    branch = cp.stdout.strip()
-    if branch:
-        return branch
-    root = git_root(path, run_command)
-    return root.name if root else Path(path).name
+def registered_android_mapping(raw_cwd: str, config: dict[str, str]) -> dict[str, str]:
+    """Resolve a mounted Android cwd lexically without touching mounted source."""
+    if not raw_cwd:
+        return {}
+    target = Path(os.path.abspath(os.path.expanduser(raw_cwd)))
+    registry_dir = expanded_path(
+        config.get("source_access_registry_dir", "~/.servers/projects")
+    )
+    matches: list[tuple[int, dict[str, str]]] = []
+    for entry in registry_entries(registry_dir):
+        local_path = str(entry.get("local_path") or "")
+        if not local_path:
+            continue
+        local_root = Path(os.path.abspath(os.path.expanduser(expand_home_path(local_path))))
+        try:
+            target.relative_to(local_root)
+        except ValueError:
+            continue
+        matches.append((len(local_root.parts), entry))
+    return dict(max(matches, key=lambda item: item[0])[1]) if matches else {}
 
 
 def project_name(work: SessionWork) -> str:
+    if work.registered_android_mount:
+        for text in (work.project, work.project_id):
+            project = find_company_project(text)
+            if project:
+                return project
+        return work.project_id or MISSING_REPORT_PROJECT
     candidates = [work.project, work.cwd, work.thread_name, *work.messages, *work.outcomes]
     for text in candidates:
         project = find_company_project(text)
@@ -372,7 +382,13 @@ def is_report_generation_request(text: str) -> bool:
     return bool(REPORT_GENERATION_REQUEST_RE.search(str(text or "")))
 
 
-def parse_sessions(config: dict[str, str], dates: set[dt.date], run_command: RunCommand) -> list[SessionWork]:
+def parse_sessions(
+    config: dict[str, str],
+    dates: set[dt.date],
+    _legacy_run_command: Optional[Callable[[list[str]], Any]] = None,
+) -> list[SessionWork]:
+    # Keep the historical callback argument for callers that still pass it,
+    # but never invoke it: session cwd Git/source discovery is retired.
     consent = require_report_session_consent(config, dates, synthetic=False)
     codex_home = expanded_path(config["codex_home"])
     sessions: list[SessionWork] = []
@@ -381,6 +397,8 @@ def parse_sessions(config: dict[str, str], dates: set[dt.date], run_command: Run
             for file in session_files(codex_home, dates, config.get("timezone", "Asia/Shanghai")):
                 work = SessionWork()
                 raw_cwd = ""
+                explicit_project_id = ""
+                explicit_project = ""
                 for line in file.read_text(encoding="utf-8", errors="ignore").splitlines():
                     try:
                         row = json.loads(line)
@@ -394,6 +412,12 @@ def parse_sessions(config: dict[str, str], dates: set[dt.date], run_command: Run
                         work.session_id = str(payload.get("id", "") or work.session_id)
                         if consent.fields & {"project_hint", "work_scope_hint", "patch_discovery"}:
                             raw_cwd = str(payload.get("cwd", "") or raw_cwd)
+                            explicit_project_id = str(
+                                payload.get("project_id") or payload.get("projectId") or explicit_project_id
+                            )
+                            explicit_project = str(
+                                payload.get("project") or payload.get("sdk_name") or explicit_project
+                            )
                         continue
                     if row.get("type") != "response_item":
                         continue
@@ -423,19 +447,27 @@ def parse_sessions(config: dict[str, str], dates: set[dt.date], run_command: Run
                     work.session_id = match.group(1) if match else file.stem
                 work.session_id = minimal_source_id(work.session_id)
                 if raw_cwd:
+                    registered_mapping = registered_android_mapping(raw_cwd, config)
                     if "work_scope_hint" in consent.fields:
                         source_scope = path_scope_inference(raw_cwd)
                         work.source_work_type_hint = source_scope.work_type
                         work.source_app_name_hint = source_scope.app_name
                         work.source_scope_basis = list(source_scope.basis)
                         work.source_scope_conflict = source_scope.conflict
-                    if consent.fields & {"project_hint", "patch_discovery"}:
+                    if registered_mapping:
+                        work.registered_android_mount = True
+                        work.project_id = explicit_project_id or str(
+                            registered_mapping.get("project_id") or ""
+                        )
+                        work.project = explicit_project or work.project_id
+                        # Never retain the mounted cwd as a local patch-discovery root.
+                        work.cwd = ""
+                    elif consent.fields & {"project_hint", "patch_discovery"}:
                         anchored = find_company_project(raw_cwd)
                         if anchored:
                             work.project = anchored
-                    if "patch_discovery" in consent.fields and Path(raw_cwd).exists():
-                        work.cwd = raw_cwd
-                        work.project = git_branch_or_name(raw_cwd, run_command)
+                        # Use cwd only as this-function string input. Never retain,
+                        # stat, or reuse it as a local Git/patch discovery root.
                 if should_skip_session(work) or (not work.messages and not work.outcomes):
                     continue
                 work.project = project_name(work)

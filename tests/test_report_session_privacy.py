@@ -392,7 +392,7 @@ def test_package_contains_only_minimal_session_provenance_and_sanitized_derivati
     assert "/home/member/private" not in package_text
 
 
-def test_temporary_extraction_is_removed_after_failure(tmp_path: Path) -> None:
+def test_temporary_extraction_is_removed_without_local_git_callback(tmp_path: Path) -> None:
     config = base_config(tmp_path)
     date = dt.date.today() - dt.timedelta(days=2)
     cwd = tmp_path / "TVE1086U"
@@ -401,15 +401,12 @@ def test_temporary_extraction_is_removed_after_failure(tmp_path: Path) -> None:
     consent(config, date, "work_summary", "project_hint", "patch_discovery")
     temporary_parent = tmp_path / "session-tmp"
 
-    def failing_command(_command: list[str]) -> subprocess.CompletedProcess[str]:
-        raise RuntimeError("bottom-exception-secret")
+    def forbidden_command(_command: list[str]) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("session cwd Git callback must not run")
 
     with patch.dict(os.environ, {"AKBS_REPORT_SESSION_TMPDIR": str(temporary_parent)}):
-        with pytest.raises(SystemExit) as caught:
-            report_sessions.parse_sessions(config, {date}, failing_command)
+        sessions = report_sessions.parse_sessions(config, {date}, forbidden_command)
 
-    rendered_error = str(caught.value)
-    assert "bottom-exception-secret" not in rendered_error
-    assert str(cwd) not in rendered_error
+    assert len(sessions) == 1
     assert temporary_parent.is_dir()
     assert list(temporary_parent.iterdir()) == []

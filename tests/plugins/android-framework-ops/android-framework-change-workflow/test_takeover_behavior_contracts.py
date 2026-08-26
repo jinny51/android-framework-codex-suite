@@ -82,38 +82,17 @@ def test_platform_plugins_only_own_source_access_while_core_owns_build_and_chann
     assert "android-remote-build-deploy" not in wsl_skills | mac_skills
 
 
-def test_missing_adb_fails_before_delivery_evidence_is_written(tmp_path: Path) -> None:
+def test_missing_adb_fails_before_delivery_evidence_is_written(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     project = tmp_path / "project"
     project.mkdir()
-    artifact = project / "services.jar"
-    artifact.write_text("jar", encoding="utf-8")
     evidence = project / ".codex" / "evidence" / "latest-build-delivery.json"
-    env = os.environ.copy()
-    env["ADB"] = str(tmp_path / "missing-adb")
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(PUSH_SCRIPT),
-            "--artifact",
-            str(artifact),
-            "--dest",
-            "/system/framework/services.jar",
-            "--dry-run",
-            "--evidence-out",
-            str(evidence),
-        ],
-        cwd=project,
-        env=env,
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-
-    assert result.returncode != 0
-    assert "adb not found" in result.stderr
+    module = load_push_module()
+    monkeypatch.setenv("ADB", str(tmp_path / "missing-adb"))
+    with pytest.raises(SystemExit, match="adb not found"):
+        module.adb_command()
     assert not evidence.exists()
 
 
@@ -136,6 +115,7 @@ def test_build_delivery_evidence_cannot_claim_unscoped_final_acceptance() -> Non
     payload = module.delivery_evidence(
         args,
         [(Path("/tmp/services.jar"), "/system/framework/services.jar")],
+        [],
     )
     delivery_scope = payload.get("scope") in {"delivery", "artifact_delivery", "build_delivery"}
     acceptance_unverified = payload.get("requirement_acceptance") in {False, "unverified", "not_verified"}

@@ -6,81 +6,74 @@ usage() {
 Usage:
   inspect-android-sdk.sh --ssh-host HOST --remote-root /remote/sdk/root [options]
 
-Inspect an Android SDK source root over SSH and quickly infer:
-  PLATFORM: rk, unisoc, or mtk
-  SDK_NAME: best local project folder name, preferring key-repo branch names
-            such as frameworks/base or device/vendor/kernel branches
-  PROJECT_BRANCH: branch used as the SDK/project name when found
-  ANDROID_PRODUCT_NAME: Android lunch/product name when found
-  TARGET_BOARD_PLATFORM: SoC/platform value when found
+Inspect Android source exclusively through android-remote-channel v2. This
+adapter never reads a CIFS mount and never invokes SSH directly.
 
-The remote path is treated only as a source root. Path segments such as
-work/unisoc or the final directory basename are not used as platform/project
-fallbacks. If source inspection cannot determine a missing platform or project
-name, the script stops and asks the caller to collect that value from the user.
-If user-stated values conflict with source evidence, the script reports a
-conflict and stops instead of choosing a side unless the caller passes an
-explicit accept flag after user confirmation.
+Required integration:
+  --channel-script PATH     android-remote-channel.sh from android-framework-ops.
+  --inspection-helper PATH  remote_source_inspection.py from android-framework-ops.
+
+The paths may instead be supplied with ANDROID_REMOTE_CHANNEL_SCRIPT and
+ANDROID_REMOTE_SOURCE_INSPECTION_HELPER.
 
 Options:
-  --platform NAME             User-stated platform. Must be unisoc, mtk, or rk.
+  --platform NAME             User-stated platform: unisoc, mtk, or rk.
   --sdk-name NAME             User-stated SDK/project name.
-  --accept-platform-conflict  Continue when --platform conflicts with source evidence.
-  --accept-sdk-name-conflict  Continue when --sdk-name conflicts with source evidence.
+  --accept-platform-conflict  Continue after explicit user confirmation.
+  --accept-sdk-name-conflict  Continue after explicit user confirmation.
+  --mode strict|discovery     Default: strict.
 USAGE
 }
 
-ssh_host=
-remote_root=
-platform_override=
-sdk_name_override=
+die() {
+  echo "ERROR: $*" >&2
+  exit 2
+}
+
+ssh_host=""
+remote_root=""
+platform=""
+sdk_name=""
 accept_platform_conflict=0
 accept_sdk_name_conflict=0
+mode=strict
+channel_script="${ANDROID_REMOTE_CHANNEL_SCRIPT:-}"
+inspection_helper="${ANDROID_REMOTE_SOURCE_INSPECTION_HELPER:-}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --ssh-host) ssh_host="${2:?missing value for --ssh-host}"; shift 2 ;;
     --remote-root) remote_root="${2:?missing value for --remote-root}"; shift 2 ;;
-    --platform) platform_override="${2:?missing value for --platform}"; shift 2 ;;
-    --sdk-name) sdk_name_override="${2:?missing value for --sdk-name}"; shift 2 ;;
+    --platform) platform="${2:?missing value for --platform}"; shift 2 ;;
+    --sdk-name) sdk_name="${2:?missing value for --sdk-name}"; shift 2 ;;
     --accept-platform-conflict) accept_platform_conflict=1; shift ;;
     --accept-sdk-name-conflict) accept_sdk_name_conflict=1; shift ;;
+    --mode) mode="${2:?missing value for --mode}"; shift 2 ;;
+    --channel-script) channel_script="${2:?missing value for --channel-script}"; shift 2 ;;
+    --inspection-helper) inspection_helper="${2:?missing value for --inspection-helper}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
-    *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
+    *) die "unknown argument: $1" ;;
   esac
 done
 
-[ -n "$ssh_host" ] || { echo "--ssh-host is required" >&2; exit 2; }
-[ -n "$remote_root" ] || { echo "--remote-root is required" >&2; exit 2; }
-if [ -n "$platform_override" ]; then
-  case "$platform_override" in
-    unisoc|mtk|rk) ;;
-    *) echo "unsupported platform '$platform_override'; expected unisoc, mtk, or rk" >&2; exit 2 ;;
-  esac
-fi
-if [ "$accept_platform_conflict" -eq 1 ] && [ -z "$platform_override" ]; then
-  echo "--accept-platform-conflict requires --platform" >&2
-  exit 2
-fi
-if [ "$accept_sdk_name_conflict" -eq 1 ] && [ -z "$sdk_name_override" ]; then
-  echo "--accept-sdk-name-conflict requires --sdk-name" >&2
-  exit 2
-fi
+[ -n "$ssh_host" ] || die "--ssh-host is required"
+[ -n "$remote_root" ] || die "--remote-root is required"
+case "$platform" in ""|unisoc|mtk|rk) ;; *) die "unsupported platform '$platform'" ;; esac
+case "$mode" in strict|discovery) ;; *) die "--mode must be strict or discovery" ;; esac
+[ "$accept_platform_conflict" -eq 0 ] || [ -n "$platform" ] || die "--accept-platform-conflict requires --platform"
+[ "$accept_sdk_name_conflict" -eq 0 ] || [ -n "$sdk_name" ] || die "--accept-sdk-name-conflict requires --sdk-name"
+[ -f "$channel_script" ] || die "REMOTE_CHANNEL_REQUIRED: pass --channel-script or set ANDROID_REMOTE_CHANNEL_SCRIPT"
+[ -f "$inspection_helper" ] || die "REMOTE_INSPECTION_HELPER_REQUIRED: pass --inspection-helper or set ANDROID_REMOTE_SOURCE_INSPECTION_HELPER"
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-remote_inspector="$script_dir/../../../lib/android_source_access/remote_inspector.sh"
-[ -r "$remote_inspector" ] || {
-  echo "remote SDK inspector is missing: $remote_inspector" >&2
-  exit 3
-}
+args=(
+  --channel-script "$channel_script"
+  --ssh-host "$ssh_host"
+  --remote-root "$remote_root"
+  --mode "$mode"
+)
+[ -z "$platform" ] || args+=(--platform "$platform")
+[ -z "$sdk_name" ] || args+=(--sdk-name "$sdk_name")
+[ "$accept_platform_conflict" -eq 0 ] || args+=(--accept-platform-conflict)
+[ "$accept_sdk_name_conflict" -eq 0 ] || args+=(--accept-sdk-name-conflict)
 
-remote_command="bash -s -- $(printf '%q' "$remote_root") $(printf '%q' "$platform_override") $(printf '%q' "$sdk_name_override") $(printf '%q' "$accept_platform_conflict") $(printf '%q' "$accept_sdk_name_conflict") strict"
-connect_timeout="${SSH_CONNECT_TIMEOUT:-10}"
-ssh \
-  -o BatchMode=yes \
-  -o ConnectTimeout="$connect_timeout" \
-  -o ServerAliveInterval=15 \
-  -o ServerAliveCountMax=2 \
-  "$ssh_host" \
-  "$remote_command" \
-  <"$remote_inspector"
+exec python3 "$inspection_helper" "${args[@]}"

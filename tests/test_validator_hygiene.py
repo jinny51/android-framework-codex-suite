@@ -61,6 +61,20 @@ def test_shell_validators_install_exit_cleanup_or_remote_owned_cleanup() -> None
     assert 'cleanup-private' in macos and '>/dev/null 2>&1 || true' not in macos
 
 
+def test_validator_cleanup_supports_macos_system_bash() -> None:
+    cleanup = REPO_ROOT / "scripts" / "validator_cleanup.sh"
+    source = cleanup.read_text(encoding="utf-8")
+    assert "mapfile" not in source
+    syntax = subprocess.run(
+        ["/bin/bash", "-n", str(cleanup)],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert syntax.returncode == 0, syntax.stderr
+
+
 def test_aggregate_declares_the_installed_plugin_creator_validator_after_cleanup_setup() -> None:
     aggregate = (REPO_ROOT / "scripts/validate_plugins.sh").read_text(encoding="utf-8")
     installed_validator = 'skills/.system/plugin-creator/scripts/validate_plugin.py'

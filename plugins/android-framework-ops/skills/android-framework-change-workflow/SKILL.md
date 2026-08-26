@@ -11,6 +11,30 @@ Use this skill as the framework engineer's operating protocol. It owns requireme
 
 When user-provided skills, project-local rules, or review workflows exist, preserve them. Use this skill only for Android Framework-specific source access, diagnosis, build/deploy coordination, verification, patch capture, and knowledge reuse.
 
+## Remote-Only Source Contract
+
+The mounted Android path has exactly two consumers:
+
+- a human using an editor, IDE, Finder, or shell for source CRUD
+- the local artifact bridge reading confirmed build outputs for local `adb` delivery
+
+It is not a Codex source workspace. Codex must not use the mounted path as its
+working directory and must not read, search, edit, scan, diff, patch, or run
+`git`, `repo`, or builds through it. Every Codex operation that touches Android
+source or source-tree metadata must execute against `REMOTE_ROOT` through the
+stable `android-remote-channel` tmux session. Read-only operations use the
+channel's non-exclusive mode; source writes, patch application, `git`/`repo`
+writes, checkpoints, and builds require the exclusive project lock.
+
+Direct SSH is not a source execution fallback. Outside `android-remote-channel`,
+it is allowed only for source-access infrastructure: resolving SSH configuration
+or reachability, installing a public key, reading or updating Samba
+configuration, and reloading the Samba service. An infrastructure command must
+not inspect or mutate `REMOTE_ROOT`.
+
+Treat a missing or unhealthy remote channel as a hard stop. Do not fall back to
+the mounted source tree, a one-off SSH source command, or local `apply_patch`.
+
 If the user explicitly asks for a personal coding-style skill, project `AGENTS.md`, local engineering rule, or review skill, treat that instruction as part of the active requirement. Do not replace it with this workflow. Combine the user's rule with this workflow's Android Framework evidence and verification discipline.
 
 If the optional Jinny team practice skill `jinny-framework-coding-standards` is installed or explicitly required for the task, load it before Gate 3 and treat its patch annotation, `FrameworkLog`, string resource, SystemProperties, utility-class, and feature README rules as coding constraints. Do not wait until patch capture to retrofit those rules.
@@ -20,8 +44,9 @@ Use it for both direct requirement implementation and bug/regression work. Do no
 It coordinates with adjacent Android skills:
 
 - `android-knowledge-search` searches prior cases, platform variants, archived patches, search anchors, and validation evidence before re-analysis or re-implementation. Use it as the pre-analysis knowledge gate when the team knowledge repository is available.
-- `android-source-access` proves the source tree is mounted and usable; `android-remote-build-deploy` proves artifacts were built and delivered.
-- `android-remote-build-deploy` may use `android-remote-channel` internally for reusable SSH/tmux sessions; this workflow should call the build/deploy skill rather than the channel directly.
+- `android-source-access` records the SSH/remote-root mapping and optionally maintains the human/artifact mount; it does not authorize Codex to operate on source through that mount.
+- `android-remote-channel` is the mandatory source execution gateway for analysis, search, edits, `git`, `repo`, checkpoints, patch capture, and builds.
+- `android-remote-build-deploy` uses `android-remote-channel` for remote build work and uses the mounted path only as a confirmed product-output artifact bridge for local `adb` delivery.
 - `android-framework-patch-capture` turns an implemented or stage-worthy Framework feature into a feature README, repository-level patches, and evidence after this workflow has produced a concrete change. Use it before `android-framework-patch-intake` whenever a Framework change, failed attempt, or stage-worthy draft should be preserved.
 - `android-framework-patch-intake` turns the capture package into the single automatic intake channel: an `incoming` package. `android-knowledge-intake` is the shared kernel; do not invent a second upload path.
 - This skill proves the framework change satisfies the requirement or diagnosis outcome on device.
@@ -36,6 +61,10 @@ android-knowledge-search
 
 android-source-access
   -> access/recover/identify source tree handoff
+  -> register SSH/REMOTE_ROOT identity -> optional human/artifact mount
+
+android-remote-channel
+  -> mandatory remote source reads/search/edits/git/repo/patch/build transport
 
 android-framework-change-workflow
   -> specify requirement or diagnose issue -> instrument if needed -> change -> define verification
@@ -74,6 +103,7 @@ Use scripts in `scripts/` as optional helpers. Prefer them for log slicing, heal
 
 Before editing behavior:
 
+0. Resolve `SSH_HOST` and `REMOTE_ROOT`, ensure the stable remote channel is healthy, and keep the mounted path out of the Codex workspace. Stop if the channel is unavailable.
 1. Identify whether the request is a new requirement, behavior change, bug/regression, verification task, or failure recovery.
 2. For Android Framework implementation work, use `android-knowledge-search` before source edits when the team knowledge repository is available. Search with feature words, subsystem, file/class names, properties, Settings keys, resource keys, artifact names, and visible log keywords. Treat matches as evidence, not final truth. Decide and record one pre-change knowledge use decision for `search-before-change.json`: `reuse` when the old knowledge directly applies, `adapt` when the case applies but platform/version/project/source details differ, `reference_only` when it only informs diagnosis or risk, `not_applicable` when it is explicitly excluded, or `not_found` when no usable knowledge was found. Record query terms, target case/variant/patch ids, match points, mismatch points, reason, and later outcome so `android-framework-patch-capture` can preserve the decision.
 3. For direct requirements, capture acceptance criteria, negative cases, product/device/variant scope, and expected owner subsystem. Load `references/requirements-implementation.md`.
@@ -135,7 +165,10 @@ Temporary diagnostics must:
 
 For visual or timing-sensitive behavior, capture recording or screenshots and align visible frames with logs before deciding the implementation path or root cause.
 
-Before final completion, audit diagnostics with source search or `scripts/diagnostic_log_audit.py` and decide remove, guard, downgrade, or keep with reason.
+Before final completion, audit diagnostics through the remote channel with
+`scripts/diagnostic_log_audit.py --ssh-host <host> --remote-root <root> --path
+<changed-file>` and decide remove, guard, downgrade, or keep with reason. Repeat
+`--path` for the bounded changed-file set; the helper never reads mounted source.
 
 ## Gate 3: Change
 

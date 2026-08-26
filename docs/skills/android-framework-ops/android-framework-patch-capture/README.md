@@ -20,12 +20,28 @@ Android Framework 功能级补丁资料生成 skill。
 
 ## 常用命令
 
-在涉及的 Android 源码 git 仓库中执行；一个功能跨多个 repo 管理的 Git 仓库时，重复传 `--source-root`：
+当前 Codex 工作流不在本机挂载树执行 Git。先通过 remote-channel v2
+生成并传输不可变 snapshot；一个功能跨多个 Git 仓库时重复
+`--repo-path`：
+
+```bash
+python3 "scripts/capture_remote_snapshot.py" \
+  --ssh-host "$SSH_HOST" \
+  --remote-root "$REMOTE_ROOT" \
+  --repo-path frameworks/base \
+  --repo-path packages/apps/Settings \
+  --command-id "$PATCH_SNAPSHOT_COMMAND_ID"
+```
+
+再使用该命令返回的 snapshot 路径、SHA、workspace/command 身份和远端根：
 
 ```bash
 python3 "scripts/capture_framework_patch.py" \
-  --source-root /work/android/frameworks/base \
-  --source-root /work/android/packages/apps/Settings \
+  --remote-snapshot "$SNAPSHOT" \
+  --snapshot-sha256 "$SNAPSHOT_SHA256" \
+  --snapshot-workspace-id "$WORKSPACE_ID" \
+  --snapshot-command-id "$COMMAND_ID" \
+  --remote-source-root "$REMOTE_ROOT" \
   --platform rk14 \
   --feature display-policy-settings-entry \
   --summary "调整显示策略和设置入口" \
@@ -41,15 +57,30 @@ python3 "scripts/capture_framework_patch.py" \
 
 `--implementation-origin` 记录谁写了代码；`--workflow-contract` 记录补丁如何进入 AKBS。两个事实相互独立：成员手写代码也可以由当前 Codex + Skill 流程处理，此时仍使用 `current_codex_skill`；只有真实的既有代码导入才使用 `manual_import` 或 `historical_import`。补丁采集只记录来源、工作流和规范检查结果，不做沉淀结论（curation decision）。
 
-如果 `--project` 未提供，或只提供了 `android16`、`Camera2`、`mtk android16 Camera2` 这类非公司项目标签，脚本会继续从 `source_root`、repo 路径、git 分支/remote、WSL source-access registry 和补丁内容中识别 `TVD`/`TVE`/`TVA`/`TVI` 项目号；识别不到时写入 `unknown`。
+真实既有代码导入使用显式 immutable patch，不借用 snapshot 身份：
+
+```bash
+python3 "scripts/capture_framework_patch.py" \
+  --workflow-contract manual_import \
+  --implementation-origin manual \
+  --patch-artifact /path/to/frameworks-base.patch \
+  --patch-repo-path frameworks/base \
+  --platform rk14 \
+  --feature existing-feature \
+  --summary "既有功能补丁导入"
+```
+
+如果 `--project` 未提供，或只提供了 `android16`、`Camera2`、`mtk android16 Camera2` 这类非公司项目标签，脚本会继续从 remote snapshot 的源码根、repo 路径、Git 分支/remote、平台无关 source-access registry 和补丁内容中识别 `TVD`/`TVE`/`TVA`/`TVI` 项目号；识别不到时写入 `unknown`。
 
 结构化项目字段只写入符合公司命名规范的项目型号。分支后缀、客户后缀、构建分支、业务标签、模块标签、中文描述和其他规范外尾随内容只能保留在 `project_inference` 证据里，不能写进 `manifest.project`。例如 `TVE1067M1_H031` 规范化为 `TVE1067M1`，`TVE1086U_MAIN_HANGYAN` 规范化为 `TVE1086U`，`TVE1091U福建移动高清` 规范化为 `TVE1091U`。
 
-如果命令参数、源码路径、git 信息、WSL source-access registry、功能摘要或 diff 同时暴露多个不同项目（project）候选，脚本写入 `project=unknown`，并在 `project_inference.candidates` 和 `project_inference.limits` 中记录冲突。不要为了让界面字段完整而选择第一个命中的项目。
+如果命令参数、snapshot 源码路径、Git 信息、source-access registry、功能摘要或 diff 同时暴露多个不同项目（project）候选，脚本写入 `project=unknown`，并在 `project_inference.candidates` 和 `project_inference.limits` 中记录冲突。不要为了让界面字段完整而选择第一个命中的项目。
 
 `--platform` 只接受受控平台令牌：`mtk<Android版本>`、`rk<Android版本>`、`unisoc<Android版本>`，历史 `sprd`/`u` 别名会规范化为 `unisoc`。`android14`、`app15` 这类泛化令牌会被拒绝，因为它们不能证明平台（platform）。
 
-如果构建交付流程已经由 `android-remote-build-deploy/scripts/push_artifacts.py` 写出 `<source-root>/.codex/evidence/latest-build-delivery.json`，补丁采集会自动读取远端构建和本机 adb 证据，并合并进 `verification-result.json`。手工 `--remote-build-*` 和 `--adb-*` 参数只在自动证据无法取得时使用。
+当前工作流禁止从本机挂载源码读取 `.codex` 构建证据。把 build/deploy
+receipt 作为显式 `--build-result` 输入，或传入 `--remote-build-*` 和
+`--adb-*` 事实。
 
 补丁采集会过滤只有文件模式元数据的 diff 段，例如 `old mode 100755` / `new mode 100644`。这类变化通常是 checkout 或 chmod 噪声，不会单独生成补丁包；如果同一仓库还有真实代码改动，会保留代码改动并剔除纯权限段。只有当可执行权限本身是功能的一部分，并且有内容修改、风险说明和验证证据时，才应作为功能补丁保留。
 
@@ -68,12 +99,13 @@ python3 "scripts/capture_framework_patch.py" \
 输出目录：
 
 ```text
-.codex/patch-packages/<run-id>/
+$CODEX_HOME/artifacts/android-framework-patch-capture/packages/<run-id>/
 ├── manifest.json
 ├── README.md
 ├── patches/
 └── evidence/
     ├── coding-standard-check.json
+    ├── remote-source-snapshot.json
     ├── patch-diff-facts.json
     ├── build-result.json
     ├── verification-result.json
@@ -85,3 +117,4 @@ python3 "scripts/capture_framework_patch.py" \
 - [SKILL.md](../../../../plugins/android-framework-ops/skills/android-framework-patch-capture/SKILL.md)：给 Codex 自动加载的执行说明。
 - [references/package-contract.md](../../../../plugins/android-framework-ops/skills/android-framework-patch-capture/references/package-contract.md)：功能级补丁资料包结构和修改内容字段约定。
 - [scripts/capture_framework_patch.py](../../../../plugins/android-framework-ops/skills/android-framework-patch-capture/scripts/capture_framework_patch.py)：功能级补丁资料包生成脚本。
+- [scripts/capture_remote_snapshot.py](../../../../plugins/android-framework-ops/skills/android-framework-patch-capture/scripts/capture_remote_snapshot.py)：通过 remote-channel v2 生成、传输并验证远端 source snapshot。
