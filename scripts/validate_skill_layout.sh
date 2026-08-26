@@ -85,12 +85,27 @@ if [[ "$failed" != "0" ]]; then
   exit 1
 fi
 
-core_manifest_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["version"])' "$repo_root/plugins/android-framework-ops/.codex-plugin/plugin.json")"
-core_rules_version="$(sed -n 's/^ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "\([^"]*\)"/\1/p' "$repo_root/plugins/android-framework-ops/lib/android_framework_ops/knowledge_rules.py")"
-if [[ -z "$core_rules_version" || "$core_manifest_version" != "$core_rules_version" ]]; then
-  echo "android-framework-ops manifest/rules version mismatch: manifest=$core_manifest_version rules=${core_rules_version:-missing}" >&2
+rules_file="$repo_root/plugins/android-framework-ops/lib/android_framework_ops/knowledge_rules.py"
+if grep -q '^ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION[[:space:]]*=' "$rules_file"; then
+  echo "knowledge_rules.py must not embed the android-framework-ops release version" >&2
   exit 1
 fi
+PYTHONPATH="$repo_root/plugins/android-framework-ops/lib${PYTHONPATH:+:$PYTHONPATH}" \
+  python3 - "$repo_root/plugins/android-framework-ops/.codex-plugin/plugin.json" <<'PY'
+import json
+import sys
+
+from android_framework_ops.knowledge_rules import current_plugin_version
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    manifest_version = str(json.load(handle)["version"])
+rules_observed_version = current_plugin_version()
+if rules_observed_version != manifest_version:
+    raise SystemExit(
+        "knowledge rules could not resolve the enclosing plugin manifest: "
+        f"manifest={manifest_version} observed={rules_observed_version or 'missing'}"
+    )
+PY
 
 if find "$repo_root/plugins/android-framework-ops/skills" -mindepth 1 -maxdepth 1 -type d -name 'android-windows-*' | grep -q .; then
   echo "Windows-side skills must not be inside android-framework-ops" >&2

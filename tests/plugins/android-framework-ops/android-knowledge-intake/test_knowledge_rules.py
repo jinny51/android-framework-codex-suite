@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import importlib.util
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -265,6 +268,60 @@ class KnowledgeRulesTest(unittest.TestCase):
             }
         )
         self.assertIn("source evidence plugin_version_check is blocking: SESSION_CACHE_STALE", errors)
+
+    def test_rules_only_maintainer_snapshot_has_no_release_version_fallback(self) -> None:
+        source_path = PLUGIN_LIB / "android_framework_ops" / "knowledge_rules.py"
+        source_text = source_path.read_text(encoding="utf-8")
+        contract_text = (
+            PLUGIN_ROOT
+            / "skills"
+            / "android-knowledge-intake"
+            / "references"
+            / "deterministic-rules-contract.md"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION", source_text)
+        self.assertNotIn("latest_installed_plugin_cache_metadata", source_text)
+        self.assertNotIn("$AKBS_ROOT/plugin", contract_text)
+        self.assertIn("immutable rules snapshot", contract_text)
+        self.assertIn("source plugin version", contract_text)
+        self.assertIn("source plugin commit", contract_text)
+        self.assertIn("rules-source content hash", contract_text)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            snapshot = Path(tmp) / "snapshot" / "lib" / "android_framework_ops" / "knowledge_rules.py"
+            snapshot.parent.mkdir(parents=True)
+            snapshot.write_text(source_text, encoding="utf-8")
+            spec = importlib.util.spec_from_file_location("maintainer_rules_snapshot", snapshot)
+            self.assertIsNotNone(spec)
+            self.assertIsNotNone(spec.loader if spec else None)
+            module = importlib.util.module_from_spec(spec)
+            assert spec and spec.loader
+            spec.loader.exec_module(module)
+
+            self.assertEqual(module.current_plugin_version(), "")
+
+            plugin_snapshot = (
+                Path(tmp)
+                / "plugin"
+                / "lib"
+                / "android_framework_ops"
+                / "knowledge_rules.py"
+            )
+            plugin_snapshot.parent.mkdir(parents=True)
+            plugin_snapshot.write_text(source_text, encoding="utf-8")
+            manifest = Path(tmp) / "plugin" / ".codex-plugin" / "plugin.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text(json.dumps({"version": "9.9.9"}), encoding="utf-8")
+            plugin_spec = importlib.util.spec_from_file_location(
+                "versioned_rules_snapshot",
+                plugin_snapshot,
+            )
+            assert plugin_spec and plugin_spec.loader
+            plugin_module = importlib.util.module_from_spec(plugin_spec)
+            plugin_spec.loader.exec_module(plugin_module)
+
+            self.assertEqual(plugin_module.current_plugin_version(), "9.9.9")
+            self.assertEqual(plugin_snapshot.read_text(encoding="utf-8"), source_text)
 
     def test_patch_asset_name_classification_contract(self) -> None:
         from android_framework_ops.knowledge_rules import classify_patch_asset_names

@@ -17,7 +17,21 @@
 
 Member generation, patch capture, and upload preflight import this module directly from `android-framework-ops`.
 
-The local `akbs-curation-maintainer` loads the same source module from `$AKBS_ROOT/plugin` when it needs deterministic boundary checks before AI curation. It must not reimplement project, platform, Android version, aggregate, search, package-quality, or patch-asset rules.
+The rules source is release-version independent. `current_plugin_version()` reads
+the enclosing `.codex-plugin/plugin.json` when the module is running inside an
+installed or checked-out plugin. A rules-only maintainer snapshot has no plugin
+manifest, so the function returns an empty value instead of embedding or looking
+up a dynamic "latest" plugin release. Member `source.json` version provenance is
+owned by the plugin manifest/cache version gate, not by a constant in this rules
+module. Capability minimum versions remain stable historical thresholds.
+
+The local `akbs-curation-maintainer` executes the immutable rules snapshot carried
+by the submitted bundle. The bundle manifest records the source plugin version,
+source plugin commit, and rules-source content hash; those are provenance for the
+snapshot, while the rules source itself embeds no plugin release version. The
+maintainer must not import a mutable plugin worktree or resolve a dynamic latest
+rules file, and it must not reimplement project, platform, Android version,
+aggregate, search, package-quality, or patch-asset rules.
 
 The Linux/test35 AKBS service owns HTTP authentication, storage, active SQLite transactions, queue state, and API validation. It neither loads the Codex plugin cache nor keeps a generated copy of this module.
 

@@ -8,7 +8,6 @@ from typing import Any
 
 
 AKBS_RULES_CONTRACT_VERSION = "2026-08-25.2"
-ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION = "1.0.160"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -629,6 +628,7 @@ def classify_pre_change_search(
 
 
 def current_plugin_version() -> str:
+    """Return the enclosing plugin release, or empty for a rules-only snapshot."""
     try:
         manifest_path = Path(__file__).resolve().parents[2] / ".codex-plugin" / "plugin.json"
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -638,7 +638,7 @@ def current_plugin_version() -> str:
                 return version
     except Exception:
         pass
-    return ANDROID_FRAMEWORK_OPS_PLUGIN_VERSION
+    return ""
 
 
 def source_version_compatibility_matrix() -> dict[str, dict[str, str]]:
