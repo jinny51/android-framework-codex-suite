@@ -4,6 +4,12 @@ Use this contract only when effective AKBS daily reports and the previous weekly
 ledger cannot prove every required project fact. Ask the member only for fields
 listed by `weekly_fact_sources.missing_fields`.
 
+Daily `tomorrow_plan` rows are plan context, not weekly progress evidence. A
+scope present only in a daily tomorrow plan does not enter `projects[]`,
+`documents[]`, or `standalone_work[]` in the weekly facts. The latest plan may
+be attached only to a matching scope already proven by actual daily work or the
+effective previous-week ledger.
+
 Write the completed JSON under:
 
 ```text

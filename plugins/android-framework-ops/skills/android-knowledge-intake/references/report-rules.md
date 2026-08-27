@@ -100,22 +100,24 @@
 ### **项目名** 客户名 [客户的客户]｜Patch / App：App 名称
 - 明确依赖对象、卡点或者需要协调的事项。
 
-## 五、明日重点
+## 五、明日计划
 
 ### **项目名** 客户名 [客户的客户]｜Patch / App：App 名称
-- 明天优先处理什么。
+- 明天计划处理什么。
 
 ### 文档：文档名称
-- 明天优先处理什么。
+- 明天计划处理什么。
 ```
 
 日报按工作范围分块。五个分类固定为 Patch、App、GMS、Doc、Other。Patch
 表示系统源码定制，App 表示应用或 demo 开发，GMS 表示项目认证测试，Doc 表示
 文档，Other 表示其他具体工作。分类不决定数组归属：凡挂靠项目都写入 `projects[]`。
-同一项目可有一个 Patch 和多个不同 App；App 必须写 App 名称。只要范围内有
-`处理中`、`待验证`或`阻塞`事项，就必须填写该范围的明日重点；成员明确说明
-“无”时，必须原样保留为 `- 无`，不得转为空值或阻止提交。日报不填写
-项目角色、需求时间、需求来源、项目总量或剩余量。
+同一项目可有一个 Patch 和多个不同 App；App 必须写 App 名称。明日计划与
+今日工作独立，使用另一组 `projects[]`、`documents[]` 和
+`standalone_work[]`，每行只写身份与 `plan_items[]`。明日项目或事项无需在
+今日工作中出现；“尚未开始，明日执行”只能写入明日计划，不能伪造一条今日
+工作。未完成状态也不会自动生成计划。三个计划数组都为空时显示 `无。`。日报
+不填写项目角色、需求时间、需求来源、项目总量或剩余量。
 
 每个范围都包含 `key_points[]` 和 `dependencies[]`。前者对应“重点说明”，
 记录明确的项目外部消息、范围变化或当天攻克的关键难点；后者对应“依赖 /
@@ -250,9 +252,24 @@ Daily and weekly reports are the primary human-readable product. The package als
         "work_items": [
           {"name": "锁屏鼠标位置刷新", "did": ["完成属性映射处理"], "how": ["按输入链路排查"], "result": "基础验证通过", "status": "已完成"}
         ],
-        "tomorrow_focus": ["继续回归验证"]
+        "key_points": [],
+        "dependencies": []
       }
-    ]
+    ],
+    "documents": [],
+    "standalone_work": [],
+    "tomorrow_plan": {
+      "projects": [
+        {
+          "project": "TVE1065M",
+          "customer": "韩富友",
+          "work_type": "GMS",
+          "plan_items": ["开始执行完整 GMS 测试"]
+        }
+      ],
+      "documents": [],
+      "standalone_work": []
+    }
   }
 }
 ```
@@ -267,7 +284,8 @@ Report card fields are authoritative:
 
 - `material_name`：项目 + 客户链路；独立文档写 `文档工作：<文档名称>`。多项目写 `TVE1086U（青鸾云）、TVE1091U（AOC → 福建移动高清）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
 - `material_summary`：日报写各项目或文档的“今日主题”；周报写各项目或文档的“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
-- Daily project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/today_topic/current_result/work_items/key_points/dependencies/tomorrow_focus`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
+- Daily today project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/today_topic/current_result/work_items/key_points/dependencies`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
+- Daily `tomorrow_plan` contains parallel project, document, and standalone arrays. Plan rows carry only scope identity plus `plan_items[]`; tomorrow-only scopes never count as today progress or weekly progress.
 - Weekly project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/project_role/week_summary/requirement_date/requirement_source/[requirement_structure/work_total]/completed_this_week/remaining/completed_items/remaining_items/key_points/risks/dependencies/next_week_plan`.
 - Daily and weekly non-project Doc rows live in `documents[]` and use `document_name`; non-project Other rows live in `standalone_work[]` and use `work_name`. GMS never lives outside `projects[]`.
 - The current read model does not emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.

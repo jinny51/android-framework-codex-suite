@@ -173,12 +173,23 @@ Real report generation requires explicit per-run consent before any session read
           {"name": "锁屏鼠标位置刷新", "did": ["完成属性映射处理"], "how": ["按输入链路排查"], "result": "基础验证通过", "status": "已完成"}
         ],
         "key_points": ["关键输入链路已经验证通过"],
-        "dependencies": [],
-        "tomorrow_focus": ["继续回归验证"]
+        "dependencies": []
       }
     ],
     "documents": [],
-    "standalone_work": []
+    "standalone_work": [],
+    "tomorrow_plan": {
+      "projects": [
+        {
+          "project": "TVE1065M",
+          "customer": "韩富友",
+          "work_type": "GMS",
+          "plan_items": ["开始执行完整 GMS 测试"]
+        }
+      ],
+      "documents": [],
+      "standalone_work": []
+    }
   }
 }
 ```
@@ -196,6 +207,9 @@ retains canonical project/customer identity. Non-project documents use
 `standalone_work[]/Other/work_name`. GMS is always project-bound. For
 `report_type=daily`, every project and non-project scope carries
 `key_points[]` and `dependencies[]`; both arrays may be empty. For
+daily reports, `tomorrow_plan` is a separate three-container plan model. Its
+rows carry scope identity plus `plan_items[]`, never today-progress fields, and
+tomorrow-only scopes do not satisfy the requirement for actual daily work. For
 `report_type=weekly`, Patch/App project rows contain ledger fields, while
 GMS/Doc/Other project rows contain progress fields; each non-project row contains `week_summary`, plain
 completed/remaining counts and item arrays, `key_points`, `risks`,
@@ -413,6 +427,7 @@ verification_acceptance_v2 = 1.0.142
 weekly_project_ledger_v2 = 1.0.156
 report_scope_containers_v1 = 1.0.158
 daily_attention_fields_v1 = 1.0.159
+daily_tomorrow_plan_v1 = 1.0.161
 ```
 
 The required capabilities come from package contents, not from the current plugin release.

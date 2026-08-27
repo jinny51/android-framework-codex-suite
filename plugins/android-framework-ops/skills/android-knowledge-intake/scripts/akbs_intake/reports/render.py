@@ -652,11 +652,18 @@ def write_daily_report(
     daily_projects: list[dict[str, Any]] | None = None,
     daily_documents: list[dict[str, Any]] | None = None,
     daily_standalone_work: list[dict[str, Any]] | None = None,
+    daily_tomorrow_plan: dict[str, list[dict[str, Any]]] | None = None,
+    tomorrow_plan_heading: str = "明日计划",
 ) -> None:
     items = normalized_report_items(items)
     project_rows = daily_projects or []
     document_rows = daily_documents or []
     standalone_rows = daily_standalone_work or []
+    tomorrow_plan = daily_tomorrow_plan or {
+        "projects": [],
+        "documents": [],
+        "standalone_work": [],
+    }
     non_project_rows = [*document_rows, *standalone_rows]
     if not items and not project_rows and not non_project_rows:
         items = {MISSING_REPORT_PROJECT: [("未形成有效工作记录", "需补充真实工作记录")]}
@@ -683,7 +690,6 @@ def write_daily_report(
                 "work_items": work_rows,
                 "key_points": [],
                 "dependencies": [],
-                "tomorrow_focus": [next_step_for_entries(entries, "daily")],
             }
             if context.get("downstream_customer"):
                 row["downstream_customer"] = context["downstream_customer"]
@@ -745,15 +751,22 @@ def write_daily_report(
         rows=all_rows,
         field="dependencies",
     )
-    lines += ["## 五、明日重点", ""]
-    for row, heading in all_rows:
-        focus = row.get("tomorrow_focus") if isinstance(row.get("tomorrow_focus"), list) else []
-        if not focus:
+    lines += [f"## 五、{tomorrow_plan_heading}", ""]
+    plan_rows = [
+        *((row, daily_scope_heading(row)) for row in tomorrow_plan.get("projects", []) if isinstance(row, dict)),
+        *((row, document_scope_heading(row)) for row in tomorrow_plan.get("documents", []) if isinstance(row, dict)),
+        *((row, document_scope_heading(row)) for row in tomorrow_plan.get("standalone_work", []) if isinstance(row, dict)),
+    ]
+    if not plan_rows:
+        lines += ["无。", ""]
+    for row, heading in plan_rows:
+        plan_items = row.get("plan_items") if isinstance(row.get("plan_items"), list) else []
+        if not plan_items:
             continue
         lines += [
             f"### {heading}",
             "",
-            *(f"- {item}" for item in focus),
+            *(f"- {item}" for item in plan_items),
             "",
         ]
 
@@ -1020,6 +1033,7 @@ def report_view_payload(
     daily_documents: list[dict[str, Any]] | None = None,
     weekly_standalone_work: list[dict[str, Any]] | None = None,
     daily_standalone_work: list[dict[str, Any]] | None = None,
+    daily_tomorrow_plan: dict[str, list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     items = normalized_report_items(items)
     document_rows = (daily_documents or []) if report_type == "daily" else (weekly_documents or [])
@@ -1029,6 +1043,11 @@ def report_view_payload(
         else (weekly_standalone_work or [])
     )
     non_project_rows = [*document_rows, *standalone_rows]
+    tomorrow_plan = daily_tomorrow_plan or {
+        "projects": [],
+        "documents": [],
+        "standalone_work": [],
+    }
     has_project_facts = bool(daily_projects) if report_type == "daily" else bool(weekly_projects)
     if non_project_rows and not has_project_facts:
         items = {}
@@ -1063,12 +1082,21 @@ def report_view_payload(
     }
     if report_type == "daily":
         if daily_projects:
-            projects = [dict(row) for row in daily_projects]
+            projects = [{key: value for key, value in row.items() if key != "tomorrow_focus"} for row in daily_projects]
+            rendered_documents = [
+                {key: value for key, value in row.items() if key != "tomorrow_focus"}
+                for row in document_rows
+            ]
+            rendered_standalone = [
+                {key: value for key, value in row.items() if key != "tomorrow_focus"}
+                for row in standalone_rows
+            ]
             payload.update(
                 {
                     "projects": projects,
-                    "documents": [dict(row) for row in document_rows],
-                    "standalone_work": [dict(row) for row in standalone_rows],
+                    "documents": rendered_documents,
+                    "standalone_work": rendered_standalone,
+                    "tomorrow_plan": tomorrow_plan,
                 }
             )
             return {"kind": "report_view", "payload": payload}
@@ -1096,14 +1124,20 @@ def report_view_payload(
                     "work_items": work_items,
                     "key_points": [],
                     "dependencies": [],
-                    "tomorrow_focus": [next_step_for_entries(entries, "daily")],
                 }, context.get("downstream_customer", ""))
             )
         payload.update(
             {
                 "projects": projects,
-                "documents": [dict(row) for row in document_rows],
-                "standalone_work": [dict(row) for row in standalone_rows],
+                "documents": [
+                    {key: value for key, value in row.items() if key != "tomorrow_focus"}
+                    for row in document_rows
+                ],
+                "standalone_work": [
+                    {key: value for key, value in row.items() if key != "tomorrow_focus"}
+                    for row in standalone_rows
+                ],
+                "tomorrow_plan": tomorrow_plan,
             }
         )
         return {"kind": "report_view", "payload": payload}
@@ -1226,6 +1260,7 @@ def write_report(
     daily_documents: list[dict[str, Any]] | None = None,
     weekly_standalone_work: list[dict[str, Any]] | None = None,
     daily_standalone_work: list[dict[str, Any]] | None = None,
+    daily_tomorrow_plan: dict[str, list[dict[str, Any]]] | None = None,
 ) -> Path:
     report_path = package_dir / f"{report_type}.md"
     view = report_view_payload(
@@ -1244,6 +1279,7 @@ def write_report(
         daily_documents,
         weekly_standalone_work,
         daily_standalone_work,
+        daily_tomorrow_plan,
     )
     report_path.write_text(report_markdown_from_view(view["payload"]), encoding="utf-8")
     return report_path
@@ -1261,6 +1297,56 @@ def report_markdown_from_view(view: dict[str, Any]) -> str:
     projects = view.get("projects") if isinstance(view.get("projects"), list) else []
     documents = view.get("documents") if isinstance(view.get("documents"), list) else []
     standalone_work = view.get("standalone_work") if isinstance(view.get("standalone_work"), list) else []
+    legacy_daily_plan = report_type == "daily" and "tomorrow_plan" not in view
+    tomorrow_plan = (
+        view.get("tomorrow_plan")
+        if isinstance(view.get("tomorrow_plan"), dict)
+        else {"projects": [], "documents": [], "standalone_work": []}
+    )
+    if legacy_daily_plan:
+        for collection, rows in (
+            ("projects", projects),
+            ("documents", documents),
+            ("standalone_work", standalone_work),
+        ):
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                focus = row.get("tomorrow_focus")
+                plan_items = [
+                    str(item).strip()
+                    for item in focus
+                    if str(item).strip()
+                ] if isinstance(focus, list) else []
+                if not plan_items:
+                    continue
+                if collection == "projects":
+                    plan_row = {
+                        field: row[field]
+                        for field in (
+                            "project",
+                            "customer",
+                            "customer_name",
+                            "downstream_customer",
+                            "work_type",
+                            "app_name",
+                        )
+                        if row.get(field)
+                    }
+                elif collection == "documents":
+                    plan_row = {
+                        field: row[field]
+                        for field in ("work_type", "document_name", "platform")
+                        if row.get(field)
+                    }
+                else:
+                    plan_row = {
+                        field: row[field]
+                        for field in ("work_type", "work_name", "platform")
+                        if row.get(field)
+                    }
+                plan_row["plan_items"] = plan_items
+                tomorrow_plan[collection].append(plan_row)
     if report_type == "daily":
         write_daily_report(
             lines,
@@ -1269,6 +1355,8 @@ def report_markdown_from_view(view: dict[str, Any]) -> str:
             daily_projects=projects,
             daily_documents=documents,
             daily_standalone_work=standalone_work,
+            daily_tomorrow_plan=tomorrow_plan,
+            tomorrow_plan_heading="明日重点" if legacy_daily_plan else "明日计划",
         )
     else:
         def normalized_weekly_non_project(rows: list[Any]) -> list[dict[str, Any]]:
@@ -1313,6 +1401,7 @@ def write_report_view(
     daily_documents: list[dict[str, Any]] | None = None,
     weekly_standalone_work: list[dict[str, Any]] | None = None,
     daily_standalone_work: list[dict[str, Any]] | None = None,
+    daily_tomorrow_plan: dict[str, list[dict[str, Any]]] | None = None,
 ) -> str:
     rel = materials_rel("display", "report_view.json")
     write_json(
@@ -1333,6 +1422,7 @@ def write_report_view(
             daily_documents,
             weekly_standalone_work,
             daily_standalone_work,
+            daily_tomorrow_plan,
         ),
     )
     return rel

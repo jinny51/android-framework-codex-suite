@@ -23,7 +23,7 @@ Generate `reports/daily.md` with the Codex office daily template:
 - 今日工作
 - 重点说明
 - 依赖 / 需协调
-- 明日重点
+- 明日计划
 
 Each `今日工作` item contains `做了什么`, `怎么做的`, `结果`, and `状态`.
 `状态` is required and must be exactly one of `已完成`, `处理中`, `待验证`,
@@ -40,7 +40,18 @@ headings and body text. Bold only the project name, for example
 Markdown presentation rule only. Keep project and customer values in
 `report_view.json` as plain text without Markdown markers.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, and `standalone_work[]`; at least one array must be non-empty. Every project-bound row belongs in `projects[]` and contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, `key_points[]`, `dependencies[]`, and `tomorrow_focus[]`. Project work uses `Patch`, `App`, `GMS`, `Doc`, or `Other`. Only a non-project document belongs in `documents[]` with `work_type=Doc` and `document_name`. A non-project, non-document activity belongs in `standalone_work[]` with `work_type=Other` and `work_name`. Historical `Document` remains readable as `Doc`. Every work item contains `name`, `did[]`, `how[]`, `result`, and fixed-enum `status`.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, `standalone_work[]`, and `tomorrow_plan`; at least one of the three today arrays must be non-empty. Every project-bound today row belongs in `projects[]` and contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, `key_points[]`, and `dependencies[]`. Project work uses `Patch`, `App`, `GMS`, `Doc`, or `Other`. Only a non-project document belongs in `documents[]` with `work_type=Doc` and `document_name`. A non-project, non-document activity belongs in `standalone_work[]` with `work_type=Other` and `work_name`. Historical `Document` remains readable as `Doc`. Every work item contains `name`, `did[]`, `how[]`, `result`, and fixed-enum `status`.
+
+`tomorrow_plan` is independent from today's work and contains its own parallel
+`projects[]`, `documents[]`, and `standalone_work[]` arrays. Project plans carry
+project/customer/work type, optional downstream customer or App name, and a
+non-empty `plan_items[]`; non-project document and Other plans carry their
+concrete name plus `plan_items[]`. Plan rows never carry `today_topic`,
+`current_result`, `work_items`, `key_points`, `dependencies`, or status. A
+project or task that has not started belongs only in `tomorrow_plan`, even if it
+does not appear anywhere in today's scopes. Never create a completed or
+in-progress today item merely to give a plan an identity. If there is no plan,
+keep all three plan arrays empty and render `无。`.
 
 Every daily scope, including non-project Doc and Other, carries `key_points[]`
 and `dependencies[]`. `key_points` records explicit project news, scope
@@ -76,14 +87,15 @@ changes are `Patch`, even when the module itself is an Android application.
 `App` means a separately delivered application or demo. Separate sessions with
 consistent evidence may automatically split the same project into one Patch and
 multiple named Apps. A mixed session is not split unless each item can be bound
-to a scope without guessing. The same Patch or same App must not be repeated. A
-scope with any `处理中`, `待验证`, or `阻塞` item must have a non-empty
-`tomorrow_focus[]`. When the member explicitly says there is no next-day focus,
-preserve that answer as `tomorrow_focus=["无"]`; never rewrite it to an empty
-array or reject the report merely because unfinished work exists.
+to a scope without guessing. The same Patch or same App must not be repeated.
+An unfinished today item does not automatically create a tomorrow plan: record
+a plan only when the member or authorized current evidence actually states
+one. Conversely, a stated plan may target any valid project-bound, document,
+or standalone scope and does not need a matching today row. Text such as
+“尚未开始，明日执行” is plan evidence, not today-progress evidence.
 
 Run normal generation first and let the shared kernel infer scope from the
-authorized evidence. Use `akbs-daily-work-facts-v2` under
+authorized evidence. Use `akbs-daily-work-facts-v3` under
 `$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` only to complete
 an unresolved scope, correct an inference, preserve explicit key points or
 dependencies, or make an explicit member override;
@@ -92,7 +104,7 @@ pass it with `--daily-facts`. Read
 take precedence over inferred scope. For multiple unresolved scopes under one
 project, assign each work item to its scope explicitly.
 
-Daily card identity is not the date. Project identity preserves the customer chain, such as `TVE1086U（青鸾云）` or `TVE1091U（AOC → 福建移动高清）`; non-project documents and standalone work use their concrete names. Multiple scopes use `、`. `material_summary` is a short daily progress summary. The current read model emits `material_name`, `material_summary`, `projects`, `documents`, and `standalone_work`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
+Daily card identity is not the date. Project identity preserves the customer chain, such as `TVE1086U（青鸾云）` or `TVE1091U（AOC → 福建移动高清）`; non-project documents and standalone work use their concrete names. Multiple scopes use `、`. `material_summary` summarizes today's actual progress; tomorrow-only scopes do not enter the card identity or today's summary. The current read model emits `material_name`, `material_summary`, `projects`, `documents`, `standalone_work`, and `tomorrow_plan`; it does not emit `display_title`, `ui_card`, `one_line_summary`, top-level `work_items`, `risks`, or `outputs`.
 
 Every project row, including Patch/App/GMS/Doc/Other, must include a recognized company project and direct customer. A third segment is optional and means the direct customer's customer: parse `TVE1091U AOC 福建移动高清` as project `TVE1091U`, customer `AOC`, and downstream customer `福建移动高清`. Keep `TVE1086U 青鸾云` compatible as a two-segment identity. The structured `customer` field contains only the direct customer; never write a flattened chain such as `customer="浪潮 杭研中屏"` with an empty `downstream_customer`. If project or direct customer is missing, local submit must stop; never merge direct and downstream customers as aliases. Non-project `documents[]` and `standalone_work[]` rows must not carry project/customer placeholders.
 

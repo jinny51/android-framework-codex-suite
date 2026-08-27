@@ -112,23 +112,35 @@ def validate_work_items(work_items: Any, *, prefix: str, old_how_text: str = "")
     return errors, unfinished
 
 
-def validate_daily_documents(documents: Any, *, prefix: str = "documents") -> list[str]:
+def validate_daily_documents(
+    documents: Any,
+    *,
+    prefix: str = "documents",
+    allow_legacy_tomorrow_focus: bool = False,
+) -> list[str]:
     return _validate_daily_non_project_rows(
         documents,
         prefix=prefix,
         allowed_types=DOCUMENT_WORK_TYPES,
         expected="Doc",
         identity_label="文档",
+        allow_legacy_tomorrow_focus=allow_legacy_tomorrow_focus,
     )
 
 
-def validate_daily_standalone_work(rows: Any, *, prefix: str = "standalone_work") -> list[str]:
+def validate_daily_standalone_work(
+    rows: Any,
+    *,
+    prefix: str = "standalone_work",
+    allow_legacy_tomorrow_focus: bool = False,
+) -> list[str]:
     return _validate_daily_non_project_rows(
         rows,
         prefix=prefix,
         allowed_types=STANDALONE_WORK_TYPES,
         expected="Other",
         identity_label="独立工作",
+        allow_legacy_tomorrow_focus=allow_legacy_tomorrow_focus,
     )
 
 
@@ -139,6 +151,7 @@ def _validate_daily_non_project_rows(
     allowed_types: set[str],
     expected: str,
     identity_label: str,
+    allow_legacy_tomorrow_focus: bool,
 ) -> list[str]:
     if not isinstance(rows, list):
         return [f"{prefix} 必须是数组"]
@@ -171,13 +184,12 @@ def _validate_daily_non_project_rows(
                 errors.append(f"{row_prefix}.{field} 必须是数组")
             elif any(not isinstance(item, str) or not item.strip() for item in values):
                 errors.append(f"{row_prefix}.{field} 只能包含非空文本")
-        item_errors, unfinished = validate_work_items(raw.get("work_items"), prefix=row_prefix)
+        item_errors, _unfinished = validate_work_items(raw.get("work_items"), prefix=row_prefix)
         errors.extend(item_errors)
-        focus = raw.get("tomorrow_focus")
-        if not isinstance(focus, list):
+        if "tomorrow_focus" in raw and not allow_legacy_tomorrow_focus:
+            errors.append(f"{row_prefix}.tomorrow_focus 已废弃；请改用顶层 tomorrow_plan")
+        elif "tomorrow_focus" in raw and not isinstance(raw.get("tomorrow_focus"), list):
             errors.append(f"{row_prefix}.tomorrow_focus 必须是数组")
-        elif unfinished and not clean_list(focus):
-            errors.append(f"{row_prefix}.tomorrow_focus 存在未完成事项时必须提供")
     return errors
 
 

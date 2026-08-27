@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 
-AKBS_RULES_CONTRACT_VERSION = "2026-08-25.2"
+AKBS_RULES_CONTRACT_VERSION = "2026-08-27.1"
 SEMVER_RE = re.compile(r"^\d+(?:\.\d+){1,3}(?:[-+][A-Za-z0-9_.-]+)?$")
 RUN_ID_TIMESTAMP_RE = re.compile(r"^(?P<date>\d{8})-(?P<time>\d{6})(?:-|$)")
 GARBLED_QUESTION_MARK_RE = re.compile(r"[?？]{3,}")
@@ -91,6 +91,10 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
     "daily_attention_fields_v1": {
         "min_plugin_version": "1.0.159",
         "description": "daily report scopes carry optional key points and dependency or coordination arrays that weekly intake uses as scoped candidates",
+    },
+    "daily_tomorrow_plan_v1": {
+        "min_plugin_version": "1.0.161",
+        "description": "daily reports separate independent project, document, and standalone tomorrow plans from actual today work",
     },
     "report_render_binding_v1": {
         "min_plugin_version": "1.0.151",

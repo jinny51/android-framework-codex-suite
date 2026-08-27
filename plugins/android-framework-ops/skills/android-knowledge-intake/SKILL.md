@@ -19,7 +19,7 @@ Daily and weekly generation have no "future submission" mode. A daily package da
 
 Daily and weekly report bodies are the primary human-readable product. Generate `reports/daily.md` and `reports/weekly.md` with the Codex office report templates. The five categories are exactly `Patch`, `App`, `GMS`, `Doc`, and `Other`. Array ownership is independent of category: every project-bound row uses `projects[]`; a non-project document uses `documents[]`; other non-project work uses `standalone_work[]`. Project rows may use all five categories, App requires its name, and GMS weekly rows use `current_stage` instead of Patch/App totals. GMS is always project-bound. A shared ATS environment without a customer project is `standalone_work[]/Other`, not GMS. Resolve scope from explicit member context or high-confidence evidence, and ask only when evidence conflicts or remains incomplete. Patch/App total and BSP rules remain unchanged; GMS, Doc, and Other never contribute to Patch/App demand totals. Historical `Document` normalizes to `Doc`. Keep `work_findings.json` as evidence for audit and later analysis.
 
-Daily scope facts use `akbs-daily-work-facts-v2` under
+Daily scope and independent tomorrow-plan facts use `akbs-daily-work-facts-v3` under
 `$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/`; read
 `references/daily-facts-contract.md`. Normal generation first infers scope from
 authorized development evidence; explicit facts complete, correct, or override

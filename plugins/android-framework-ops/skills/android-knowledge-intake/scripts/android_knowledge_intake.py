@@ -691,7 +691,7 @@ def parse_args() -> argparse.Namespace:
             sub.add_argument(
                 "--daily-facts",
                 default="",
-                help="authoritative akbs-daily-work-facts-v2 JSON with Patch/App project or Document work scopes",
+                help="authoritative akbs-daily-work-facts-v3 JSON with today scopes and an independent tomorrow_plan",
             )
             sub.add_argument(
                 "--replace-daily-run-id",

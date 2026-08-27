@@ -117,6 +117,15 @@ def daily_scope_attention(daily_meta: dict[str, Any], row: dict[str, Any]) -> di
     }
 
 
+def daily_scope_plan(daily_meta: dict[str, Any], row: dict[str, Any]) -> list[str]:
+    scopes = daily_meta.get("plan_by_scope")
+    if isinstance(scopes, dict):
+        value = scopes.get(attention_scope_key(row.get("work_type"), row.get("app_name")))
+        if value is not None:
+            return clean_list(value)
+    return clean_list(daily_meta.get("latest_focus"))
+
+
 def append_attention_values(target: dict[str, Any], field: str, value: Any) -> None:
     rows = target.setdefault(field, [])
     if not isinstance(rows, list):
@@ -868,6 +877,30 @@ def _daily_project_records(items: list[dict[str, Any]]) -> tuple[dict[str, dict[
                     "work_type": work_type,
                     "app_name": app_name,
                 }
+        tomorrow_plan = view.get("tomorrow_plan") if isinstance(view.get("tomorrow_plan"), dict) else {}
+        planned_projects = (
+            tomorrow_plan.get("projects")
+            if isinstance(tomorrow_plan.get("projects"), list)
+            else []
+        )
+        for raw_plan in planned_projects:
+            if not isinstance(raw_plan, dict):
+                continue
+            project = find_company_project(clean_text(raw_plan.get("project")))
+            if not project:
+                continue
+            project_meta = metadata.setdefault(project, {})
+            customer = clean_text(raw_plan.get("customer") or raw_plan.get("customer_name"))
+            if customer:
+                project_meta["customer"] = customer
+            downstream_customer = clean_text(raw_plan.get("downstream_customer"))
+            if downstream_customer:
+                project_meta["downstream_customer"] = downstream_customer
+            plans = clean_list(raw_plan.get("plan_items"))
+            if plans:
+                project_meta.setdefault("plan_by_scope", {})[
+                    attention_scope_key(raw_plan.get("work_type"), raw_plan.get("app_name"))
+                ] = plans
     return metadata, {project: list(project_records.values()) for project, project_records in records.items()}
 
 
@@ -922,6 +955,23 @@ def _daily_non_project_records(
                     "text": text,
                     "progress": result,
                 }
+        tomorrow_plan = view.get("tomorrow_plan") if isinstance(view.get("tomorrow_plan"), dict) else {}
+        planned_rows = (
+            tomorrow_plan.get(collection)
+            if isinstance(tomorrow_plan.get(collection), list)
+            else []
+        )
+        for raw_plan in planned_rows:
+            if not isinstance(raw_plan, dict):
+                continue
+            name = (
+                clean_document_name(raw_plan.get(name_field))
+                if name_field == "document_name"
+                else clean_text(raw_plan.get(name_field))
+            )
+            plans = clean_list(raw_plan.get("plan_items"))
+            if name and plans:
+                metadata.setdefault(name, {})["latest_plan"] = plans
     return metadata, {name: list(document_records.values()) for name, document_records in records.items()}
 
 
@@ -1018,7 +1068,11 @@ def _history_document_row(
             add_unique(risks, record["text"])
         if re.search(r"依赖|等待|评审|确认|反馈", f"{record['text']} {progress}"):
             add_unique(dependencies, record["text"])
-    plans = clean_list(daily_meta.get("latest_focus")) or clean_list(prior.get("next_week_plan"))
+    plans = (
+        clean_list(daily_meta.get("latest_plan"))
+        or clean_list(daily_meta.get("latest_focus"))
+        or clean_list(prior.get("next_week_plan"))
+    )
     if not plans and current_remaining:
         plans = ["继续推进：" + "、".join(current_remaining[:3])]
     return {
@@ -1158,7 +1212,7 @@ def _history_project_row(
     for record in daily_records:
         if re.search(r"依赖|等待|客户确认|外部|第三方|\bBSP\b|测试反馈", f"{record['text']} {record.get('progress', '')}", re.IGNORECASE):
             add_unique(dependencies, record["text"])
-    plans = clean_list(daily_meta.get("latest_focus")) or clean_list(prior.get("next_week_plan"))
+    plans = daily_scope_plan(daily_meta, prior) or clean_list(prior.get("next_week_plan"))
     if not plans and current_remaining:
         plans = ["继续推进：" + "、".join(current_remaining[:3])]
 

@@ -10,7 +10,12 @@ from android_framework_ops.knowledge_rules import find_company_project
 
 from ..report_sessions import clean_report_customer_name
 from ..session_privacy import session_evidence_errors
-from .daily_facts import DAILY_FACT_SOURCES_SCHEMA, LEGACY_DAILY_FACT_SOURCES_SCHEMA
+from .daily_facts import (
+    DAILY_FACT_SOURCES_SCHEMA,
+    SUPPORTED_DAILY_FACT_SOURCES_SCHEMAS,
+    planning_only_work_item,
+    validate_tomorrow_plan,
+)
 from .document_work import (
     DOCUMENT_WORK_TYPE,
     DOCUMENT_WORK_TYPES,
@@ -243,12 +248,18 @@ def validate_daily_fact_sources(
     if not isinstance(payload, dict):
         errors.append("daily_fact_sources payload 必须是对象")
         return
-    if payload.get("schema") not in {DAILY_FACT_SOURCES_SCHEMA, LEGACY_DAILY_FACT_SOURCES_SCHEMA}:
+    if payload.get("schema") not in SUPPORTED_DAILY_FACT_SOURCES_SCHEMAS:
         errors.append(f"daily_fact_sources.schema 必须是 {DAILY_FACT_SOURCES_SCHEMA}")
     if payload.get("report_date") != manifest.get("date"):
         errors.append("daily_fact_sources.report_date 必须等于 manifest.date")
     counts: dict[str, int] = {}
-    for field in ("project_count", "document_count", "standalone_work_count", "work_scope_count"):
+    for field in (
+        "project_count",
+        "document_count",
+        "standalone_work_count",
+        "work_scope_count",
+        "tomorrow_plan_scope_count",
+    ):
         try:
             count = int(payload.get(field) or 0)
         except (TypeError, ValueError):
@@ -258,6 +269,8 @@ def validate_daily_fact_sources(
         errors.append("daily_fact_sources.work_scope_count 必须大于 0")
     if counts["project_count"] + counts["document_count"] + counts["standalone_work_count"] < 1:
         errors.append("daily_fact_sources 必须至少包含一个项目、文档或独立工作范围")
+    if counts["tomorrow_plan_scope_count"] < 0:
+        errors.append("daily_fact_sources.tomorrow_plan_scope_count 必须是非负整数")
     missing = payload.get("missing_fields")
     if not isinstance(missing, list):
         errors.append("daily_fact_sources.missing_fields 必须是数组")
@@ -374,7 +387,14 @@ def weekly_project_identity_consistency_errors(
     ]
 
 
-def validate_daily_report_view_project(rel: str, index: int, project: dict[str, Any], errors: list[str]) -> None:
+def validate_daily_report_view_project(
+    rel: str,
+    index: int,
+    project: dict[str, Any],
+    errors: list[str],
+    *,
+    contract_v3: bool,
+) -> None:
     work_type = str(project.get("work_type") or "").strip()
     if work_type not in WEEKLY_ALLOWED_WORK_TYPES:
         errors.append(f"{rel} payload.projects[{index}].work_type 只能是 Patch、App、GMS、Doc 或 Other")
@@ -385,9 +405,15 @@ def validate_daily_report_view_project(rel: str, index: int, project: dict[str, 
     for field in ("today_topic", "current_result"):
         if not project.get(field):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须提供")
-    for field in ("work_items", "key_points", "dependencies", "tomorrow_focus"):
+    for field in ("work_items", "key_points", "dependencies"):
         if not isinstance(project.get(field), list):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须是数组")
+    if contract_v3 and "tomorrow_focus" in project:
+        errors.append(
+            f"{rel} payload.projects[{index}].tomorrow_focus 已废弃；请改用顶层 tomorrow_plan"
+        )
+    if not contract_v3 and not isinstance(project.get("tomorrow_focus"), list):
+        errors.append(f"{rel} payload.projects[{index}].tomorrow_focus 必须是数组")
     for field in ("key_points", "dependencies"):
         values = project.get(field)
         if isinstance(values, list) and any(
@@ -398,7 +424,6 @@ def validate_daily_report_view_project(rel: str, index: int, project: dict[str, 
     work_items = project.get("work_items") if isinstance(project.get("work_items"), list) else []
     if not work_items:
         errors.append(f"{rel} payload.projects[{index}].work_items 必须至少包含一项今日工作")
-    unfinished = False
     for item_index, item in enumerate(work_items):
         prefix = f"{rel} payload.projects[{index}].work_items[{item_index}]"
         if not isinstance(item, dict):
@@ -415,10 +440,10 @@ def validate_daily_report_view_project(rel: str, index: int, project: dict[str, 
             errors.append(f"{prefix}.how 不得使用固定套话，必须写实际处理方法")
         if item.get("status") not in DAILY_STATUS_VALUES:
             errors.append(f"{prefix}.status 必须是已完成、处理中、待验证或阻塞")
-        unfinished = unfinished or item.get("status") in {"处理中", "待验证", "阻塞"}
-    focus = project.get("tomorrow_focus")
-    if unfinished and isinstance(focus, list) and not any(str(value or "").strip() for value in focus):
-        errors.append(f"{rel} payload.projects[{index}].tomorrow_focus 存在未完成事项时必须提供")
+        if contract_v3 and planning_only_work_item(item):
+            errors.append(
+                f"{prefix} 是尚未开展的明日计划，不得伪造成今日工作；请移入 payload.tomorrow_plan"
+            )
 
 
 def parse_weekly_count_text(
@@ -701,9 +726,21 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
         validate_weekly_report_view_ledger(rel, index, project, errors)
 
 
-def validate_daily_report_view_documents(rel: str, documents: Any, errors: list[str]) -> None:
+def validate_daily_report_view_documents(
+    rel: str,
+    documents: Any,
+    errors: list[str],
+    *,
+    contract_v3: bool,
+) -> None:
     prefix = f"{rel} payload.documents"
-    errors.extend(validate_daily_documents(documents, prefix=prefix))
+    errors.extend(
+        validate_daily_documents(
+            documents,
+            prefix=prefix,
+            allow_legacy_tomorrow_focus=not contract_v3,
+        )
+    )
     if not isinstance(documents, list):
         return
     for index, document in enumerate(documents):
@@ -717,11 +754,28 @@ def validate_daily_report_view_documents(rel: str, documents: Any, errors: list[
                 errors.append(
                     f"{prefix}[{index}].work_items[{item_index}].how 不得使用固定套话，必须写实际处理方法"
                 )
+            if contract_v3 and planning_only_work_item(item):
+                errors.append(
+                    f"{prefix}[{index}].work_items[{item_index}] 是尚未开展的明日计划，"
+                    "不得伪造成今日工作；请移入 payload.tomorrow_plan"
+                )
 
 
-def validate_daily_report_view_standalone_work(rel: str, rows: Any, errors: list[str]) -> None:
+def validate_daily_report_view_standalone_work(
+    rel: str,
+    rows: Any,
+    errors: list[str],
+    *,
+    contract_v3: bool,
+) -> None:
     prefix = f"{rel} payload.standalone_work"
-    errors.extend(validate_daily_standalone_work(rows, prefix=prefix))
+    errors.extend(
+        validate_daily_standalone_work(
+            rows,
+            prefix=prefix,
+            allow_legacy_tomorrow_focus=not contract_v3,
+        )
+    )
     if not isinstance(rows, list):
         return
     for index, row in enumerate(rows):
@@ -732,6 +786,11 @@ def validate_daily_report_view_standalone_work(rel: str, rows: Any, errors: list
             if isinstance(item, dict) and OLD_DAILY_HOW_TEXT in clean_document_list(item.get("how")):
                 errors.append(
                     f"{prefix}[{index}].work_items[{item_index}].how 不得使用固定套话，必须写实际处理方法"
+                )
+            if contract_v3 and isinstance(item, dict) and planning_only_work_item(item):
+                errors.append(
+                    f"{prefix}[{index}].work_items[{item_index}] 是尚未开展的明日计划，"
+                    "不得伪造成今日工作；请移入 payload.tomorrow_plan"
                 )
 
 
@@ -836,6 +895,7 @@ def validate_report_view_payload(
     manifest: dict[str, Any],
     view: dict[str, Any],
     expected_weekly_project_identities: Any = None,
+    daily_contract_v3: bool,
     errors: list[str],
 ) -> None:
     for field in ("schema", "report_type", "material_name", "material_summary", "member_alias", "member_name", "display_date"):
@@ -851,6 +911,7 @@ def validate_report_view_payload(
     projects = view.get("projects")
     documents = view.get("documents", [])
     standalone_work = view.get("standalone_work", [])
+    tomorrow_plan = view.get("tomorrow_plan")
     if not isinstance(projects, list):
         errors.append(f"{rel} payload.projects 必须是数组")
         projects = []
@@ -883,13 +944,33 @@ def validate_report_view_payload(
         if not isinstance(project, dict):
             continue
         if report_type == "daily":
-            validate_daily_report_view_project(rel, index, project, errors)
+            validate_daily_report_view_project(
+                rel,
+                index,
+                project,
+                errors,
+                contract_v3=daily_contract_v3,
+            )
         else:
             validate_weekly_report_view_project(rel, index, project, errors)
     if report_type == "daily":
-        validate_daily_report_view_documents(rel, documents, errors)
-        validate_daily_report_view_standalone_work(rel, standalone_work, errors)
+        validate_daily_report_view_documents(
+            rel,
+            documents,
+            errors,
+            contract_v3=daily_contract_v3,
+        )
+        validate_daily_report_view_standalone_work(
+            rel,
+            standalone_work,
+            errors,
+            contract_v3=daily_contract_v3,
+        )
+        if daily_contract_v3 or "tomorrow_plan" in view:
+            errors.extend(validate_tomorrow_plan(tomorrow_plan, prefix=f"{rel} payload.tomorrow_plan"))
     else:
+        if "tomorrow_plan" in view:
+            errors.append(f"{rel} payload.tomorrow_plan 仅日报允许提供")
         validate_weekly_report_view_documents(rel, documents, errors)
         validate_weekly_report_view_standalone_work(rel, standalone_work, errors)
     if report_type == "daily" and view.get("report_date") != manifest.get("date"):
@@ -908,6 +989,7 @@ def validate_report_display_files(
     manifest: dict[str, Any],
     report_type: str,
     expected_weekly_project_identities: Any,
+    daily_contract_v3: bool,
     require_file: RequireFile,
     read_referenced_json: ReadReferencedJson,
     errors: list[str],
@@ -936,6 +1018,7 @@ def validate_report_display_files(
             manifest=manifest,
             view=view,
             expected_weekly_project_identities=expected_weekly_project_identities,
+            daily_contract_v3=daily_contract_v3,
             errors=errors,
         )
 
@@ -1039,6 +1122,12 @@ def validate_report_trace_package(
             if package_kind == "weekly_trace"
             and isinstance(evidence_by_kind.get("project_inference", {}).get("payload"), dict)
             else None
+        ),
+        daily_contract_v3=(
+            package_kind == "daily_trace"
+            and isinstance(evidence_by_kind.get("daily_fact_sources", {}).get("payload"), dict)
+            and evidence_by_kind["daily_fact_sources"]["payload"].get("schema")
+            == DAILY_FACT_SOURCES_SCHEMA
         ),
         require_file=require_file,
         read_referenced_json=read_referenced_json,

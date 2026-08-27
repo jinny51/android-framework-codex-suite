@@ -145,6 +145,11 @@ def build_report_package(
     daily_projects: list[dict[str, Any]] = []
     daily_documents: list[dict[str, Any]] = []
     daily_standalone_work: list[dict[str, Any]] = []
+    daily_tomorrow_plan: dict[str, list[dict[str, Any]]] = {
+        "projects": [],
+        "documents": [],
+        "standalone_work": [],
+    }
     daily_fact_evidence_path = ""
     weekly_fact_evidence_path = ""
     items = session_items
@@ -161,6 +166,7 @@ def build_report_package(
         daily_projects = daily_facts.projects
         daily_documents = daily_facts.documents
         daily_standalone_work = daily_facts.standalone_work
+        daily_tomorrow_plan = daily_facts.tomorrow_plan
         if daily_projects:
             items = daily_project_rows_to_items(daily_projects)
             for row in daily_projects:
@@ -260,16 +266,18 @@ def build_report_package(
                 project_payload["downstream_customer"] = fact_customers[0]["downstream_customer"]
     documents = daily_documents if report_type == "daily" else weekly_documents
     standalone_work = daily_standalone_work if report_type == "daily" else weekly_standalone_work
-    if documents or standalone_work:
+    planned_documents = daily_tomorrow_plan["documents"] if report_type == "daily" else []
+    planned_standalone_work = daily_tomorrow_plan["standalone_work"] if report_type == "daily" else []
+    if documents or standalone_work or planned_documents or planned_standalone_work:
         project_payload["non_project_work"] = True
         project_payload["documents"] = [
             str(row.get("document_name") or "")
-            for row in documents
+            for row in [*documents, *planned_documents]
             if row.get("document_name")
         ]
         project_payload["standalone_work"] = [
             str(row.get("work_name") or "")
-            for row in standalone_work
+            for row in [*standalone_work, *planned_standalone_work]
             if row.get("work_name")
         ]
         if not (daily_projects if report_type == "daily" else weekly_projects):
@@ -298,6 +306,7 @@ def build_report_package(
         daily_documents,
         weekly_standalone_work,
         daily_standalone_work,
+        daily_tomorrow_plan,
     )
     project_path = write_default_evidence(
         package_dir,
@@ -343,6 +352,7 @@ def build_report_package(
         daily_documents,
         weekly_standalone_work,
         daily_standalone_work,
+        daily_tomorrow_plan,
     )
     fact_sources_path = daily_fact_evidence_path or weekly_fact_evidence_path
     fact_sources_payload = daily_facts.evidence if report_type == "daily" else weekly_facts.evidence
@@ -368,7 +378,7 @@ def build_report_package(
         report_project,
         project_path,
         display_path,
-        bool(documents or standalone_work),
+        bool(documents or standalone_work or planned_documents or planned_standalone_work),
     )
     if report_type in {"daily", "weekly"} and replace_report_run_id:
         replacement = next((item for item in report_duplicates if item["run_id"] == replace_report_run_id), {})

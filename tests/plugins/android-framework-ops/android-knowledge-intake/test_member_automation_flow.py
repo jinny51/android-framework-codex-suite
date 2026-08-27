@@ -2509,7 +2509,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(edited_check["status"], "FAIL")
             self.assertIn("不能只改其中一份", "\n".join(edited_check["errors"]))
 
-    def test_daily_app_name_is_a_hard_gate_and_explicit_no_focus_is_preserved(self) -> None:
+    def test_daily_app_name_is_a_hard_gate_and_legacy_focus_is_migrated(self) -> None:
         module = load_intake_module()
         daily_module = importlib.import_module("akbs_intake.reports.daily_facts")
         with tempfile.TemporaryDirectory() as tmp:
@@ -2557,7 +2557,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 project_items={},
                 daily_work_items={},
             )
-            self.assertEqual(projects[0]["tomorrow_focus"], ["无"])
+            self.assertNotIn("tomorrow_focus", projects[0])
             payload["projects"][0]["tomorrow_focus"] = []
             facts.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             projects = daily_module.load_explicit_facts(
@@ -2566,8 +2566,171 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 project_items={},
                 daily_work_items={},
             )
-            self.assertEqual(projects[0]["tomorrow_focus"], ["无"])
+            self.assertNotIn("tomorrow_focus", projects[0])
             self.assertTrue(callable(module.validate_package))
+
+    def test_daily_tomorrow_plan_is_independent_from_today_work(self) -> None:
+        load_intake_module()
+        weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = seed_knowledge_remote(root)
+            env = write_member_config(root, remote)
+            facts = root / "daily-tomorrow-plan.json"
+            facts.write_text(
+                json.dumps(
+                    {
+                        "schema": "akbs-daily-work-facts-v3",
+                        "report_date": "2026-06-03",
+                        "projects": [
+                            {
+                                "project": "TVE8801M",
+                                "customer": "韩富友",
+                                "work_type": "GMS",
+                                "work_items": [
+                                    {
+                                        "name": "完成 GTS 结果核对",
+                                        "did": ["核对当日 GTS 结果"],
+                                        "how": ["按失败项逐项确认"],
+                                        "result": "当日核对已完成",
+                                        "status": "已完成",
+                                    }
+                                ],
+                                "key_points": [],
+                                "dependencies": [],
+                            }
+                        ],
+                        "documents": [],
+                        "standalone_work": [],
+                        "tomorrow_plan": {
+                            "projects": [
+                                {
+                                    "project": "TVE1065M",
+                                    "customer": "韩富友",
+                                    "work_type": "GMS",
+                                    "plan_items": ["开始执行完整 GMS 测试"],
+                                }
+                            ],
+                            "documents": [
+                                {
+                                    "work_type": "Doc",
+                                    "document_name": "测试计划文档",
+                                    "plan_items": ["补齐测试范围说明"],
+                                }
+                            ],
+                            "standalone_work": [
+                                {
+                                    "work_type": "Other",
+                                    "work_name": "团队 ATS 环境维护",
+                                    "plan_items": ["检查共用 Worker 状态"],
+                                }
+                            ],
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            package = prepare_daily_package(
+                env,
+                "2026-06-03",
+                "20260603-215500-daily-tomorrow-plan",
+                facts,
+            )
+            report = read_package_report(package)
+            view = read_report_view(package)["payload"]
+            today_markdown, plan_markdown = report.split("## 五、明日计划", 1)
+
+            self.assertNotIn("TVE1065M", today_markdown)
+            self.assertIn("**TVE1065M** 韩富友｜GMS", plan_markdown)
+            self.assertIn("Doc：测试计划文档", plan_markdown)
+            self.assertIn("Other：团队 ATS 环境维护", plan_markdown)
+            self.assertEqual([row["project"] for row in view["projects"]], ["TVE8801M"])
+            self.assertNotIn("tomorrow_focus", view["projects"][0])
+            self.assertEqual(
+                [row["project"] for row in view["tomorrow_plan"]["projects"]],
+                ["TVE1065M"],
+            )
+            evidence = json.loads(
+                (package / "materials" / "evidence" / "daily_fact_sources.json").read_text(
+                    encoding="utf-8"
+                )
+            )["payload"]
+            self.assertEqual(evidence["schema"], "akbs-daily-fact-sources-v3")
+            self.assertEqual(evidence["work_scope_count"], 1)
+            self.assertEqual(evidence["tomorrow_plan_scope_count"], 3)
+
+            metadata, records = weekly_module._daily_project_records(
+                [{"report_date": "2026-06-03", "package_key": "fixture", "report_view": view}]
+            )
+            self.assertIn("TVE1065M", metadata)
+            self.assertNotIn("TVE1065M", records)
+
+    def test_legacy_future_only_daily_scope_is_moved_out_of_today(self) -> None:
+        load_intake_module()
+        daily_module = importlib.import_module("akbs_intake.reports.daily_facts")
+        with tempfile.TemporaryDirectory() as tmp:
+            facts = Path(tmp) / "legacy-daily.json"
+            facts.write_text(
+                json.dumps(
+                    {
+                        "schema": "akbs-daily-work-facts-v2",
+                        "report_date": "2026-06-03",
+                        "projects": [
+                            {
+                                "project": "TVE8801M",
+                                "customer": "韩富友",
+                                "work_type": "GMS",
+                                "work_items": [
+                                    {
+                                        "name": "完成当日结果核对",
+                                        "did": ["核对 GTS 结果"],
+                                        "how": ["逐项确认"],
+                                        "result": "已完成",
+                                        "status": "已完成",
+                                    }
+                                ],
+                            },
+                            {
+                                "project": "TVE1065M",
+                                "customer": "韩富友",
+                                "work_type": "GMS",
+                                "work_items": [
+                                    {
+                                        "name": "SMR 安全补丁相关完整测试启动安排",
+                                        "did": ["测试尚未执行"],
+                                        "how": ["明日开始执行完整测试"],
+                                        "result": "尚未开始，明日开展",
+                                        "status": "已完成",
+                                    }
+                                ],
+                            },
+                        ],
+                        "documents": [],
+                        "standalone_work": [],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            projects, documents, standalone, plan = daily_module.load_explicit_facts(
+                facts,
+                dt.date(2026, 6, 3),
+                project_items={},
+                daily_work_items={},
+                include_all_scopes=True,
+            )
+
+            self.assertEqual([row["project"] for row in projects], ["TVE8801M"])
+            self.assertEqual(documents, [])
+            self.assertEqual(standalone, [])
+            self.assertEqual([row["project"] for row in plan["projects"]], ["TVE1065M"])
+            self.assertEqual(
+                plan["projects"][0]["plan_items"],
+                ["SMR 安全补丁相关完整测试启动安排"],
+            )
 
     def test_report_local_check_rejects_missing_customer_and_command_text_customer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2947,7 +3110,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "## 二、今日工作",
                 "## 三、重点说明",
                 "## 四、依赖 / 需协调",
-                "## 五、明日重点",
+                "## 五、明日计划",
                 "### **TVE8402M** 合成客户一",
                 "- 今日主题：",
                 "- 当前结果：",
@@ -3006,8 +3169,13 @@ class MemberAutomationFlowTests(unittest.TestCase):
             daily_project = daily_view["payload"]["projects"][0]
             self.assertEqual(daily_project["project"], "TVE8402M")
             self.assertEqual(daily_project["customer"], "合成客户一")
-            for field in ("today_topic", "current_result", "work_items", "key_points", "dependencies", "tomorrow_focus"):
+            for field in ("today_topic", "current_result", "work_items", "key_points", "dependencies"):
                 self.assertIn(field, daily_project)
+            self.assertNotIn("tomorrow_focus", daily_project)
+            self.assertEqual(
+                daily_view["payload"]["tomorrow_plan"],
+                {"projects": [], "documents": [], "standalone_work": []},
+            )
             self.assertEqual(daily_project["key_points"], [])
             self.assertEqual(daily_project["dependencies"], [])
             daily_item = daily_project["work_items"][0]
@@ -3095,7 +3263,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertIn("- 客户确认新增验收范围", report)
             self.assertIn("## 四、依赖 / 需协调", report)
             self.assertIn("- 等待 BSP 提供联调固件", report)
-            self.assertIn("## 五、明日重点", report)
+            self.assertIn("## 五、明日计划", report)
             self.assertEqual(project["key_points"], ["客户确认新增验收范围"])
             self.assertEqual(project["dependencies"], ["等待 BSP 提供联调固件"])
 
@@ -3514,12 +3682,12 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual(daily_view["documents"][0]["work_type"], "Doc")
             self.assertEqual(daily_view["documents"][0]["key_points"], [])
             self.assertEqual(daily_view["documents"][0]["dependencies"], [])
-            self.assertEqual(daily_view["documents"][0]["tomorrow_focus"], ["无"])
+            self.assertNotIn("tomorrow_focus", daily_view["documents"][0])
             self.assertTrue(daily_manifest["has_non_project_work"])
             self.assertNotIn("需成员补充项目名", daily_report)
             self.assertIn("### Doc：Android Framework Orchestrator 功能介绍文档", daily_report)
-            self.assertIn("## 五、明日重点", daily_report)
-            self.assertIn("- 无", daily_report)
+            self.assertIn("## 五、明日计划", daily_report)
+            self.assertIn("无。", daily_report)
 
             write_codex_session(
                 Path(env["CODEX_HOME"]),

@@ -14,7 +14,7 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
 
 ```json
 {
-  "schema": "akbs-daily-work-facts-v2",
+  "schema": "akbs-daily-work-facts-v3",
   "report_date": "2026-08-10",
   "projects": [
     {
@@ -47,8 +47,7 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
         }
       ],
       "key_points": [],
-      "dependencies": [],
-      "tomorrow_focus": []
+      "dependencies": []
     }
   ],
   "standalone_work": [
@@ -65,18 +64,42 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
         }
       ],
       "key_points": ["双 Worker 基础链路已通过"],
-      "dependencies": [],
-      "tomorrow_focus": ["继续跨 Worker 分片联调"]
+      "dependencies": []
     }
-  ]
+  ],
+  "tomorrow_plan": {
+    "projects": [
+      {
+        "project": "TVE1065M",
+        "customer": "韩富友",
+        "work_type": "GMS",
+        "plan_items": ["开始执行完整 GMS 测试"]
+      }
+    ],
+    "documents": [
+      {
+        "work_type": "Doc",
+        "document_name": "测试计划文档",
+        "plan_items": ["补齐测试范围说明"]
+      }
+    ],
+    "standalone_work": [
+      {
+        "work_type": "Other",
+        "work_name": "团队共用 GMS ATS 环境搭建",
+        "plan_items": ["继续跨 Worker 分片联调"]
+      }
+    ]
+  }
 }
 ```
 
 Rules:
 
 - `report_date` must equal the generated daily date.
-- `projects[]`, `documents[]`, and `standalone_work[]` are arrays; at least one
-  must be non-empty.
+- `projects[]`, `documents[]`, and `standalone_work[]` describe today's actual
+  work; at least one must be non-empty. A plan alone cannot replace a daily
+  work record.
 - In `projects[]`, `project` and direct `customer` are required. Optional
   `downstream_customer` means the direct customer's customer. `customer`
   contains only the direct customer. Do not flatten a two-level chain into one
@@ -102,18 +125,26 @@ Rules:
   field merely because work is unfinished.
 - Document scope identity is its concrete document name. Merge repeated work on
   the same document instead of creating duplicate rows.
-- When a project has only one scope, `work_items`, `today_topic`,
-  `current_result`, and `tomorrow_focus` may be omitted; the generator fills
-  them from the authorized session-derived daily work.
+- When a project has only one scope, `work_items`, `today_topic`, and
+  `current_result` may be omitted; the generator fills them from the authorized
+  session-derived daily work.
 - When the same project has multiple scopes, each scope must explicitly carry
   its own `work_items[]` so work cannot be assigned to the wrong Patch or App.
 - Every work item contains `name`, non-empty `did[]`, non-empty `how[]`,
   `result`, and `status`. Status is exactly `已完成`, `处理中`, `待验证`, or
   `阻塞`.
-- A scope containing `处理中`, `待验证`, or `阻塞` work must have a non-empty
-  `tomorrow_focus[]`. When the member says there is no next-day focus, write
-  `["无"]`; do not turn that answer into an empty array or block submission.
-  Explicit empty/no-focus values are normalized to `["无"]` for compatibility.
+- `tomorrow_plan` is required and contains parallel `projects[]`, `documents[]`,
+  and `standalone_work[]` arrays. These arrays may all be empty.
+- Every tomorrow-plan row has a non-empty `plan_items[]`. Project plans use the
+  same project/customer/work-type identity rules as today; Doc and Other plans
+  use the same non-project name rules. A plan does not need a matching today
+  scope.
+- Tomorrow-plan rows must not contain `today_topic`, `current_result`,
+  `work_items`, `key_points`, `dependencies`, `tomorrow_focus`, or `status`.
+  Likewise, current v3 today rows must not contain `tomorrow_focus`.
+- Do not derive plans automatically from an unfinished status. “尚未开始，明日
+  执行” belongs only in `tomorrow_plan`; it must never be represented as a
+  completed, in-progress, or otherwise fabricated today work item.
 - Codex writes this JSON from the current development evidence and only asks the
   member for facts that remain ambiguous. Do not ask the member to hand-edit
   JSON, Markdown, or `report_view.json`.

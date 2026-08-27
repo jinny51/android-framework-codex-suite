@@ -10,7 +10,9 @@
 - `materials/display/report_view.json`
 - `materials/evidence/work_findings.json`
 
-`report_view.json` 是同一份日报正文的 UI 读模型。五个分类固定为 `Patch`、`App`、`GMS`、`Doc`、`Other`。凡挂靠项目的工作都进入 `projects[]` 并保留项目和客户链；无项目文档进入 `documents[]/Doc`，其他无项目工作进入 `standalone_work[]/Other`。GMS 必须挂靠项目。历史 `Document` 兼容读取为 `Doc`。每个范围都包含 `today_topic`、`current_result`、`work_items[]`、`key_points[]`、`dependencies[]` 和 `tomorrow_focus[]`。
+`report_view.json` 是同一份日报正文的 UI 读模型。五个分类固定为 `Patch`、`App`、`GMS`、`Doc`、`Other`。凡挂靠项目的今日工作都进入 `projects[]` 并保留项目和客户链；无项目文档进入 `documents[]/Doc`，其他无项目工作进入 `standalone_work[]/Other`。GMS 必须挂靠项目。历史 `Document` 兼容读取为 `Doc`。今日范围包含 `today_topic`、`current_result`、`work_items[]`、`key_points[]` 和 `dependencies[]`。
+
+“明日计划”使用独立的 `tomorrow_plan`，其下同样有 `projects[]`、`documents[]` 和 `standalone_work[]`。计划行只包含范围身份和 `plan_items[]`，不包含今日主题、今日结果、工作项或状态。明日计划可以是全新的项目、文档或其他独立工作，不要求今天已经做过；反过来，今日未完成也不会自动生成明日计划。“尚未开始，明日执行”只能归入明日计划，不能为了挂靠范围伪造一条今日工作。
 
 日报 Markdown 在“今日工作”后增加“重点说明”和“依赖 / 需协调”。`key_points[]` 只记录明确的项目外部消息、范围变化或当天攻克的关键难点，`dependencies[]` 只记录明确的外部依赖或协调事项。两个数组均允许为空；当全部范围为空时，对应 Markdown 章节显示“无”，不会阻止提交。
 
@@ -18,9 +20,9 @@
 
 日报项目行必须同时有公司项目名和直接客户。成员可以说 `TVE1086U 青鸾云`，也可以说 `TVE1091U AOC 福建移动高清`；后者识别为项目 `TVE1091U`、直接客户 `AOC`、客户的客户 `福建移动高清`。结构化 `customer` 只允许直接客户，客户的客户必须写入 `downstream_customer`；把两级客户拼进一个 `customer` 会被本地校验拦住。直接客户和下游客户不得跨层当作别名。缺项目或直接客户时提交同样会被拦住。
 
-Codex 优先采用成员明确分类，否则根据源码、产物和工作语义进行高置信度判断；只有冲突或名称缺失时才询问。具体项目认证测试使用 GMS；团队共用 ATS 环境等无项目工作使用 `standalone_work[]/Other`。存在处理中、待验证或阻塞事项时，该范围必须填写明日重点。
+Codex 优先采用成员明确分类，否则根据源码、产物和工作语义进行高置信度判断；只有冲突或名称缺失时才询问。具体项目认证测试使用 GMS；团队共用 ATS 环境等无项目工作使用 `standalone_work[]/Other`。明日计划按同样的挂靠规则分类，但与今日工作独立。
 
-正常生成先由共享内核自动识别并按范围绑定工作项。`$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` 下的 `akbs-daily-work-facts-v2` 只用于补齐未决字段、纠正判定或记录成员显式覆盖；显式事实优先于自动判定。一个混合会话若不能可靠绑定各事项，必须补齐范围事实，不得猜测拆分。
+正常生成先由共享内核自动识别并按范围绑定工作项。`$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` 下的 `akbs-daily-work-facts-v3` 只用于补齐未决字段、纠正判定、记录独立明日计划或成员显式覆盖；显式事实优先于自动判定。一个混合会话若不能可靠绑定各事项，必须补齐范围事实，不得猜测拆分。
 
 `reports/daily.md` 中项目名每次出现都加粗，不限于项目标题；只加粗项目名，例如 `**TVE1091U** AOC 福建移动高清`，客户链保持普通文字。`report_view.json` 是结构化数据，项目及摘要字段不写 Markdown 标记。
 

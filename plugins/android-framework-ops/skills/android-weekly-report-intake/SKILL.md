@@ -41,6 +41,15 @@ do not classify by item wording. Historical daily rows without scope remain
 readable, but they do not prove `work_type`, so ask the member for that missing
 weekly fact.
 
+Current daily reports also carry a separate `tomorrow_plan`. It is planning
+context only, never evidence that work started or progressed during the week.
+A tomorrow-only project, document, or standalone scope must not create a weekly
+progress row, completion count, remaining count, or project total. Its
+`plan_items[]` may become the latest next-week plan only when the same work
+scope already exists in this week's actual daily records or the effective
+previous-week ledger. Historical nested `tomorrow_focus[]` is read only as the
+legacy equivalent of that planning context.
+
 Current daily rows also carry optional `key_points[]` and `dependencies[]`.
 Merge and deduplicate this week's key points by work scope instead of carrying
 last week's key points forward. Treat daily dependencies, legacy keyword
