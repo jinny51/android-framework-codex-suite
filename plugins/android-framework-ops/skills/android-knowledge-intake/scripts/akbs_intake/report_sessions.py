@@ -346,8 +346,7 @@ def normalize_report_customer_context(value: Any) -> dict[str, str]:
             or value.get("客户的客户")
         )
     else:
-        customer = clean_report_customer_name(value)
-        downstream = ""
+        return split_report_customer_context(value)
     context = {"customer_name": customer} if customer else {}
     if downstream:
         context["downstream_customer"] = downstream

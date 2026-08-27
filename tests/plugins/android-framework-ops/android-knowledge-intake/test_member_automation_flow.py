@@ -1445,6 +1445,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
 
     def test_report_customer_hierarchy_is_preserved_in_daily_and_weekly_views(self) -> None:
         load_intake_module()
+        daily_module = importlib.import_module("akbs_intake.reports.daily_facts")
         sessions_module = importlib.import_module("akbs_intake.report_sessions")
         validation_module = importlib.import_module("akbs_intake.reports.validation")
         self.assertEqual(
@@ -1471,6 +1472,27 @@ class MemberAutomationFlowTests(unittest.TestCase):
         )
         self.assertEqual(sessions_module.clean_report_customer_name("日报"), "日报")
         self.assertEqual(sessions_module.split_report_customer_context("日报"), {})
+        self.assertEqual(
+            sessions_module.normalize_report_customer_context("浪潮 杭研中屏"),
+            {"customer_name": "浪潮", "downstream_customer": "杭研中屏"},
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            flattened = write_daily_facts(
+                Path(tmp) / "flattened-customer.json",
+                project="TVA10A2R",
+                customer="浪潮 杭研中屏",
+            )
+            with self.assertRaisesRegex(SystemExit, "customer 只能填写直接客户"):
+                daily_module.load_explicit_facts(
+                    flattened,
+                    dt.date(2026, 6, 3),
+                    project_items={},
+                    daily_work_items={},
+                    expected_project_customers={
+                        "TVA10A2R": {"customer_name": "浪潮 杭研中屏"}
+                    },
+                )
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

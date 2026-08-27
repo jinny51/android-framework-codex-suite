@@ -78,7 +78,10 @@ Rules:
 - `projects[]`, `documents[]`, and `standalone_work[]` are arrays; at least one
   must be non-empty.
 - In `projects[]`, `project` and direct `customer` are required. Optional
-  `downstream_customer` means the direct customer's customer.
+  `downstream_customer` means the direct customer's customer. `customer`
+  contains only the direct customer. Do not flatten a two-level chain into one
+  whitespace-separated `customer` value; local validation rejects it until the
+  two fields are separated.
 - Project `work_type` is `Patch`, `App`, `GMS`, `Doc`, or `Other`. The five visible categories
   are `Patch`, `App`, `GMS`, `Doc`, and `Other`.
   Explicit facts override automatic inference. Never infer from vague work-item

@@ -238,6 +238,10 @@ def validate_daily_projects(
         downstream = clean_scope_text(row.get("downstream_customer"))
         if customer in REPORT_MISSING_CUSTOMER_VALUES or not clean_report_customer_name(customer):
             errors.append(f"{prefix}.customer 必须提供直接客户")
+        elif not downstream and len(customer.split()) > 1:
+            errors.append(
+                f"{prefix}.customer 只能填写直接客户；客户的客户必须单独写入 downstream_customer"
+            )
         if downstream and not clean_report_customer_name(downstream):
             errors.append(f"{prefix}.downstream_customer 不是有效客户名称")
         identity = (customer, downstream)
