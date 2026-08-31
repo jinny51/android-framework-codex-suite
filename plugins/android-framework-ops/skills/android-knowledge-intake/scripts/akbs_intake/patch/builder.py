@@ -17,6 +17,7 @@ from akbs_intake.patch.assets import (
     patch_infos_from_paths,
     patch_readme_usable_for_inference,
     synthetic_patch_info,
+    validate_patch_attribution,
     write_feature_readme_from_patch_entries,
 )
 from akbs_intake.patch.capture_import import copy_patch_capture_packages, patch_capture_package_scope_errors
@@ -108,6 +109,14 @@ def build_patch_package(
         raise SystemExit(
             "直接 --patch 只允许显式 manual_import 或 historical_import；当前 Codex 工作流请使用 --patch-package。"
         )
+    direct_patches = patch_infos_from_paths(patch_paths or [], project)
+    direct_patch_errors = [
+        error
+        for patch in direct_patches
+        for error in validate_patch_attribution(patch.path)
+    ]
+    if direct_patch_errors:
+        raise SystemExit("\n".join(direct_patch_errors))
     artifact_input_root = expanded_path(config["out_dir"]).parent.resolve()
     for raw_package in patch_package_paths or []:
         capture_package = Path(raw_package).expanduser().resolve()
@@ -159,7 +168,7 @@ def build_patch_package(
         feature_readme_rel = capture_feature_readme_rel
 
     if patch_paths:
-        patches = patch_infos_from_paths(patch_paths, project)
+        patches = direct_patches
     elif synthetic_mode(config):
         patches = [synthetic_patch_info(package_dir, date, project, config)]
         summary = summary if summary != "管理员手动归档补丁" else "合成测试补丁包"

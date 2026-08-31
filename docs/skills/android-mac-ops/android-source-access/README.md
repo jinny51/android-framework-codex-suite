@@ -21,6 +21,8 @@ scripts/restore-mounts.sh
 scripts/unmount-share.sh
 ```
 
+如果显式指定的 `--platform` 或 `--sdk-name` 与远端源码识别结果冲突，默认停止并展示两组值。成员确认该次精确冲突后，才可分别使用 `--accept-platform-conflict` 或 `--accept-sdk-name-conflict` 重试；接受参数不能脱离对应的显式值单独使用，也不是跳过远端识别的通用开关。
+
 ## 凭据存储
 
 密码通过 macOS Keychain 管理。`scripts/_keychain_helpers.sh` 提供统一读写接口，`scripts/keychain-store.sh` 只在认证成功后保存凭据。无密码的引用位于 `~/.servers/credentials/`，项目映射统一写入 `~/.servers/projects/<server>.json`；不会再读取 ENV 项目注册表或明文密码文件。

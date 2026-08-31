@@ -9,6 +9,16 @@ Use this skill when a Framework feature is ready to be packaged as a reviewable 
 
 Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-framework-patch-intake` submits a valuable patch package through the server submission channel. The user's local `akbs-curation-maintainer` skill decides whether it later enters the knowledge repository.
 
+## Phase-One Domain Backend Boundary
+
+This Skill's public trigger remains Framework-only until the separately released
+Android engineering rename and prompt migration. Its packager nevertheless accepts an
+explicit `--change-domain` from the controlled domain contract so the backend can be
+validated before activation. The default is `framework`. A non-Framework domain may
+produce only a local `android_feature_patch`; it must stop before the current Framework
+incoming v1 intake. Do not use this backend flag to make this Skill claim App, HAL,
+native, vendor, kernel, driver, device, or build work automatically.
+
 ## Remote-Only Source Contract
 
 For Codex-authored work, Android source and source-tree metadata are authoritative
@@ -80,6 +90,7 @@ local packager:
 
 ```bash
 python3 "scripts/capture_framework_patch.py" \
+  --profile <profile_name> \
   --remote-snapshot "$SNAPSHOT" \
   --snapshot-sha256 "$SNAPSHOT_SHA256" \
   --snapshot-workspace-id "$WORKSPACE_ID" \
@@ -236,14 +247,14 @@ Stop before upload when:
 - the summary or feature name describes a date-bundled patch set such as “今日补丁合集” instead of one function
 - the change set includes unrelated dirty files
 - one feature package contains many resource keys, settings keys, or system properties unrelated to the stated feature; recapture a clean patch asset instead
-- a patch lacks the required author/date marker such as `//gyf 20251016@`, unless the user explicitly accepts a local-only draft
+- a new Codex-authored slash-comment source file lacks a matching pair of `//<member_alias> <yyyyMMdd>@{` and `//<member_alias> <yyyyMMdd>@}` markers from the selected member profile
 - new added lines contain direct `Log.*` or `Slog.*`
 - README facts are unknown but presented as verified
 - build or device verification is missing but status is `validated`
 - status is `validated`, workflow contract is `current_codex_skill`, and pre-change knowledge search evidence is missing
 - status is `validated`, knowledge search returned hits, and search usage decision is still `unknown`
 
-Team or project coding rules, such as `jinny-framework-coding-standards`, should be applied during development. This skill only checks and records violations; it is not the place to retrofit coding style after the fact.
+The canonical `android-change-policy/v1` must be applied during development. This skill verifies it per changed file and records versioned evidence; it is not the place to retrofit coding style after the fact. `--allow-missing-author-date` is restricted to a manual or historical local `draft`, produces `WARN`, and never makes the material policy-compliant.
 
 Record the implementation origin exactly as observed. Use `manual`, `external`, `historical`, or `unknown` only when Codex did not author any part of the implementation; use `mixed` when Codex participated alongside another author. Record the workflow contract separately. The package records both as curation input material; neither turns the change into curated knowledge, and neither may be rewritten to fabricate or bypass pre-change knowledge search.
 

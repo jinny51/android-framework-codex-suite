@@ -2,7 +2,7 @@
 
 > GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-framework-ops/skills/android-daily-report-intake](../../../../plugins/android-framework-ops/skills/android-daily-report-intake)。
 
-成员个人日报入口。它只负责生成、修订、检查和提交日报包（daily report package），并复用 `android-knowledge-intake` 的共享脚本和上传协议。
+成员个人日报入口。它只负责生成、修订、检查和提交日报包（daily report package），通过日报专用入口复用共享 incoming v1 内核和上传协议。
 
 日报回答“今天干了什么、怎么干的、结果是什么”。新日报包生成：
 
@@ -41,8 +41,8 @@ Markdown、`report_view.json` 和日报事实由 `report_render_binding` 绑定�
 常用命令：
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --submit-latest
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare --replace-daily-run-id <old_run_id>
+python3 "scripts/android_daily_report_intake.py" --profile <member_alias> --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare
+python3 "scripts/android_daily_report_intake.py" --profile <member_alias> --submit-latest
+python3 "scripts/android_daily_report_intake.py" --profile <member_alias> --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare
+python3 "scripts/android_daily_report_intake.py" --profile <member_alias> --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare --replace-daily-run-id <old_run_id>
 ```

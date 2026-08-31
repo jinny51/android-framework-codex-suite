@@ -7,7 +7,11 @@ description: "Use when generating, checking, submitting, or completing queue inf
 
 Use this member-facing skill for one complete Android Framework 补丁包. It takes a real Framework change or an `android-framework-patch-capture` result and produces one `framework_change` incoming package.
 
-This skill calls the shared member intake kernel in `android-knowledge-intake/scripts/android_knowledge_intake.py` with `patch` mode. Member identity, endpoint resolution, source-version evidence, package validation and upload remain shared with daily and weekly intake.
+This skill owns `scripts/android_framework_patch_intake.py`, which routes to the shared
+member incoming v1 kernel in patch mode. Member identity, endpoint resolution,
+source-version evidence, package validation and upload remain shared with daily and
+weekly intake. The old umbrella `android_knowledge_intake.py ... patch` command remains
+compatible.
 
 ## Responsibility
 
@@ -43,26 +47,26 @@ The queue stages are `received`, `under_review`, `information_required`, `inform
 Generate or submit one complete patch package:
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare \
+python3 "scripts/android_framework_patch_intake.py" --profile <member_alias> --prepare \
   --patch-package /path/to/.codex/patch-packages/<run-id> \
   --project "TVE8402M" \
   --summary "功能补丁摘要" \
   --status validated
 
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch --submit-latest
+python3 "scripts/android_framework_patch_intake.py" --profile <member_alias> --submit-latest
 ```
 
 Read an open queue information request:
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch \
+python3 "scripts/android_framework_patch_intake.py" --profile <member_alias> \
   --inspect-information-request <request-id>
 ```
 
 Submit a reviewed response for the same patch package:
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch \
+python3 "scripts/android_framework_patch_intake.py" --profile <member_alias> \
   --complete-information-request /path/to/response.json
 ```
 

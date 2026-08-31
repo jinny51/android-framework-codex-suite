@@ -37,7 +37,13 @@ the mounted source tree, a one-off SSH source command, or local `apply_patch`.
 
 If the user explicitly asks for a personal coding-style skill, project `AGENTS.md`, local engineering rule, or review skill, treat that instruction as part of the active requirement. Do not replace it with this workflow. Combine the user's rule with this workflow's Android Framework evidence and verification discipline.
 
-If the optional Jinny team practice skill `jinny-framework-coding-standards` is installed or explicitly required for the task, load it before Gate 3 and treat its patch annotation, `FrameworkLog`, string resource, SystemProperties, utility-class, and feature README rules as coding constraints. Do not wait until patch capture to retrofit those rules.
+Before Gate 3, read the canonical Android change policy at
+`../../contracts/android-change-policy/v1/README.md` and its machine contract
+`policy.json`. The universal patch-attribution rules are mandatory. Apply the
+Framework profile only to Framework changes. Personal, project, or legacy Jinny style
+preferences may add constraints, but they do not replace or redefine the canonical
+identity, evidence, or Framework safety rules. Do not wait until patch capture to
+retrofit the policy.
 
 Use it for both direct requirement implementation and bug/regression work. Do not force requirement work into a root-cause narrative; use a requirement contract and acceptance evidence instead.
 
@@ -177,7 +183,7 @@ Enter only after the requirement is specified or the diagnosis has converged.
 Before editing, have:
 
 - Requirement contract or root-cause statement.
-- Active personal/team/project coding rules, such as `jinny-framework-coding-standards` when required.
+- Canonical `android-change-policy/v1`, plus any active personal/team/project rules that do not conflict with it.
 - Planned files/modules and ownership boundary.
 - Risk level and rollback/checkpoint approach.
 - Build profile and expected artifacts.

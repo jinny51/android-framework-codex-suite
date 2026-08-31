@@ -72,17 +72,29 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         self.assertEqual(run(["git", "commit", "-m", "initial"], self.repo).returncode, 0)
 
         staged.write_text(
-            "class Framework {\n  //gyf 20260826@ staged framework policy\n}\n",
+            "class Framework {\n"
+            "  //member01 20260826@{\n"
+            "  static final boolean ENABLED = true;\n"
+            "  //member01 20260826@}\n"
+            "}\n",
             encoding="utf-8",
         )
         self.assertEqual(run(["git", "add", "core/Framework.java"], self.repo).returncode, 0)
         tracked.write_text(
-            "class DisplayPolicy {\n  //gyf 20260826@ remote display policy\n}\n",
+            "class DisplayPolicy {\n"
+            "  //member01 20260826@{\n"
+            "  static final boolean REMOTE_POLICY = true;\n"
+            "  //member01 20260826@}\n"
+            "}\n",
             encoding="utf-8",
         )
         untracked = self.repo / "services" / "core" / "NewPolicy.java"
         untracked.write_text(
-            "class NewPolicy {\n  //gyf 20260826@ untracked policy\n}\n",
+            "class NewPolicy {\n"
+            "  //member01 20260826@{\n"
+            "  static final boolean NEW_POLICY = true;\n"
+            "  //member01 20260826@}\n"
+            "}\n",
             encoding="utf-8",
         )
 
@@ -124,6 +136,15 @@ class RemotePatchSnapshotTests(unittest.TestCase):
         )
 
     def capture_command(self, snapshot_path: Path, codex_home: Path) -> list[str]:
+        codex_home.mkdir(parents=True, exist_ok=True)
+        (codex_home / "android-knowledge-intake.toml").write_text(
+            "default_profile = \"member01\"\n\n"
+            "[profiles.member01]\n"
+            "member_alias = \"member01\"\n"
+            "member_name = \"Member 01\"\n"
+            "timezone = \"Asia/Shanghai\"\n",
+            encoding="utf-8",
+        )
         return [
             sys.executable,
             str(CAPTURE),
@@ -139,6 +160,8 @@ class RemotePatchSnapshotTests(unittest.TestCase):
             "86400",
             "--remote-source-root",
             self.remote_root.as_posix(),
+            "--profile",
+            "member01",
             "--out-dir",
             str(codex_home / "artifacts" / "packages"),
             "--run-id",

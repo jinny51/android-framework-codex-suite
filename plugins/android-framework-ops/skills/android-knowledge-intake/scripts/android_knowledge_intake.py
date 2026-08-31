@@ -636,7 +636,7 @@ def doctor(
         plugin_gate_check=plugin_version_gate_check,
     )
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate and submit Codex team knowledge incoming packages.")
     parser.add_argument("--profile", help="profile name from config, for example admin_alias or member_alias")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -727,11 +727,11 @@ def parse_args() -> argparse.Namespace:
                 metavar="RESPONSE_JSON",
                 help="submit text, fields, or non-patch attachments to the existing patch package",
             )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> int:
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
 
     config, loaded = load_config(args.profile)
     date: dt.date | None = None

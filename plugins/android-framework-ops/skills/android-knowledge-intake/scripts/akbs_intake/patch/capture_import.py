@@ -75,6 +75,12 @@ def copy_patch_capture_packages(
     for raw in package_paths:
         capture_dir = Path(raw).expanduser().resolve()
         manifest = read_json_file(capture_dir / "manifest.json")
+        change_domain = str(manifest.get("change_domain") or "framework")
+        if manifest.get("package_type") == "android_feature_patch" or change_domain != "framework":
+            raise SystemExit(
+                "当前 incoming v1 只接受 change_domain=framework；"
+                f"{change_domain} capture 只能保留为本地工程材料: {capture_dir}"
+            )
         if manifest.get("package_type") != "framework_feature_patch":
             raise SystemExit(f"不是功能级 android-framework-patch-capture 工作包: {capture_dir}")
         readme_rel = str(manifest.get("readme") or "")

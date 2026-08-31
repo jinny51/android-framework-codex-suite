@@ -7,7 +7,10 @@ source "$repo_root/scripts/validator_cleanup.sh"
 validator_cleanup_install "$repo_root"
 
 path_guard="$repo_root/scripts/validator_path_guard.py"
-remote_authority="$(ssh -o BatchMode=yes "$host" 'printf "%s\n" "${TMPDIR:-/private/tmp}"')"
+remote_authority="$(
+  ssh -o BatchMode=yes "$host" \
+    'authority="${TMPDIR:-/private/tmp}"; cd "$authority" && pwd -P'
+)"
 remote_akbs_root="${AKBS_REMOTE_MAC_ROOT:-/Users/jinny/Work/AKBS}"
 remote_claim="$(
   ssh -o BatchMode=yes "$host" /usr/bin/python3 - create-private \
@@ -45,7 +48,11 @@ trap 'cleanup_all "$?"' EXIT
 (
   cd "$repo_root"
   rsync -aR \
+    .agents/plugins/marketplace.json \
+    manifests/android-framework-ops.toml \
     plugins/android-framework-ops/lib \
+    plugins/android-framework-ops/skills/android-framework-change-workflow/scripts \
+    plugins/android-framework-ops/skills/android-knowledge-intake/references/verification-acceptance-v2.json \
     plugins/android-framework-ops/skills/android-remote-build-deploy \
     plugins/android-mac-ops \
     tests/plugins/android-framework-ops/android-remote-build-deploy \
@@ -66,10 +73,11 @@ printf 'MACOS_BASH=%s\n' "$(/bin/bash --version | sed -n '1p')"
 while IFS= read -r script; do
   /bin/bash -n "$script"
 done <<EOF
-$(find "$root/plugins/android-mac-ops" "$root/plugins/android-framework-ops/skills/android-remote-build-deploy" -type f -name '*.sh' -print | sort)
+$(find "$root/plugins/android-mac-ops" "$root/plugins/android-framework-ops/skills/android-framework-change-workflow/scripts" "$root/plugins/android-framework-ops/skills/android-remote-build-deploy" -type f -name '*.sh' -print | sort)
 EOF
 
 /usr/bin/python3 -m compileall -q "$root/plugins/android-framework-ops/lib"
+/usr/bin/python3 -m compileall -q "$root/plugins/android-framework-ops/skills/android-framework-change-workflow/scripts"
 /usr/bin/python3 -m compileall -q "$root/plugins/android-framework-ops/skills/android-remote-build-deploy"
 /usr/bin/python3 -m compileall -q "$root/tests/plugins/android-framework-ops/android-remote-build-deploy"
 /usr/bin/python3 -m compileall -q "$root/tests/plugins/android-mac-ops"

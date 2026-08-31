@@ -1,6 +1,19 @@
-# Framework Feature Patch Package Contract
+# Android Feature Patch Package Contract
 
-This package is a local handoff artifact. One package represents one Framework feature. A feature may touch multiple repo-managed Git repositories, so the package has one feature README and one patch per affected source repository.
+This package is a local handoff artifact. One package represents one Android feature. A feature may touch multiple repo-managed Git repositories, so the package has one feature README and one patch per affected source repository.
+
+The current public Skill remains `android-framework-patch-capture`. Its default
+`--change-domain framework` behavior and `framework_feature_patch` manifest are
+unchanged. The phase-one backend also accepts an explicit controlled domain from
+`contracts/change-domain/v1/domain-profiles.json`:
+
+- `framework` produces `framework_feature_patch` and may continue to the existing
+  Framework incoming v1 flow after validation.
+- every other domain produces `android_feature_patch` for local engineering evidence
+  only. The current Framework intake must reject it; it must not be relabelled and
+  uploaded through incoming v1.
+
+This is a backend capability boundary, not a new public cross-domain Skill trigger.
 
 `android-framework-patch-intake` submits the whole feature package through the server submission channel as incoming, using the shared `android-knowledge-intake` kernel. The user's local `akbs-curation-maintainer` skill later decides whether and how material enters the knowledge repository.
 
@@ -49,6 +62,7 @@ There is no `patches/*.readme.md` in the capture package. The README is feature-
 {
   "schema_version": "2.0",
   "package_type": "framework_feature_patch",
+  "change_domain": "framework",
   "feature": "display-policy-settings-entry",
   "readme": "README.md",
   "project": "TVE8402M",
@@ -278,11 +292,17 @@ qualified equivalent verification can produce requirement acceptance.
 
 ## Coding Standard Check
 
-Coding standards should be applied during development, especially when a team practice skill such as `jinny-framework-coding-standards` is active. Capture-time checks are a safety net for manual, historical, external, or half-inherited code.
+The canonical `android-change-policy/v1` is applied during development. Capture-time
+checks verify the same versioned contract and remain a safety net for manual,
+historical, external, or half-inherited code. The currently optional
+`jinny-android-practices` layer may add non-conflicting preferences, but it is not a
+second policy authority.
 
 `coding-standard-check.json` records:
 
-- author/date marker presence
+- policy ID/version, selected member profile and expected `member_alias`
+- per-file comment adapter, paired/legacy marker counts, aliases, dates and violations
+- legacy import exceptions, which remain `WARN` and never become canonical-policy `PASS`
 - direct `Log.*` or `Slog.*` additions
 - FrameworkLog keys
 - `persist.sys.framework.debug.*` usage

@@ -530,6 +530,76 @@ class PatchCaptureIngestTests(unittest.TestCase):
 
             self.assertIn("manual_import 或 historical_import", str(ctx.exception))
 
+    def test_direct_patch_marker_gate_runs_before_creating_an_incoming_package(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patch_path = root / "rk14-frameworks-base@manual.patch"
+            patch_path.write_text(
+                "diff --git a/frameworks/base/X.java b/frameworks/base/X.java\n"
+                "--- a/frameworks/base/X.java\n"
+                "+++ b/frameworks/base/X.java\n"
+                "@@ -1 +1 @@\n"
+                "+manualChange();\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(SystemExit) as ctx:
+                prepare_patch_package(
+                    dt.date(2026, 8, 26),
+                    self.config(root),
+                    run_id="20260826-120200-patch",
+                    patch_paths=[str(patch_path)],
+                    patch_package_paths=[],
+                    project="TVE1088U",
+                    status="draft",
+                    schema_version="1",
+                )
+
+            self.assertIn("patch has no author/date marker", str(ctx.exception))
+            self.assertFalse(Path(self.config(root)["out_dir"]).exists())
+
+    def test_direct_historical_patch_keeps_a_valid_legacy_author_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            patch_path = root / "rk14-frameworks-base@historical.patch"
+            patch_path.write_text(
+                "diff --git a/frameworks/base/X.java b/frameworks/base/X.java\n"
+                "--- a/frameworks/base/X.java\n"
+                "+++ b/frameworks/base/X.java\n"
+                "@@ -1 +1 @@\n"
+                "+//legacy_author 20251016@ historical change\n",
+                encoding="utf-8",
+            )
+
+            errors = intake.validate_patch_file(patch_path)
+            self.assertFalse(any("作者日期标记无效" in item for item in errors))
+
+    def test_non_framework_capture_is_rejected_by_framework_incoming_v1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            capture = create_capture_package(root, status="candidate")
+            manifest_path = capture / "manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["package_type"] = "android_feature_patch"
+            manifest["change_domain"] = "app"
+            write_json(manifest_path, manifest)
+
+            with self.assertRaises(SystemExit) as ctx:
+                prepare_patch_package(
+                    dt.date(2026, 8, 31),
+                    self.config(root),
+                    run_id="20260831-120000-app-capture",
+                    patch_paths=[],
+                    patch_package_paths=[str(capture)],
+                    project="TVE1067M",
+                    summary="App 领域本地材料",
+                    status="candidate",
+                    schema_version="1",
+                )
+
+            self.assertIn("incoming v1 只接受 change_domain=framework", str(ctx.exception))
+            self.assertIn("app capture 只能保留为本地工程材料", str(ctx.exception))
+
     def test_patch_facts_extract_added_xml_string_resource_names(self) -> None:
         facts = intake.patch_facts_from_text(
             "diff --git a/res/values/strings.xml b/res/values/strings.xml\n"

@@ -59,6 +59,11 @@ def test_shell_validators_install_exit_cleanup_or_remote_owned_cleanup() -> None
     assert "trap 'cleanup_all" in macos
     assert "remote validator owned-directory cleanup failed" in macos
     assert 'cleanup-private' in macos and '>/dev/null 2>&1 || true' not in macos
+    assert "pwd -P" in macos
+    assert "android-framework-change-workflow/scripts" in macos
+    assert "android-knowledge-intake/references/verification-acceptance-v2.json" in macos
+    assert ".agents/plugins/marketplace.json" in macos
+    assert "manifests/android-framework-ops.toml" in macos
 
 
 def test_validator_cleanup_supports_macos_system_bash() -> None:

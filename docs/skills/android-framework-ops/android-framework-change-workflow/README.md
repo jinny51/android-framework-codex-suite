@@ -12,7 +12,7 @@ Android Framework 开发、问题分析和验证主流程 skill。
 进入源码分析前，可复用案例、平台实现、补丁、检索锚点和验证证据由 `android-knowledge-search` 配合检索。
 当工作产生可复用、可参考、失败或阻塞经验时，应通过 `android-framework-patch-capture` 整理补丁资料，再由 `android-framework-patch-intake` 生成 incoming 包。`android-knowledge-intake` 只保留共享内核、当前配置诊断和插件更新检查。
 
-如果同时安装或明确要求 `jinny-framework-coding-standards`，应在代码修改前应用团队补丁开发规范和 FrameworkLog 日志规范，不能等补丁采集阶段再补规范。
+代码修改前必须应用核心插件中唯一的 `android-change-policy/v1`：所有采用 patch 归档的 Android 变更都遵守成员溯源规则，FrameworkLog 等规则只在 Framework profile 下生效。个人或项目规则可以叠加，但不能改写核心身份和证据合同。
 
 ## 典型场景
 

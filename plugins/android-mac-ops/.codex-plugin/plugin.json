@@ -1,6 +1,6 @@
 {
   "name": "android-mac-ops",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "macOS platform layer for Android Framework Samba/SMB source access.",
   "author": {
     "name": "Jinny Android Framework Team",

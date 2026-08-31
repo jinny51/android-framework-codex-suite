@@ -600,6 +600,37 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
             self.assertNotIn("u_mt8xxx_tablet/TVE1065M", result.stdout)
             self.assertIn("PLATFORM=mtk", result.stdout)
 
+    def test_remote_inspection_forwards_explicit_conflict_acceptance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            channel, channel_log = make_fake_channel(
+                root,
+                remote_root="/srv/android/TVA10A2R",
+                platform="rk",
+                sdk_name="TVA10A2R",
+            )
+            result = run_script(
+                "detect-projects.sh",
+                "--ssh-host",
+                "builder",
+                "--remote-root",
+                "/srv/android/TVA10A2R",
+                "--platform",
+                "rk",
+                "--sdk-name",
+                "TVA10A2R",
+                "--accept-platform-conflict",
+                "--accept-sdk-name-conflict",
+                "--channel-script",
+                str(channel),
+                "--inspection-helper",
+                str(INSPECTION_HELPER),
+                env={"FAKE_CHANNEL_LOG": str(channel_log)},
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            channel_args = channel_log.read_text(encoding="utf-8")
+            self.assertIn("rk TVA10A2R 1 1 strict", channel_args)
+
     def test_scripts_and_docs_are_bash32_and_reference_consistent(self) -> None:
         forbidden = re.compile(r"\$\{[^}\n]*(?:\^\^|,,)[^}\n]*\}|\bmapfile\b|\bdeclare\s+-A\b")
         for script in sorted(SCRIPT_DIR.glob("*.sh")):

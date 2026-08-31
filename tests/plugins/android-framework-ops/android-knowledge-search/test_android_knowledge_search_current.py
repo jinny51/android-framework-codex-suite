@@ -481,7 +481,9 @@ class AndroidKnowledgeSearchCurrentTests(unittest.TestCase):
             seen_url["value"] = request.full_url
             return FakeHttpResponse(payload)
 
-        with patch.dict(os.environ, {"CODEX_HOME": str(codex_home), "CODEX_REPORT_PROFILE": "member01"}, clear=True):
+        with patch.dict(os.environ, {"CODEX_HOME": str(codex_home), "CODEX_REPORT_PROFILE": "member01"}, clear=True), patch.object(
+            search, "record_search_usage", return_value=None
+        ):
             stdout = io.StringIO()
             with patch("urllib.request.urlopen", fake_urlopen), patch("sys.stdout", new=stdout):
                 code = search.main(["电源键"])

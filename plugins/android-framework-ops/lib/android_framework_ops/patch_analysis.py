@@ -5,13 +5,20 @@ import re
 from pathlib import Path
 from typing import Any
 
+from android_engineering_ops.policy.patch_markers import (
+    MARKER_RE,
+    analyze_unified_diff_markers,
+)
+
 
 USB_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])usb(?![A-Za-z0-9])", re.I)
 USB_CAMEL_PATH_RE = re.compile(r"(?:^|[/_.-])Usb(?=[A-Z0-9])")
 XML_RESOURCE_NAME_RE = re.compile(
     r"<(?:string|string-array|array|plurals|bool|integer|color|dimen|style)\b[^>]*\bname=[\"']([^\"']+)[\"']"
 )
-AUTHOR_DATE_RE = re.compile(r"//[A-Za-z0-9_]+\s+\d{8}@")
+# Compatibility export for legacy callers. Canonical parsing lives in
+# android_engineering_ops.policy.patch_markers.
+AUTHOR_DATE_RE = MARKER_RE
 BANNED_LOG_PATTERNS = (
     "Log.v(",
     "Log.d(",
@@ -98,7 +105,10 @@ def facts_from_diff(diff_text: str) -> dict[str, Any]:
         "resource_keys": resource_keys_from_patch_text(changed),
         "framework_log_keys": sorted(set(re.findall(r"FrameworkLog\.([A-Za-z0-9_]+)", changed))),
         "banned_log_hits": sorted(pattern for pattern in BANNED_LOG_PATTERNS if pattern in added),
-        "author_date_marker_present": bool(AUTHOR_DATE_RE.search(diff_text)),
+        "author_date_marker_present": any(
+            item.analysis is not None and item.analysis.valid
+            for item in analyze_unified_diff_markers(diff_text)
+        ),
     }
 
 

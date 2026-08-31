@@ -78,6 +78,17 @@ def run(cmd: list[str], cwd: Path, check: bool = True) -> subprocess.CompletedPr
                 )
                 codex_home = Path(cwd) / ".codex-test-home"
                 env["CODEX_HOME"] = str(codex_home)
+                codex_home.mkdir(parents=True, exist_ok=True)
+                (codex_home / "android-knowledge-intake.toml").write_text(
+                    "default_profile = \"member01\"\n\n"
+                    "[profiles.member01]\n"
+                    "member_alias = \"member01\"\n"
+                    "member_name = \"Member 01\"\n"
+                    "timezone = \"Asia/Shanghai\"\n",
+                    encoding="utf-8",
+                )
+                if "--profile" not in command:
+                    command.extend(["--profile", "member01"])
                 if "--out-dir" in command:
                     output_index = command.index("--out-dir") + 1
                     command[output_index] = str(codex_home / "artifacts" / command[output_index])
@@ -106,8 +117,9 @@ def create_repo(root: Path) -> None:
     run(["git", "commit", "-m", "initial"], root)
     (source / "DisplayPolicy.java").write_text(
         "class DisplayPolicy {\n"
-        "  //gyf 20260526@ allow navigation policy toggle\n"
+        "  //member01 20260526@{\n"
         "  static final String KEY = \"persist.sys.nav_policy\";\n"
+        "  //member01 20260526@}\n"
         "}\n",
         encoding="utf-8",
     )
@@ -1537,6 +1549,7 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
 
             self.assertEqual(manifest["package_type"], "framework_feature_patch")
+            self.assertEqual(manifest["change_domain"], "framework")
             self.assertEqual(manifest["readme"], "README.md")
             self.assertEqual(len(manifest["patches"]), 2)
             self.assertEqual(
@@ -1561,6 +1574,49 @@ class CaptureFrameworkPatchTests(unittest.TestCase):
             self.assertIn("功能目标: 跨源码仓库调整显示策略和设置入口", readme)
             self.assertIn("本子改动通过", readme)
             self.assertIn("共同服务上述功能目标", readme)
+
+    def test_explicit_non_framework_domain_stays_a_local_android_capture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            create_repo(root)
+
+            result = run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--source-root",
+                    str(root),
+                    "--out-dir",
+                    "out",
+                    "--run-id",
+                    "20260831-120000-app-capture",
+                    "--platform",
+                    "rk14",
+                    "--feature",
+                    "app-policy-evidence",
+                    "--summary",
+                    "保存 App 领域修改材料",
+                    "--project",
+                    "TVE1067M",
+                    "--status",
+                    "candidate",
+                    "--change-domain",
+                    "app",
+                ],
+                root,
+            )
+
+            package_dir = Path(json.loads(result.stdout)["package"])
+            manifest = json.loads((package_dir / "manifest.json").read_text(encoding="utf-8"))
+            standard_check = json.loads(
+                (package_dir / "evidence" / "coding-standard-check.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(manifest["package_type"], "android_feature_patch")
+            self.assertEqual(manifest["change_domain"], "app")
+            self.assertEqual(manifest["patches"][0]["change_domain"], "app")
+            self.assertEqual(standard_check["policy_profile"], "app")
+            self.assertEqual(standard_check["applied_policy_profiles"], ["universal_patch_archive"])
 
     def test_daily_bundle_summary_fails_function_scope_check(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

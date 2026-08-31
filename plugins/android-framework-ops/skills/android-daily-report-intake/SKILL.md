@@ -7,7 +7,11 @@ description: "Use when generating, revising, checking, or submitting a member pe
 
 Use this member-facing skill for personal 日报包（daily report package） work. It answers one question: 今天干了什么、怎么干的、结果是什么.
 
-This skill is an entrypoint, not a separate upload implementation. It routes to the shared member intake kernel in `android-knowledge-intake/scripts/android_knowledge_intake.py` with `daily` mode, so member identity, server submission, manifest protocol, replacement metadata, plugin version gate, session cache gate, duplicate guard, and local validation remain shared with weekly and patch intake.
+This skill owns the daily command entrypoint `scripts/android_daily_report_intake.py`.
+It routes to the shared member incoming v1 kernel, so member identity, server submission,
+manifest protocol, replacement metadata, plugin version gate, session cache gate,
+duplicate guard, and local validation remain shared with weekly and patch intake. The old
+umbrella `android_knowledge_intake.py ... daily` command remains compatible.
 
 ## Boundary
 
@@ -166,10 +170,10 @@ The member's explicit request to generate this daily report authorizes only this
 ## Commands
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --submit-latest
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare --replace-daily-run-id <old_run_id>
+python3 "scripts/android_daily_report_intake.py" --profile <member_alias> --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare
+python3 "scripts/android_daily_report_intake.py" --profile <member_alias> --submit-latest
+python3 "scripts/android_daily_report_intake.py" --profile <member_alias> --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --daily-facts "$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/<report-date>.json" --prepare
+python3 "scripts/android_daily_report_intake.py" --profile <member_alias> --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare --replace-daily-run-id <old_run_id>
 ```
 
 Future dates are blocked. For a date with no existing effective report, the first

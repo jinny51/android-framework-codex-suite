@@ -1,6 +1,11 @@
 # AKBS Deterministic Rules Contract
 
-`android_framework_ops.knowledge_rules` is the single source for deterministic member-package rules. It must remain pure Python and must not depend on Codex session state, plugin cache locations, network calls, AI inference, or production database state.
+`android_framework_ops.knowledge_rules` is the single source for deterministic member-package knowledge rules. It must remain pure Python and must not depend on Codex session state, plugin cache locations, network calls, AI inference, or production database state.
+
+Engineering change attribution and domain coding policy have a separate single owner:
+`android_engineering_ops.policy`, bound to
+`contracts/android-change-policy/v1/policy.json`. Capture and raw patch intake call
+that owner instead of maintaining their own marker regex or error text.
 
 ## Shared Rule Families
 

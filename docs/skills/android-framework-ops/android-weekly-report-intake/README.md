@@ -2,7 +2,7 @@
 
 > GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-framework-ops/skills/android-weekly-report-intake](../../../../plugins/android-framework-ops/skills/android-weekly-report-intake)。
 
-成员个人周报入口。它只负责生成、修订、检查和提交周报包（weekly report package），并复用 `android-knowledge-intake` 的共享脚本和上传协议。成员侧不生成、不理解团队汇总报告；管理端汇总是管理员侧能力。
+成员个人周报入口。它只负责生成、修订、检查和提交周报包（weekly report package），通过周报专用入口复用共享 incoming v1 内核和上传协议。成员侧不生成、不理解团队汇总报告；管理端汇总是管理员侧能力。
 
 周报回答“这一周完成多少、还剩多少、风险和依赖是什么”。日报记录当天做了什么、怎么做、结果是什么；周报不复述每天流水，只做一周总结。新周报包生成：
 
@@ -44,8 +44,8 @@ Markdown、`report_view.json` 和周报事实由 `report_render_binding` 绑定�
 常用命令：
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --prepare
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --submit-latest
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --prepare --replace-weekly-run-id <old_run_id>
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --weekly-facts "$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/<week>.json" --prepare
+python3 "scripts/android_weekly_report_intake.py" --profile <member_alias> --session-consent --session-field work_summary --prepare
+python3 "scripts/android_weekly_report_intake.py" --profile <member_alias> --submit-latest
+python3 "scripts/android_weekly_report_intake.py" --profile <member_alias> --session-consent --session-field work_summary --prepare --replace-weekly-run-id <old_run_id>
+python3 "scripts/android_weekly_report_intake.py" --profile <member_alias> --session-consent --session-field work_summary --weekly-facts "$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/<week>.json" --prepare
 ```

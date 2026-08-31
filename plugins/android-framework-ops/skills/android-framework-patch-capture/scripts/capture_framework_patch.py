@@ -59,6 +59,12 @@ from android_framework_ops.verification_evidence import (
     has_authoritative_requirement_result,
     requirement_contract_fields,
 )
+from android_engineering_ops.member.profile import MemberProfileError, load_member_profile
+from android_engineering_ops.policy.patch_markers import (
+    POLICY_ID,
+    POLICY_VERSION,
+    analyze_unified_diff_markers,
+)
 
 
 SCHEMA_VERSION = "2.0"
@@ -70,6 +76,18 @@ AUTO_VERIFICATION_EVIDENCE_NAMES = (
     ".codex/evidence/build-delivery.json",
 )
 IMPLEMENTATION_ORIGINS = ("codex", "manual", "external", "historical", "mixed", "unknown")
+CHANGE_DOMAINS = (
+    "framework",
+    "system_app",
+    "app",
+    "hal",
+    "native",
+    "vendor",
+    "kernel",
+    "driver",
+    "device",
+    "build",
+)
 CAPTURE_REVIEW_REQUIRED_ORIGINS = {"manual", "external", "historical", "mixed", "unknown"}
 REUSE_DECISIONS = ("reuse", "adapt", "reference_only", "not_applicable", "not_found", "unknown")
 REUSE_OUTCOMES = ("not_started", "reused_success", "adapted_success", "failed", "partial", "unverified", "not_applicable")
@@ -932,23 +950,130 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
             for prop in facts.get("system_properties", [])
             if prop.startswith("debug.") or (prop.startswith("persist.") and ".debug" in prop and not prop.startswith("persist.sys.framework.debug"))
         ]
-
-        if not facts.get("author_date_marker_present") and not args.allow_missing_author_date:
-            repo_errors.append("缺少作者日期备注，例如 //gyf 20251016@")
-        if direct_logs and not args.allow_banned_logs:
+        require_pairs = (
+            args.workflow_contract == "current_codex_skill"
+            and args.implementation_origin == "codex"
+        )
+        expected_alias = (
+            args.policy_member_alias
+            if args.workflow_contract == "current_codex_skill"
+            and args.implementation_origin == "codex"
+            else None
+        )
+        file_marker_analyses = analyze_unified_diff_markers(
+            capture.diff_text,
+            expected_alias=expected_alias,
+            require_pairs=require_pairs,
+        )
+        marker_files: list[dict[str, Any]] = []
+        marker_aliases: set[str] = set()
+        marker_dates: set[str] = set()
+        marker_count = 0
+        marker_pair_count = 0
+        legacy_marker_count = 0
+        marker_errors: list[str] = []
+        marker_exception = False
+        for file_analysis in file_marker_analyses:
+            if file_analysis.analysis is None:
+                marker_files.append(
+                    {
+                        "path": file_analysis.path,
+                        "comment_adapter": file_analysis.comment_adapter,
+                        "result": "NOT_APPLICABLE",
+                        "marker_count": 0,
+                        "pair_count": 0,
+                        "legacy_marker_count": 0,
+                        "aliases": [],
+                        "dates": [],
+                        "errors": [],
+                    }
+                )
+                continue
+            analysis = file_analysis.analysis
+            file_errors = list(analysis.errors)
+            file_exception = False
+            if args.allow_missing_author_date and file_errors == ["patch has no author/date marker"]:
+                file_errors.clear()
+                marker_exception = True
+                file_exception = True
+                repo_warnings.append(
+                    f"{file_analysis.path}: manual/historical local draft has no author/date marker"
+                )
+            marker_errors.extend(
+                f"{file_analysis.path}: {error}" for error in file_errors
+            )
+            marker_aliases.update(analysis.aliases)
+            marker_dates.update(analysis.dates)
+            marker_count += len(analysis.markers)
+            marker_pair_count += sum(marker.kind == "open" for marker in analysis.markers)
+            legacy_marker_count += sum(marker.kind == "legacy" for marker in analysis.markers)
+            marker_files.append(
+                {
+                    "path": file_analysis.path,
+                    "comment_adapter": file_analysis.comment_adapter,
+                    "result": "FAIL" if file_errors else ("WARN" if file_exception else "PASS"),
+                    "marker_count": len(analysis.markers),
+                    "pair_count": sum(marker.kind == "open" for marker in analysis.markers),
+                    "legacy_marker_count": sum(
+                        marker.kind == "legacy" for marker in analysis.markers
+                    ),
+                    "aliases": list(analysis.aliases),
+                    "dates": list(analysis.dates),
+                    "errors": file_errors,
+                }
+            )
+        if (
+            args.workflow_contract == "current_codex_skill"
+            and args.implementation_origin == "mixed"
+            and not any(
+                file_analysis.analysis is not None
+                and any(
+                    marker.kind == "open" and marker.alias == args.policy_member_alias
+                    for marker in file_analysis.analysis.markers
+                )
+                for file_analysis in file_marker_analyses
+            )
+        ):
+            marker_errors.append(
+                "mixed Codex change has no paired marker for current member_alias "
+                f"{args.policy_member_alias!r}"
+            )
+        repo_errors.extend(f"author/date marker: {error}" for error in marker_errors)
+        framework_profile = args.change_domain == "framework"
+        if framework_profile and direct_logs and not args.allow_banned_logs:
             repo_errors.append("新增代码包含直接 Log/Slog 调用，应改用 FrameworkLog")
-        if hardcoded_logs:
+        if framework_profile and hardcoded_logs:
             repo_warnings.append("FrameworkLog 调用疑似包含硬编码字符串，应优先使用字符串资源")
-        if direct_debug_props:
+        if framework_profile and direct_debug_props:
             repo_warnings.append("模块代码疑似直接读取 persist.sys.framework.debug.*，应通过 FrameworkLog 统一访问")
-        if non_framework_debug_props:
+        if framework_profile and non_framework_debug_props:
             repo_warnings.append("检测到非 FrameworkLog 规范调试属性: " + ", ".join(non_framework_debug_props))
 
         repositories.append(
             {
                 "repo_path": capture.repo_path,
                 "patch": capture.patch_rel,
-                "author_date_marker_present": bool(facts.get("author_date_marker_present")),
+                "author_date_marker_present": marker_count > 0,
+                "marker_contract": (
+                    "paired-current"
+                    if require_pairs
+                    else (
+                        "mixed-current-pair-plus-legacy"
+                        if args.workflow_contract == "current_codex_skill"
+                        and args.implementation_origin == "mixed"
+                        else "legacy-compatible"
+                    )
+                ),
+                "marker_count": marker_count,
+                "marker_pair_count": marker_pair_count,
+                "legacy_marker_count": legacy_marker_count,
+                "marker_aliases": sorted(marker_aliases),
+                "marker_dates": sorted(marker_dates),
+                "marker_errors": marker_errors,
+                "marker_exception": (
+                    "missing_marker_import_draft" if marker_exception else None
+                ),
+                "marker_files": marker_files,
                 "direct_log_lines": direct_logs[:20],
                 "framework_log_literal_lines": hardcoded_logs[:20],
                 "direct_debug_property_lines": direct_debug_props[:20],
@@ -964,6 +1089,19 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
 
     return {
         "kind": "coding_standard_check",
+        "policy_id": POLICY_ID,
+        "policy_version": POLICY_VERSION,
+        "policy_schema": "android-change-policy-v1",
+        "policy_profile": args.change_domain,
+        "applied_policy_profiles": [
+            "universal_patch_archive",
+            *(["framework"] if args.change_domain == "framework" else []),
+        ],
+        "change_domain": args.change_domain,
+        "member_profile": args.policy_profile_name or None,
+        "expected_member_alias": args.policy_member_alias or None,
+        "identity_source": "current_member_profile" if args.policy_member_alias else None,
+        "rewrite_authorship": False,
         "result": "FAIL" if errors else ("WARN" if warnings else "PASS"),
         "implementation_origin": args.implementation_origin,
         "workflow_contract": args.workflow_contract,
@@ -971,15 +1109,27 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
         "review_required": implementation_review_required(args.implementation_origin),
         "review_mode": implementation_review_mode(args.implementation_origin),
         "standard_sources": [
-            "Android Framework 补丁开发规范 v2.1 2025-10-16",
-            "Android Framework 日志管理规范 v1.0 2025-10-16",
+            "android-change-policy/v1",
+            *(
+                [
+                    "Android Framework 补丁开发规范 v2.1 2025-10-16",
+                    "Android Framework 日志管理规范 v1.0 2025-10-16",
+                ]
+                if args.change_domain == "framework"
+                else []
+            ),
         ],
         "rules": [
-            "补丁必须包含作者日期备注",
-            "直接 Log/Slog 调用禁止进入补丁，应使用 FrameworkLog",
-            "persist.sys.framework.debug.* 调试属性集中在 FrameworkLog.java",
-            "日志字符串和新增用户可见字符串应使用资源国际化",
-            "功能说明文件必须记录功能、修改点、日志控制、SystemProperties、字符串国际化和可回滚性",
+            "新 Codex 变更使用来自当前成员 profile 的成对作者日期标记",
+            *(
+                [
+                    "直接 Log/Slog 调用禁止进入 Framework 补丁，应使用 FrameworkLog",
+                    "persist.sys.framework.debug.* 调试属性集中在 FrameworkLog.java",
+                    "Framework 日志和用户可见字符串应使用资源",
+                ]
+                if args.change_domain == "framework"
+                else []
+            ),
         ],
         "repositories": repositories,
         "errors": errors,
@@ -988,12 +1138,23 @@ def coding_standard_check(args: argparse.Namespace, captures: list[RepositoryCap
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Package one Android Framework feature into README, patches, and evidence assets.")
+    parser = argparse.ArgumentParser(description="Package one Android feature into README, patches, and evidence assets.")
     parser.add_argument(
         "--source-root",
         action="append",
         default=[],
         help="Legacy local Git root for manual/historical import only. current_codex_skill rejects it.",
+    )
+    parser.add_argument(
+        "--profile",
+        default="",
+        help="Member profile used to resolve the policy member_alias. No free-form alias override is accepted.",
+    )
+    parser.add_argument(
+        "--change-domain",
+        choices=CHANGE_DOMAINS,
+        default="framework",
+        help="Primary Android ownership/build/verification domain. Default keeps incoming v1 compatibility.",
     )
     parser.add_argument(
         "--remote-snapshot",
@@ -1087,7 +1248,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device-restart", action="append", default=[], help="Device restart, remount, process restart, or reload action after delivery. Repeatable.")
     parser.add_argument("--risk", default="", help="Risk note for readme.")
     parser.add_argument("--rollback", default="", help="Rollback note for readme.")
-    parser.add_argument("--allow-missing-author-date", action="store_true", help="Allow package even when patch lacks //name YYYYMMDD@ marker.")
+    parser.add_argument(
+        "--allow-missing-author-date",
+        action="store_true",
+        help="Legacy manual/historical local draft only: record a missing marker without blocking capture.",
+    )
     parser.add_argument("--allow-banned-logs", action="store_true", help="Allow package even when added lines contain direct Log/Slog calls.")
     args = parser.parse_args()
     args.problem_summary = args.problem_summary.strip()
@@ -1096,6 +1261,12 @@ def parse_args() -> argparse.Namespace:
         parser.error("--problem-summary 和 --solution-summary 必须同时提供")
     if args.snapshot_max_age_seconds <= 0 or args.snapshot_max_age_seconds > 86400:
         parser.error("--snapshot-max-age-seconds 必须在 1..86400 范围")
+    if args.allow_missing_author_date and (
+        args.status != "draft" or args.workflow_contract == "current_codex_skill"
+    ):
+        parser.error(
+            "--allow-missing-author-date 只能用于 manual/historical import 的本地 draft"
+        )
     snapshot_fields = (
         args.remote_snapshot,
         args.snapshot_workspace_id,
@@ -1123,6 +1294,15 @@ def parse_args() -> argparse.Namespace:
             parser.error("--source-root 与 --patch-artifact 不能混用")
         if args.patch_artifact and not args.patch_repo_path:
             parser.error("--patch-artifact 必须配套 --patch-repo-path")
+    args.policy_profile_name = ""
+    args.policy_member_alias = ""
+    if args.workflow_contract == "current_codex_skill" or args.profile:
+        try:
+            member_profile = load_member_profile(args.profile or None)
+        except MemberProfileError as exc:
+            parser.error(str(exc))
+        args.policy_profile_name = member_profile.profile
+        args.policy_member_alias = member_profile.member_alias
     return args
 
 
@@ -1313,6 +1493,7 @@ def main() -> int:
             "platform": platform_name,
             "android_version": android_version,
             "implementation_origin": args.implementation_origin,
+            "change_domain": args.change_domain,
             "workflow_contract": args.workflow_contract,
             "captured_by": "codex",
             "facts": capture.facts,
@@ -1321,7 +1502,12 @@ def main() -> int:
     ]
     manifest = {
         "schema_version": SCHEMA_VERSION,
-        "package_type": "framework_feature_patch",
+        "package_type": (
+            "framework_feature_patch"
+            if args.change_domain == "framework"
+            else "android_feature_patch"
+        ),
+        "change_domain": args.change_domain,
         "feature": feature,
         "readme": "README.md",
         "project": args.project,

@@ -7,7 +7,11 @@ description: "Use when generating, revising, checking, or submitting a member pe
 
 Use this member-facing skill for personal 周报包（weekly report package） work. It answers one question: 这一周完成多少、还剩多少、风险和依赖是什么.
 
-This skill is an entrypoint, not a separate upload implementation. It routes to the shared member intake kernel in `android-knowledge-intake/scripts/android_knowledge_intake.py` with `weekly` mode, so member identity, server submission, manifest protocol, replacement metadata, plugin version gate, session cache gate, duplicate guard, and local validation remain shared with daily and patch intake.
+This skill owns the weekly command entrypoint `scripts/android_weekly_report_intake.py`.
+It routes to the shared member incoming v1 kernel, so member identity, server submission,
+manifest protocol, replacement metadata, plugin version gate, session cache gate,
+duplicate guard, and local validation remain shared with daily and patch intake. The old
+umbrella `android_knowledge_intake.py ... weekly` command remains compatible.
 
 ## Boundary
 
@@ -275,10 +279,10 @@ The member's explicit request to generate this weekly report authorizes only thi
 ## Commands
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --prepare
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --submit-latest
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --prepare --replace-weekly-run-id <old_run_id>
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --prepare --weekly-facts "$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/<week>.json"
+python3 "scripts/android_weekly_report_intake.py" --profile <member_alias> --session-consent --session-field work_summary --prepare
+python3 "scripts/android_weekly_report_intake.py" --profile <member_alias> --submit-latest
+python3 "scripts/android_weekly_report_intake.py" --profile <member_alias> --session-consent --session-field work_summary --prepare --replace-weekly-run-id <old_run_id>
+python3 "scripts/android_weekly_report_intake.py" --profile <member_alias> --session-consent --session-field work_summary --prepare --weekly-facts "$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/<week>.json"
 ```
 
 Future periods are blocked. For a week with no existing effective report, the

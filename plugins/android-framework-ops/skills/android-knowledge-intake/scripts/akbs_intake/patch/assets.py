@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any
 
 from akbs_intake.io_utils import materials_rel, sha1_file
-from android_framework_ops.patch_analysis import AUTHOR_DATE_RE, BANNED_LOG_PATTERNS
+from android_engineering_ops.policy.patch_markers import analyze_unified_diff_markers
+from android_framework_ops.patch_analysis import BANNED_LOG_PATTERNS
 from akbs_intake.report_sessions import ymd
 
 
@@ -213,14 +214,26 @@ def patch_readme_usable_for_inference(path: Path) -> bool:
     return path.is_file() and not validate_patch_readme(path)
 
 
+def validate_patch_attribution(path: Path) -> list[str]:
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    errors: list[str] = []
+    for file_analysis in analyze_unified_diff_markers(text):
+        if file_analysis.analysis is None:
+            continue
+        errors.extend(
+            f"{path.name} {file_analysis.path} 作者日期标记无效: {error}"
+            for error in file_analysis.analysis.errors
+        )
+    return errors
+
+
 def validate_patch_file(path: Path) -> list[str]:
     errors: list[str] = []
     if not PATCH_FILENAME_RE.fullmatch(path.name):
         errors.append(f"patch 文件名不符合规范: {path.name}")
     text = path.read_text(encoding="utf-8", errors="ignore")
-    if not AUTHOR_DATE_RE.search(text):
-        errors.append(f"{path.name} 缺少作者日期备注，例如 //gyf 20251016@")
     added_lines = [line for line in text.splitlines() if line.startswith("+") and not line.startswith("+++")]
+    errors.extend(validate_patch_attribution(path))
     for pattern in BANNED_LOG_PATTERNS:
         if any(pattern in line for line in added_lines):
             errors.append(f"{path.name} 新增代码禁止直接使用 {pattern}，应使用 FrameworkLog")

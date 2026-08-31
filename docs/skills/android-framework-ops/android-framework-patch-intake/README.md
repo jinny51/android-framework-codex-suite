@@ -5,14 +5,14 @@
 管理端队列检查是安全兜底：轻量文字、字段或非补丁附件缺口按请求事件 `request_id` 补到同一个 `patch_package_id`；需要修改补丁或拆分功能时，退回并重新生成补丁包。队列阶段是 `received / under_review / information_required / information_review / closed`，入库后同一主体进入主分支 `under_review / pending_merge_confirmation / dispute_open / closed`。通知、资料请求和合并确认保留各自事件 ID 作为因果标识，不形成第二个补丁包身份。
 
 ```bash
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch --prepare \
+python3 "scripts/android_framework_patch_intake.py" --profile <member_alias> --prepare \
   --patch-package /path/to/.codex/patch-packages/<run-id> \
   --project TVE8402M --summary "功能补丁摘要" --status validated
 
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch \
+python3 "scripts/android_framework_patch_intake.py" --profile <member_alias> \
   --inspect-information-request <request-id>
 
-python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> patch \
+python3 "scripts/android_framework_patch_intake.py" --profile <member_alias> \
   --complete-information-request /path/to/response.json
 ```
 

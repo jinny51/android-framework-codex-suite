@@ -3,10 +3,11 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
-import re
 import subprocess
 from pathlib import Path
 from typing import Any, Callable
+
+from android_engineering_ops.policy.patch_markers import ALIAS_RE
 
 from akbs_intake.config import (
     allowed_modes,
@@ -21,7 +22,6 @@ from akbs_intake.config import (
 from akbs_intake.diagnostics import warn_local_input
 
 
-MEMBER_ALIAS_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 RunCommand = Callable[[list[str]], subprocess.CompletedProcess[str]]
 PluginGateCheck = Callable[..., dict[str, Any]]
 
@@ -105,7 +105,7 @@ def doctor_strict_checks(
         error("member_alias 不能为空。")
     elif alias in {"member_alias", "admin_alias", "unknown"}:
         error(f"member_alias 仍是占位值: {alias}")
-    elif not MEMBER_ALIAS_RE.fullmatch(alias):
+    elif not ALIAS_RE.fullmatch(alias):
         error("member_alias 只能使用小写字母、数字、点、下划线或横线，且必须以小写字母或数字开头。")
     if not name:
         error("member_name 不能为空，UI 和索引必须显示真实姓名。")

@@ -62,6 +62,12 @@ Both platform plugins use the same local project shape for the human/artifact mo
 the core inspection helper and `android-remote-channel`; it never walks the
 mounted tree or invokes SSH directly.
 
+When an explicit `--platform` or `--sdk-name` conflicts with remote inspection,
+stop and show both values. Only after the user confirms that exact conflict may
+the adapter be rerun with `--accept-platform-conflict` or
+`--accept-sdk-name-conflict`. Each acceptance flag requires its matching explicit
+value and is forwarded to the core inspector; it is not a general bypass.
+
 恢复流程：
 
 ```

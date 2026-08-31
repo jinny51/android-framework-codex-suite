@@ -1,10 +1,16 @@
 from __future__ import annotations
 
-import json
 import urllib.parse
 import urllib.request
 from typing import Any
 
+from android_engineering_ops.knowledge.member import require_member_alias
+from android_engineering_ops.knowledge.merge_confirmation.client import (
+    fetch_merge_confirmation_payload,
+    member_request_headers,
+    merge_api_error,
+    post_merge_dispute,
+)
 from android_framework_ops.http_client import (
     failure_result,
     invalid_success_response,
@@ -13,9 +19,7 @@ from android_framework_ops.http_client import (
 
 from knowledge_search.config import (
     akbs_endpoint_env_value,
-    member_merge_confirmations_url,
     member_search_endpoint_url,
-    selected_member_alias,
 )
 
 
@@ -67,13 +71,6 @@ def normalize_server_results(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return normalized
 
 
-def require_member_alias() -> str:
-    _profile, member_alias = selected_member_alias()
-    if not member_alias or member_alias == "unknown":
-        raise ValueError("member_alias is required before a member API request")
-    return member_alias
-
-
 def fetch_server_results(args: Any, query: str) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     user = require_member_alias()
     request = urllib.request.Request(
@@ -92,58 +89,3 @@ def fetch_server_results(args: Any, query: str) -> tuple[list[dict[str, Any]], d
 
 def server_fallback_reason(exc: BaseException) -> str:
     return failure_result(exc).safe_summary("server search unavailable")
-
-
-def member_request_headers() -> dict[str, str]:
-    return {
-        "Accept": "application/json",
-        "X-AKBS-User": require_member_alias(),
-    }
-
-
-def merge_api_error(exc: BaseException) -> str:
-    return failure_result(exc).safe_summary("merge confirmation API unavailable")
-
-
-def fetch_merge_confirmation_payload(confirmation_id: str = "", action: str = "", *, timeout: float = 3.0) -> dict[str, Any]:
-    request = urllib.request.Request(
-        member_merge_confirmations_url(confirmation_id, action),
-        headers=member_request_headers(),
-        method="GET",
-    )
-    payload = request_json(request, timeout=timeout)
-    returned_id = str(payload.get("confirmation_id") or "").strip()
-    if confirmation_id and returned_id and returned_id != confirmation_id:
-        raise invalid_success_response("merge confirmation response identity mismatch")
-    return payload
-
-
-def post_merge_dispute(
-    confirmation_id: str,
-    *,
-    reason: str,
-    member_assessment: str,
-    evidence_refs: list[str],
-    agent_notes: dict[str, Any],
-    timeout: float = 3.0,
-) -> dict[str, Any]:
-    payload = {
-        "reason": reason,
-        "member_assessment": member_assessment,
-        "evidence_refs": evidence_refs,
-        "agent_notes": agent_notes,
-    }
-    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    headers = member_request_headers()
-    headers["Content-Type"] = "application/json"
-    request = urllib.request.Request(
-        member_merge_confirmations_url(confirmation_id, "dispute"),
-        data=data,
-        headers=headers,
-        method="POST",
-    )
-    result = request_json(request, timeout=timeout)
-    returned_id = str(result.get("confirmation_id") or "").strip()
-    if returned_id and returned_id != confirmation_id:
-        raise invalid_success_response("merge dispute response confirmation identity mismatch")
-    return result

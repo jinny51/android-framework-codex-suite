@@ -37,6 +37,7 @@ python3 "scripts/capture_remote_snapshot.py" \
 
 ```bash
 python3 "scripts/capture_framework_patch.py" \
+  --profile <profile_name> \
   --remote-snapshot "$SNAPSHOT" \
   --snapshot-sha256 "$SNAPSHOT_SHA256" \
   --snapshot-workspace-id "$WORKSPACE_ID" \
