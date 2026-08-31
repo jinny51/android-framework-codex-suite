@@ -18,7 +18,7 @@ class ReportSkillSplitMetadataTests(unittest.TestCase):
         plugin_json = json.loads((REPO_ROOT / "plugins" / "android-framework-ops" / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
         plugin_readme = (REPO_ROOT / "plugins" / "android-framework-ops" / "README.md").read_text(encoding="utf-8")
 
-        self.assertEqual(plugin_json["version"], "1.0.164")
+        self.assertEqual(plugin_json["version"], "1.0.165")
         for skill_name, business_label in expected.items():
             skill_dir = REPO_ROOT / "plugins" / "android-framework-ops" / "skills" / skill_name
             self.assertTrue((skill_dir / "SKILL.md").is_file(), skill_name)
@@ -55,3 +55,18 @@ class ReportSkillSplitMetadataTests(unittest.TestCase):
 
         self.assertIn("Monday through Sunday, inclusive", weekly_skill)
         self.assertIn("does not redefine the reporting period or exclude Monday's report", weekly_skill)
+
+    def test_current_patch_capture_prompt_does_not_announce_a_future_migration(self) -> None:
+        skill_text = (
+            REPO_ROOT
+            / "plugins"
+            / "android-framework-ops"
+            / "skills"
+            / "android-framework-patch-capture"
+            / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn("Phase-One", skill_text)
+        self.assertNotIn("Android engineering rename", skill_text)
+        self.assertNotIn("prompt migration", skill_text)
+        self.assertIn("public trigger remains Framework-only", skill_text)

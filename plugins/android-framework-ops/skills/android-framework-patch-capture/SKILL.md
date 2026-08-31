@@ -9,15 +9,14 @@ Use this skill when a Framework feature is ready to be packaged as a reviewable 
 
 Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-framework-patch-intake` submits a valuable patch package through the server submission channel. The user's local `akbs-curation-maintainer` skill decides whether it later enters the knowledge repository.
 
-## Phase-One Domain Backend Boundary
+## Explicit Domain Backend Boundary
 
-This Skill's public trigger remains Framework-only until the separately released
-Android engineering rename and prompt migration. Its packager nevertheless accepts an
-explicit `--change-domain` from the controlled domain contract so the backend can be
-validated before activation. The default is `framework`. A non-Framework domain may
-produce only a local `android_feature_patch`; it must stop before the current Framework
-incoming v1 intake. Do not use this backend flag to make this Skill claim App, HAL,
-native, vendor, kernel, driver, device, or build work automatically.
+This Skill's public trigger remains Framework-only. Its packager accepts an explicit
+`--change-domain` from the controlled domain contract for local engineering material.
+The default is `framework`. A non-Framework domain may produce only a local
+`android_feature_patch`; it must stop before the current Framework incoming v1 intake.
+Do not use this backend flag to make this Skill claim App, HAL, native, vendor, kernel,
+driver, device, or build work automatically.
 
 ## Remote-Only Source Contract
 

@@ -4,7 +4,7 @@ This package is a local handoff artifact. One package represents one Android fea
 
 The current public Skill remains `android-framework-patch-capture`. Its default
 `--change-domain framework` behavior and `framework_feature_patch` manifest are
-unchanged. The phase-one backend also accepts an explicit controlled domain from
+unchanged. The capture backend also accepts an explicit controlled domain from
 `contracts/change-domain/v1/domain-profiles.json`:
 
 - `framework` produces `framework_feature_patch` and may continue to the existing
