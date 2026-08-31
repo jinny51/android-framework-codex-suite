@@ -26,22 +26,27 @@ from .document_work import (
     validate_daily_documents,
     validate_daily_standalone_work,
 )
+from .gms import GMS_CURRENT_FIELDS, GMS_PLAN_FIELDS, normalize_gms_fields, validate_gms_fields
 from .scope import ALLOWED_WORK_TYPES, PROJECT_WORK_TYPES, clean_scope_text, report_scope_key
 
 
-DAILY_FACTS_SCHEMA = "akbs-daily-work-facts-v3"
+DAILY_FACTS_SCHEMA = "akbs-daily-work-facts-v4"
+LEGACY_DAILY_GMS_FACTS_SCHEMA = "akbs-daily-work-facts-v3"
 LEGACY_DAILY_FACTS_SCHEMA = "akbs-daily-project-facts-v1"
 LEGACY_DAILY_WORK_FACTS_SCHEMA = "akbs-daily-work-facts-v2"
 SUPPORTED_DAILY_FACTS_SCHEMAS = {
     DAILY_FACTS_SCHEMA,
+    LEGACY_DAILY_GMS_FACTS_SCHEMA,
     LEGACY_DAILY_WORK_FACTS_SCHEMA,
     LEGACY_DAILY_FACTS_SCHEMA,
 }
-DAILY_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v3"
+DAILY_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v4"
+LEGACY_DAILY_GMS_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v3"
 LEGACY_DAILY_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v1"
 LEGACY_DAILY_WORK_FACT_SOURCES_SCHEMA = "akbs-daily-fact-sources-v2"
 SUPPORTED_DAILY_FACT_SOURCES_SCHEMAS = {
     DAILY_FACT_SOURCES_SCHEMA,
+    LEGACY_DAILY_GMS_FACT_SOURCES_SCHEMA,
     LEGACY_DAILY_WORK_FACT_SOURCES_SCHEMA,
     LEGACY_DAILY_FACT_SOURCES_SCHEMA,
 }
@@ -121,6 +126,7 @@ def normalize_tomorrow_plan(value: Any) -> dict[str, list[dict[str, Any]]]:
         app_name = clean_scope_text(item.get("app_name"))
         if app_name:
             row["app_name"] = app_name
+        row.update(normalize_gms_fields(item, plan=True))
         plan["projects"].append(row)
     for collection, expected_type, name_field in (
         ("documents", DOCUMENT_WORK_TYPE, "document_name"),
@@ -155,6 +161,8 @@ def tomorrow_plan_identity(collection: str, row: dict[str, Any]) -> tuple[str, .
             clean_scope_text(row.get("downstream_customer")),
             work_type,
             clean_scope_text(row.get("app_name")).casefold() if work_type == "App" else "",
+            clean_scope_text(row.get("gms_release_type")).upper() if work_type == "GMS" else "",
+            clean_scope_text(row.get("gms_target")).casefold() if work_type == "GMS" else "",
         )
     name_field = "document_name" if collection == "documents" else "work_name"
     return (clean_scope_text(row.get("work_type")), clean_scope_text(row.get(name_field)).casefold())
@@ -199,7 +207,7 @@ def plan_row_from_daily_scope(collection: str, row: dict[str, Any]) -> dict[str,
             "work_type": row.get("work_type", ""),
             "plan_items": plan_items,
         }
-        for field in ("downstream_customer", "app_name"):
+        for field in ("downstream_customer", "app_name", *GMS_PLAN_FIELDS):
             if row.get(field):
                 plan_row[field] = row[field]
         return plan_row
@@ -351,6 +359,7 @@ def normalize_daily_project(
     app_name = clean_scope_text(value.get("app_name"))
     if app_name:
         row["app_name"] = app_name
+    row.update(normalize_gms_fields(value))
     return row
 
 
@@ -387,10 +396,11 @@ def validate_daily_projects(
     projects: list[dict[str, Any]],
     *,
     expected_project_customers: dict[str, Any] | None = None,
+    require_current_gms: bool = True,
 ) -> list[str]:
     errors: list[str] = []
     seen_customers: dict[str, tuple[str, str]] = {}
-    seen_scopes: dict[tuple[str, str, str], int] = {}
+    seen_scopes: dict[tuple[str, ...], int] = {}
     expected = {
         str(project).upper(): normalize_report_customer_context(context)
         for project, context in (expected_project_customers or {}).items()
@@ -432,6 +442,8 @@ def validate_daily_projects(
             errors.append(f"{prefix}.app_name 类型为 App 时必须提供")
         if work_type != "App" and app_name:
             errors.append(f"{prefix}.app_name 仅类型为 App 时允许提供")
+        if work_type == "GMS" and require_current_gms:
+            errors.extend(validate_gms_fields(row, prefix=prefix))
         scope = report_scope_key(row)
         if scope in seen_scopes:
             errors.append(f"{prefix} 与 projects[{seen_scopes[scope]}] 的统计对象重复")
@@ -491,13 +503,18 @@ def validate_no_planning_only_rows(collection: str, rows: list[dict[str, Any]]) 
     return errors
 
 
-def validate_tomorrow_plan(value: Any, *, prefix: str = "tomorrow_plan") -> list[str]:
+def validate_tomorrow_plan(
+    value: Any,
+    *,
+    prefix: str = "tomorrow_plan",
+    require_current_gms: bool = True,
+) -> list[str]:
     if not isinstance(value, dict):
         return [f"{prefix} 必须是对象"]
     errors: list[str] = []
     normalized = normalize_tomorrow_plan(value)
     project_chains: dict[str, tuple[str, str]] = {}
-    project_scopes: dict[tuple[str, str, str], int] = {}
+    project_scopes: dict[tuple[str, ...], int] = {}
     for collection in TOMORROW_PLAN_COLLECTIONS:
         raw_rows = value.get(collection)
         if not isinstance(raw_rows, list):
@@ -532,6 +549,8 @@ def validate_tomorrow_plan(value: Any, *, prefix: str = "tomorrow_plan") -> list
                     errors.append(f"{row_prefix}.app_name 类型为 App 时必须提供")
                 if work_type != "App" and app_name:
                     errors.append(f"{row_prefix}.app_name 仅类型为 App 时允许提供")
+                if work_type == "GMS" and require_current_gms:
+                    errors.extend(validate_gms_fields(row, prefix=row_prefix, plan=True))
                 if canonical:
                     chain = (customer, downstream)
                     previous_chain = project_chains.get(canonical)
@@ -539,11 +558,7 @@ def validate_tomorrow_plan(value: Any, *, prefix: str = "tomorrow_plan") -> list
                         errors.append(f"{row_prefix} 与同项目其他明日计划的客户链不一致")
                     else:
                         project_chains[canonical] = chain
-                    scope = (
-                        canonical,
-                        work_type,
-                        app_name.casefold() if work_type == "App" else "",
-                    )
+                    scope = report_scope_key(row)
                     if scope in project_scopes:
                         errors.append(
                             f"{row_prefix} 与 {prefix}.projects[{project_scopes[scope]}] 的统计对象重复"
@@ -572,6 +587,10 @@ def validate_tomorrow_plan(value: Any, *, prefix: str = "tomorrow_plan") -> list
             ):
                 if forbidden in raw_row:
                     errors.append(f"{row_prefix}.{forbidden} 不属于明日计划")
+            if collection == "projects" and clean_scope_text(row.get("work_type")) == "GMS":
+                for forbidden in set(GMS_CURRENT_FIELDS) - set(GMS_PLAN_FIELDS):
+                    if forbidden in raw_row:
+                        errors.append(f"{row_prefix}.{forbidden} 不属于明日计划")
             identity = tomorrow_plan_identity(collection, row)
             if identity in seen:
                 errors.append(f"{row_prefix} 与 {prefix}.{collection}[{seen[identity]}] 重复")
@@ -642,7 +661,7 @@ def load_explicit_facts(
     standalone_work = [normalize_daily_document(item) for item in raw_standalone_work if isinstance(item, dict)]
     normalized_counts = (len(projects), len(documents), len(standalone_work))
     raw_plan_errors = validate_tomorrow_plan(raw_tomorrow_plan) if schema == DAILY_FACTS_SCHEMA else []
-    if schema == DAILY_FACTS_SCHEMA:
+    if schema in {DAILY_FACTS_SCHEMA, LEGACY_DAILY_GMS_FACTS_SCHEMA}:
         legacy_fields = [
             f"{collection}[{index}].tomorrow_focus"
             for collection, rows in (
@@ -664,14 +683,19 @@ def load_explicit_facts(
         standalone_work,
         normalize_tomorrow_plan(raw_tomorrow_plan),
     )
-    errors = validate_daily_projects(projects, expected_project_customers=expected_project_customers)
+    require_current_gms = schema == DAILY_FACTS_SCHEMA
+    errors = validate_daily_projects(
+        projects,
+        expected_project_customers=expected_project_customers,
+        require_current_gms=require_current_gms,
+    )
     if not projects and not documents and not standalone_work:
         errors.append("日报必须至少包含一项今日实际工作；明日计划不能替代今日工作")
     errors.extend(validate_daily_documents(documents))
     errors.extend(validate_daily_standalone_work(standalone_work))
     errors.extend(validate_no_planning_only_rows("documents", documents))
     errors.extend(validate_no_planning_only_rows("standalone_work", standalone_work))
-    errors.extend(validate_tomorrow_plan(tomorrow_plan))
+    errors.extend(validate_tomorrow_plan(tomorrow_plan, require_current_gms=require_current_gms))
     errors.extend(raw_plan_errors)
     if normalized_counts[0] != len(raw_projects):
         errors.append("projects 中每一项都必须是对象")
@@ -741,6 +765,7 @@ def fallback_projects(
             app_name = clean_scope_text(scope.get("app_name"))
             if work_type == "App" and app_name:
                 row["app_name"] = app_name
+            row.update(normalize_gms_fields(scope))
             if context.get("downstream_customer"):
                 row["downstream_customer"] = context["downstream_customer"]
             projects.append(row)
@@ -878,6 +903,10 @@ def build_daily_facts(
                         clean_scope_text(row.get("work_type")) != "App"
                         or bool(clean_scope_text(row.get("app_name")))
                     )
+                    and (
+                        clean_scope_text(row.get("work_type")) != "GMS"
+                        or not validate_gms_fields(row, prefix="gms")
+                    )
                 )
                 or (
                     not find_company_project(clean_scope_text(row.get("project")))
@@ -912,6 +941,16 @@ def build_daily_facts(
                 missing_fields.append(f"{project}.work_type")
             elif work_type == "App" and not clean_scope_text(row.get("app_name")):
                 missing_fields.append(f"{project}.app_name")
+            elif work_type == "GMS":
+                for field in GMS_CURRENT_FIELDS:
+                    if field == "gms_current_stage" and row.get("gms_cycle_status") in {
+                        "approved",
+                        "cancelled",
+                    }:
+                        continue
+                    value = row.get(field)
+                    if value in (None, ""):
+                        missing_fields.append(f"{project}.{field}")
         for row in documents:
             if not clean_document_name(row.get("document_name")):
                 missing_fields.append("document.document_name")

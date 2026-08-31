@@ -32,8 +32,9 @@
   of the normal Codex workflow: create the project first, then create development
   sessions under that project. Do not ask for weekly ledger fields during daily
   generation.
-- Daily project `work_type` is `Patch`, `App`, or `GMS`; App additionally
-  requires `app_name`. Resolve it from explicit member context first, then from
+- Daily project `work_type` is `Patch`, `App`, `GMS`, `Doc`, or `Other`; App
+  additionally requires `app_name`, while current GMS requires release type,
+  target, cycle, self-test, and submission facts. Resolve it from explicit member context first, then from
   high-confidence development evidence such as source/module paths, changed
   files, build commands, patch artifacts, and APK/AAB outputs. Never infer it
   from vague item wording. Ask only when evidence conflicts or remains
@@ -138,7 +139,7 @@ effective daily reports from AKBS, carry the current previous-week project
 ledger forward, apply report replacement chains, and use sessions only to
 supplement work absent from effective daily reports. `weekly_fact_sources`
 records this provenance. Missing ledger fields block upload and are completed
-through the explicit `akbs-weekly-work-facts-v5` contract. Requirement
+through the explicit `akbs-weekly-work-facts-v6` contract. Requirement
 source is created when the member receives the demand and must not be inferred
 from daily-report wording.
 
@@ -161,6 +162,11 @@ candidates only; they are never silently accepted as current weekly facts.
 
 - 类型：Patch / App / GMS 中选择一个
 - App 名称：仅 App 必填
+- GMS 送测类别：仅 GMS 必填，IR / MR / SMR / ESMR / EMR / LR
+- GMS 目标版本：仅 GMS 必填
+- GMS 周期/阶段：进行中时为自测或送测；结束后阶段为空
+- GMS 自测：累计轮次 + 最新结果
+- GMS 送测：累计次数 + 最新结果
 - 项目角色：主责 / 协作 中选择一个
 - 需求时间：2026-06-18
 - 需求来源：CR / TL / PM / TE / BSP 中选择一个
@@ -189,8 +195,10 @@ candidates only; they are never silently accepted as current weekly facts.
 多项目时，在“本周概况”下按项目重复上述块；不要使用“总盘子”这类说法，也不要用大表格堆字段。
 
 结构化 `projects[]` 按统计对象唯一：Patch 使用“项目 + 直接客户 + Patch”，App
-使用“项目 + 直接客户 + App + App 名称”。同一正式项目可以有一个 Patch 和多个
-不同 App，但不得重复同一 Patch 或同一 App。普通功能名称仍属于事项，不单独拆行。
+使用“项目 + 直接客户 + App + App 名称”，GMS 使用“项目 + 直接客户 + GMS +
+送测类别 + 目标版本”。同一正式项目可以有一个 Patch、多个不同 App，以及独立的
+IR/MR/SMR 等 GMS 范围。GMS 自测轮次与正式送测次数独立累计；送测前最新自测必须
+通过，退回后回到自测。问题与修复仍写普通工作项，不新增处理周期或问题子系统。
 
 无项目文档写入 `documents[]/Doc` 并使用 `document_name`；其他无项目工作写入
 `standalone_work[]/Other` 并使用 `work_name`。二者不填写项目、客户、项目角色、
@@ -264,6 +272,8 @@ Daily and weekly reports are the primary human-readable product. The package als
           "project": "TVE1065M",
           "customer": "韩富友",
           "work_type": "GMS",
+          "gms_release_type": "IR",
+          "gms_target": "Android 14 首个量产版本",
           "plan_items": ["开始执行完整 GMS 测试"]
         }
       ],
@@ -284,9 +294,9 @@ Report card fields are authoritative:
 
 - `material_name`：项目 + 客户链路；独立文档写 `文档工作：<文档名称>`。多项目写 `TVE1086U（青鸾云）、TVE1091U（AOC → 福建移动高清）`，超过 3 个项目时只列前 3 个并追加 `等 N 个项目`。
 - `material_summary`：日报写各项目或文档的“今日主题”；周报写各项目或文档的“本周完成、剩余、风险/依赖”。它是卡片小字，不要拿日期、成员名或包路径充当摘要。
-- Daily today project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/today_topic/current_result/work_items/key_points/dependencies`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
+- Daily today project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/[gms_release_type/gms_target/gms_cycle_status/gms_current_stage/gms_self_test_round/gms_self_test_result/gms_submission_count/gms_submission_result]/today_topic/current_result/work_items/key_points/dependencies`; every work item contains `name/did/how/result/status` and status is one of `已完成/处理中/待验证/阻塞`.
 - Daily `tomorrow_plan` contains parallel project, document, and standalone arrays. Plan rows carry only scope identity plus `plan_items[]`; tomorrow-only scopes never count as today progress or weekly progress.
-- Weekly project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/project_role/week_summary/requirement_date/requirement_source/[requirement_structure/work_total]/completed_this_week/remaining/completed_items/remaining_items/key_points/risks/dependencies/next_week_plan`.
+- Weekly project rows contain `project/customer/[downstream_customer]/work_type/[app_name]/[GMS progress fields]/project_role/week_summary/requirement_date/requirement_source/[requirement_structure/work_total]/completed_this_week/remaining/completed_items/remaining_items/key_points/risks/dependencies/next_week_plan`.
 - Daily and weekly non-project Doc rows live in `documents[]` and use `document_name`; non-project Other rows live in `standalone_work[]` and use `work_name`. GMS never lives outside `projects[]`.
 - The current read model does not emit `display_title`, `ui_card`, `one_line_summary`, `project_ledgers`, `weekly_progress_summary`, or `weekly_detail_sections`.
 

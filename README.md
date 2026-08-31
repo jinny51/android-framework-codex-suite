@@ -49,6 +49,8 @@
 | 周报上传材料 | `android-weekly-report-intake` | 按 Patch/App/GMS/Doc/Other 范围汇总当前有效日报中的重点说明和依赖候选及上一周项目台账，由成员确认依赖、主责确认本周流转并自动校验总量、Android 剩余和 BSP 跟踪，生成个人周报、同源 UI 读模型和 `weekly_trace` incoming |
 | 共享内核 / 配置诊断 | `android-knowledge-intake` | 提供成员配置、doctor、插件更新、版本门禁、会话缓存门禁和 manifest 协议 |
 
+GMS 日报/周报按“项目 + 客户 + 送测类别 + 目标版本”区分范围，送测类别为 IR/MR/SMR/ESMR/EMR/LR。自测轮次与正式送测次数独立累计，送测前要求最新自测通过，退回后回到自测；问题和修复仍写普通工作项。明日计划只写类别、目标和计划，不提前声明阶段或次数。
+
 `android-remote-build-deploy` 只证明产物是否编出、是否推上设备；最终能不能算需求完成，由 `android-framework-change-workflow` 结合需求和验证证据判断。
 
 Framework 需求默认闭环是：开工前查 AKBS，开发和验证后通过 `patch-capture` 与 `android-framework-patch-intake` 生成一个 `validated` 补丁包，并由 AKBS HTTP API 写入上传队列。服务端生成的 `patch_package_id` 是队列和主分支唯一业务身份；上传目录的 `package_key` 只标识不可变物理来源。成员 Skill 负责功能边界、项目/平台/Android 版本、不可变补丁和真实验证的主要完整性检查；管理端队列检查只作安全兜底。轻量文字、字段或非补丁附件缺口通过事件 `request_id` 补到同一个补丁包，需要改补丁或拆分功能则退回重新生成。通知、资料请求和合并确认分别继续用自身事件 ID 追溯因果，不替代 `patch_package_id`。`candidate`、`draft`、失败或阻塞路径保留在本地材料或报告上下文，不进入队列。日报和周报只归档，不进入知识沉淀候选；新建知识或计划合并由管理端沉淀流程决定。

@@ -23,6 +23,15 @@ from akbs_intake.report_sessions import (
     report_downstream_customer_for_project,
 )
 from akbs_intake.reports.scope import report_scope_suffix
+from akbs_intake.reports.gms import (
+    GMS_CURRENT_FIELDS,
+    gms_cycle_status_label,
+    gms_release_description,
+    gms_release_heading,
+    gms_self_test_result_label,
+    gms_stage_label,
+    gms_submission_result_label,
+)
 from akbs_intake.reports.document_work import (
     DOCUMENT_WORK_TYPE,
     clean_document_name,
@@ -357,6 +366,34 @@ def daily_material_summary(
     return compact_text("".join(parts), 220)
 
 
+def daily_project_fact_summary(projects: list[dict[str, Any]], *, max_projects: int = 3) -> str:
+    parts: list[str] = []
+    for row in projects[:max_projects]:
+        project = str(row.get("project") or MISSING_REPORT_PROJECT)
+        if row.get("work_type") == "GMS":
+            stage = gms_stage_label(row.get("gms_current_stage")) or gms_cycle_status_label(
+                row.get("gms_cycle_status")
+            )
+            if row.get("gms_current_stage") == "self_test":
+                progress = f"第 {int(row.get('gms_self_test_round') or 0)} 轮自测"
+            elif row.get("gms_current_stage") == "submission":
+                progress = f"第 {int(row.get('gms_submission_count') or 0)} 次送测"
+            else:
+                progress = gms_cycle_status_label(row.get("gms_cycle_status"))
+            target = str(row.get("gms_target") or "").strip()
+            gms_scope = f"GMS {row.get('gms_release_type') or '待确认'}" + (
+                f"（{target}）" if target else ""
+            )
+            parts.append(
+                f"{project}：{gms_scope}，{stage}，{progress}。"
+            )
+        else:
+            parts.append(f"{project}：{row.get('today_topic') or '今日事项需确认'}。")
+    if len(projects) > max_projects:
+        parts.append(f"另有 {len(projects) - max_projects} 个项目。")
+    return compact_text("".join(parts), 220)
+
+
 def document_material_name(documents: list[dict[str, Any]], *, max_documents: int = 2) -> str:
     names = [standalone_work_name(row) for row in documents]
     names = [name for name in names if name]
@@ -425,9 +462,23 @@ def weekly_material_summary(
         parts = []
         for row in weekly_projects[:max_projects]:
             risk_text = "有风险" if meaningful_fact_list(row.get("risks"), {"无超过 3 天无进展事项。"}) else "无明确风险"
-            scope = f" / {row.get('app_name')}" if row.get("work_type") == "App" else ""
+            if row.get("work_type") == "App":
+                scope = f" / {row.get('app_name')}"
+            elif row.get("work_type") == "GMS":
+                target = str(row.get("gms_target") or "").strip()
+                scope = f" / GMS：{row.get('gms_release_type') or '待确认'}" + (
+                    f"（{target}）" if target else ""
+                )
+            else:
+                scope = ""
             if row.get("work_type") in {"GMS", "Doc", "Other"}:
-                progress = compact_text(str(row.get("week_summary") or row.get("current_stage") or "需补充进展"), 72)
+                gms_progress = (
+                    f"{gms_cycle_status_label(row.get('gms_cycle_status'))} / "
+                    f"{gms_stage_label(row.get('gms_current_stage')) or '周期已结束'}"
+                    if row.get("work_type") == "GMS"
+                    else ""
+                )
+                progress = compact_text(str(row.get("week_summary") or gms_progress or "需补充进展"), 72)
                 parts.append(f"{row['project']}{scope}：{progress}，{risk_text}。")
             else:
                 completed = weekly_fact_count_text(row, "completed_this_week_counts", include_bsp=False)
@@ -594,6 +645,8 @@ def weekly_scope_heading(row: dict[str, Any]) -> str:
     )
     if row.get("work_type") == "App":
         return f"{heading}｜App：{row.get('app_name') or '需成员确认'}"
+    if row.get("work_type") == "GMS":
+        return f"{heading}｜{gms_release_heading(row)}"
     work_type = str(row.get("work_type") or "").strip()
     return f"{heading}｜{work_type}" if work_type else heading
 
@@ -611,6 +664,26 @@ def daily_scope_heading(row: dict[str, Any]) -> str:
 def document_scope_heading(row: dict[str, Any]) -> str:
     work_type = normalize_standalone_work_type(row.get("work_type")) or DOCUMENT_WORK_TYPE
     return f"{work_type}：{standalone_work_name(row) or '需成员确认'}"
+
+
+def gms_report_lines(row: dict[str, Any]) -> list[str]:
+    self_round = row.get("gms_self_test_round")
+    submission_count = row.get("gms_submission_count")
+    cycle_status = str(row.get("gms_cycle_status") or "")
+    lines = [
+        f"- 送测类别：{gms_release_description(row)}",
+        f"- 目标版本：{row.get('gms_target') or '需成员确认'}",
+        f"- 周期状态：{gms_cycle_status_label(cycle_status)}",
+    ]
+    if cycle_status == "active":
+        lines.append(f"- 当前阶段：{gms_stage_label(row.get('gms_current_stage')) or '需成员确认'}")
+    lines += [
+        f"- 自测轮次：{'第 ' + str(self_round) + ' 轮' if isinstance(self_round, int) and self_round > 0 else '尚未开始'}",
+        f"- 最新自测结果：{gms_self_test_result_label(row.get('gms_self_test_result'))}",
+        f"- 正式送测：{'共 ' + str(submission_count) + ' 次' if isinstance(submission_count, int) and submission_count > 0 else '尚未送测'}",
+        f"- 最新送测结果：{gms_submission_result_label(row.get('gms_submission_result'))}",
+    ]
+    return lines
 
 
 def write_daily_scope_list(
@@ -701,6 +774,7 @@ def write_daily_report(
             "",
             f"- 类型：{row.get('work_type') or '需成员确认'}",
             *([f"- App 名称：{row.get('app_name') or '需成员确认'}"] if row.get("work_type") == "App" else []),
+            *(gms_report_lines(row) if row.get("work_type") == "GMS" else []),
             f"- 今日主题：{row.get('today_topic') or '今日工作事项需成员确认'}",
             f"- 当前结果：{row.get('current_result') or '当前结果需成员确认。'}",
             "",
@@ -799,11 +873,7 @@ def write_weekly_report(
                     str(row.get("week_summary") or "需补充真实工作记录。"),
                     "",
                     f"- 类型：{row.get('work_type')}",
-                    *(
-                        [f"- 当前阶段：{row.get('current_stage') or '需成员确认'}"]
-                        if row.get("work_type") == "GMS"
-                        else []
-                    ),
+                    *(gms_report_lines(row) if row.get("work_type") == "GMS" else []),
                     f"- 项目角色：{row.get('project_role') or '需成员确认'}",
                     f"- 需求时间：{row.get('requirement_date') or '需成员确认'}",
                     f"- 需求来源：{row.get('requirement_source') or '需成员确认'}",
@@ -1057,7 +1127,9 @@ def report_view_payload(
     non_project_name = document_material_name(non_project_rows)
     material_name = "、".join(value for value in (project_material_name, non_project_name) if value)
     project_summary = (
-        daily_material_summary(items)
+        daily_project_fact_summary(daily_projects or [])
+        if report_type == "daily" and daily_projects
+        else daily_material_summary(items)
         if report_type == "daily" and items
         else weekly_material_summary(items, project_customers, weekly_projects)
         if report_type == "weekly" and (items or weekly_projects)
@@ -1173,7 +1245,8 @@ def report_view_payload(
                 project_row.pop("completed_this_week", None)
                 project_row.pop("remaining", None)
                 if row.get("work_type") == "GMS":
-                    project_row["current_stage"] = str(row.get("current_stage") or "需成员确认")
+                    for field in GMS_CURRENT_FIELDS:
+                        project_row[field] = row.get(field)
             elif row.get("work_type") == "App":
                 project_row["app_name"] = str(row.get("app_name") or "需成员确认")
                 if row.get("project_role") == "主责" and row.get("work_total_present"):

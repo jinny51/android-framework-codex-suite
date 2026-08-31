@@ -64,7 +64,7 @@ source.
 Do not count Codex sessions as requirements. If the effective reports cannot
 prove project role, requirement date, requirement source, project totals, or
 remaining-item identity, local check must fail with exact missing fields. Ask the member
-only for those facts, write an `akbs-weekly-work-facts-v5` JSON file under
+only for those facts, write an `akbs-weekly-work-facts-v6` JSON file under
 `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/`, and regenerate
 with `--weekly-facts`. Read `../android-knowledge-intake/references/weekly-facts-contract.md`
 when this fact-completion path is needed. Do not ask the member to repair a
@@ -121,7 +121,7 @@ The weekly Markdown baseline is the project block format:
 ```
 
 The visible Markdown keeps one compact `本周变化` line and omits zero change
-types. The structured v5 facts bind the current effective previous-week package
+types. The structured v6 facts bind the current effective previous-week package
 and carry `added`, `reopened`, `closed_without_change`, `removed`,
 `transferred_to_bsp`, and `bsp_closed`. Members confirm the business facts;
 Codex writes the ledger JSON and computes the displayed total and remaining.
@@ -134,8 +134,13 @@ or demo development and requires `App 名称`. Preserve the scope resolved by th
 daily workflow; do not reclassify it from weekly item wording. Ask the member
 only when the daily source is missing, conflicting, or lacks the App name.
 
-GMS project rows use `current_stage`, weekly progress, key points, risks,
-dependencies, and plans without Patch/App totals. Project-bound Doc and Other
+GMS project rows use release type + target, cycle status, current self-test or
+submission stage, cumulative self-test round/result, cumulative formal
+submission count/result, weekly progress, key points, risks, dependencies, and
+plans without Patch/App totals. Self-test rounds and submissions are
+independent; submission requires the latest self-test result to have passed,
+and a returned submission moves the stage back to self-test. Keep problems and
+fixes in normal weekly progress items. Project-bound Doc and Other
 also use progress details without Patch/App totals. A non-project Doc uses
 `documents[]/document_name`; a non-project Other uses
 `standalone_work[]/work_name`. GMS is never non-project. Historical `Document`
@@ -181,7 +186,7 @@ as separate unordered lists under subsection 4.
 For multiple projects, repeat the same block per project. Do not use a large
 overview table in `本周概况`.
 
-Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, and `standalone_work[]`; at least one array must be non-empty. Patch/App project rows keep the existing total and ledger fields. GMS project rows carry `current_stage`, progress, key points, risks, dependencies, and plans without Patch/App totals. Project GMS titles are exactly `项目 + 客户｜GMS`; `display_name`, `model`, `work_name`, and `document_name` never replace that identity. Project-bound Doc/Other are progress scopes. Non-project Doc and Other use their own arrays and concrete names.
+Generate the same-source UI read model at `materials/display/report_view.json`. Required weekly payload fields include `schema=akbs-report-view-human-v1`, `report_type=weekly`, `week_range`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, and `standalone_work[]`; at least one array must be non-empty. Patch/App project rows keep the existing total and ledger fields. GMS project rows carry the minimal release/target, cycle, self-test, and submission facts plus progress, key points, risks, dependencies, and plans without Patch/App totals. Project GMS titles are `项目 + 客户｜GMS：送测类别（目标版本）`; `display_name`, `model`, `work_name`, and `document_name` never replace that identity. Project-bound Doc/Other are progress scopes. Non-project Doc and Other use their own arrays and concrete names.
 
 Weekly card identity is not the week range. `material_name` must preserve the
 customer chain, such as `TVE1086U（青鸾云）` or
@@ -209,8 +214,9 @@ within their own levels, never across the customer chain.
 
 There must be exactly one `projects[]` row for each reporting scope. A Patch
 scope is `project + direct customer + Patch`; an App scope is `project + direct
-customer + App + app_name`. The same formal project may therefore contain one
-Patch row, multiple App rows, and one scope for each GMS, Doc, and Other; no
+customer + App + app_name`; a GMS scope adds release type + target. The same
+formal project may therefore contain one Patch row, multiple App rows, separate
+IR/MR/SMR GMS rows, and project-bound Doc/Other rows; no
 scope may be duplicated. Feature names remain work items and do not create more rows. The
 gate is structural, not a vocabulary blacklist: it validates the canonical
 project, customer chain, work scope, and same-source identity consistency.
@@ -224,7 +230,7 @@ fact hash. Never repair only one file. Update the facts and regenerate.
 `--prepare` returns failure when local validation fails, and submission always
 revalidates before HTTP.
 
-For an existing main scope, the v5 gate calculates:
+For an existing main scope, the v6 gate calculates:
 
 ```text
 current total = previous total + added - removed

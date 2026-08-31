@@ -42,6 +42,17 @@ Markdown presentation rule only. Keep project and customer values in
 
 Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, `standalone_work[]`, and `tomorrow_plan`; at least one of the three today arrays must be non-empty. Every project-bound today row belongs in `projects[]` and contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, `key_points[]`, and `dependencies[]`. Project work uses `Patch`, `App`, `GMS`, `Doc`, or `Other`. Only a non-project document belongs in `documents[]` with `work_type=Doc` and `document_name`. A non-project, non-document activity belongs in `standalone_work[]` with `work_type=Other` and `work_name`. Historical `Document` remains readable as `Doc`. Every work item contains `name`, `did[]`, `how[]`, `result`, and fixed-enum `status`.
 
+Every current GMS project row also records `gms_release_type`
+(IR/MR/SMR/ESMR/EMR/LR), a concrete `gms_target`, cycle status, current
+`self_test` or `submission` stage, cumulative self-test round/result, and
+cumulative formal-submission count/result. The two counters are independent:
+multiple self-test rounds may lead to the first submission, and the first
+submission may pass. A submission requires the latest self-test result to be
+passed; a returned submission moves the current stage back to self-test. Keep
+GMS problems and fixes in ordinary `work_items[]`; do not introduce a separate
+processing-cycle or issue model. GMS scope identity is project + customer +
+release type + target.
+
 `tomorrow_plan` is independent from today's work and contains its own parallel
 `projects[]`, `documents[]`, and `standalone_work[]` arrays. Project plans carry
 project/customer/work type, optional downstream customer or App name, and a
@@ -52,6 +63,9 @@ project or task that has not started belongs only in `tomorrow_plan`, even if it
 does not appear anywhere in today's scopes. Never create a completed or
 in-progress today item merely to give a plan an identity. If there is no plan,
 keep all three plan arrays empty and render `无。`.
+
+A GMS tomorrow plan carries its release type and target but does not claim a
+cycle status, stage, self-test round, or submission count before work occurs.
 
 Every daily scope, including non-project Doc and Other, carries `key_points[]`
 and `dependencies[]`. `key_points` records explicit project news, scope
@@ -95,7 +109,7 @@ or standalone scope and does not need a matching today row. Text such as
 “尚未开始，明日执行” is plan evidence, not today-progress evidence.
 
 Run normal generation first and let the shared kernel infer scope from the
-authorized evidence. Use `akbs-daily-work-facts-v3` under
+authorized evidence. Use `akbs-daily-work-facts-v4` under
 `$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/` only to complete
 an unresolved scope, correct an inference, preserve explicit key points or
 dependencies, or make an explicit member override;

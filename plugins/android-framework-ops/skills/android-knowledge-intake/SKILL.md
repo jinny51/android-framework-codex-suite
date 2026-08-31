@@ -17,29 +17,30 @@ Default policy: preserve work facts locally first, then upload only packages tha
 
 Daily and weekly generation have no "future submission" mode. A daily package date later than the current local date must stop with "不能提交未来日期的日报，请重新生成正确日期的日报。". A weekly package whose anchor date is later than the current local date, or whose `week_range` is later than the current local week, must stop with "不能提交未来周期的周报，请重新生成正确周期的周报。". For a report identity with no effective report, a first submission after its deadline is a late submission. When an effective report already exists, a later package is a revision regardless of upload date; it is not a late submission.
 
-Daily and weekly report bodies are the primary human-readable product. Generate `reports/daily.md` and `reports/weekly.md` with the Codex office report templates. The five categories are exactly `Patch`, `App`, `GMS`, `Doc`, and `Other`. Array ownership is independent of category: every project-bound row uses `projects[]`; a non-project document uses `documents[]`; other non-project work uses `standalone_work[]`. Project rows may use all five categories, App requires its name, and GMS weekly rows use `current_stage` instead of Patch/App totals. GMS is always project-bound. A shared ATS environment without a customer project is `standalone_work[]/Other`, not GMS. Resolve scope from explicit member context or high-confidence evidence, and ask only when evidence conflicts or remains incomplete. Patch/App total and BSP rules remain unchanged; GMS, Doc, and Other never contribute to Patch/App demand totals. Historical `Document` normalizes to `Doc`. Keep `work_findings.json` as evidence for audit and later analysis.
+Daily and weekly report bodies are the primary human-readable product. Generate `reports/daily.md` and `reports/weekly.md` with the Codex office report templates. The five categories are exactly `Patch`, `App`, `GMS`, `Doc`, and `Other`. Array ownership is independent of category: every project-bound row uses `projects[]`; a non-project document uses `documents[]`; other non-project work uses `standalone_work[]`. Project rows may use all five categories, App requires its name, and current GMS rows use release type + target, cycle status, independent self-test round/result, and independent formal-submission count/result instead of Patch/App totals. GMS is always project-bound. A shared ATS environment without a customer project is `standalone_work[]/Other`, not GMS. Resolve scope from explicit member context or high-confidence evidence, and ask only when evidence conflicts or remains incomplete. Patch/App total and BSP rules remain unchanged; GMS, Doc, and Other never contribute to Patch/App demand totals. Historical `Document` normalizes to `Doc`. Keep `work_findings.json` as evidence for audit and later analysis.
 
-Daily scope and independent tomorrow-plan facts use `akbs-daily-work-facts-v3` under
+Daily scope and independent tomorrow-plan facts use `akbs-daily-work-facts-v4` under
 `$CODEX_HOME/artifacts/android-knowledge-intake/daily-facts/`; read
 `references/daily-facts-contract.md`. Normal generation first infers scope from
 authorized development evidence; explicit facts complete, correct, or override
 unresolved results and preserve explicit `key_points[]` or `dependencies[]`.
 Every daily project or non-project scope carries those two arrays, and both may
 be empty. The same project may contain one Patch, multiple
-named Apps, and unique GMS/Doc/Other scopes; non-project documents and Other
+named Apps, GMS scopes unique by release type + target, and unique Doc/Other scopes; non-project documents and Other
 work are identified by their concrete names. The scope flows into weekly history so weekly does not guess type
 from text. `report_render_binding` binds the normalized fact hash,
 Markdown, and `report_view.json`; local validation also rerenders Markdown and
 requires exact equality. `--prepare` returns non-zero on local-check failure,
 and every submission revalidates before HTTP.
 
-Weekly generation uses effective AKBS report facts before sessions: current daily reports for the target week, then the current previous-week report as the rolling ledger, then local submitted replacement leaves when the API is unavailable. Sessions are supplementary and must never be counted as requirements. Merge current daily key points by scope. Treat current daily dependencies, legacy keyword matches, and previous-week dependencies as review candidates; expose them in `weekly_fact_sources.attention_review_candidates` and require member confirmation before submission. The weekly package writes `materials/evidence/weekly_fact_sources.json`; missing ledger or dependency-confirmation facts make local check fail. Close only those missing fields with an `akbs-weekly-work-facts-v5` artifact and `weekly --weekly-facts <path>`. V5 binds the effective previous-week package, permits project total and responsibility changes only from the main member, and computes Android remaining plus BSP tracking. Older explicit facts cannot replace an existing scope. The artifact belongs under `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/`, not in this skill directory. Read `references/weekly-facts-contract.md` before creating it.
+Weekly generation uses effective AKBS report facts before sessions: current daily reports for the target week, then the current previous-week report as the rolling ledger, then local submitted replacement leaves when the API is unavailable. Sessions are supplementary and must never be counted as requirements. Merge current daily key points by scope. Treat current daily dependencies, legacy keyword matches, and previous-week dependencies as review candidates; expose them in `weekly_fact_sources.attention_review_candidates` and require member confirmation before submission. The weekly package writes `materials/evidence/weekly_fact_sources.json`; missing ledger or dependency-confirmation facts make local check fail. Close only those missing fields with an `akbs-weekly-work-facts-v6` artifact and `weekly --weekly-facts <path>`. V6 binds the effective previous-week package, permits project total and responsibility changes only from the main member, computes Android remaining plus BSP tracking, and preserves the minimal GMS self-test/submission model. Older explicit facts cannot replace an existing scope. The artifact belongs under `$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/`, not in this skill directory. Read `references/weekly-facts-contract.md` before creating it.
 
 Weekly project identity is one canonical company project plus one direct customer
 and an optional downstream customer. Reporting scopes add required type: Patch
-is unique under that identity, while App also adds required App name. The same
-project may therefore have one Patch, multiple differently named App rows, and
-one scope for each of GMS, Doc, and Other.
+is unique under that identity, App also adds required App name, and GMS adds
+release type + target. The same project may therefore have one Patch, multiple
+differently named App rows, separate GMS release/target scopes, and
+project-bound Doc/Other scopes.
 Feature-module names remain inside work-item and plan arrays. Enforcement uses
 canonical project shape, scope uniqueness, the customer chain confirmed by current context, and same-source
 package evidence; it does not enumerate module names. Empty next-week plans use

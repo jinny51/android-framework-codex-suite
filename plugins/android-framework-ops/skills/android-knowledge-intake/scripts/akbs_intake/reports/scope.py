@@ -9,6 +9,7 @@ from .document_work import (
     NON_PROJECT_WORK_TYPES,
     document_name_from_text,
 )
+from .gms import gms_release_heading, gms_scope_identity
 
 
 PROJECT_WORK_TYPES = {"Patch", "App", "GMS", "Doc", "Other"}
@@ -273,14 +274,17 @@ def infer_work_scope(
     return inferred
 
 
-def report_scope_key(row: dict[str, Any]) -> tuple[str, str, str]:
+def report_scope_key(row: dict[str, Any]) -> tuple[str, ...]:
     work_type = clean_scope_text(row.get("work_type"))
     app_name = clean_scope_text(row.get("app_name")).casefold() if work_type == "App" else ""
-    return clean_scope_text(row.get("project")).upper(), work_type, app_name
+    release_type, target = gms_scope_identity(row) if work_type == "GMS" else ("", "")
+    return clean_scope_text(row.get("project")).upper(), work_type, app_name, release_type, target
 
 
 def report_scope_suffix(row: dict[str, Any]) -> str:
     work_type = clean_scope_text(row.get("work_type"))
     if work_type == "App":
         return f"App：{clean_scope_text(row.get('app_name')) or '需成员确认'}"
+    if work_type == "GMS":
+        return gms_release_heading(row)
     return work_type or "需成员确认"

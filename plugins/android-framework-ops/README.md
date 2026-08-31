@@ -22,6 +22,8 @@ Android Framework Ops 是本套件的共享核心插件。它负责 Android Fram
 | 远程执行 | [android-remote-channel](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-remote-channel) | 统一管理 Android 构建服务器 SSH/tmux 长会话、命令日志、占用状态和锁 |
 | 远程执行 | [android-remote-build-deploy](https://github.com/jinny51/android-framework-codex-suite/tree/main/docs/skills/android-framework-ops/android-remote-build-deploy) | WSL/macOS 共用远程构建、产物定位、本地 adb 推送和交付证据 |
 
+日报和周报中的 GMS 以“项目 + 客户 + 送测类别 + 目标版本”为范围身份；送测类别使用 IR/MR/SMR/ESMR/EMR/LR。自测轮次和正式送测次数分别累计，送测前最新自测必须通过，送测退回后回到自测；发现的问题和修复继续作为普通工作项记录，不另建处理周期或问题子系统。明日计划只声明 GMS 送测类别、目标版本和计划事项，不伪造尚未发生的阶段、轮次或送测次数。
+
 ## 推荐工作流
 
 1. `android-source-access`（来自 `android-wsl-ops`）或 `android-source-access`（来自 `android-mac-ops`）先确认源码路径和远程映射。

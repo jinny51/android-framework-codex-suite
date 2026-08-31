@@ -116,7 +116,7 @@ def normalize_weekly_ledger(value: Any, work_type: str) -> dict[str, Any]:
     return result
 
 
-def weekly_scope_identity(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
+def weekly_scope_identity(row: dict[str, Any]) -> tuple[str, ...]:
     work_type = clean_text(row.get("work_type"))
     return (
         clean_text(row.get("project")).upper(),
@@ -124,6 +124,8 @@ def weekly_scope_identity(row: dict[str, Any]) -> tuple[str, str, str, str, str]
         clean_text(row.get("downstream_customer")),
         work_type,
         clean_text(row.get("app_name")).casefold() if work_type == "App" else "",
+        clean_text(row.get("gms_release_type")).upper() if work_type == "GMS" else "",
+        clean_text(row.get("gms_target")).casefold() if work_type == "GMS" else "",
     )
 
 

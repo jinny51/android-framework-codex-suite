@@ -20,7 +20,7 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
 
 ```json
 {
-  "schema": "akbs-weekly-work-facts-v5",
+  "schema": "akbs-weekly-work-facts-v6",
   "week_range": "20260601-20260607",
   "projects": [
     {
@@ -89,6 +89,29 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
       "risks": [],
       "dependencies": ["等待客户提供正式 API"],
       "next_week_plan": ["完成整机链路验证"]
+    },
+    {
+      "project": "TVE1065M",
+      "customer": "韩富友",
+      "work_type": "GMS",
+      "project_role": "主责",
+      "requirement_date": "2026-06-01",
+      "requirement_source": "TE",
+      "gms_release_type": "IR",
+      "gms_target": "Android 14 首个量产版本",
+      "gms_cycle_status": "active",
+      "gms_current_stage": "submission",
+      "gms_self_test_round": 3,
+      "gms_self_test_result": "passed",
+      "gms_submission_count": 1,
+      "gms_submission_result": "under_review",
+      "week_summary": "完成第 3 轮自测并发起第 1 次正式送测。",
+      "completed_items": ["完成第 3 轮自测"],
+      "remaining_items": ["等待正式送测结果"],
+      "key_points": ["最新自测结果已通过"],
+      "risks": [],
+      "dependencies": [],
+      "next_week_plan": ["跟进第 1 次正式送测结果"]
     }
   ],
   "documents": [
@@ -134,12 +157,15 @@ Rules:
   means the direct customer's customer.
 - Project `work_type` is `Patch`, `App`, `GMS`, `Doc`, or `Other`; the five visible categories
   are `Patch`, `App`, `GMS`, `Doc`, and `Other`. `App` requires `app_name`;
-  other project types must not provide it. GMS requires `current_stage`.
+  other project types must not provide it. Current GMS rows require release
+  type, target, cycle status, current stage, self-test round/result, and formal
+  submission count/result.
   GMS/Doc/Other project rows do not carry Patch/App total or ledger fields.
 - Each reporting scope appears exactly once. Patch identity is `project + direct
-  customer + Patch`; App identity adds `app_name`. The same project may contain
-  one Patch row, multiple differently named App rows, and one scope for each of
-  GMS, Doc, and Other. Feature names remain
+  customer + Patch`; App identity adds `app_name`; GMS identity adds
+  `gms_release_type + gms_target`. The same project may contain one Patch row,
+  multiple differently named App rows, separate IR/MR/SMR scopes, and one
+  scope for each remaining category. Feature names remain
   work items and do not create additional rows.
 - A non-project document belongs in `documents[]`, uses only `work_type=Doc`,
   and requires `document_name`. Other non-project work belongs in
@@ -159,6 +185,12 @@ Rules:
   Patch row they are category objects. For an App row they are non-negative
   integers without Patch categories. Project GMS/Doc/Other use progress and
   item arrays instead of Patch/App counts.
+- GMS self-test rounds and formal submission attempts are independent
+  cumulative facts. Several self-test rounds may precede one submission; the
+  first submission may pass. A submission stage requires the latest self-test
+  result `passed`; when submission returns, switch the current stage back to
+  `self_test`. Keep discovered problems and fixes in ordinary progress/item
+  arrays rather than inventing a processing-cycle or issue subsystem.
 - A Patch main requires `requirement_structure`; an App main requires integer
   `work_total`. Collaborators may omit the corresponding total.
 - Patch 项目总量、本周完成和 Android 当前剩余只使用 `demand`、
@@ -167,7 +199,7 @@ Rules:
 - `需求` means a customer requirement the team has not implemented before;
   `移植` means reusing or porting a requirement already implemented before;
   `Bug` means defect work.
-- `ledger` is required for every v5 Patch/App project row. Codex writes it; members do not
+- `ledger` is required for every v6 Patch/App project row. Codex writes it; members do not
   hand-edit the JSON.
 - A main row for a new scope uses `opening=true`, provides the initial total,
   and leaves the baseline fields empty. Existing scopes use `opening=false`
@@ -196,12 +228,12 @@ current Android remaining = previous Android remaining + added + reopened
 current BSP pending = previous BSP pending + transferred to BSP - BSP closed
 ```
 
-- Explicit v4/v3 facts may open a scope only when no previous scope exists.
+- Explicit legacy v5/v4/v3 facts may open a scope only when no previous scope exists.
   They cannot replace an existing scope because that would bypass the previous
   baseline; use v5 instead.
 - Automatic rolling writes unmatched existing-scope work to
   `weekly_fact_sources.scope_change_candidates`. Ask the main to classify only
-  those exact items before producing v5 facts.
+  those exact items before producing v6 facts.
 - A positive count line must contain at least one positive `demand`,
   `migration`, or `bug`.
 - Zero categories may be omitted. The generated line total is always the sum

@@ -96,6 +96,10 @@ SOURCE_VERSION_COMPATIBILITY_MATRIX = {
         "min_plugin_version": "1.0.161",
         "description": "daily reports separate independent project, document, and standalone tomorrow plans from actual today work",
     },
+    "gms_report_progress_v1": {
+        "min_plugin_version": "1.0.163",
+        "description": "GMS report scopes carry release type, target, independent self-test rounds, and independent submission attempts",
+    },
     "report_render_binding_v1": {
         "min_plugin_version": "1.0.151",
         "description": "daily and weekly facts bind deterministic Markdown and report_view output before submission",

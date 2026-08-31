@@ -12,6 +12,7 @@ from ..report_sessions import clean_report_customer_name
 from ..session_privacy import session_evidence_errors
 from .daily_facts import (
     DAILY_FACT_SOURCES_SCHEMA,
+    LEGACY_DAILY_GMS_FACT_SOURCES_SCHEMA,
     SUPPORTED_DAILY_FACT_SOURCES_SCHEMAS,
     planning_only_work_item,
     validate_tomorrow_plan,
@@ -27,6 +28,7 @@ from .document_work import (
     validate_daily_documents,
     validate_daily_standalone_work,
 )
+from .gms import validate_gms_fields
 from .render import (
     REPORT_MISSING_CUSTOMER_VALUES,
     REPORT_MISSING_PROJECT_VALUES,
@@ -35,6 +37,7 @@ from .render import (
 from .render_binding import REPORT_RENDER_BINDING_SCHEMA
 from .weekly_facts import (
     LEGACY_WEEKLY_FACT_SOURCES_SCHEMA,
+    OLDEST_WEEKLY_FACT_SOURCES_SCHEMA,
     WEEKLY_FACT_SOURCES_SCHEMA,
 )
 from .weekly_ledger import WEEKLY_LEDGER_SCHEMA
@@ -325,7 +328,11 @@ def validate_weekly_fact_sources(
     if not isinstance(payload, dict):
         errors.append("weekly_fact_sources payload 必须是对象")
         return
-    if payload.get("schema") not in {WEEKLY_FACT_SOURCES_SCHEMA, LEGACY_WEEKLY_FACT_SOURCES_SCHEMA}:
+    if payload.get("schema") not in {
+        WEEKLY_FACT_SOURCES_SCHEMA,
+        LEGACY_WEEKLY_FACT_SOURCES_SCHEMA,
+        OLDEST_WEEKLY_FACT_SOURCES_SCHEMA,
+    }:
         errors.append(f"weekly_fact_sources.schema 必须是 {WEEKLY_FACT_SOURCES_SCHEMA}")
     if payload.get("week_range") != manifest.get("week_range"):
         errors.append("weekly_fact_sources.week_range 必须等于 manifest.week_range")
@@ -394,6 +401,7 @@ def validate_daily_report_view_project(
     errors: list[str],
     *,
     contract_v3: bool,
+    require_current_gms: bool,
 ) -> None:
     work_type = str(project.get("work_type") or "").strip()
     if work_type not in WEEKLY_ALLOWED_WORK_TYPES:
@@ -402,6 +410,8 @@ def validate_daily_report_view_project(
         errors.append(f"{rel} payload.projects[{index}].app_name 类型为 App 时必须提供")
     if work_type != "App" and project.get("app_name"):
         errors.append(f"{rel} payload.projects[{index}].app_name 仅类型为 App 时允许提供")
+    if work_type == "GMS" and require_current_gms:
+        errors.extend(validate_gms_fields(project, prefix=f"{rel} payload.projects[{index}]"))
     for field in ("today_topic", "current_result"):
         if not project.get(field):
             errors.append(f"{rel} payload.projects[{index}].{field} 必须提供")
@@ -585,9 +595,7 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
         "requirement_date",
         "requirement_source",
     ]
-    if project.get("work_type") == "GMS":
-        required_fields.append("current_stage")
-    elif project.get("work_type") in {"Patch", "App"}:
+    if project.get("work_type") in {"Patch", "App"}:
         required_fields.extend(["completed_this_week", "remaining"])
     for field in required_fields:
         if not project.get(field):
@@ -602,6 +610,8 @@ def validate_weekly_report_view_project(rel: str, index: int, project: dict[str,
         errors.append(f"{rel} payload.projects[{index}].app_name 类型为 App 时必须提供")
     if work_type != "App" and project.get("app_name"):
         errors.append(f"{rel} payload.projects[{index}].app_name 仅类型为 App 时允许提供")
+    if work_type == "GMS":
+        errors.extend(validate_gms_fields(project, prefix=f"{rel} payload.projects[{index}]"))
     if role == "主责" and work_type == "Patch" and not project.get("requirement_structure"):
         errors.append(f"{rel} payload.projects[{index}].requirement_structure Patch 主责必须提供")
     if role == "主责" and work_type == "App" and not project.get("work_total"):
@@ -896,6 +906,7 @@ def validate_report_view_payload(
     view: dict[str, Any],
     expected_weekly_project_identities: Any = None,
     daily_contract_v3: bool,
+    daily_require_current_gms: bool,
     errors: list[str],
 ) -> None:
     for field in ("schema", "report_type", "material_name", "material_summary", "member_alias", "member_name", "display_date"):
@@ -950,6 +961,7 @@ def validate_report_view_payload(
                 project,
                 errors,
                 contract_v3=daily_contract_v3,
+                require_current_gms=daily_require_current_gms,
             )
         else:
             validate_weekly_report_view_project(rel, index, project, errors)
@@ -990,6 +1002,7 @@ def validate_report_display_files(
     report_type: str,
     expected_weekly_project_identities: Any,
     daily_contract_v3: bool,
+    daily_require_current_gms: bool,
     require_file: RequireFile,
     read_referenced_json: ReadReferencedJson,
     errors: list[str],
@@ -1019,6 +1032,7 @@ def validate_report_display_files(
             view=view,
             expected_weekly_project_identities=expected_weekly_project_identities,
             daily_contract_v3=daily_contract_v3,
+            daily_require_current_gms=daily_require_current_gms,
             errors=errors,
         )
 
@@ -1124,6 +1138,12 @@ def validate_report_trace_package(
             else None
         ),
         daily_contract_v3=(
+            package_kind == "daily_trace"
+            and isinstance(evidence_by_kind.get("daily_fact_sources", {}).get("payload"), dict)
+            and evidence_by_kind["daily_fact_sources"]["payload"].get("schema")
+            in {DAILY_FACT_SOURCES_SCHEMA, LEGACY_DAILY_GMS_FACT_SOURCES_SCHEMA}
+        ),
+        daily_require_current_gms=(
             package_kind == "daily_trace"
             and isinstance(evidence_by_kind.get("daily_fact_sources", {}).get("payload"), dict)
             and evidence_by_kind["daily_fact_sources"]["payload"].get("schema")

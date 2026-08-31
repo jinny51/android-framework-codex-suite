@@ -14,7 +14,7 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
 
 ```json
 {
-  "schema": "akbs-daily-work-facts-v3",
+  "schema": "akbs-daily-work-facts-v4",
   "report_date": "2026-08-10",
   "projects": [
     {
@@ -29,6 +29,21 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
       "customer": "青鸾云",
       "work_type": "App",
       "app_name": "设备管理工具",
+      "key_points": [],
+      "dependencies": []
+    },
+    {
+      "project": "TVE1065M",
+      "customer": "韩富友",
+      "work_type": "GMS",
+      "gms_release_type": "IR",
+      "gms_target": "Android 14 首个量产版本",
+      "gms_cycle_status": "active",
+      "gms_current_stage": "self_test",
+      "gms_self_test_round": 2,
+      "gms_self_test_result": "passed",
+      "gms_submission_count": 0,
+      "gms_submission_result": "not_submitted",
       "key_points": [],
       "dependencies": []
     }
@@ -73,6 +88,8 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
         "project": "TVE1065M",
         "customer": "韩富友",
         "work_type": "GMS",
+        "gms_release_type": "IR",
+        "gms_target": "Android 14 首个量产版本",
         "plan_items": ["开始执行完整 GMS 测试"]
       }
     ],
@@ -110,14 +127,23 @@ Rules:
   Explicit facts override automatic inference. Never infer from vague work-item
   wording alone.
 - `App` requires `app_name`; other project types must not provide it.
+- A current GMS row requires `gms_release_type` (`IR`, `MR`, `SMR`, `ESMR`,
+  `EMR`, or `LR`) and a concrete `gms_target`. It also records cycle status,
+  current stage, cumulative self-test round/result, and cumulative formal
+  submission count/result. Self-test rounds and submissions are independent:
+  several self-test rounds may lead to the first submission, and that first
+  submission may pass. Entering `submission` requires the latest self-test
+  result to be `passed`; a returned submission goes back to `self_test`.
+  Problems and fixes remain ordinary `work_items[]`; do not create a separate
+  processing-cycle or issue subsystem.
 - In `documents[]`, `work_type` is only `Doc` and a concrete `document_name` is
   required. In `standalone_work[]`, `work_type` is only `Other` and a concrete
   `work_name` is required. Neither array carries project/customer/App fields.
   GMS is always project-bound. Historical `Document` normalizes to `Doc`.
   Do not use “文档” as a fake company project code.
 - Scope identity is project/customer + work type; App additionally includes its
-  name. The same project may contain one Patch, multiple differently named
-  Apps, and one scope for each of GMS, Doc, and Other.
+  name, and GMS additionally includes release type + target. The same project
+  may therefore carry separate IR, MR, or SMR scopes without merging them.
 - Every scope carries `key_points[]` and `dependencies[]`. Both fields are
   arrays and may be empty. `key_points` records explicit external project news,
   scope changes, or a key difficulty overcome today. `dependencies` records
@@ -139,9 +165,12 @@ Rules:
   same project/customer/work-type identity rules as today; Doc and Other plans
   use the same non-project name rules. A plan does not need a matching today
   scope.
+- A GMS tomorrow-plan row includes only `gms_release_type` and `gms_target`
+  beside its ordinary project identity and `plan_items[]`. It does not claim a
+  cycle status, stage, self-test round, or submission count before work occurs.
 - Tomorrow-plan rows must not contain `today_topic`, `current_result`,
   `work_items`, `key_points`, `dependencies`, `tomorrow_focus`, or `status`.
-  Likewise, current v3 today rows must not contain `tomorrow_focus`.
+  Likewise, current v4 today rows must not contain `tomorrow_focus`.
 - Do not derive plans automatically from an unfinished status. “尚未开始，明日
   执行” belongs only in `tomorrow_plan`; it must never be represented as a
   completed, in-progress, or otherwise fabricated today work item.

@@ -194,6 +194,8 @@ Real report generation requires explicit per-run consent before any session read
           "project": "TVE1065M",
           "customer": "韩富友",
           "work_type": "GMS",
+          "gms_release_type": "IR",
+          "gms_target": "Android 14 首个量产版本",
           "plan_items": ["开始执行完整 GMS 测试"]
         }
       ],
@@ -221,19 +223,21 @@ daily reports, `tomorrow_plan` is a separate three-container plan model. Its
 rows carry scope identity plus `plan_items[]`, never today-progress fields, and
 tomorrow-only scopes do not satisfy the requirement for actual daily work. For
 `report_type=weekly`, Patch/App project rows contain ledger fields, while
-GMS/Doc/Other project rows contain progress fields; each non-project row contains `week_summary`, plain
+GMS project rows contain release type + target, cycle status, independent
+self-test round/result, independent formal-submission count/result, and normal
+progress fields. GMS/Doc/Other do not carry Patch/App totals; each non-project row contains `week_summary`, plain
 completed/remaining counts and item arrays, `key_points`, `risks`,
 `dependencies`, and `next_week_plan`. `display_date` is the last workday of the
 week range, not the upload day. Daily work items use fixed-enum status
 `已完成`, `处理中`, `待验证`, or `阻塞`.
 
 Every new `weekly_trace` also carries `weekly_fact_sources` evidence with
-`schema=akbs-weekly-fact-sources-v2`, the exact `week_range`, source package
+`schema=akbs-weekly-fact-sources-v3`, the exact `week_range`, source package
 keys, unique project, document, and standalone-work counts, work-scope count, a sanitized facts hash, and `missing_fields`. The member
 client resolves current AKBS daily reports and the current previous-week report
 before local submitted replacement leaves; sessions only supplement missing
 daily coverage. Non-empty `missing_fields` fails local upload validation and is
-closed through an explicit `akbs-weekly-work-facts-v5` artifact. V5 binds the
+closed through an explicit `akbs-weekly-work-facts-v6` artifact. V6 binds the
 effective previous-week package and records main-owned project changes, so
 explicit facts cannot reset an existing total or hide a remaining-count gap.
 Current daily `dependencies[]`, legacy keyword matches, and previous-week dependencies
@@ -438,6 +442,7 @@ weekly_project_ledger_v2 = 1.0.156
 report_scope_containers_v1 = 1.0.158
 daily_attention_fields_v1 = 1.0.159
 daily_tomorrow_plan_v1 = 1.0.161
+gms_report_progress_v1 = 1.0.163
 ```
 
 The required capabilities come from package contents, not from the current plugin release.
