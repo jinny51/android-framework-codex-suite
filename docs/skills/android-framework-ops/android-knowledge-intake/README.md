@@ -66,7 +66,7 @@ python3 scripts/android_knowledge_intake.py --profile <member_alias> weekly --se
 python3 scripts/android_knowledge_intake.py --profile <member_alias> patch --prepare --patch-package <capture-dir>
 ```
 
-`--upload` 生成并上传，`--submit-latest` 上传最近一个已准备包。日报按日期、周报按周周期保持唯一；替换必须显式提供被替换的运行编号。`--prepare` 本地校验失败时返回非零，上传与提交都会在 HTTP 前重新校验。
+`--upload` 生成并上传，`--submit-latest` 上传最近一个已准备包。日报按日期、周报按周周期保持唯一：没有有效报告时，截止后首次提交才是补交；已有有效报告时再次提交属于修订。修订必须显式提供当前有效运行编号，上传前会复核修订意图和当前叶节点；新版生效、旧版保留历史。`--prepare` 本地校验失败时返回非零，上传与提交都会在 HTTP 前重新校验。
 
 日报优先根据成员明确说明和高置信度工作证据自动判定 `Patch`、`App`、`GMS`、`Doc` 或 `Other`。App 必须确定 App 名称，无项目 Doc/Other 必须确定具体名称；只有证据冲突或缺失时才询问成员。`akbs-daily-work-facts-v3` 用于补齐、纠正或显式覆盖未决范围，也用于保存明确的 `key_points[]`、`dependencies[]` 和独立 `tomorrow_plan`；所有今日范围都携带前两个可空数组，明日计划不伪装成今日进展。日报不填写项目角色、需求来源或数量台账。
 

@@ -3314,9 +3314,11 @@ class MemberAutomationFlowTests(unittest.TestCase):
                     )
                     manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
                     if replace:
+                        self.assertEqual(manifest["report_submission_intent"], "revision")
                         self.assertEqual(manifest["replacement_for_run_id"], original_run_id)
                         self.assertEqual(manifest["supersedes"]["run_id"], original_run_id)
                     else:
+                        self.assertEqual(manifest["report_submission_intent"], "initial")
                         self.assertNotIn("replacement_for_run_id", manifest)
                         self.assertNotIn("supersedes", manifest)
 
@@ -3372,7 +3374,8 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertNotEqual(duplicate.returncode, 0)
             self.assertIn("同一成员同一日报日期已存在日报包", duplicate.stderr)
             self.assertIn("--replace-daily-run-id 20260629-210000-daily", duplicate.stderr)
-            self.assertIn("如不替换，请取消本次提交", duplicate.stderr)
+            self.assertIn("如需修订当前有效报告", duplicate.stderr)
+            self.assertIn("如不修订，请取消本次提交", duplicate.stderr)
 
             replacement = prepare_replacement_package(
                 env,
@@ -3382,10 +3385,35 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "20260629-210000-daily",
             )
             manifest = json.loads((replacement / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["report_submission_intent"], "revision")
             self.assertEqual(manifest["replacement_for_run_id"], "20260629-210000-daily")
             self.assertEqual(manifest["supersedes"]["report_type"], "daily")
             self.assertEqual(manifest["supersedes"]["identity"], "2026-06-29")
             self.assertEqual(manifest["supersedes"]["package_key"], "20260629/member01/20260629-210000-daily")
+
+            stale_revision = run(
+                [
+                    sys.executable,
+                    str(INTAKE_SCRIPT),
+                    "--profile",
+                    "member01",
+                    "daily",
+                    "--date",
+                    "2026-06-29",
+                    "--run-id",
+                    "20260629-210003-daily",
+                    "--replace-daily-run-id",
+                    "20260629-210000-daily",
+                    *SESSION_CONSENT_ARGS,
+                    "--prepare",
+                ],
+                SUITE_ROOT,
+                env,
+                check=False,
+            )
+            self.assertNotEqual(stale_revision.returncode, 0)
+            self.assertIn("必须指向当前有效版本", stale_revision.stderr)
+            self.assertIn("current=20260629-210002-daily", stale_revision.stderr)
 
     def test_weekly_future_period_blocks_and_late_period_allows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -3449,7 +3477,8 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertNotEqual(duplicate.returncode, 0)
             self.assertIn("同一成员同一周报周期已存在周报包", duplicate.stderr)
             self.assertIn("--replace-weekly-run-id 20260618-090102", duplicate.stderr)
-            self.assertIn("如不替换，请取消本次提交", duplicate.stderr)
+            self.assertIn("如需修订当前有效报告", duplicate.stderr)
+            self.assertIn("如不修订，请取消本次提交", duplicate.stderr)
 
             daily = prepare_daily_package(env, "2026-06-18", "20260618-210000-daily")
             self.assertEqual(
@@ -3552,6 +3581,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "20260618-090102",
             )
             manifest = json.loads((replacement / "manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["report_submission_intent"], "revision")
             self.assertEqual(manifest["replacement_for_run_id"], "20260618-090102")
             self.assertEqual(manifest["supersedes"]["week_range"], "20260615-20260621")
             self.assertEqual(manifest["supersedes"]["identity"], "20260615-20260621")

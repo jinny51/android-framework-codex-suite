@@ -31,7 +31,7 @@ Android Framework Ops 是本套件的共享核心插件。它负责 Android Fram
 5. 本插件的 `android-remote-build-deploy` 负责服务器构建、产物定位和本地设备推送。
 6. `android-framework-change-workflow` 根据需求和设备证据给最终验收结论，并决定 `validated`、`candidate`、`draft`、`failed` 或 `blocked` 包状态（package status）。
 7. `android-framework-patch-capture` 把已完成、阶段性、失败或阻塞但有价值的 Framework 功能整理成一个功能 README、多个源码仓库 patch 和 evidence。
-8. 成员按材料类型选择入口：`android-framework-patch-intake` 生成一个完整补丁包或按资料请求事件 `request_id` 补充同一个包，`android-daily-report-intake` 生成日报包，`android-weekly-report-intake` 生成周报包；三者共用上传协议、版本门禁、会话缓存门禁和本地预校验。补丁包在队列和主分支始终使用同一个 `patch_package_id`，`package_key` 只标识上传来源。补丁文件不可通过队列补充修改；需要改补丁时重新采集。后续新建知识或计划合并由本机 `akbs-curation-maintainer` 和 AI 知识闭环决定。周报包只做进度归档。
+8. 成员按材料类型选择入口：`android-framework-patch-intake` 生成一个完整补丁包或按资料请求事件 `request_id` 补充同一个包，`android-daily-report-intake` 生成日报包，`android-weekly-report-intake` 生成周报包；三者共用上传协议、版本门禁、会话缓存门禁和本地预校验。日报、周报在没有旧报告时才可能构成补交，已有有效报告后的再次提交统一作为修订并保留旧版历史。补丁包在队列和主分支始终使用同一个 `patch_package_id`，`package_key` 只标识上传来源。补丁文件不可通过队列补充修改；需要改补丁时重新采集。后续新建知识或计划合并由本机 `akbs-curation-maintainer` 和 AI 知识闭环决定。周报包只做进度归档。
 
 默认原则：成员端能自动保存材料就先保存材料，再按包状态（package status）排序和作为复用提示（reuse hint）。缺少显式确认不等于丢弃证据；只有敏感信息、混杂无关 diff、高风险误导或身份/配置不可用时才停止上传，并在最终报告中说明。是否沉淀进知识库仓库由管理端本地技能决定。
 

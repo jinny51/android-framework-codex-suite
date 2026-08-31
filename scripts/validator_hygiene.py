@@ -159,7 +159,28 @@ class RepositorySnapshot:
     @classmethod
     def capture(cls, root: Path) -> RepositorySnapshot:
         resolved = root.resolve()
-        if not (resolved / ".git").is_dir():
+        marker = resolved / ".git"
+        inside = subprocess.run(
+            ["git", "-C", str(resolved), "rev-parse", "--is-inside-work-tree"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            text=True,
+        )
+        top_level = subprocess.run(
+            ["git", "-C", str(resolved), "rev-parse", "--show-toplevel"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            text=True,
+        )
+        if (
+            not (marker.is_dir() or marker.is_file())
+            or inside.returncode
+            or inside.stdout.strip() != "true"
+            or top_level.returncode
+            or Path(top_level.stdout.strip()).resolve() != resolved
+        ):
             raise RuntimeError(f"validator cleanup root is not a Git worktree: {resolved}")
         return cls(
             root=resolved,

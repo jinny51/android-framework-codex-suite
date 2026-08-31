@@ -685,7 +685,7 @@ def parse_args() -> argparse.Namespace:
             sub.add_argument(
                 "--replace-weekly-run-id",
                 default="",
-                help="explicitly regenerate a weekly package for an existing week_range and write supersedes metadata",
+                help="explicitly generate a revised weekly package for the current report and write supersedes metadata",
             )
         if report_type == "daily":
             sub.add_argument(
@@ -696,7 +696,7 @@ def parse_args() -> argparse.Namespace:
             sub.add_argument(
                 "--replace-daily-run-id",
                 default="",
-                help="explicitly regenerate a daily package for an existing report date and write supersedes metadata",
+                help="explicitly generate a revised daily package for the current report and write supersedes metadata",
             )
         if report_type in {"daily", "weekly"}:
             sub.add_argument(

@@ -1,6 +1,6 @@
 ---
 name: android-daily-report-intake
-description: "Use when generating, replacing, checking, or submitting a member personal daily report package through AKBS incoming. Do not use for weekly reports, patch packages, administrator summaries, or knowledge curation decisions."
+description: "Use when generating, revising, checking, or submitting a member personal daily report package through AKBS incoming. Do not use for weekly reports, patch packages, administrator summaries, or knowledge curation decisions."
 ---
 
 # Android Daily Report Intake
@@ -11,7 +11,7 @@ This skill is an entrypoint, not a separate upload implementation. It routes to 
 
 ## Boundary
 
-- Owns personal daily generation, `reports/daily.md`, `materials/display/report_view.json`, daily date rules, duplicate daily replacement, and daily submission.
+- Owns personal daily generation, `reports/daily.md`, `materials/display/report_view.json`, daily date rules, explicit daily revision, and daily submission.
 - Does not generate weekly reports, patch packages, administrator summaries, curation decisions, database writes, knowledge repository writes, or UI changes.
 - Daily reports are archive material. They do not become knowledge repository materialization candidates.
 
@@ -158,4 +158,10 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> daily --session-consent --session-field work_summary --session-field command_summary --session-field project_hint --session-field work_scope_hint --prepare --replace-daily-run-id <old_run_id>
 ```
 
-Future dates are blocked. Past dates are late submissions and are allowed. If an ordinary daily package for the same member and date already exists, stop unless the member explicitly replaces it.
+Future dates are blocked. For a date with no existing effective report, the first
+submission is ordinary when submitted by its deadline and is a late submission
+when submitted after the deadline. If an effective daily report already exists,
+every later version is a revision, never a late submission, even when revised on
+a later date. Require the member to request that revision explicitly and target
+the current effective run with `--replace-daily-run-id`; retain the old version
+in history.

@@ -123,6 +123,37 @@ def verify_preexisting_and_concurrent_user_files_are_preserved(temp_root: Path) 
         generated.unlink()
 
 
+def verify_linked_git_worktree_is_supported(temp_root: Path) -> None:
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="akbs-validator-linked-worktree-", dir=temp_root) as temporary:
+        root = Path(temporary)
+        primary = root / "primary"
+        linked = root / "linked"
+        subprocess.run(["git", "init", "-q", str(primary)], check=True)
+        subprocess.run(["git", "-C", str(primary), "config", "user.name", "AKBS Validator"], check=True)
+        subprocess.run(
+            ["git", "-C", str(primary), "config", "user.email", "validator@example.invalid"],
+            check=True,
+        )
+        (primary / "tracked.txt").write_text("baseline\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(primary), "add", "tracked.txt"], check=True)
+        subprocess.run(["git", "-C", str(primary), "commit", "-qm", "baseline"], check=True)
+        subprocess.run(
+            ["git", "-C", str(primary), "worktree", "add", "-q", "-b", "linked", str(linked)],
+            check=True,
+        )
+        try:
+            snapshot = RepositorySnapshot.capture(linked)
+            if snapshot.root != linked.resolve() or not (linked / ".git").is_file():
+                raise AssertionError("linked Git worktree identity was not preserved")
+            snapshot.assert_unchanged()
+        finally:
+            subprocess.run(
+                ["git", "-C", str(primary), "worktree", "remove", "--force", str(linked)],
+                check=True,
+            )
+
+
 def verify_path_guard_and_symlink_escape(temp_root: Path) -> None:
     temp_root.mkdir(parents=True, exist_ok=True)
     outside = temp_root / "not-the-configured-root" / f"{INVOCATION_PREFIX}outside"
@@ -301,6 +332,7 @@ def main() -> int:
         if any(results[mode] == 0 for mode in ("failure", "sigint", "sigterm", "sighup")):
             raise AssertionError(f"intentional failure/signal probes unexpectedly passed: {results}")
         verify_preexisting_and_concurrent_user_files_are_preserved(temp_root)
+        verify_linked_git_worktree_is_supported(temp_root)
         verify_path_guard_and_symlink_escape(temp_root)
         verify_marker_and_idempotent_cleanup()
         path_guard = verify_shared_path_guard_matrix()
@@ -317,6 +349,7 @@ def main() -> int:
                     "probes": results,
                     "path_guard": path_guard,
                     "preexisting_and_concurrent_user_files": "preserved",
+                    "linked_git_worktree": "supported",
                     "path_escape": "refused",
                     "symlink_escape": "refused",
                     "idempotent_cleanup": "pass",

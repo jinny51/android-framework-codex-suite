@@ -124,22 +124,33 @@ def local_report_packages(config: dict[str, str], report_type: str, identity: st
                 "week_range": str(manifest.get("week_range") or ""),
                 "package_key": package_key,
                 "path": str(package_dir),
+                "replacement_for_run_id": replacement_run_id(manifest),
             },
         )
     return sorted(packages.values(), key=lambda item: (item["bucket"], item["package_key"]))
 
 
+def effective_report_packages(packages: list[dict[str, str]]) -> list[dict[str, str]]:
+    superseded_run_ids = {
+        str(item.get("replacement_for_run_id") or "").strip()
+        for item in packages
+        if str(item.get("replacement_for_run_id") or "").strip()
+    }
+    return [item for item in packages if item["run_id"] not in superseded_run_ids]
+
+
 def format_report_duplicate_message(report_type: str, identity: str, duplicates: list[dict[str, str]]) -> str:
     refs = ", ".join(f"{item['bucket']}:{item['package_key']}" for item in duplicates)
-    first = duplicates[0]["run_id"] if duplicates else "<run_id>"
+    effective = effective_report_packages(duplicates)
+    latest = (effective or duplicates)[-1] if duplicates else {"run_id": "<run_id>"}
     option = report_replace_option(report_type)
     label = report_duplicate_label(report_type)
     noun = "日报包" if report_type == "daily" else "周报包"
     return (
         f"同一成员同一{label}已存在{noun}: {label}={identity}; existing={refs}. "
         f"已停止生成或上传第二个普通{noun}。请选择："
-        f"如确需替换已有提交，请显式使用 {report_type} {option} {first}；"
-        "如不替换，请取消本次提交。新包会写入 supersedes/replacement 元数据。"
+        f"如需修订当前有效报告，请显式使用 {report_type} {option} {latest['run_id']}；"
+        "如不修订，请取消本次提交。新包会作为修订版写入 supersedes/replacement 元数据，旧版保留在历史中。"
     )
 
 
@@ -161,6 +172,13 @@ def ensure_report_not_duplicate(
         raise SystemExit(f"{report_replace_option(report_type)} 不能指向当前新{report_duplicate_label(report_type)} run_id")
     if not any(item["run_id"] == replacement_run_id_value for item in duplicates):
         raise SystemExit(f"{report_replace_option(report_type)} 未匹配同{report_duplicate_label(report_type)}已有包: {replacement_run_id_value}")
+    effective = effective_report_packages(duplicates)
+    if effective and not any(item["run_id"] == replacement_run_id_value for item in effective):
+        current_ids = ", ".join(item["run_id"] for item in effective)
+        raise SystemExit(
+            f"{report_replace_option(report_type)} 必须指向当前有效版本，不能修订已被替换的历史版本: "
+            f"requested={replacement_run_id_value}; current={current_ids}"
+        )
     return duplicates
 
 
@@ -201,7 +219,15 @@ def ensure_report_submit_allowed(package_dir: Path, config: dict[str, str], mani
     identity = report_identity_from_manifest(manifest)
     if not identity:
         return
-    ensure_report_not_duplicate(config, report_type, identity, run_id, replacement_run_id(manifest))
+    replacement = replacement_run_id(manifest)
+    intent = str(manifest.get("report_submission_intent") or "").strip()
+    if intent not in {"", "initial", "revision"}:
+        raise SystemExit("report_submission_intent 必须是 initial 或 revision，已在 HTTP 前停止")
+    if replacement and intent == "initial":
+        raise SystemExit("已有报告的再次提交必须是 revision，不能声明为 initial，已在 HTTP 前停止")
+    if not replacement and intent == "revision":
+        raise SystemExit("revision 必须明确指向当前有效报告，已在 HTTP 前停止")
+    ensure_report_not_duplicate(config, report_type, identity, run_id, replacement)
 
 
 def record_submitted_package(package_dir: Path, config: dict[str, str], manifest: dict[str, Any]) -> None:

@@ -297,6 +297,14 @@ and therefore leave an explicit fact gap.
 
 ## Submission Gates
 
+- Classify by report identity before upload date. With no effective report, a
+  first package is on-time or late according to the deadline. With an effective
+  report, every later package is a revision regardless of date.
+- A revision must explicitly target the current effective run. It writes
+  `report_submission_intent=revision`, `replacement_for_run_id`, and
+  `supersedes`; a first package writes `report_submission_intent=initial`.
+  Never call a revision a late submission or silently replace an existing
+  report.
 - `--prepare` may leave a local package for diagnosis, but returns a non-zero
   exit code when `local-check.json` is `FAIL`; callers must not report success.
 - `--upload` and `--submit-latest` run the same validation before HTTP. Invalid

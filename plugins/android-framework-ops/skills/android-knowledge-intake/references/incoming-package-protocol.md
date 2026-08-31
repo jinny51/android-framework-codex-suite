@@ -146,6 +146,16 @@ Manifest excerpt:
 
 Report traces must not carry `case_id` or `variant_id`. `reports/daily.md` and `reports/weekly.md` are the primary human-readable products. `materials/display/report_view.json` is a UI read model for cards, lists, and detail panes; it is generated from the same report inputs and must not contain a separate fact set.
 
+Report submission classification is identity-first. A first accepted package for
+one member + daily date or member + weekly period is `initial`; if it arrives
+after the report deadline, the server presents that upload as a late submission.
+Once an effective report exists, every later accepted package is a `revision`
+regardless of upload date. New packages record `report_submission_intent` as
+`initial` or `revision`; a revision also binds the current effective package
+through `replacement_for_run_id` and `supersedes`. The server rejects a silent
+second ordinary package or a stale revision target before storage. Old versions
+remain immutable history while the revision becomes current.
+
 Real report generation requires explicit per-run consent before any session read or package creation. The report date/week is the exact authorized window; the caller selects only the derived fields needed for that run. `codex_sessions.json` stores only `source_session_ids`, `time_range`, `consent` (`version`, `scope`, `fields`, `granted`), and the memory-only retention policy. It must not store thread titles, cwd, raw messages, raw commands, clipboard/environment values, credentials, or unrelated session content. Temporary extraction state is removed after both success and failure, and a report package without valid consent/privacy evidence is rejected before HTTP.
 
 `report_view` is required:

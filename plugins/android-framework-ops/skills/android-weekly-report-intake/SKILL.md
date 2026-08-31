@@ -1,6 +1,6 @@
 ---
 name: android-weekly-report-intake
-description: "Use when generating, replacing, checking, or submitting a member personal weekly report package through AKBS incoming. Do not use for daily reports, patch packages, administrator summaries, or knowledge curation decisions."
+description: "Use when generating, revising, checking, or submitting a member personal weekly report package through AKBS incoming. Do not use for daily reports, patch packages, administrator summaries, or knowledge curation decisions."
 ---
 
 # Android Weekly Report Intake
@@ -11,7 +11,7 @@ This skill is an entrypoint, not a separate upload implementation. It routes to 
 
 ## Boundary
 
-- Owns personal weekly generation, `reports/weekly.md`, `materials/display/report_view.json`, weekly period rules, duplicate weekly replacement, and weekly submission.
+- Owns personal weekly generation, `reports/weekly.md`, `materials/display/report_view.json`, weekly period rules, explicit weekly revision, and weekly submission.
 - Does not generate daily reports, patch packages, administrator summaries, curation decisions, database writes, knowledge repository writes, or UI changes.
 - Weekly reports are progress archives only. They do not become knowledge repository materialization candidates.
 
@@ -275,4 +275,10 @@ python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" -
 python3 "<android-knowledge-intake skill>/scripts/android_knowledge_intake.py" --profile <member_alias> weekly --session-consent --session-field work_summary --prepare --weekly-facts "$CODEX_HOME/artifacts/android-knowledge-intake/weekly-facts/<week>.json"
 ```
 
-Future periods are blocked. Past periods are late submissions and are allowed. If an ordinary weekly package for the same member and week exists, stop unless the member explicitly replaces it.
+Future periods are blocked. For a week with no existing effective report, the
+first submission is ordinary when submitted by its deadline and is a late
+submission when submitted after the deadline. If an effective weekly report
+already exists, every later version is a revision, never a late submission,
+even when revised in a later week. Require an explicit revision targeting the
+current effective run with `--replace-weekly-run-id`; retain the old version in
+history.

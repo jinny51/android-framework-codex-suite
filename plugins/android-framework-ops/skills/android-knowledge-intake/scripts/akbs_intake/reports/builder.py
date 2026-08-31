@@ -382,6 +382,7 @@ def build_report_package(
     )
     if report_type in {"daily", "weekly"} and replace_report_run_id:
         replacement = next((item for item in report_duplicates if item["run_id"] == replace_report_run_id), {})
+        manifest["report_submission_intent"] = "revision"
         manifest["replacement_for_run_id"] = replace_report_run_id
         manifest["supersedes"] = {
             "report_type": report_type,
@@ -391,6 +392,8 @@ def build_report_package(
             "identity": report_identity(report_type, date, week_key),
             "package_key": replacement.get("package_key", ""),
         }
+    elif report_type in {"daily", "weekly"}:
+        manifest["report_submission_intent"] = "initial"
     if search_path:
         manifest["files"]["evidence"].append(search_path)
     if daily_projects:
