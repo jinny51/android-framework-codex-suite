@@ -22,6 +22,7 @@ for plugin in android-framework-ops jinny-android-practices android-wsl-ops andr
 done
 
 "$repo_root/scripts/validate_skill_layout.sh"
+python3 "$repo_root/scripts/validate_active_plugin_topology.py"
 
 python3 -m pytest --capture=no "$repo_root/tests"
 

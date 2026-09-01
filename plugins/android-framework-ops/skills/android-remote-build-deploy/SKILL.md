@@ -1,14 +1,18 @@
 ---
 name: android-remote-build-deploy
-description: "Use after Android source access has registered a remote Linux project. Owns channel-v2 remote discovery, profiles, checkpoints, module builds, artifact manifests, mounted artifact verification, and local adb delivery on WSL or macOS."
+description: "Use after Android source access has registered a remote Linux project that builds through AOSP Soong/Make modules or an explicitly configured vendor full-build entry. Owns channel-v2 discovery, profiles, checkpoints, supported builds, artifact manifests, mounted artifact verification, and local adb delivery on WSL or macOS."
 ---
 
 # Android Remote Build Deploy
 
-Use this skill for the build and delivery portion of Android Framework work.
-Linux remains authoritative for source, Git/repo state, build configuration,
-build execution, and artifact identity. The administrator workstation owns only
-registry resolution, the narrow artifact bridge, and local adb.
+Use this Skill for registered remote AOSP Soong/Make module builds and explicitly
+configured vendor full builds across Android domains. It is not a generic Gradle,
+Kbuild/kernel, external-driver, or Bazel executor; those project-owned commands run
+through `android-remote-channel` under `android-framework-change-workflow`.
+
+Linux remains authoritative for source, Git/repo state, build configuration, build
+execution, and artifact identity. The administrator workstation owns only registry
+resolution, the narrow artifact bridge, and local adb.
 
 ## Remote-Only Source Contract
 
@@ -42,8 +46,9 @@ This skill owns:
 - remote-generated artifact manifests and local bridge re-verification
 - local adb delivery and build-delivery evidence
 
-It does not own source mounting, Framework diagnosis, requirement acceptance,
-rollback decisions, or Git history changes requested by the user.
+It does not own source mounting, arbitrary build systems, domain diagnosis,
+requirement acceptance, rollback decisions, or Git history changes requested by the
+user.
 
 ## Identity
 

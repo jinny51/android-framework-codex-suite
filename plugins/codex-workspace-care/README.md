@@ -2,7 +2,7 @@
 
 Codex Workspace Care 是独立的本地工作区维护插件，用于检查、修复和清理 Codex 本地会话历史状态，并生成隐私友好的新窗口上下文交接材料。
 
-它不属于 Android Framework 工程链路，因此不放进 `android-framework-ops`。
+它不属于 Android 工程链路，因此不放进 `android-framework-ops`。
 
 ## 包含的 skill
 
@@ -15,7 +15,7 @@ Codex Workspace Care 是独立的本地工作区维护插件，用于检查、�
 
 ## 使用边界
 
-这个插件处理的是用户本机 Codex 状态，默认不应该在 Android Framework 任务中自动触发。
+这个插件处理的是用户本机 Codex 状态，默认不应该在 Android 工程任务中自动触发。
 
 适合使用的场景：
 
@@ -26,7 +26,7 @@ Codex Workspace Care 是独立的本地工作区维护插件，用于检查、�
 
 不适合使用的场景：
 
-1. 普通 Framework 需求分析、代码修改、构建推送。
+1. 普通 Android 需求分析、代码修改、构建推送。
 2. 没有用户明确要求时主动删除历史记录。
 3. 把清理结果、数据库副本或隐私材料提交进插件仓库。
 

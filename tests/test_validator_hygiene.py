@@ -29,6 +29,7 @@ def validator_entrypoints() -> set[Path]:
 def test_current_plugin_validator_inventory_is_explicit() -> None:
     assert validator_entrypoints() == {
         Path("scripts/validate_incoming_contract_gate.py"),
+        Path("scripts/validate_active_plugin_topology.py"),
         Path("scripts/validate_macos_over_ssh.sh"),
         Path("scripts/validate_plugins.sh"),
         Path("scripts/validate_skill_layout.sh"),

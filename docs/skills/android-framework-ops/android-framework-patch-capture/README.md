@@ -2,11 +2,11 @@
 
 > GitHub 说明页。Runtime skill 文件位于 [../../../../plugins/android-framework-ops/skills/android-framework-patch-capture](../../../../plugins/android-framework-ops/skills/android-framework-patch-capture)；插件安装后的 skill 目录不包含本 README。文中的 `scripts/...`、`references/...` 指向该 runtime skill 目录。
 
-Android Framework 功能级补丁资料生成 skill。
+Android 全领域功能级本地补丁资料生成 Skill。
 
 ## 用途
 
-该 skill 用于把一次已完成、阶段性、失败或阻塞但有价值的 Android Framework 功能修改整理成可审核材料：一个功能级 `README.md`、一个或多个源码仓库级 patch、修改内容记录和验证结果，供 `android-framework-patch-intake` 打包成 incoming 并发送到服务器上传入口。是否进入数据库仓库（database repository）和知识库仓库（knowledge repository）由管理端本地技能（local skill）后续判断。
+该 Skill 用于把一次已完成、阶段性、失败或阻塞但有价值的 Android 修改整理成可审核本地材料：一个功能级 `README.md`、一个或多个源码仓库级 patch、领域、修改记录和验证结果。只有 `change_domain=framework` 且状态为 `validated` 的 capture 可以交给 `android-framework-patch-intake`；其他领域只保留本地材料。
 
 它不负责分析需求、不负责改代码、不负责构建部署；这些仍由 `android-framework-change-workflow` 和构建交付类 skill 负责。
 
@@ -37,6 +37,7 @@ python3 "scripts/capture_remote_snapshot.py" \
 
 ```bash
 python3 "scripts/capture_framework_patch.py" \
+  --change-domain framework \
   --profile <profile_name> \
   --remote-snapshot "$SNAPSHOT" \
   --snapshot-sha256 "$SNAPSHOT_SHA256" \

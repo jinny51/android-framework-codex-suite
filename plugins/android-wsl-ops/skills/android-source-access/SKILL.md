@@ -7,11 +7,11 @@ description: Use to mount, remount, or restore Android remote build server Samba
 
 Use this skill only for WSL/CIFS access to Android source trees. It owns first-time mounting and reboot recovery. It does not run Android builds, authoritative git, adb deploy, or source edits beyond mount setup.
 
-This plugin keeps the current public WSL Skill ID and command paths. The implementation
-is owned once inside `android-framework-ops`; every command here is a fail-closed shim
-that locates the installed core, requires version 1.0.167 or newer, verifies WSL before
-side effects, and dispatches the matching internal adapter. Update the core before this
-platform plugin and continue in a new Codex session.
+This plugin provides the public WSL Skill and command paths. The implementation is owned
+once inside `android-framework-ops`; every command here is a fail-closed shim that
+locates the installed core, requires version 1.0.167 or newer, verifies WSL before side
+effects, and dispatches the matching internal adapter. The core is a required dependency:
+install or upgrade it before this platform plugin, then continue in a new Codex session.
 
 ## Remote-Only Source Contract
 

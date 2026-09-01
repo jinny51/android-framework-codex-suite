@@ -7,11 +7,11 @@ description: "Use to mount, remount, or restore Android remote build server Samb
 
 Use this skill to access Android remote build server source trees on macOS through Samba/SMB. Like the WSL platform skill, it maps each project to `$HOME/work/<platform>/<project>` by default. It owns Samba share discovery, macOS native SMB mounting, project verification, and project mapping registry.
 
-This plugin keeps the current public macOS Skill ID and command paths. The implementation
-is owned once inside `android-framework-ops`; every command here is a fail-closed shim
-that locates the installed core, requires version 1.0.167 or newer, verifies macOS before
-side effects, and dispatches the matching internal adapter. Update the core before this
-platform plugin and continue in a new Codex session.
+This plugin provides the public macOS Skill and command paths. The implementation is
+owned once inside `android-framework-ops`; every command here is a fail-closed shim that
+locates the installed core, requires version 1.0.167 or newer, verifies macOS before side
+effects, and dispatches the matching internal adapter. The core is a required dependency:
+install or upgrade it before this platform plugin, then continue in a new Codex session.
 
 ## Remote-Only Source Contract
 

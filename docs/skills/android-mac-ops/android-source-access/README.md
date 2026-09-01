@@ -4,7 +4,7 @@
 
 macOS 原生 Android 服务器源码接入 skill。
 
-当前公开入口保持不变，但实现已集中到 `android-framework-ops`。旧命令路径先验证核心版本和 macOS 主机，再执行核心内部 SMB/Keychain adapter；核心缺失、过旧或主机不匹配时不会挂载、写 registry 或保存凭据。
+公开入口由 `android-mac-ops` 提供，实现集中在 `android-framework-ops`。命令先验证核心版本和 macOS 主机，再执行核心内部 SMB/Keychain adapter；核心缺失、过旧或主机不匹配时不会挂载、写 registry 或保存凭据。
 
 ## 用途
 

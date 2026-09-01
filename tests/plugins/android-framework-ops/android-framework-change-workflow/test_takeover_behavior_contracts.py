@@ -32,31 +32,38 @@ def load_push_module():
 
 def test_change_workflow_keeps_the_ordered_engineering_and_knowledge_loop() -> None:
     text = WORKFLOW_SKILL.read_text(encoding="utf-8")
-    core_contract = text.split("## Core Contract", 1)[1].split("## Load References As Needed", 1)[0]
     ordered_steps = (
-        "android-knowledge-search\n  -> search prior cases",
-        "android-source-access\n  -> access/recover/identify source tree handoff",
-        "android-framework-change-workflow\n  -> specify requirement or diagnose issue",
-        "android-remote-build-deploy\n  -> build -> push/deploy -> return delivery evidence",
-        "android-framework-change-workflow\n  -> final acceptance verification",
-        "android-framework-patch-capture\n  -> package accepted or stage-worthy changes",
-        "android-framework-patch-intake\n  -> generate member-side incoming package",
+        "## Gate 1: Requirement and Primary Domain",
+        "## Gate 2: Knowledge and Source Authority",
+        "## Gate 3: Policy and Change Plan",
+        "## Gate 4: Implement and Verify by Domain",
+        "## Gate 5: Capture and Submission",
+        "## Final Report",
     )
 
-    positions = [core_contract.index(step) for step in ordered_steps]
+    positions = [text.index(step) for step in ordered_steps]
     assert positions == sorted(positions)
-    assert "Build/deploy evidence is necessary but not sufficient." in text
-    assert "Do not treat delivery as final correctness." in text
-    assert "final device verification performed by this workflow" in text
+    for skill in (
+        "android-knowledge-search",
+        "android-source-access",
+        "android-remote-channel",
+        "android-remote-build-deploy",
+        "android-framework-patch-capture",
+        "android-framework-patch-intake",
+    ):
+        assert skill in text
+    assert "necessary evidence, not final acceptance" in text
+    assert "Run final acceptance against the requirement contract" in text
 
 
 def test_only_validated_capture_continues_to_patch_intake() -> None:
     workflow = WORKFLOW_SKILL.read_text(encoding="utf-8")
     capture = CAPTURE_SKILL.read_text(encoding="utf-8")
 
-    assert "Only when the capture status is `validated`, invoke `android-framework-patch-intake`" in workflow
+    assert "`framework`: a validated capture may continue" in workflow
+    assert "every other domain: stop after a validated local `android_feature_patch`" in workflow
     assert "`candidate`, `draft`, `failed`, and `blocked` captures stay local or in report context." in capture
-    assert "Only a `validated` capture may continue to `android-framework-patch-intake`." in capture
+    assert "Only a `validated` Framework capture may continue to `android-framework-patch-intake`." in capture
 
 
 def test_platform_plugins_only_own_source_access_while_core_owns_build_and_channel() -> None:

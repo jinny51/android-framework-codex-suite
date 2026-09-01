@@ -1,1 +1,1 @@
-"""Neutral implementation namespace for the Android engineering plugin migration."""
+"""Shared implementation namespace for Android engineering plugin capabilities."""

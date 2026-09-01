@@ -1,288 +1,145 @@
 ---
 name: android-framework-change-workflow
-description: "Use when implementing requirements, modifying, diagnosing, or verifying Android platform/framework code such as frameworks/base, system_server services, WindowManager, ActivityTaskManager, PackageManager, SystemUI, Launcher3 integration, input, resources/overlays, surfaces, boot/runtime services, or OEM/system-level behavior. Orchestrates requirement contracts, pre-change knowledge search, evidence-backed diagnosis, targeted instrumentation, scoped framework changes, shared remote build/deploy, final acceptance verification, patch capture, incoming submission handoff, diagnostic log lifecycle cleanup, and concise reporting. Use the platform android-source-access skill for mounting and the core android-remote-build-deploy skill for WSL or macOS build delivery."
+description: "Use when implementing, diagnosing, modifying, or verifying Android source changes across Framework, SystemApp, App, HAL, native services/libraries, vendor/BSP integration, kernel, drivers, device/board configuration, or build integration. Orchestrates explicit domain and source-authority selection, knowledge search, policy, build-route selection, domain verification, local patch capture, and capability-gated Framework incoming v1 submission."
 ---
 
-# Android Framework Change Workflow
+# Android Change Workflow
 
-Use this skill as the framework engineer's operating protocol. It owns requirement specification, diagnosis, code-change discipline, risk judgment, final acceptance verification, and final reporting.
+Use this Skill as the end-to-end engineering workflow for Android source work.
+`framework` is one domain profile, not the product boundary.
 
-## Composable Use Contract
+## Required Contracts
 
-When user-provided skills, project-local rules, or review workflows exist, preserve them. Use this skill only for Android Framework-specific source access, diagnosis, build/deploy coordination, verification, patch capture, and knowledge reuse.
+Before modifying source, read:
+
+- `../../contracts/change-domain/v1/domain-profiles.json`
+- `../android-change-policy/SKILL.md`
+- the current host's `android-source-access` Skill when source access or recovery is needed
+
+For Framework work, also read `references/framework-domain-workflow.md` and its linked
+references. For other domains, read `references/domain-routing.md`.
 
 ## Remote-Only Source Contract
 
-The mounted Android path has exactly two consumers:
+Classify each affected repository as `registered_remote_tree` or `local_project` before
+reading or editing it. A path mounted or registered by `android-source-access` is always
+`registered_remote_tree`: the mount is only a human CRUD surface and a confirmed
+artifact bridge, never the Codex working tree. Codex must perform every source read/search/edit,
+Git/repo or patch operation, checkpoint, and build for that tree through
+`android-remote-channel`. Direct SSH is reserved for source-access infrastructure.
 
-- a human using an editor, IDE, Finder, or shell for source CRUD
-- the local artifact bridge reading confirmed build outputs for local `adb` delivery
+A real local Git project explicitly opened as the Codex workspace may use normal local
+project tools; this commonly applies to standalone Gradle Apps and independently cloned
+repositories. Never reclassify SMB/CIFS-mounted Android source as `local_project`. For a
+mixed requirement, record source authority per repository. If authority or remote
+project identity cannot be proven, stop before touching that repository.
 
-It is not a Codex source workspace. Codex must not use the mounted path as its
-working directory and must not read, search, edit, scan, diff, patch, or run
-`git`, `repo`, or builds through it. Every Codex operation that touches Android
-source or source-tree metadata must execute against `REMOTE_ROOT` through the
-stable `android-remote-channel` tmux session. Read-only operations use the
-channel's non-exclusive mode; source writes, patch application, `git`/`repo`
-writes, checkpoints, and builds require the exclusive project lock.
+## Gate 1: Requirement and Primary Domain
 
-Direct SSH is not a source execution fallback. Outside `android-remote-channel`,
-it is allowed only for source-access infrastructure: resolving SSH configuration
-or reachability, installing a public key, reading or updating Samba
-configuration, and reloading the Samba service. An infrastructure command must
-not inspect or mutate `REMOTE_ROOT`.
+Write a concise requirement contract: requested behavior, current behavior, acceptance
+criteria, target product/build, constraints, out-of-scope work, and rollback.
 
-Treat a missing or unhealthy remote channel as a hard stop. Do not fall back to
-the mounted source tree, a one-off SSH source command, or local `apply_patch`.
+Select exactly one primary `change_domain` from the controlled contract. It is the
+principal ownership/build/verification surface, not a filename guess and not a claim
+that the requirement touches only one layer. Record additional touched surfaces as
+components. If ownership remains ambiguous after source/build evidence, ask only for the
+missing product decision.
 
-If the user explicitly asks for a personal coding-style skill, project `AGENTS.md`, local engineering rule, or review skill, treat that instruction as part of the active requirement. Do not replace it with this workflow. Combine the user's rule with this workflow's Android Framework evidence and verification discipline.
+## Gate 2: Knowledge and Source Authority
 
-Before Gate 3, read the canonical Android change policy at
-`../../contracts/android-change-policy/v1/README.md` and its machine contract
-`policy.json`. The universal patch-attribution rules are mandatory. Apply the
-Framework profile only to Framework changes. Personal, project, or legacy Jinny style
-preferences may add constraints, but they do not replace or redefine the canonical
-identity, evidence, or Framework safety rules. Do not wait until patch capture to
-retrofit the policy.
+Run `android-knowledge-search` before implementation and record `reuse`, `adapt`,
+`reference_only`, `not_applicable`, or `not_found` with the evidence used.
 
-Use it for both direct requirement implementation and bug/regression work. Do not force requirement work into a root-cause narrative; use a requirement contract and acceptance evidence instead.
+For a `registered_remote_tree`, use the host platform's `android-source-access` entry
+when mount or registry preparation is needed. It routes to the single core
+implementation and verifies WSL or macOS before side effects; then use
+`android-remote-channel` for all source and build operations. For a `local_project`,
+verify its real Git root and project instructions, then use normal local project tools.
 
-It coordinates with adjacent Android skills:
+## Gate 3: Policy and Change Plan
 
-- `android-knowledge-search` searches prior cases, platform variants, archived patches, search anchors, and validation evidence before re-analysis or re-implementation. Use it as the pre-analysis knowledge gate when the team knowledge repository is available.
-- `android-source-access` records the SSH/remote-root mapping and optionally maintains the human/artifact mount; it does not authorize Codex to operate on source through that mount.
-- `android-remote-channel` is the mandatory source execution gateway for analysis, search, edits, `git`, `repo`, checkpoints, patch capture, and builds.
-- `android-remote-build-deploy` uses `android-remote-channel` for remote build work and uses the mounted path only as a confirmed product-output artifact bridge for local `adb` delivery.
-- `android-framework-patch-capture` turns an implemented or stage-worthy Framework feature into a feature README, repository-level patches, and evidence after this workflow has produced a concrete change. Use it before `android-framework-patch-intake` whenever a Framework change, failed attempt, or stage-worthy draft should be preserved.
-- `android-framework-patch-intake` turns the capture package into the single automatic intake channel: an `incoming` package. `android-knowledge-intake` is the shared kernel; do not invent a second upload path.
-- This skill proves the framework change satisfies the requirement or diagnosis outcome on device.
+Apply `android-change-policy` before edits. Universal member/patch attribution applies
+to every patch-archived Android change; only the selected domain overlay applies.
 
-## Core Contract
+Identify repositories and their source authority, modules, API/ABI boundaries,
+generated files, build targets and build route, runtime/deployment mechanism,
+regression surface, diagnostics, and rollback. Preserve unrelated user changes and use
+the smallest coherent change.
 
-Follow this ownership boundary:
+## Gate 4: Implement and Verify by Domain
 
-```text
-android-knowledge-search
-  -> search prior cases/variants/patches/search anchors/validation evidence before reimplementing
+Choose a build route from authoritative project files and instructions:
 
-android-source-access
-  -> access/recover/identify source tree handoff
-  -> register SSH/REMOTE_ROOT identity -> optional human/artifact mount
+- `remote_profile`: use `android-remote-build-deploy` for a registered remote AOSP
+  Soong/Make module build or an explicitly configured vendor full build. It owns exact
+  artifact manifests and supported local adb delivery.
+- `remote_project_command`: for a registered remote Gradle, Kbuild/kernel, external
+  driver, Bazel, or other project build not supported by that Skill, run the project's
+  documented build entry through `android-remote-channel`. Record the exact command,
+  environment/profile, exit status, artifact identity, and delivery evidence.
+- `local_project_command`: for a real local project, use its wrapper/build entry in the
+  local workspace and record equivalent evidence.
 
-android-remote-channel
-  -> mandatory remote source reads/search/edits/git/repo/patch/build transport
+Do not invent a generic build command or make `android-remote-build-deploy` claim
+support for arbitrary Gradle/Kbuild pipelines. Build success and file transfer are
+necessary evidence, not final acceptance. Deploy only through the selected domain's
+safe project/device mechanism and keep an explicit rollback.
 
-android-framework-change-workflow
-  -> specify requirement or diagnose issue -> instrument if needed -> change -> define verification
+Apply the selected domain's risks and evidence:
 
-android-remote-build-deploy
-  -> build -> push/deploy -> return delivery evidence
+- Framework: Binder/system_server, locks, Handler/Looper, boot, multi-user, resources,
+  FrameworkLog, service restart or reboot.
+- SystemApp: platform build/signing, privileged permissions, shared UID, privapp,
+  SystemUI/Launcher/Settings integration, process or SystemUI restart.
+- App: Gradle variant, manifest, unit/UI tests, APK/AAB, signing and install/upgrade.
+- HAL: AIDL/HIDL interface/version, VINTF, service registration, SELinux, vendor/system
+  boundary and device behavior.
+- Native: Soong module, ABI/API, linker namespace, service lifecycle, native tests,
+  tombstones and sanitizer evidence when relevant.
+- Vendor/BSP: proprietary ownership, product integration, partition boundary,
+  compatibility and rollback.
+- Kernel: Kconfig/Makefile, subsystem behavior, image/module build, boot, dmesg and
+  regression evidence.
+- Driver: probe/bind, firmware, power/suspend, device I/O, module/image packaging and
+  hardware verification.
+- Device/board: product/device configuration, DTS/DTBO/overlays, partition or boot
+  integration and board-specific rollback.
+- Build: Soong/Make/Gradle/release integration, dependency graph, clean/incremental
+  behavior, reproducibility and artifact contract.
 
-android-framework-change-workflow
-  -> final acceptance verification -> recover/iterate or complete
+Run final acceptance against the requirement contract and nearby regressions. Remove or
+explicitly retain temporary diagnostics with a reason.
 
-android-framework-patch-capture
-  -> package accepted or stage-worthy changes into one feature README, repository-level patches, and evidence
+## Gate 5: Capture and Submission
 
-android-framework-patch-intake
-  -> generate member-side incoming package with package status and evidence
-```
+Use `android-framework-patch-capture --change-domain <domain>` to create one coherent,
+reviewable local material package. Capture verifies policy and evidence but does not
+repair code after the fact.
 
-Build/deploy evidence is necessary but not sufficient. Final completion must come from this skill because only the framework workflow knows the requirement contract or root cause, touched subsystem, risk matrix, and expected device behavior.
+The production server currently accepts only frozen incoming v1 `framework_change`:
 
-## Load References As Needed
-
-Keep this file as the orchestrator. Load only the reference needed for the current task:
-
-- `references/framework-risk-model.md`: read before changing system_server, WM/ATM, input, surfaces, Binder identity, locks, handlers, boot phases, users/profiles, resources, or shared framework APIs.
-- `references/requirements-implementation.md`: read when the user asks for a new behavior, feature, policy change, product customization, or any direct requirement rather than a bug investigation.
-- `references/diagnosis-and-instrumentation.md`: read when root cause is unclear, diagnostic logs are needed, visual evidence is needed, or temporary logs must be audited.
-- `references/subsystem-playbooks.md`: read after identifying the likely owner subsystem.
-- `references/verification-matrix.md`: read before build/deploy verification and again before final reporting.
-- `references/failure-signatures.md`: read when build, boot, deploy, logcat, or behavior verification fails.
-- `references/build-deploy-contract.md`: read when coordinating with `android-remote-build-deploy`.
-- `references/capability-capture.md`: read near final reporting only when the task produced reusable process knowledge, exposed a skill gap, or the user asks to remember/summarize a lesson.
-
-Use scripts in `scripts/` as optional helpers. Prefer them for log slicing, health scans, artifact probing, diagnostic log audits, dumpsys capture, and video frame extraction when the matching artifact exists.
-
-## Start Triage
-
-Before editing behavior:
-
-0. Resolve `SSH_HOST` and `REMOTE_ROOT`, ensure the stable remote channel is healthy, and keep the mounted path out of the Codex workspace. Stop if the channel is unavailable.
-1. Identify whether the request is a new requirement, behavior change, bug/regression, verification task, or failure recovery.
-2. For Android Framework implementation work, use `android-knowledge-search` before source edits when the team knowledge repository is available. Search with feature words, subsystem, file/class names, properties, Settings keys, resource keys, artifact names, and visible log keywords. Treat matches as evidence, not final truth. Decide and record one pre-change knowledge use decision for `search-before-change.json`: `reuse` when the old knowledge directly applies, `adapt` when the case applies but platform/version/project/source details differ, `reference_only` when it only informs diagnosis or risk, `not_applicable` when it is explicitly excluded, or `not_found` when no usable knowledge was found. Record query terms, target case/variant/patch ids, match points, mismatch points, reason, and later outcome so `android-framework-patch-capture` can preserve the decision.
-3. For direct requirements, capture acceptance criteria, negative cases, product/device/variant scope, and expected owner subsystem. Load `references/requirements-implementation.md`.
-4. For bugs or regressions, capture visible symptom, reproduction, expected behavior, and evidence source.
-5. Identify likely owner process and subsystem: app, SystemUI, launcher, system_server, WM/ATM, PMS, input, resources/overlays, display/surface/compositor, native service, or build config.
-6. Identify affected artifact: `framework.jar`, `services.jar`, `framework-res.apk`, `SystemUI.apk`, Launcher APK, permission/config XML, overlay APK, native binary, or mixed artifacts.
-7. Check source/build/deploy readiness. Use `android-source-access` first if source access is broken and `android-remote-build-deploy` later for build/delivery.
-8. Check dirty files before editing and preserve unrelated user work.
-9. Choose mode: direct requirement, analysis only, diagnostics, behavior change, build/deploy coordination, final verification, or failure recovery.
-10. Decide the expected knowledge outcome early: no code change, `draft`, `candidate`, `validated`, `failed`, or `blocked`. This is a working expectation, not a final claim.
-
-Ask the user only when evidence cannot be obtained from source search, logs, dumpsys, recordings, screenshots, adb, or available local/remote tools.
+- `framework`: a validated capture may continue to
+  `android-framework-patch-intake`, preserving `patch_package_id` and v1 wire behavior.
+- every other domain: stop after a validated local `android_feature_patch`. Report
+  submission as capability-gated, not failed and not completed. Never relabel it as
+  Framework or invent a v2 package.
 
 ## Hard Stops
 
-Stop and resolve the blocker before continuing when:
+Stop before claiming completion when:
 
-- A behavior edit is being made without either a direct requirement contract or source/log/dumpsys/visual/reproduction evidence.
-- A first diagnosis attempt failed and no stronger diagnostic plan exists.
-- A direct requirement lacks acceptance criteria, scope, owner subsystem, or negative/regression boundaries.
-- A broad shared-path edit lacks owner process, caller/callee, thread/lock, lifecycle, state, artifact, and downstream mutation understanding.
-- A change fails build, deploy, boot, health scan, or target behavior verification.
-- Temporary diagnostics were added but no remove/guard/downgrade/keep decision exists.
-- The proposed change masks a framework requirement with an app-side or unrelated workaround.
-- Completion would rely only on "compiled" or "pushed" rather than target behavior evidence.
-
-## Gate 1: Diagnose Or Specify
-
-Exit only when either the direct requirement is specified enough to implement or root cause is known. If neither is true, use targeted instrumentation or requirement clarification.
-
-For direct requirements, minimum specification:
-
-- Desired behavior and user-visible/system-visible outcome.
-- Product, variant, display, user/profile, configuration, and feature-flag scope.
-- Owner subsystem, process, artifact, and build profile.
-- Acceptance criteria and negative cases.
-- Nearby regression paths before changing code.
-
-For bugs or regressions, minimum evidence:
-
-- Restate the symptom precisely enough to verify later.
-- Trace caller, callee, lifecycle owner, state transition, and downstream mutation.
-- Check product, build variant, resource overlay, feature flag, device config, runtime state, permission, user/profile, and process boundary gates.
-- Name the affected subsystem, process, artifact, and build profile.
-- Identify nearby regression paths before changing code.
-
-If diagnosis stalls, load `references/diagnosis-and-instrumentation.md` and instrument the uncertainty instead of guessing. If requirement scope is unclear and cannot be inferred safely, ask a concise question before editing.
-
-## Gate 2: Instrument
-
-Use instrumentation to answer named uncertainties, not to create noisy logs.
-
-Temporary diagnostics must:
-
-- Use stable tags or keywords.
-- Include relevant IDs, state values, bounds, flags, caller/reason, user/profile/display/window/task IDs, process/thread context, and timing when useful.
-- Avoid sensitive user data.
-- Be easy to search and remove.
-
-For visual or timing-sensitive behavior, capture recording or screenshots and align visible frames with logs before deciding the implementation path or root cause.
-
-Before final completion, audit diagnostics through the remote channel with
-`scripts/diagnostic_log_audit.py --ssh-host <host> --remote-root <root> --path
-<changed-file>` and decide remove, guard, downgrade, or keep with reason. Repeat
-`--path` for the bounded changed-file set; the helper never reads mounted source.
-
-## Gate 3: Change
-
-Enter only after the requirement is specified or the diagnosis has converged.
-
-Before editing, have:
-
-- Requirement contract or root-cause statement.
-- Canonical `android-change-policy/v1`, plus any active personal/team/project rules that do not conflict with it.
-- Planned files/modules and ownership boundary.
-- Risk level and rollback/checkpoint approach.
-- Build profile and expected artifacts.
-- Verification matrix for target behavior and nearby regressions.
-
-Change with framework discipline:
-
-- Match local patterns and existing framework APIs.
-- Preserve lock ordering, Binder identity, handler/thread affinity, lifecycle timing, transaction ordering, resource precedence, and multi-user/profile semantics.
-- Keep edits scoped to the responsible subsystem.
-- Avoid unrelated refactors, formatting churn, and unrelated dirty files.
-
-## Gate 4: Build And Delivery
-
-Use the core `android-remote-build-deploy` skill for remote build and local push mechanics on WSL or macOS.
-
-Require it to return:
-
-- Build target/profile and result.
-- Produced artifact paths.
-- Pushed/deployed artifact paths or partitions.
-- Required restart/reboot/remount actions.
-- Basic device health evidence after delivery.
-- Any skipped or failed delivery step.
-
-Do not treat delivery as final correctness. Continue to Gate 5.
-
-## Gate 5: Final Verification
-
-Load `references/verification-matrix.md` and verify according to touched subsystem.
-
-Always verify:
-
-- Target behavior on the device.
-- Process or boot stability for affected components.
-- Relevant nearby regression paths.
-- Logcat health for system_server, SystemUI, Launcher, target app/process, ANR, watchdog, crash, or fatal exception signals.
-- Diagnostic log lifecycle cleanup.
-
-For UI/windowing/input/surface changes, use repeated mixed interactions and visual evidence when the behavior is transient, timing-sensitive, or frame-visible.
-
-## Gate 6: Material Capture And Incoming
-
-This workflow is not complete after code and verification when the work produced reviewable or cautionary Framework engineering material. Member-side Codex should preserve materials automatically first and rank by package status later. It must not produce curation decisions or claim that the material has entered the knowledge repository.
-
-After Gate 5 or a terminal failure/blocked state:
-
-1. Decide package status:
-   - `validated`: requirement met, build/deploy passed, target behavior verified, and no blocking nearby regression was found.
-   - `candidate`: change is coherent and likely useful, but verification is partial, equivalent-only, or missing some target coverage.
-   - `draft`: Framework change or investigation is stage-worthy but unfinished.
-   - `failed`: an attempted change or diagnosis path failed and the failure teaches a reviewable constraint.
-   - `blocked`: work could not continue because required environment, source, device, credentials, or acceptance evidence was unavailable.
-2. If local source changes exist and are not unrelated dirty files, invoke `android-framework-patch-capture` to package the intended change set with:
-   - platform/version token, project, feature slug, summary, package status, implementation origin, modified files, artifacts, risk notes, verification evidence, search-before-change evidence, and explicit `related_report_run_ids` when a daily/weekly run id is known.
-3. Only when the capture status is `validated`, invoke `android-framework-patch-intake` so it generates a `framework_change` incoming package through the shared intake kernel. Use the member profile, not an administrator profile, unless the administrator is manually contributing a patch.
-4. Keep `candidate`, `draft`, `failed`, and `blocked` captures local or in report context. They are engineering evidence, not queue-ready patch packages, and must not invoke patch intake.
-5. If no patch package can be made, do not pretend the material was captured. Record exactly why, and rely on the daily/weekly incoming automation to preserve the work as `work_findings`.
-6. Do not upload unrelated diffs, credentials, logs with sensitive data, mixed task changes, or a `validated` package without qualifying verification.
-
-The normal successful `validated` chain is:
-
-```text
-android-knowledge-search
-  -> android-framework-change-workflow
-  -> android-remote-build-deploy
-  -> android-framework-change-workflow final verification
-  -> android-framework-patch-capture
-  -> android-framework-patch-intake incoming
-```
-
-## Failure Recovery
-
-When build, deploy, boot, health, or behavior verification fails:
-
-1. Stop stacking changes.
-2. Capture the failure symptom, minimal log lines, artifact path, and whether it is new or pre-existing.
-3. Load `references/failure-signatures.md`.
-4. Compare the failure with the requirement/root cause and changed files.
-5. Revert/narrow the last local edit, or return to requirement clarification, diagnosis, or instrumentation with new uncertainty points.
-6. Report the failure and next action concisely.
+- the requirement, primary domain, source authority, build route, owner, acceptance, or
+  rollback is unresolved;
+- registered remote source work would bypass `android-remote-channel`;
+- mandatory policy or member identity is missing;
+- build, boot, device behavior, safety, or nearby regression verification failed;
+- temporary diagnostics have no cleanup decision;
+- a non-Framework package would be sent through Framework incoming v1.
 
 ## Final Report
 
-Use Chinese field names for the user-visible final report. Report only high-signal facts and keep technical terms such as profile, modules, artifacts, adb, log, `.codex`, SSH, Samba, and registry in English when appropriate.
-
-Suggested user-visible fields:
-
-- 根因/需求: requirement implemented or root cause addressed.
-- 证据（验证记录/验证结果）: source/log/dumpsys/recording/device evidence used to support the conclusion.
-- 修改文件: files changed.
-- 构建部署: build/deploy evidence from the platform build/deploy executor, including profile, modules, artifacts, push/deploy destination, restart/reboot/remount when relevant.
-- 验证结果: final device verification performed by this workflow.
-- 日志处理: diagnostics added, removed, guarded, downgraded, or kept.
-- 材料上传: pre-change search result, capture package path, incoming package path, package status, or the reason capture/intake was not possible.
-- 结论: failures, skipped checks, remaining risk, and whether the work is accepted.
-
-If verification was not run, state exactly why and what remains unverified under `结论`.
-
-Add a `Skill 改进建议` section only when `references/capability-capture.md` says the task meets the trigger threshold. Do not modify this skill automatically; propose persistence and wait for explicit user confirmation.
-
-When a concrete Framework change exists, do not stop at saying it is ready for capture. Run or hand off `android-framework-patch-capture` and then `android-framework-patch-intake` unless the user explicitly requested analysis-only, the change set is unsafe to package, or required identity/config is unavailable. In those cases, report the concrete blocker under `材料上传`.
+Report the requirement/domain, source authority per repository, root cause or design,
+changed repositories/files, policy result, selected build route, exact
+builds/tests/device evidence, risks/rollback, capture path/status, and whether submission
+was performed or capability-gated. Never claim publication, install, server activation,
+production deployment, or knowledge curation without its own evidence.

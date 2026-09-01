@@ -1,22 +1,20 @@
 ---
 name: android-framework-patch-capture
-description: "Use after Android Framework code changes are implemented, staged, failed, or blocked but need to be turned into a reviewable or cautionary engineering material package for later android-framework-patch-intake incoming submission."
+description: "Use after Android source changes in Framework, SystemApp, App, HAL, native, vendor, kernel, driver, device, or build domains are implemented, staged, failed, or blocked and need a reviewable local engineering material package. Only validated Framework captures may continue to android-framework-patch-intake incoming v1."
 ---
 
-# Android Framework Patch Capture
+# Android Patch Capture
 
-Use this skill when a Framework feature is ready to be packaged as a reviewable or cautionary engineering material package. It does not implement requirements, diagnose root cause, build, deploy, decide final correctness, or make curation decisions. It packages existing source changes into one feature README, one or more repository-level patches, and evidence so `android-framework-patch-intake` can submit them as incoming.
+Use this Skill when an Android feature is ready to be packaged as a reviewable or cautionary local engineering material package. It does not implement requirements, diagnose root cause, build, deploy, decide final correctness, or make curation decisions. It packages existing source changes into one feature README, one or more repository-level patches, and evidence.
 
-Use it after `android-framework-change-workflow` has produced a concrete change, and before `android-framework-patch-intake` submits a valuable patch package through the server submission channel. The user's local `akbs-curation-maintainer` skill decides whether it later enters the knowledge repository.
+Use it after `android-framework-change-workflow` has produced a concrete change. Only a validated `framework` capture may continue to `android-framework-patch-intake`; all other domains stop after local capture. The user's local `akbs-curation-maintainer` Skill decides whether submitted Framework material later enters the knowledge repository.
 
-## Explicit Domain Backend Boundary
+## Domain Boundary
 
-This Skill's public trigger remains Framework-only. Its packager accepts an explicit
-`--change-domain` from the controlled domain contract for local engineering material.
-The default is `framework`. A non-Framework domain may produce only a local
+This Skill accepts an explicit `--change-domain` from the controlled domain contract.
+The default remains `framework` for backward compatibility. A non-Framework domain may produce only a local
 `android_feature_patch`; it must stop before the current Framework incoming v1 intake.
-Do not use this backend flag to make this Skill claim App, HAL, native, vendor, kernel,
-driver, device, or build work automatically.
+Do not relabel another domain as Framework to bypass the server capability gate.
 
 ## Remote-Only Source Contract
 
@@ -64,8 +62,8 @@ Patch capture uses the plugin rules module (`android_framework_ops.knowledge_rul
 ## Boundary
 
 - `android-framework-change-workflow`: owns requirement analysis, source changes, risk, build/deploy coordination, and final verification.
-- `android-framework-patch-capture`: owns feature README, repository-level patch, and evidence packaging for existing changes.
-- `android-framework-patch-intake`: owns framework_change incoming package submission through the server submission channel.
+- `android-framework-patch-capture`: owns cross-domain feature README, repository-level patch, and local evidence packaging for existing changes.
+- `android-framework-patch-intake`: owns Framework-only `framework_change` incoming v1 submission.
 - `android-daily-report-intake` and `android-weekly-report-intake`: own daily and weekly report incoming packages.
 - `android-knowledge-intake`: owns the shared kernel, setup, doctor, current configuration, and plugin update checks.
 
@@ -233,7 +231,7 @@ Status meaning:
 
 - `validated`: verified for the original project scope.
 - `candidate`: coherent change with partial or incomplete verification.
-- `draft`: unfinished but useful Framework work.
+- `draft`: unfinished but useful Android work.
 - `failed`: failed implementation or verification path worth preserving.
 - `blocked`: blocked work evidence worth preserving.
 
@@ -257,7 +255,7 @@ The canonical `android-change-policy/v1` must be applied during development. Thi
 
 Record the implementation origin exactly as observed. Use `manual`, `external`, `historical`, or `unknown` only when Codex did not author any part of the implementation; use `mixed` when Codex participated alongside another author. Record the workflow contract separately. The package records both as curation input material; neither turns the change into curated knowledge, and neither may be rewritten to fabricate or bypass pre-change knowledge search.
 
-`candidate`, `draft`, `failed`, and `blocked` captures stay local or in report context. Only a `validated` capture may continue to `android-framework-patch-intake`.
+`candidate`, `draft`, `failed`, and `blocked` captures stay local or in report context. Only a `validated` Framework capture may continue to `android-framework-patch-intake`.
 
 For `validated`, device verification is required by default. Use `--verification-method equivalent` only when device interaction is not the right proof, and provide `--equivalent-type`, `--equivalent-reason`, at least one `--equivalent-coverage`, and `--remaining-risk`.
 

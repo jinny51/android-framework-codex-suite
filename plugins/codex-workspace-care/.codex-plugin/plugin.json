@@ -20,7 +20,7 @@
   "interface": {
     "displayName": "Codex Workspace Care",
     "shortDescription": "Codex 本地历史清理和上下文交接工作流",
-    "longDescription": "用于安全检查、修复和清理本地 Codex 会话历史状态，并生成隐私友好的新窗口上下文交接材料。该插件不属于 Android Framework 工程链路。",
+    "longDescription": "用于安全检查、修复和清理本地 Codex 会话历史状态，并生成隐私友好的新窗口上下文交接材料。该插件不属于 Android 工程链路。",
     "developerName": "Jinny Android Framework Team",
     "category": "Productivity",
     "capabilities": [

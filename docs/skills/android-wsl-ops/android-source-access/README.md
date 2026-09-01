@@ -4,7 +4,7 @@
 
 WSL 场景下访问服务器 Android 源码的 skill。
 
-当前公开入口保持不变，但实现已集中到 `android-framework-ops`。旧命令路径先验证核心版本和 WSL 主机，再执行核心内部 CIFS/Samba adapter；核心缺失、过旧或主机不匹配时不会挂载、写 registry 或保存凭据。
+公开入口由 `android-wsl-ops` 提供，实现集中在 `android-framework-ops`。命令先验证核心版本和 WSL 主机，再执行核心内部 CIFS/Samba adapter；核心缺失、过旧或主机不匹配时不会挂载、写 registry 或保存凭据。
 
 ## 用途
 

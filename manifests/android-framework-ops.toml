@@ -1,4 +1,4 @@
-# Neutral Android Framework engineering skills shipped by android-framework-ops.
+# Shared Android engineering skills shipped by android-framework-ops.
 
 [[skills]]
 name = "android-change-policy"
@@ -7,13 +7,13 @@ summary = "应用唯一的 Android 变更规范：全域 patch 成员溯源、�
 
 [[skills]]
 name = "android-framework-change-workflow"
-category = "Framework Workflow"
-summary = "统筹 Android Framework 开工前检索、需求分析、诊断修改、验证验收、包状态判断和 incoming 材料上传"
+category = "Android Workflow"
+summary = "统筹 Android 全领域的 domain 选择、知识检索、修改、构建、验证、本地 capture 和能力门禁"
 
 [[skills]]
 name = "android-framework-patch-capture"
-category = "Framework Workflow"
-summary = "将已完成、阶段性、失败或阻塞但有价值的 Framework 功能修改整理成一个功能 README、多仓库 patch 和验证材料"
+category = "Android Workflow"
+summary = "将任一 Android domain 的功能修改整理成一个本地 README、多仓库 patch 和验证材料；仅 Framework validated capture 可提交 v1"
 
 [[skills]]
 name = "android-framework-patch-intake"
@@ -58,4 +58,4 @@ summary = "统一管理 Android 构建服务器 SSH/tmux 长会话、命令日�
 [[skills]]
 name = "android-remote-build-deploy"
 category = "Remote Execution"
-summary = "在 WSL 或 macOS 已挂载源码后，共用一套远程 Android 构建、产物定位、本地 adb 推送和交付证据流程"
+summary = "在 WSL 或 macOS 共用受支持的远程 AOSP/Soong/Make 模块与显式 vendor 全量构建、产物校验和本地 adb 交付流程"

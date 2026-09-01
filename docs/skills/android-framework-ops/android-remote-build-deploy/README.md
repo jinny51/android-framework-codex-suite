@@ -1,10 +1,10 @@
 # Android Remote Build Deploy
 
-`android-remote-build-deploy` 是 WSL 与 macOS 共用的 Android 远程构建和本地设备交付技能。
+`android-remote-build-deploy` 是 WSL 与 macOS 共用的远程 AOSP/Soong/Make 模块构建、显式 vendor 全量构建和本地设备交付 Skill。它不是任意 Gradle、Kbuild/kernel、外置 driver 或 Bazel 项目的通用执行器；这些项目自己的构建入口由 `android-framework-change-workflow` 通过 `android-remote-channel` 调用。
 
 平台插件里的 `android-source-access` 只负责供人使用的源码挂载和远程路径登记。本技能读取 `$HOME/.servers/projects` 的映射，但 Codex 的源码发现、profile 推断、wrapper 安装、checkpoint 和构建全部通过 `android-remote-channel` v2 在远程 Linux 项目根执行。挂载只作为经过 manifest 校验的产物桥，随后由本机 `adb` 推送。
 
-它不会判断 Framework 需求是否真正完成。最终行为验证、回归范围和回滚结论仍由 `android-framework-change-workflow` 负责。
+它不会判断 Android 需求是否真正完成。最终行为验证、回归范围和回滚结论仍由 `android-framework-change-workflow` 负责。
 
 ## 当前结构
 

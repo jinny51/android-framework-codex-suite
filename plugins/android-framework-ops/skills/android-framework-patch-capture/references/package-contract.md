@@ -2,10 +2,10 @@
 
 This package is a local handoff artifact. One package represents one Android feature. A feature may touch multiple repo-managed Git repositories, so the package has one feature README and one patch per affected source repository.
 
-The current public Skill remains `android-framework-patch-capture`. Its default
-`--change-domain framework` behavior and `framework_feature_patch` manifest are
-unchanged. The capture backend also accepts an explicit controlled domain from
-`contracts/change-domain/v1/domain-profiles.json`:
+The public `android-framework-patch-capture` Skill accepts an explicit controlled
+domain from `contracts/change-domain/v1/domain-profiles.json`. Its default is
+`--change-domain framework`, which produces the established
+`framework_feature_patch` manifest:
 
 - `framework` produces `framework_feature_patch` and may continue to the existing
   Framework incoming v1 flow after validation.
@@ -13,7 +13,8 @@ unchanged. The capture backend also accepts an explicit controlled domain from
   only. The current Framework intake must reject it; it must not be relabelled and
   uploaded through incoming v1.
 
-This is a backend capability boundary, not a new public cross-domain Skill trigger.
+This is a public cross-domain local-capture capability. The server submission boundary
+is separate and remains Framework incoming v1 only.
 
 `android-framework-patch-intake` submits the whole feature package through the server submission channel as incoming, using the shared `android-knowledge-intake` kernel. The user's local `akbs-curation-maintainer` skill later decides whether and how material enters the knowledge repository.
 
