@@ -621,6 +621,15 @@ def create_app_workspace(root: Path, project: str, app_name: str) -> Path:
 
 
 class MemberAutomationFlowTests(unittest.TestCase):
+    def test_top_level_readme_uses_official_akbs_identity_and_fixed_ip_auth(self) -> None:
+        text = (SUITE_ROOT / "README.md").read_text(encoding="utf-8")
+
+        self.assertIn("AKBS 的正式名称是 **Android Knowledge Base System**", text)
+        self.assertNotIn("Android Framework 知识库", text)
+        self.assertIn("只发送 `member_alias`", text)
+        self.assertIn("固定工作站来源 IP", text)
+        self.assertNotIn("上传认证必须由受保护进程环境显式提供成员 token", text)
+
     def test_member_facing_docs_preserve_repository_and_skill_boundaries(self) -> None:
         combined = "\n".join(path.read_text(encoding="utf-8") for path in MEMBER_BOUNDARY_DOCS)
         forbidden = [

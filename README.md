@@ -2,6 +2,9 @@
 
 面向 Android 全领域工程团队的 Codex 插件套件。
 
+AKBS 的正式名称是 **Android Knowledge Base System**。本仓库当前名称和已发布兼容 Skill ID 中的
+`framework` 是既有发布标识，不是 AKBS 的释义，也不表示 AKBS 只服务 Framework 领域。
+
 这个仓库是 Android 工程相关 Codex 能力的插件市场来源。团队成员安装 android-framework-ops 获得共享工程能力、唯一 Android 变更规范和 source-access 内部实现，再根据环境安装 android-wsl-ops（WSL）或 android-mac-ops（macOS）公开入口。Jinny 插件只提供明确请求时的可选偏好，Codex 工作区维护保持独立。
 
 ## 插件一览
@@ -129,7 +132,7 @@ $CODEX_HOME/<skill-name>.toml
 <project>/.codex/report.toml
 ```
 
-普通成员 TOML 只写身份和本地路径。服务器上传入口和只读知识库入口由 AKBS endpoint resolver 提供；上传认证必须由受保护进程环境显式提供成员 token，缺失时 doctor 和上传会在打包、HTTP 之前停止，且不会再把 member alias 当作 token。知识库仓库工作树和产物目录建议按成员私有配置指定：
+普通成员 TOML 只写身份和本地路径。服务器上传入口和只读知识库入口由 AKBS endpoint resolver 提供；上传、搜索和合并确认只发送 `member_alias`，服务端按固定工作站来源 IP 验证身份。成员不配置、保存或发送上传 token、session cookie、role 或客户端 IP 声明；缺少 `member_alias` 时，doctor 和业务请求会在打包或发出 HTTP 前停止。知识库仓库工作树和产物目录建议按成员私有配置指定：
 
 ```text
 <Codex documents>/worktrees/knowledge
