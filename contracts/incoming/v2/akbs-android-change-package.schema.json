@@ -235,10 +235,17 @@
     "qualification": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["profile", "bindings"],
+      "required": [
+        "profile_id",
+        "profile_artifact_sha256",
+        "client_adapter_outputs_file_id",
+        "component_evidence_bindings"
+      ],
       "properties": {
-        "profile": {"const": "akbs-component-evidence-profiles-v1"},
-        "bindings": {
+        "profile_id": {"const": "akbs-component-evidence-profiles-v1"},
+        "profile_artifact_sha256": {"$ref": "#/$defs/sha256"},
+        "client_adapter_outputs_file_id": {"$ref": "#/$defs/id"},
+        "component_evidence_bindings": {
           "type": "array",
           "minItems": 1,
           "items": {

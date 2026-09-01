@@ -330,11 +330,11 @@
       "read": {"current": "unsupported", "migration": "server dual read before writer activation", "target": "v2 read and curation"},
       "write": {"current": "disabled", "migration": "feature flag default off", "target": "capability and per-layer pilot gated"},
       "default": {"current": {"legacy_current": []}, "migration": {"legacy_rollback": [], "target_candidate": []}, "target": {"target_only": ["capability-gated-v2"]}},
-      "fallback": {"allowed": false, "mode": "writer_off_then_forward_fix", "fail_closed_when": ["capability_missing", "writer_off", "layer_not_enabled", "payload_invalid"]},
-      "activation": {"phase": "phase4_versioned_transaction", "gates": ["server_dual_read", "writer_flag", "layer_evidence_pilot"], "ordered_actions": ["read_capability", "submit_hash_bound_v2", "record_server_receipt"], "forbidden_coinstall": []},
+      "fallback": {"allowed": false, "mode": "writer_off_then_forward_fix", "fail_closed_when": ["capability_missing", "writer_off", "layer_not_enabled", "payload_invalid", "client_adapter_output_unbound", "server_recalculation_mismatch"]},
+      "activation": {"phase": "phase4_versioned_transaction", "gates": ["server_dual_read", "writer_flag", "client_output_hash_binding", "complete_server_adapter_input_contracts", "server_adapter_recalculation", "layer_evidence_pilot"], "ordered_actions": ["read_capability", "submit_hash_bound_v2", "server_recalculate_qualification", "record_server_receipt"], "forbidden_coinstall": []},
       "deprecation": {"starts": "never", "behavior": "canonical v2", "notice_required": false},
       "removal": {"gates": ["separate_contract_revision"], "legacy_reader_retention": "not_applicable", "history_rewrite": false},
-      "test": {"required_ids": ["writer-off-zero-write", "idempotent-replay", "framework-v2", "non-framework-v2"], "negative_ids": ["silent-v1-fallback", "unsupported-layer-write"]}
+      "test": {"required_ids": ["client-output-hash-binding", "server-qualification-recalculation", "writer-off-zero-write", "idempotent-replay", "framework-v2", "non-framework-v2"], "negative_ids": ["client-output-cross-package-replay", "client-output-source-hash-mismatch", "server-recalculation-mismatch", "silent-v1-fallback", "unsupported-layer-write"]}
     },
     {
       "surface_id": "cache.legacy-installations",

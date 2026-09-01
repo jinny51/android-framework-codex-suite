@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -143,11 +144,34 @@ class TopologyError(ValueError):
     """A released or declaration-only topology contract is inconsistent."""
 
 
-def load_json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+def load_json_bytes(raw: bytes, *, label: str) -> dict[str, Any]:
+    def strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise TopologyError(f"duplicate JSON key: {label}: {key}")
+            value[key] = item
+        return value
+
+    def reject_constant(value: str) -> None:
+        raise TopologyError(f"non-finite JSON number: {label}: {value}")
+
+    try:
+        text = raw.decode("utf-8")
+        value = json.loads(
+            text,
+            object_pairs_hook=strict_object,
+            parse_constant=reject_constant,
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise TopologyError(f"strict JSON parse failed: {label}") from error
     if not isinstance(value, dict):
-        raise TopologyError(f"JSON contract must be an object: {path}")
+        raise TopologyError(f"JSON contract must be an object: {label}")
     return value
+
+
+def load_json(path: Path) -> dict[str, Any]:
+    return load_json_bytes(path.read_bytes(), label=str(path))
 
 
 def file_sha256(path: Path) -> str:
@@ -473,8 +497,25 @@ def validate_contract_documents(
     legacy_v1 = by_id["package.framework-change-v1"]
     if legacy_v1["removal"]["legacy_reader_retention"] != "permanent" or legacy_v1["removal"]["history_rewrite"] is not False:
         raise TopologyError("Framework v1 permanent-read contract differs")
-    if "feature flag default off" not in by_id["package.android-change-v2"]["write"]["migration"]:
+    android_v2 = by_id["package.android-change-v2"]
+    if android_v2["write"] != {
+        "current": "disabled",
+        "migration": "feature flag default off",
+        "target": "capability and per-layer pilot gated",
+    }:
         raise TopologyError("Android change v2 writer is not default-off")
+    if not {
+        "client_output_hash_binding",
+        "complete_server_adapter_input_contracts",
+        "server_adapter_recalculation",
+    }.issubset(android_v2["activation"]["gates"]):
+        raise TopologyError("Android change v2 qualification activation gates differ")
+    if not {
+        "client-output-cross-package-replay",
+        "client-output-source-hash-mismatch",
+        "server-recalculation-mismatch",
+    }.issubset(android_v2["test"]["negative_ids"]):
+        raise TopologyError("Android change v2 qualification negative tests differ")
 
 
 def validate_materialized_plugin_ids(
@@ -848,25 +889,25 @@ def validate_evidence_profile_registry(profiles: dict[str, Any]) -> None:
     claims: set[str] = set()
     for group_id, group in groups.items():
         expected = {
-            "adapter_contract", "adapter_version", "accepted_claim",
-            "accepted_results", "not_applicable",
+            "adapter_contract", "adapter_version", "claim",
+            "allowed_adapter_results", "not_applicable",
         }
-        if set(group) != expected or not group["accepted_results"]:
+        if set(group) != expected or not group["allowed_adapter_results"]:
             raise TopologyError(f"evidence group adapter contract differs: {group_id}")
         if (
             not all(
                 isinstance(group[field], str) and group[field].strip()
-                for field in ("adapter_contract", "adapter_version", "accepted_claim")
+                for field in ("adapter_contract", "adapter_version", "claim")
             )
-            or len(group["accepted_results"]) != len(set(group["accepted_results"]))
-            or not set(group["accepted_results"]).issubset({"PASS", "INFO", "NOT_APPLICABLE"})
-            or not set(group["accepted_results"]) & {"PASS", "INFO"}
+            or len(group["allowed_adapter_results"]) != len(set(group["allowed_adapter_results"]))
+            or not set(group["allowed_adapter_results"]).issubset({"PASS", "INFO", "NOT_APPLICABLE"})
+            or not set(group["allowed_adapter_results"]) & {"PASS", "INFO"}
         ):
-            raise TopologyError(f"evidence group accepted result contract differs: {group_id}")
-        if group["accepted_claim"] in claims:
-            raise TopologyError("evidence group accepted claims must be unique")
-        claims.add(group["accepted_claim"])
-        has_na = "NOT_APPLICABLE" in group["accepted_results"]
+            raise TopologyError(f"evidence group adapter result contract differs: {group_id}")
+        if group["claim"] in claims:
+            raise TopologyError("evidence group client claims must be unique")
+        claims.add(group["claim"])
+        has_na = "NOT_APPLICABLE" in group["allowed_adapter_results"]
         if has_na != (group["not_applicable"] is True):
             raise TopologyError(f"evidence group N/A contract differs: {group_id}")
         if group_id in {"change_diff_facts", "risk_surface", "pre_change_search"}:
@@ -875,7 +916,7 @@ def validate_evidence_profile_registry(profiles: dict[str, Any]) -> None:
             expected_results = ["PASS", "NOT_APPLICABLE"]
         else:
             expected_results = ["PASS"]
-        if group["accepted_results"] != expected_results:
+        if group["allowed_adapter_results"] != expected_results:
             raise TopologyError(f"evidence group result binding differs: {group_id}")
 
     predicate_ids = {
@@ -885,14 +926,135 @@ def validate_evidence_profile_registry(profiles: dict[str, Any]) -> None:
     }
     if set(profiles.get("conditional_predicates") or {}) != predicate_ids:
         raise TopologyError("evidence conditional predicates do not exactly cover profile conditions")
-    claim_contract = profiles.get("accepted_evidence_claim_contract") or {}
+    output_contract = profiles.get("client_adapter_output_contract") or {}
+    document_contract = profiles.get("client_adapter_outputs_document_contract") or {}
+    server_boundary = profiles.get("server_qualification_boundary") or {}
+    archive_integrity = profiles.get("archive_integrity") or {}
+    writer_activation = profiles.get("writer_activation") or {}
+    qualification_hash = document_contract.get("qualification_input_hash") or {}
+    server_decision = server_boundary.get("server_decision_contract") or {}
+    expected_server_bindings = [
+        "source_package_key", "authenticated_actor", "manifest_sha256",
+        "directory_payload_sha256", "qualification_input_sha256",
+        "client_adapter_outputs_file_sha256", "profile_id",
+        "profile_artifact_sha256", "adapter_registry_sha256",
+        "component_group_results", "reason_codes", "validator_version",
+    ]
+    expected_writer_group_fields = [
+        "versioned input schema", "evidence authority and source",
+        "deterministic derivation", "allowed result and not-applicable rules",
+        "adapter contract artifact SHA", "server implementation",
+    ]
     if (
-        claim_contract.get("schema") != "akbs-accepted-evidence-claim-v1"
-        or claim_contract.get("additional_properties") is not False
-        or claim_contract.get("hash_binding") != "external_file_sha256"
-        or not claim_contract.get("required_fields")
+        registry.get("adapter_output_schema") != "akbs-client-adapter-output-v1"
+        or set(registry.get("required_adapter_binding_fields") or ())
+        != {"adapter_contract", "adapter_version", "source_evidence_sha256", "claim", "adapter_result"}
+        or set(output_contract)
+        != {
+            "schema", "required_fields", "additional_fields",
+            "additional_properties", "hash_binding",
+        }
+        or output_contract.get("schema") != "akbs-client-adapter-output-v1"
+        or output_contract.get("additional_properties") is not False
+        or output_contract.get("hash_binding") != "manifest_declared_metadata_file_sha256"
+        or output_contract.get("required_fields")
+        != [
+            "schema", "component_id", "group_id", "source_evidence_id",
+            "source_evidence_sha256", "adapter_contract", "adapter_version",
+            "claim", "adapter_result",
+        ]
+        or output_contract.get("additional_fields") != ["not_applicable_basis"]
+        or set(document_contract)
+        != {
+            "schema", "authority", "manifest_binding", "file_role", "media_type",
+            "profile_id_binding", "profile_artifact_hash_binding",
+            "declared_status_binding", "source_package_key_binding",
+            "qualification_input_hash",
+        }
+        or document_contract.get("schema") != "akbs-client-adapter-outputs-v1"
+        or document_contract.get("authority") != "untrusted_client_input"
+        or document_contract.get("manifest_binding")
+        != "qualification.client_adapter_outputs_file_id"
+        or document_contract.get("profile_artifact_hash_binding")
+        != "qualification.profile_artifact_sha256"
+        or document_contract.get("source_package_key_binding")
+        != "manifest_identity_member_alias_and_run_id"
+        or document_contract.get("file_role") != "metadata"
+        or document_contract.get("media_type") != "application/json"
+        or document_contract.get("declared_status_binding") != "manifest.package_status"
+        or set(qualification_hash)
+        != {
+            "field", "algorithm_id", "algorithm", "encoding", "ensure_ascii",
+            "object_key_order", "separators", "trailing_newline",
+            "unicode_normalization", "numeric_domain", "non_finite_numbers",
+            "input", "exclude",
+        }
+        or qualification_hash.get("field") != "qualification_input_sha256"
+        or qualification_hash.get("algorithm_id") != "akbs-canonical-json-sha256-v1"
+        or qualification_hash.get("algorithm") != "sha256"
+        or qualification_hash.get("encoding") != "UTF-8"
+        or qualification_hash.get("ensure_ascii") is not False
+        or qualification_hash.get("object_key_order") != "unicode_code_point_ascending"
+        or qualification_hash.get("separators") != [",", ":"]
+        or qualification_hash.get("trailing_newline") is not False
+        or qualification_hash.get("unicode_normalization") != "none_exact_code_points"
+        or qualification_hash.get("numeric_domain")
+        != "JSON integers only; floating-point values are forbidden"
+        or qualification_hash.get("non_finite_numbers") != "forbidden"
+        or qualification_hash.get("input") != "complete_manifest_semantics"
+        or qualification_hash.get("exclude")
+        != [
+            "the files row named by qualification.client_adapter_outputs_file_id",
+            "server-owned submit envelope and receipt fields",
+        ]
+        or set(server_boundary)
+        != {
+            "client_outputs_trust", "server_must_recalculate",
+            "server_decision_contract", "member_archive_rewrite",
+            "curation_consumes", "server_must_not_upgrade_declared_package_status",
+            "writer_activation_requires_complete_adapter_input_contracts",
+            "deterministic_recalculation_scope",
+        }
+        or server_boundary.get("client_outputs_trust") != "untrusted_input"
+        or server_boundary.get("server_must_recalculate") is not True
+        or server_boundary.get("member_archive_rewrite") is not False
+        or server_boundary.get("curation_consumes") != "server_decision_only"
+        or server_boundary.get("server_must_not_upgrade_declared_package_status") is not True
+        or server_boundary.get("writer_activation_requires_complete_adapter_input_contracts")
+        is not True
+        or server_boundary.get("deterministic_recalculation_scope")
+        != "evidence_acceptance_contracts_only_not_build_device_or_ai_reexecution"
+        or set(server_decision)
+        != {"schema", "authority", "authority_scope", "decision", "required_bindings"}
+        or server_decision.get("schema") != "akbs-server-qualification-decision-v1"
+        or server_decision.get("authority") != "server_authoritative"
+        or server_decision.get("authority_scope") != "incoming_contract_qualification"
+        or server_decision.get("decision") != ["accept", "reject"]
+        or server_decision.get("required_bindings") != expected_server_bindings
+        or set(archive_integrity)
+        != {
+            "actual_paths_equal", "manifest_in_files",
+            "file_id_and_normalized_path_unique", "declared_sha256_and_size_match_bytes",
+            "directory_payload_hash", "strict_json_for", "strict_json_rejects",
+        }
+        or archive_integrity.get("actual_paths_equal")
+        != "manifest.json plus every manifest.files path exactly once"
+        or archive_integrity.get("manifest_in_files") is not False
+        or archive_integrity.get("file_id_and_normalized_path_unique") is not True
+        or archive_integrity.get("declared_sha256_and_size_match_bytes") is not True
+        or archive_integrity.get("directory_payload_hash")
+        != "sha256_of_sorted_normalized_path_sha256_size_tuples"
+        or set(archive_integrity.get("strict_json_for") or ())
+        != {"manifest", "client adapter outputs", "declared JSON evidence"}
+        or set(archive_integrity.get("strict_json_rejects") or ())
+        != {"duplicate keys", "NaN", "Infinity"}
+        or writer_activation.get("phase1_state") != "blocked"
+        or set(writer_activation) != {"phase1_state", "block_reason", "required_per_group"}
+        or writer_activation.get("block_reason")
+        != "versioned adapter input contracts and complete server implementations are not yet frozen"
+        or writer_activation.get("required_per_group") != expected_writer_group_fields
     ):
-        raise TopologyError("accepted evidence claim contract differs")
+        raise TopologyError("client/server evidence qualification boundary differs")
 
 
 def _predicate_matches(
@@ -927,13 +1089,128 @@ def required_evidence_groups(
     return groups
 
 
-def validate_patch_package_semantics(
-    package: dict[str, Any],
-    profiles: dict[str, Any],
+def _require_canonical_json_v1_domain(value: Any, *, path: str = "$") -> None:
+    if value is None or isinstance(value, (bool, str, int)):
+        return
+    if isinstance(value, float):
+        raise TopologyError(f"AKBS canonical JSON v1 forbids floating-point numbers: {path}")
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _require_canonical_json_v1_domain(item, path=f"{path}/{index}")
+        return
+    if isinstance(value, dict):
+        if not all(isinstance(key, str) for key in value):
+            raise TopologyError(f"AKBS canonical JSON v1 requires text object keys: {path}")
+        for key, item in value.items():
+            _require_canonical_json_v1_domain(item, path=f"{path}/{key}")
+        return
+    raise TopologyError(f"AKBS canonical JSON v1 unsupported value: {path}")
+
+
+def canonical_json_sha256_v1(value: Any) -> str:
+    _require_canonical_json_v1_domain(value)
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def qualification_input_sha256(package: dict[str, Any]) -> str:
+    candidate = copy.deepcopy(package)
+    qualification = candidate.get("qualification") or {}
+    output_file_id = qualification.get("client_adapter_outputs_file_id")
+    files = candidate.get("files")
+    if not isinstance(output_file_id, str) or not isinstance(files, list):
+        raise TopologyError("Android change v2 client output binding is missing")
+    retained = [row for row in files if row.get("id") != output_file_id]
+    if len(retained) != len(files) - 1:
+        raise TopologyError("Android change v2 client output file must resolve exactly once")
+    candidate["files"] = retained
+    return canonical_json_sha256_v1(candidate)
+
+
+def normalized_archive_path(value: object) -> str:
+    if not isinstance(value, str) or not value or value.startswith("/") or "\\" in value:
+        raise TopologyError("Android change v2 archive path is unsafe")
+    path = PurePosixPath(value)
+    normalized = path.as_posix()
+    if (
+        value != normalized
+        or value in {".", ".."}
+        or any(part in {"", ".", ".."} for part in path.parts)
+    ):
+        raise TopologyError("Android change v2 archive path is not canonical")
+    return normalized
+
+
+def archive_inventory(
+    entries: list[tuple[str, str, int]],
+) -> dict[str, tuple[str, int]]:
+    if not isinstance(entries, list) or not entries:
+        raise TopologyError("Android change v2 archive inventory is missing")
+    result: dict[str, tuple[str, int]] = {}
+    for entry in entries:
+        if not isinstance(entry, tuple) or len(entry) != 3:
+            raise TopologyError("Android change v2 archive inventory entry differs")
+        path = normalized_archive_path(entry[0])
+        sha256 = entry[1]
+        size_bytes = entry[2]
+        if (
+            path in result
+            or not isinstance(sha256, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", sha256)
+            or not isinstance(size_bytes, int)
+            or isinstance(size_bytes, bool)
+            or size_bytes < 0
+        ):
+            raise TopologyError("Android change v2 archive inventory entry differs")
+        result[path] = (sha256, size_bytes)
+    return result
+
+
+def source_package_key(package: dict[str, Any]) -> str:
+    identity = package.get("identity") or {}
+    member_alias = identity.get("member_alias")
+    run_id = identity.get("run_id")
+    if (
+        not isinstance(member_alias, str)
+        or not isinstance(run_id, str)
+        or not re.fullmatch(r"[0-9]{8}-[0-9]{6}(?:-[A-Za-z0-9_.-]+)?", run_id)
+    ):
+        raise TopologyError("Android change v2 source package identity differs")
+    return f"{run_id[:8]}/{member_alias}/{run_id}"
+
+
+def validate_client_patch_package_semantics(
+    manifest_bytes: bytes,
+    profile_artifact_bytes: bytes,
+    client_adapter_outputs_bytes: bytes,
     *,
-    accepted_claims: dict[str, list[dict[str, Any]]],
-    archive_files: dict[str, tuple[str, int]] | None = None,
-) -> None:
+    archive_entries: list[tuple[str, str, int]],
+) -> dict[str, Any]:
+    """Validate untrusted client package coherence, never server qualification."""
+
+    if not all(
+        isinstance(value, bytes)
+        for value in (manifest_bytes, profile_artifact_bytes, client_adapter_outputs_bytes)
+    ):
+        raise TopologyError("Android change v2 client validator requires exact artifact bytes")
+    package = load_json_bytes(manifest_bytes, label="manifest.json")
+    profiles = load_json_bytes(
+        profile_artifact_bytes, label="component-evidence-profiles.json"
+    )
+    client_adapter_outputs = load_json_bytes(
+        client_adapter_outputs_bytes, label="client-adapter-outputs.json"
+    )
+    profile_artifact_sha256 = hashlib.sha256(profile_artifact_bytes).hexdigest()
+    client_adapter_outputs_file_sha256 = hashlib.sha256(
+        client_adapter_outputs_bytes
+    ).hexdigest()
+    client_adapter_outputs_size_bytes = len(client_adapter_outputs_bytes)
     if (
         package.get("schema") != "akbs-android-change-package-v2"
         or package.get("schema_version") != "2"
@@ -941,6 +1218,9 @@ def validate_patch_package_semantics(
         or package.get("package_status") != "validated"
     ):
         raise TopologyError("Android change v2 package identity differs")
+    if profiles.get("schema") != "akbs-component-evidence-profiles-v1":
+        raise TopologyError("Android change v2 evidence profile identity differs")
+    validate_evidence_profile_registry(profiles)
     collections: dict[str, list[dict[str, Any]]] = {}
     for name in ("components", "sources", "files", "changes", "evidence"):
         rows = package.get(name)
@@ -965,11 +1245,8 @@ def validate_patch_package_semantics(
             raise TopologyError("Android change v2 source path is unsafe")
     declared_paths: set[str] = set()
     for file_row in files.values():
-        path = file_row.get("path")
-        if (
-            not isinstance(path, str) or path in {"", "."} or path.startswith("/")
-            or "\\" in path or ".." in Path(path).parts or path in declared_paths
-        ):
+        path = normalized_archive_path(file_row.get("path"))
+        if path == "manifest.json" or path in declared_paths:
             raise TopologyError("Android change v2 file path is unsafe or duplicated")
         declared_paths.add(path)
     changed_components: set[str] = set()
@@ -996,9 +1273,27 @@ def validate_patch_package_semantics(
         if item.get("result") == "NOT_APPLICABLE" and not item.get("not_applicable_basis"):
             raise TopologyError("Android change v2 N/A evidence lacks basis and limits")
     qualification = package.get("qualification") or {}
-    if qualification.get("profile") != profiles.get("schema"):
+    if (
+        qualification.get("profile_id") != profiles.get("schema")
+        or qualification.get("profile_artifact_sha256") != profile_artifact_sha256
+        or not re.fullmatch(r"[0-9a-f]{64}", profile_artifact_sha256)
+    ):
         raise TopologyError("Android change v2 qualification profile differs")
-    bindings = qualification.get("bindings")
+    output_file_id = qualification.get("client_adapter_outputs_file_id")
+    output_file = files.get(output_file_id)
+    if (
+        not isinstance(output_file, dict)
+        or output_file.get("role") != "metadata"
+        or output_file.get("media_type") != "application/json"
+        or output_file.get("sha256") != client_adapter_outputs_file_sha256
+        or output_file.get("size_bytes") != client_adapter_outputs_size_bytes
+        or not re.fullmatch(r"[0-9a-f]{64}", client_adapter_outputs_file_sha256)
+        or not isinstance(client_adapter_outputs_size_bytes, int)
+        or isinstance(client_adapter_outputs_size_bytes, bool)
+        or client_adapter_outputs_size_bytes < 1
+    ):
+        raise TopologyError("Android change v2 client adapter output file binding differs")
+    bindings = qualification.get("component_evidence_bindings")
     if not isinstance(bindings, list) or not bindings:
         raise TopologyError("Android change v2 qualification bindings are missing")
     bound_components: set[str] = set()
@@ -1017,41 +1312,81 @@ def validate_patch_package_semantics(
     if changed_components != set(components) or bound_components != set(components):
         raise TopologyError("every Android change v2 component must be changed and qualified")
     registry = profiles["evidence_group_registry"]["groups"]
-    claim_contract = profiles["accepted_evidence_claim_contract"]
-    required_fields = set(claim_contract["required_fields"])
-    allowed_fields = required_fields | set(claim_contract.get("additional_fields") or [])
+    output_contract = profiles["client_adapter_output_contract"]
+    required_fields = set(output_contract["required_fields"])
+    allowed_fields = required_fields | set(output_contract.get("additional_fields") or [])
     workflow_contract = (package.get("workflow") or {}).get("contract")
-    if set(accepted_claims) != set(components):
-        raise TopologyError("accepted evidence claims must cover every component exactly")
+    expected_document_fields = {
+        "schema", "authority", "source_package_key", "qualification_input_sha256",
+        "profile_id", "profile_artifact_sha256", "declared_package_status", "components",
+    }
+    if not isinstance(client_adapter_outputs, dict):
+        raise TopologyError("Android change v2 client adapter output document must be an object")
+    document_components = client_adapter_outputs.get("components")
+    if (
+        set(client_adapter_outputs) != expected_document_fields
+        or client_adapter_outputs.get("schema") != "akbs-client-adapter-outputs-v1"
+        or client_adapter_outputs.get("authority") != "untrusted_client_input"
+        or client_adapter_outputs.get("source_package_key") != source_package_key(package)
+        or client_adapter_outputs.get("qualification_input_sha256")
+        != qualification_input_sha256(package)
+        or client_adapter_outputs.get("profile_id") != profiles.get("schema")
+        or client_adapter_outputs.get("profile_artifact_sha256") != profile_artifact_sha256
+        or client_adapter_outputs.get("declared_package_status") != package.get("package_status")
+        or not isinstance(document_components, list)
+        or not document_components
+    ):
+        raise TopologyError("Android change v2 client adapter output document differs")
+    client_outputs_by_component: dict[str, list[dict[str, Any]]] = {}
+    for item in document_components:
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"component_id", "outputs"}
+            or not isinstance(item.get("component_id"), str)
+            or item.get("component_id") in client_outputs_by_component
+            or not isinstance(item.get("outputs"), list)
+            or not item["outputs"]
+        ):
+            raise TopologyError("Android change v2 client component outputs differ")
+        client_outputs_by_component[item["component_id"]] = item["outputs"]
+    if set(client_outputs_by_component) != set(components):
+        raise TopologyError("client adapter outputs must cover every component exactly")
     for component_id, component in components.items():
-        outputs = accepted_claims.get(component_id)
+        outputs = client_outputs_by_component.get(component_id)
         if not isinstance(outputs, list) or not outputs:
-            raise TopologyError("accepted evidence claims are missing")
+            raise TopologyError("client adapter outputs are missing")
+        if any(not isinstance(item, dict) for item in outputs):
+            raise TopologyError("client adapter output fields differ")
         groups = [item.get("group_id") for item in outputs]
         expected_groups = required_evidence_groups(component, workflow_contract, profiles)
         if len(groups) != len(set(groups)) or set(groups) != expected_groups:
-            raise TopologyError("accepted evidence groups do not satisfy the component profile")
+            raise TopologyError("client adapter output groups do not satisfy the component profile")
         for output in outputs:
-            if set(output) - allowed_fields or not required_fields.issubset(output):
-                raise TopologyError("accepted evidence claim fields differ")
             if (
-                output.get("schema") != claim_contract["schema"]
+                not isinstance(output, dict)
+                or set(output) - allowed_fields
+                or not required_fields.issubset(output)
+            ):
+                raise TopologyError("client adapter output fields differ")
+            if (
+                output.get("schema") != output_contract["schema"]
                 or output.get("component_id") != component_id
                 or output.get("source_evidence_id") not in binding_evidence[component_id]
             ):
-                raise TopologyError("accepted evidence claim binding differs")
+                raise TopologyError("client adapter output binding differs")
             source = evidence[output["source_evidence_id"]]
             source_file = files[source["file_id"]]
             group = registry.get(output.get("group_id"))
             if not isinstance(group, dict) or (
                 output.get("source_evidence_sha256") != source_file.get("sha256")
+                or output.get("claim") not in set(source.get("declared_claims") or ())
                 or output.get("adapter_contract") != group["adapter_contract"]
                 or output.get("adapter_version") != group["adapter_version"]
-                or output.get("accepted_claim") != group["accepted_claim"]
-                or output.get("accepted_result") not in group["accepted_results"]
+                or output.get("claim") != group["claim"]
+                or output.get("adapter_result") not in group["allowed_adapter_results"]
             ):
-                raise TopologyError("accepted evidence adapter output differs")
-            is_na = output.get("accepted_result") == "NOT_APPLICABLE"
+                raise TopologyError("client evidence adapter output differs")
+            is_na = output.get("adapter_result") == "NOT_APPLICABLE"
             basis = output.get("not_applicable_basis")
             valid_basis = (
                 isinstance(basis, dict)
@@ -1059,14 +1394,29 @@ def validate_patch_package_semantics(
                 and all(isinstance(basis[key], str) and basis[key].strip() for key in basis)
             )
             if is_na != valid_basis or (is_na and not group["not_applicable"]):
-                raise TopologyError("accepted evidence N/A output differs")
-    if archive_files is not None:
-        expected = {
+                raise TopologyError("client evidence N/A output differs")
+    expected = {
+        "manifest.json": (hashlib.sha256(manifest_bytes).hexdigest(), len(manifest_bytes)),
+        **{
             row["path"]: (row.get("sha256"), row.get("size_bytes"))
             for row in files.values()
-        }
-        if archive_files != expected or "manifest.json" in expected:
-            raise TopologyError("Android change v2 archive inventory or file integrity differs")
+        },
+    }
+    if archive_inventory(archive_entries) != expected:
+        raise TopologyError("Android change v2 archive inventory or file integrity differs")
+    return {
+        "schema": "akbs-client-package-coherence-v1",
+        "authority": "untrusted_client_input",
+        "client_semantic_coherence_valid": True,
+        "schema_validation_required": True,
+        "archive_inventory_binding_valid": True,
+        "archive_extractor_validation_required": True,
+        "server_qualified": False,
+        "server_decision_required": "akbs-server-qualification-decision-v1",
+        "profile_artifact_sha256": profile_artifact_sha256,
+        "client_adapter_outputs_file_sha256": client_adapter_outputs_file_sha256,
+        "qualification_input_sha256": qualification_input_sha256(package),
+    }
 
 
 def validate_phase0_schema_documents(root: Path) -> None:
@@ -1078,6 +1428,7 @@ def validate_phase0_schema_documents(root: Path) -> None:
         "contracts/android-change-workflow/v1/worker-assignment.schema.json": "worker-assignment-v1",
         "contracts/android-change-workflow/v1/worker-result.schema.json": "worker-result-v1",
         "contracts/incoming/v2/akbs-android-change-package.schema.json": "akbs-android-change-package-v2",
+        "contracts/incoming/v2/client-adapter-outputs.schema.json": "akbs-client-adapter-outputs-v1",
     }
     documents: dict[str, dict[str, Any]] = {}
     for relative, schema_name in expected.items():
@@ -1116,22 +1467,39 @@ def validate_phase0_schema_documents(root: Path) -> None:
     if set(result["properties"]["outcome"]["enum"]) != {"completed", "partial", "blocked", "failed"}:
         raise TopologyError("worker result outcome can impersonate acceptance")
     package = documents["contracts/incoming/v2/akbs-android-change-package.schema.json"]
+    qualification_required = set(package["$defs"]["qualification"]["required"])
     if (
         package["properties"]["schema_version"].get("const") != "2"
         or package["properties"]["package_kind"].get("const") != "android_change"
         or package["properties"]["package_status"].get("const") != "validated"
         or set(package["$defs"]["component"]["properties"]["layer"]["enum"])
         != {"application", "platform", "native", "hal", "kernel", "device", "build"}
+        or qualification_required
+        != {
+            "profile_id", "profile_artifact_sha256",
+            "client_adapter_outputs_file_id", "component_evidence_bindings",
+        }
     ):
         raise TopologyError("Android change v2 package identity or layers differ")
+    client_outputs = documents["contracts/incoming/v2/client-adapter-outputs.schema.json"]
+    if (
+        client_outputs["properties"]["authority"].get("const") != "untrusted_client_input"
+        or client_outputs["properties"]["schema"].get("const")
+        != "akbs-client-adapter-outputs-v1"
+        or client_outputs["$defs"]["adapterOutput"]["properties"]["schema"].get("const")
+        != "akbs-client-adapter-output-v1"
+    ):
+        raise TopologyError("client adapter output schema authority differs")
     profiles = load_json(root / "contracts/incoming/v2/component-evidence-profiles.json")
     if (
         profiles.get("schema") != "akbs-component-evidence-profiles-v1"
-        or profiles.get("accepted_claim_source") != "contract_adapter_output_only"
+        or profiles.get("client_output_source")
+        != "client_contract_adapter_output_file_untrusted_until_server_recalculation"
         or set(profiles.get("layers", {}))
         != {"application", "platform", "native", "hal", "kernel", "device", "build"}
         or profiles.get("legacy_v1", {}).get("read_compatibility") != "permanent"
         or profiles.get("legacy_v1", {}).get("history_rewrite") is not False
+        or profiles.get("writer_activation", {}).get("phase1_state") != "blocked"
     ):
         raise TopologyError("component evidence profile or v1 compatibility differs")
     validate_evidence_profile_registry(profiles)

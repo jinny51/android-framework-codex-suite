@@ -3,7 +3,7 @@
   "applies_to_schema": "akbs-android-change-package-v2",
   "evaluation_scope": "per_component",
   "all_components_must_qualify": true,
-  "accepted_claim_source": "contract_adapter_output_only",
+  "client_output_source": "client_contract_adapter_output_file_untrusted_until_server_recalculation",
   "common_required_groups": [
     "source_integrity",
     "change_diff_facts",
@@ -37,56 +37,85 @@
   },
   "evidence_group_registry": {
     "schema": "akbs-evidence-group-registry-v1",
-    "adapter_output_schema": "akbs-accepted-evidence-claim-v1",
+    "adapter_output_schema": "akbs-client-adapter-output-v1",
     "required_adapter_binding_fields": [
       "adapter_contract",
       "adapter_version",
       "source_evidence_sha256",
-      "accepted_claim",
-      "accepted_result"
+      "claim",
+      "adapter_result"
     ],
     "groups": {
-      "source_integrity": {"adapter_contract": "akbs-source-integrity-adapter", "adapter_version": "1", "accepted_claim": "source_integrity", "accepted_results": ["PASS"], "not_applicable": false},
-      "change_diff_facts": {"adapter_contract": "akbs-change-diff-adapter", "adapter_version": "1", "accepted_claim": "change_diff_facts", "accepted_results": ["PASS", "INFO"], "not_applicable": false},
-      "risk_surface": {"adapter_contract": "akbs-risk-surface-adapter", "adapter_version": "1", "accepted_claim": "risk_surface", "accepted_results": ["PASS", "INFO"], "not_applicable": false},
-      "android_change_policy": {"adapter_contract": "akbs-android-change-policy-adapter", "adapter_version": "1", "accepted_claim": "android_change_policy", "accepted_results": ["PASS"], "not_applicable": false},
-      "feature_acceptance": {"adapter_contract": "akbs-feature-acceptance-adapter", "adapter_version": "1", "accepted_claim": "feature_acceptance", "accepted_results": ["PASS"], "not_applicable": false},
-      "regression": {"adapter_contract": "akbs-regression-adapter", "adapter_version": "1", "accepted_claim": "regression", "accepted_results": ["PASS"], "not_applicable": false},
-      "rollback": {"adapter_contract": "akbs-rollback-adapter", "adapter_version": "1", "accepted_claim": "rollback", "accepted_results": ["PASS"], "not_applicable": false},
-      "pre_change_search": {"adapter_contract": "akbs-pre-change-search-adapter", "adapter_version": "1", "accepted_claim": "pre_change_search", "accepted_results": ["PASS", "INFO"], "not_applicable": false},
-      "hash_bound_import_provenance": {"adapter_contract": "akbs-import-provenance-adapter", "adapter_version": "1", "accepted_claim": "hash_bound_import_provenance", "accepted_results": ["PASS"], "not_applicable": false},
-      "application_build": {"adapter_contract": "akbs-application-build-adapter", "adapter_version": "1", "accepted_claim": "application_build", "accepted_results": ["PASS"], "not_applicable": false},
-      "application_runtime_or_integration": {"adapter_contract": "akbs-application-runtime-adapter", "adapter_version": "1", "accepted_claim": "application_runtime_or_integration", "accepted_results": ["PASS"], "not_applicable": false},
-      "permission_and_signing": {"adapter_contract": "akbs-permission-signing-adapter", "adapter_version": "1", "accepted_claim": "permission_and_signing", "accepted_results": ["PASS", "NOT_APPLICABLE"], "not_applicable": true},
-      "install_or_upgrade": {"adapter_contract": "akbs-install-upgrade-adapter", "adapter_version": "1", "accepted_claim": "install_or_upgrade", "accepted_results": ["PASS", "NOT_APPLICABLE"], "not_applicable": true},
-      "platform_build": {"adapter_contract": "akbs-platform-build-adapter", "adapter_version": "1", "accepted_claim": "platform_build", "accepted_results": ["PASS"], "not_applicable": false},
-      "platform_runtime": {"adapter_contract": "akbs-platform-runtime-adapter", "adapter_version": "1", "accepted_claim": "platform_runtime", "accepted_results": ["PASS"], "not_applicable": false},
-      "api_or_resource_compatibility": {"adapter_contract": "akbs-platform-compatibility-adapter", "adapter_version": "1", "accepted_claim": "api_or_resource_compatibility", "accepted_results": ["PASS", "NOT_APPLICABLE"], "not_applicable": true},
-      "native_build": {"adapter_contract": "akbs-native-build-adapter", "adapter_version": "1", "accepted_claim": "native_build", "accepted_results": ["PASS"], "not_applicable": false},
-      "native_runtime": {"adapter_contract": "akbs-native-runtime-adapter", "adapter_version": "1", "accepted_claim": "native_runtime", "accepted_results": ["PASS"], "not_applicable": false},
-      "abi_api_or_linker_compatibility": {"adapter_contract": "akbs-native-compatibility-adapter", "adapter_version": "1", "accepted_claim": "abi_api_or_linker_compatibility", "accepted_results": ["PASS", "NOT_APPLICABLE"], "not_applicable": true},
-      "hal_build": {"adapter_contract": "akbs-hal-build-adapter", "adapter_version": "1", "accepted_claim": "hal_build", "accepted_results": ["PASS"], "not_applicable": false},
-      "interface_version": {"adapter_contract": "akbs-hal-interface-adapter", "adapter_version": "1", "accepted_claim": "interface_version", "accepted_results": ["PASS"], "not_applicable": false},
-      "vintf_selinux_service_registration": {"adapter_contract": "akbs-hal-integration-adapter", "adapter_version": "1", "accepted_claim": "vintf_selinux_service_registration", "accepted_results": ["PASS"], "not_applicable": false},
-      "hardware_behavior": {"adapter_contract": "akbs-hardware-behavior-adapter", "adapter_version": "1", "accepted_claim": "hardware_behavior", "accepted_results": ["PASS"], "not_applicable": false},
-      "kernel_or_module_build": {"adapter_contract": "akbs-kernel-build-adapter", "adapter_version": "1", "accepted_claim": "kernel_or_module_build", "accepted_results": ["PASS"], "not_applicable": false},
-      "kconfig_and_build_graph": {"adapter_contract": "akbs-kconfig-build-graph-adapter", "adapter_version": "1", "accepted_claim": "kconfig_and_build_graph", "accepted_results": ["PASS"], "not_applicable": false},
-      "boot": {"adapter_contract": "akbs-boot-adapter", "adapter_version": "1", "accepted_claim": "boot", "accepted_results": ["PASS"], "not_applicable": false},
-      "probe_bind_or_dmesg": {"adapter_contract": "akbs-kernel-runtime-adapter", "adapter_version": "1", "accepted_claim": "probe_bind_or_dmesg", "accepted_results": ["PASS"], "not_applicable": false},
-      "power_and_suspend_resume": {"adapter_contract": "akbs-power-suspend-adapter", "adapter_version": "1", "accepted_claim": "power_and_suspend_resume", "accepted_results": ["PASS", "NOT_APPLICABLE"], "not_applicable": true},
-      "board_build": {"adapter_contract": "akbs-board-build-adapter", "adapter_version": "1", "accepted_claim": "board_build", "accepted_results": ["PASS"], "not_applicable": false},
-      "boot_integration": {"adapter_contract": "akbs-boot-integration-adapter", "adapter_version": "1", "accepted_claim": "boot_integration", "accepted_results": ["PASS"], "not_applicable": false},
-      "partition_overlay_or_policy": {"adapter_contract": "akbs-device-policy-adapter", "adapter_version": "1", "accepted_claim": "partition_overlay_or_policy", "accepted_results": ["PASS"], "not_applicable": false},
-      "device_behavior": {"adapter_contract": "akbs-device-behavior-adapter", "adapter_version": "1", "accepted_claim": "device_behavior", "accepted_results": ["PASS"], "not_applicable": false},
-      "dependency_graph": {"adapter_contract": "akbs-build-graph-adapter", "adapter_version": "1", "accepted_claim": "dependency_graph", "accepted_results": ["PASS"], "not_applicable": false},
-      "build_result": {"adapter_contract": "akbs-build-result-adapter", "adapter_version": "1", "accepted_claim": "build_result", "accepted_results": ["PASS"], "not_applicable": false},
-      "clean_and_incremental": {"adapter_contract": "akbs-build-mode-adapter", "adapter_version": "1", "accepted_claim": "clean_and_incremental", "accepted_results": ["PASS"], "not_applicable": false},
-      "artifact_contract": {"adapter_contract": "akbs-artifact-contract-adapter", "adapter_version": "1", "accepted_claim": "artifact_contract", "accepted_results": ["PASS"], "not_applicable": false},
-      "reproducibility": {"adapter_contract": "akbs-reproducibility-adapter", "adapter_version": "1", "accepted_claim": "reproducibility", "accepted_results": ["PASS", "NOT_APPLICABLE"], "not_applicable": true}
+      "source_integrity": {"adapter_contract": "akbs-source-integrity-adapter", "adapter_version": "1", "claim": "source_integrity", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "change_diff_facts": {"adapter_contract": "akbs-change-diff-adapter", "adapter_version": "1", "claim": "change_diff_facts", "allowed_adapter_results": ["PASS", "INFO"], "not_applicable": false},
+      "risk_surface": {"adapter_contract": "akbs-risk-surface-adapter", "adapter_version": "1", "claim": "risk_surface", "allowed_adapter_results": ["PASS", "INFO"], "not_applicable": false},
+      "android_change_policy": {"adapter_contract": "akbs-android-change-policy-adapter", "adapter_version": "1", "claim": "android_change_policy", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "feature_acceptance": {"adapter_contract": "akbs-feature-acceptance-adapter", "adapter_version": "1", "claim": "feature_acceptance", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "regression": {"adapter_contract": "akbs-regression-adapter", "adapter_version": "1", "claim": "regression", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "rollback": {"adapter_contract": "akbs-rollback-adapter", "adapter_version": "1", "claim": "rollback", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "pre_change_search": {"adapter_contract": "akbs-pre-change-search-adapter", "adapter_version": "1", "claim": "pre_change_search", "allowed_adapter_results": ["PASS", "INFO"], "not_applicable": false},
+      "hash_bound_import_provenance": {"adapter_contract": "akbs-import-provenance-adapter", "adapter_version": "1", "claim": "hash_bound_import_provenance", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "application_build": {"adapter_contract": "akbs-application-build-adapter", "adapter_version": "1", "claim": "application_build", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "application_runtime_or_integration": {"adapter_contract": "akbs-application-runtime-adapter", "adapter_version": "1", "claim": "application_runtime_or_integration", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "permission_and_signing": {"adapter_contract": "akbs-permission-signing-adapter", "adapter_version": "1", "claim": "permission_and_signing", "allowed_adapter_results": ["PASS", "NOT_APPLICABLE"], "not_applicable": true},
+      "install_or_upgrade": {"adapter_contract": "akbs-install-upgrade-adapter", "adapter_version": "1", "claim": "install_or_upgrade", "allowed_adapter_results": ["PASS", "NOT_APPLICABLE"], "not_applicable": true},
+      "platform_build": {"adapter_contract": "akbs-platform-build-adapter", "adapter_version": "1", "claim": "platform_build", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "platform_runtime": {"adapter_contract": "akbs-platform-runtime-adapter", "adapter_version": "1", "claim": "platform_runtime", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "api_or_resource_compatibility": {"adapter_contract": "akbs-platform-compatibility-adapter", "adapter_version": "1", "claim": "api_or_resource_compatibility", "allowed_adapter_results": ["PASS", "NOT_APPLICABLE"], "not_applicable": true},
+      "native_build": {"adapter_contract": "akbs-native-build-adapter", "adapter_version": "1", "claim": "native_build", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "native_runtime": {"adapter_contract": "akbs-native-runtime-adapter", "adapter_version": "1", "claim": "native_runtime", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "abi_api_or_linker_compatibility": {"adapter_contract": "akbs-native-compatibility-adapter", "adapter_version": "1", "claim": "abi_api_or_linker_compatibility", "allowed_adapter_results": ["PASS", "NOT_APPLICABLE"], "not_applicable": true},
+      "hal_build": {"adapter_contract": "akbs-hal-build-adapter", "adapter_version": "1", "claim": "hal_build", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "interface_version": {"adapter_contract": "akbs-hal-interface-adapter", "adapter_version": "1", "claim": "interface_version", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "vintf_selinux_service_registration": {"adapter_contract": "akbs-hal-integration-adapter", "adapter_version": "1", "claim": "vintf_selinux_service_registration", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "hardware_behavior": {"adapter_contract": "akbs-hardware-behavior-adapter", "adapter_version": "1", "claim": "hardware_behavior", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "kernel_or_module_build": {"adapter_contract": "akbs-kernel-build-adapter", "adapter_version": "1", "claim": "kernel_or_module_build", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "kconfig_and_build_graph": {"adapter_contract": "akbs-kconfig-build-graph-adapter", "adapter_version": "1", "claim": "kconfig_and_build_graph", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "boot": {"adapter_contract": "akbs-boot-adapter", "adapter_version": "1", "claim": "boot", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "probe_bind_or_dmesg": {"adapter_contract": "akbs-kernel-runtime-adapter", "adapter_version": "1", "claim": "probe_bind_or_dmesg", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "power_and_suspend_resume": {"adapter_contract": "akbs-power-suspend-adapter", "adapter_version": "1", "claim": "power_and_suspend_resume", "allowed_adapter_results": ["PASS", "NOT_APPLICABLE"], "not_applicable": true},
+      "board_build": {"adapter_contract": "akbs-board-build-adapter", "adapter_version": "1", "claim": "board_build", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "boot_integration": {"adapter_contract": "akbs-boot-integration-adapter", "adapter_version": "1", "claim": "boot_integration", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "partition_overlay_or_policy": {"adapter_contract": "akbs-device-policy-adapter", "adapter_version": "1", "claim": "partition_overlay_or_policy", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "device_behavior": {"adapter_contract": "akbs-device-behavior-adapter", "adapter_version": "1", "claim": "device_behavior", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "dependency_graph": {"adapter_contract": "akbs-build-graph-adapter", "adapter_version": "1", "claim": "dependency_graph", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "build_result": {"adapter_contract": "akbs-build-result-adapter", "adapter_version": "1", "claim": "build_result", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "clean_and_incremental": {"adapter_contract": "akbs-build-mode-adapter", "adapter_version": "1", "claim": "clean_and_incremental", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "artifact_contract": {"adapter_contract": "akbs-artifact-contract-adapter", "adapter_version": "1", "claim": "artifact_contract", "allowed_adapter_results": ["PASS"], "not_applicable": false},
+      "reproducibility": {"adapter_contract": "akbs-reproducibility-adapter", "adapter_version": "1", "claim": "reproducibility", "allowed_adapter_results": ["PASS", "NOT_APPLICABLE"], "not_applicable": true}
     }
   },
-  "accepted_evidence_claim_contract": {
-    "schema": "akbs-accepted-evidence-claim-v1",
+  "client_adapter_outputs_document_contract": {
+    "schema": "akbs-client-adapter-outputs-v1",
+    "authority": "untrusted_client_input",
+    "manifest_binding": "qualification.client_adapter_outputs_file_id",
+    "file_role": "metadata",
+    "media_type": "application/json",
+    "profile_id_binding": "qualification.profile_id",
+    "profile_artifact_hash_binding": "qualification.profile_artifact_sha256",
+    "declared_status_binding": "manifest.package_status",
+    "source_package_key_binding": "manifest_identity_member_alias_and_run_id",
+    "qualification_input_hash": {
+      "field": "qualification_input_sha256",
+      "algorithm_id": "akbs-canonical-json-sha256-v1",
+      "algorithm": "sha256",
+      "encoding": "UTF-8",
+      "ensure_ascii": false,
+      "object_key_order": "unicode_code_point_ascending",
+      "separators": [",", ":"],
+      "trailing_newline": false,
+      "unicode_normalization": "none_exact_code_points",
+      "numeric_domain": "JSON integers only; floating-point values are forbidden",
+      "non_finite_numbers": "forbidden",
+      "input": "complete_manifest_semantics",
+      "exclude": [
+        "the files row named by qualification.client_adapter_outputs_file_id",
+        "server-owned submit envelope and receipt fields"
+      ]
+    }
+  },
+  "client_adapter_output_contract": {
+    "schema": "akbs-client-adapter-output-v1",
     "required_fields": [
       "schema",
       "component_id",
@@ -95,14 +124,72 @@
       "source_evidence_sha256",
       "adapter_contract",
       "adapter_version",
-      "accepted_claim",
-      "accepted_result"
+      "claim",
+      "adapter_result"
     ],
     "additional_fields": [
       "not_applicable_basis"
     ],
     "additional_properties": false,
-    "hash_binding": "external_file_sha256"
+    "hash_binding": "manifest_declared_metadata_file_sha256"
+  },
+  "server_qualification_boundary": {
+    "client_outputs_trust": "untrusted_input",
+    "server_must_recalculate": true,
+    "server_decision_contract": {
+      "schema": "akbs-server-qualification-decision-v1",
+      "authority": "server_authoritative",
+      "authority_scope": "incoming_contract_qualification",
+      "decision": ["accept", "reject"],
+      "required_bindings": [
+        "source_package_key",
+        "authenticated_actor",
+        "manifest_sha256",
+        "directory_payload_sha256",
+        "qualification_input_sha256",
+        "client_adapter_outputs_file_sha256",
+        "profile_id",
+        "profile_artifact_sha256",
+        "adapter_registry_sha256",
+        "component_group_results",
+        "reason_codes",
+        "validator_version"
+      ]
+    },
+    "member_archive_rewrite": false,
+    "curation_consumes": "server_decision_only",
+    "server_must_not_upgrade_declared_package_status": true,
+    "writer_activation_requires_complete_adapter_input_contracts": true,
+    "deterministic_recalculation_scope": "evidence_acceptance_contracts_only_not_build_device_or_ai_reexecution"
+  },
+  "archive_integrity": {
+    "actual_paths_equal": "manifest.json plus every manifest.files path exactly once",
+    "manifest_in_files": false,
+    "file_id_and_normalized_path_unique": true,
+    "declared_sha256_and_size_match_bytes": true,
+    "directory_payload_hash": "sha256_of_sorted_normalized_path_sha256_size_tuples",
+    "strict_json_for": [
+      "manifest",
+      "client adapter outputs",
+      "declared JSON evidence"
+    ],
+    "strict_json_rejects": [
+      "duplicate keys",
+      "NaN",
+      "Infinity"
+    ]
+  },
+  "writer_activation": {
+    "phase1_state": "blocked",
+    "block_reason": "versioned adapter input contracts and complete server implementations are not yet frozen",
+    "required_per_group": [
+      "versioned input schema",
+      "evidence authority and source",
+      "deterministic derivation",
+      "allowed result and not-applicable rules",
+      "adapter contract artifact SHA",
+      "server implementation"
+    ]
   },
   "conditional_predicates": {
     "application.system_or_privileged": {"type_in": ["system_app", "privileged_app"]},
@@ -343,7 +430,7 @@
     "manifest_does_not_hash_itself",
     "every_declared_file_size_and_sha256_matches",
     "component_classification_uses_source_and_change_facts_not_title_only",
-    "declared_claims_are_untrusted_until_contract_adapter_acceptance",
+    "declared_claims_are_untrusted_until_client_adapter_output_and_server_recalculation",
     "all_component_profiles_are_intersected_for_package_validation",
     "build_delivery_does_not_imply_feature_acceptance"
   ],

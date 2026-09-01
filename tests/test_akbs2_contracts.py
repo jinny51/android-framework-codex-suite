@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.util
 import json
 import math
@@ -22,6 +23,7 @@ SCHEMAS = {
     "worker_assignment": ROOT / "contracts/android-change-workflow/v1/worker-assignment.schema.json",
     "worker_result": ROOT / "contracts/android-change-workflow/v1/worker-result.schema.json",
     "android_change_package": ROOT / "contracts/incoming/v2/akbs-android-change-package.schema.json",
+    "client_adapter_outputs": ROOT / "contracts/incoming/v2/client-adapter-outputs.schema.json",
 }
 FIXTURES = {
     "provider.valid": ("provider", ROOT / "contracts/android-practices-provider/v1/fixtures/provider.valid.json", True),
@@ -41,8 +43,8 @@ FIXTURES = {
     "package.invalid-path": ("android_change_package", ROOT / "contracts/incoming/v2/fixtures/package.application.invalid-path.json", False),
 }
 SUPPORTING_FIXTURES = {
-    ROOT / "contracts/incoming/v2/fixtures/accepted-claims.application.valid.json",
-    ROOT / "contracts/incoming/v2/fixtures/accepted-claims.application.invalid-missing-feature.json",
+    ROOT / "contracts/incoming/v2/fixtures/client-adapter-outputs.application.valid.json",
+    ROOT / "contracts/incoming/v2/fixtures/client-adapter-outputs.application.invalid-missing-feature.json",
 }
 KEYWORDS = {
     "$schema", "$id", "$ref", "$defs", "title", "description", "type", "const", "enum",
@@ -534,20 +536,68 @@ def test_cross_document_semantics_accept_valid_and_reject_invalid_fixtures() -> 
     active.validate_worker_result_semantics(
         load(FIXTURES["result.valid"][1]), assignment, assignment_sha256="e" * 64
     )
-    profiles = load(ROOT / "contracts/incoming/v2/component-evidence-profiles.json")
-    package = load(FIXTURES["package.valid"][1])
-    active.validate_patch_package_semantics(
-        package,
-        profiles,
-        accepted_claims=load(
-            ROOT / "contracts/incoming/v2/fixtures/accepted-claims.application.valid.json"
-        ),
+    profile_path = ROOT / "contracts/incoming/v2/component-evidence-profiles.json"
+    profile_bytes = profile_path.read_bytes()
+    package_path = FIXTURES["package.valid"][1]
+    package = load(package_path)
+    output_schema = load(SCHEMAS["client_adapter_outputs"])
+    valid_output_path = (
+        ROOT / "contracts/incoming/v2/fixtures/client-adapter-outputs.application.valid.json"
     )
+    valid_output = load(valid_output_path)
+    validate_instance(valid_output, output_schema, output_schema)
+    manifest_bytes = package_path.read_bytes()
+    valid_output_bytes = valid_output_path.read_bytes()
+    result = active.validate_client_patch_package_semantics(
+        manifest_bytes,
+        profile_bytes,
+        valid_output_bytes,
+        archive_entries=[
+            ("manifest.json", hashlib.sha256(manifest_bytes).hexdigest(), len(manifest_bytes)),
+            *[(item["path"], item["sha256"], item["size_bytes"]) for item in package["files"]],
+        ],
+    )
+    assert result["client_semantic_coherence_valid"] is True
+    assert result["schema_validation_required"] is True
+    assert result["server_qualified"] is False
+    invalid_output_path = (
+        ROOT
+        / "contracts/incoming/v2/fixtures/client-adapter-outputs.application.invalid-missing-feature.json"
+    )
+    invalid_output = load(invalid_output_path)
+    validate_instance(invalid_output, output_schema, output_schema)
+    invalid_package = copy.deepcopy(package)
+    invalid_file = next(
+        item
+        for item in invalid_package["files"]
+        if item["id"] == invalid_package["qualification"]["client_adapter_outputs_file_id"]
+    )
+    invalid_file["sha256"] = hashlib.sha256(invalid_output_path.read_bytes()).hexdigest()
+    invalid_file["size_bytes"] = invalid_output_path.stat().st_size
+    invalid_manifest_bytes = (
+        json.dumps(
+            invalid_package,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    invalid_output_bytes = invalid_output_path.read_bytes()
     with pytest.raises(active.TopologyError):
-        active.validate_patch_package_semantics(
-            package,
-            profiles,
-            accepted_claims=load(
-                ROOT / "contracts/incoming/v2/fixtures/accepted-claims.application.invalid-missing-feature.json"
-            ),
+        active.validate_client_patch_package_semantics(
+            invalid_manifest_bytes,
+            profile_bytes,
+            invalid_output_bytes,
+            archive_entries=[
+                (
+                    "manifest.json",
+                    hashlib.sha256(invalid_manifest_bytes).hexdigest(),
+                    len(invalid_manifest_bytes),
+                ),
+                *[
+                    (item["path"], item["sha256"], item["size_bytes"])
+                    for item in invalid_package["files"]
+                ],
+            ],
         )
