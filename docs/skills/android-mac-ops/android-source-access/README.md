@@ -4,6 +4,8 @@
 
 macOS 原生 Android 服务器源码接入 skill。
 
+当前公开入口保持不变，但实现已集中到 `android-framework-ops`。旧命令路径先验证核心版本和 macOS 主机，再执行核心内部 SMB/Keychain adapter；核心缺失、过旧或主机不匹配时不会挂载、写 registry 或保存凭据。
+
 ## 用途
 
 该 skill 在 macOS 上提供 SMB/Samba 人工源码 CRUD 和产物桥。平台/项目识别由核心 helper 通过 `android-remote-channel` 在远程执行，平台脚本不扫描挂载源码。

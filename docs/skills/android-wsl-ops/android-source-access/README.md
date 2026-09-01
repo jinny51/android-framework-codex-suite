@@ -4,6 +4,8 @@
 
 WSL 场景下访问服务器 Android 源码的 skill。
 
+当前公开入口保持不变，但实现已集中到 `android-framework-ops`。旧命令路径先验证核心版本和 WSL 主机，再执行核心内部 CIFS/Samba adapter；核心缺失、过旧或主机不匹配时不会挂载、写 registry 或保存凭据。
+
 ## 用途
 
 该 skill 用于在 WSL 中把服务器上的 Android 源码挂载到本地，处理 Samba/CIFS 挂载、项目路径识别、本地路径和远程路径对应关系，以及重启后的访问恢复。

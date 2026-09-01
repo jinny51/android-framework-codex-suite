@@ -64,6 +64,10 @@ def test_shell_validators_install_exit_cleanup_or_remote_owned_cleanup() -> None
     assert "android-knowledge-intake/references/verification-acceptance-v2.json" in macos
     assert ".agents/plugins/marketplace.json" in macos
     assert "manifests/android-framework-ops.toml" in macos
+    assert "contracts/source-access" in macos
+    assert "adapters/source-access" in macos
+    assert "internal/android-source-access" in macos
+    assert "--expected-host macos" in macos
 
 
 def test_validator_cleanup_supports_macos_system_bash() -> None:

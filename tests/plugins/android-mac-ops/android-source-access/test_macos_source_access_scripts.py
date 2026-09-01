@@ -13,7 +13,11 @@ from typing import Dict, Optional
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-SKILL_DIR = REPO_ROOT / "plugins" / "android-mac-ops" / "skills" / "android-source-access"
+ENTRY_SKILL_DIR = REPO_ROOT / "plugins" / "android-mac-ops" / "skills" / "android-source-access"
+SKILL_DIR = (
+    REPO_ROOT
+    / "plugins/android-framework-ops/adapters/source-access/macos/skills/android-source-access"
+)
 SCRIPT_DIR = SKILL_DIR / "scripts"
 INSPECTION_HELPER = (
     REPO_ROOT / "plugins" / "android-framework-ops" / "lib" / "android_framework_ops" / "remote_source_inspection.py"
@@ -652,7 +656,7 @@ class MacSourceAccessScriptsTests(unittest.TestCase):
         self.assertIn("ANDROID_REMOTE_CHANNEL_SCRIPT", detect_text)
 
         docs = [
-            SKILL_DIR / "SKILL.md",
+            ENTRY_SKILL_DIR / "SKILL.md",
             REPO_ROOT / "docs" / "skills" / "android-mac-ops" / "android-source-access" / "README.md",
         ]
         combined = "\n".join(path.read_text(encoding="utf-8") for path in docs)

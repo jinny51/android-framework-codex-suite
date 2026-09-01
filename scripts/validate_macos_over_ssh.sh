@@ -50,11 +50,16 @@ trap 'cleanup_all "$?"' EXIT
   rsync -aR \
     .agents/plugins/marketplace.json \
     manifests/android-framework-ops.toml \
+    plugins/android-framework-ops/.codex-plugin/plugin.json \
+    plugins/android-framework-ops/contracts/source-access \
+    plugins/android-framework-ops/adapters/source-access \
+    plugins/android-framework-ops/internal/android-source-access \
     plugins/android-framework-ops/lib \
     plugins/android-framework-ops/skills/android-framework-change-workflow/scripts \
     plugins/android-framework-ops/skills/android-knowledge-intake/references/verification-acceptance-v2.json \
     plugins/android-framework-ops/skills/android-remote-build-deploy \
     plugins/android-mac-ops \
+    plugins/android-wsl-ops \
     tests/plugins/android-framework-ops/android-remote-build-deploy \
     tests/plugins/android-mac-ops \
     docs/skills/android-mac-ops \
@@ -73,9 +78,11 @@ printf 'MACOS_BASH=%s\n' "$(/bin/bash --version | sed -n '1p')"
 while IFS= read -r script; do
   /bin/bash -n "$script"
 done <<EOF
-$(find "$root/plugins/android-mac-ops" "$root/plugins/android-framework-ops/skills/android-framework-change-workflow/scripts" "$root/plugins/android-framework-ops/skills/android-remote-build-deploy" -type f -name '*.sh' -print | sort)
+$(find "$root/plugins/android-mac-ops" "$root/plugins/android-wsl-ops" "$root/plugins/android-framework-ops/adapters/source-access" "$root/plugins/android-framework-ops/skills/android-framework-change-workflow/scripts" "$root/plugins/android-framework-ops/skills/android-remote-build-deploy" -type f -name '*.sh' -print | sort)
 EOF
 
+/usr/bin/python3 -m compileall -q "$root/plugins/android-framework-ops/adapters/source-access"
+/usr/bin/python3 -m compileall -q "$root/plugins/android-framework-ops/internal/android-source-access"
 /usr/bin/python3 -m compileall -q "$root/plugins/android-framework-ops/lib"
 /usr/bin/python3 -m compileall -q "$root/plugins/android-framework-ops/skills/android-framework-change-workflow/scripts"
 /usr/bin/python3 -m compileall -q "$root/plugins/android-framework-ops/skills/android-remote-build-deploy"
@@ -90,6 +97,20 @@ cd "$root"
   -s tests/plugins/android-framework-ops/android-remote-build-deploy \
   -p 'test_*.py' \
   -v
+
+detected_host="$(/usr/bin/python3 "$root/plugins/android-framework-ops/internal/android-source-access/scripts/android_source_access.py" --expected-host macos detect --print-field host)"
+[ "$detected_host" = macos ] || { echo "ERROR: source-access host detector returned $detected_host" >&2; exit 3; }
+
+if /usr/bin/python3 "$root/plugins/android-framework-ops/internal/android-source-access/scripts/android_source_access.py" --expected-host wsl list-commands >/dev/null 2>&1; then
+  echo "ERROR: WSL source-access entry unexpectedly accepted macOS" >&2
+  exit 3
+fi
+
+"$root/plugins/android-mac-ops/skills/android-source-access/scripts/detect-projects.sh" --help >/dev/null
+if "$root/plugins/android-wsl-ops/skills/android-source-access/scripts/restore-project-mount.sh" --list >/dev/null 2>&1; then
+  echo "ERROR: WSL source-access shim unexpectedly ran on macOS" >&2
+  exit 3
+fi
 
 echo "MACOS_REMOTE_VALIDATION=PASS"
 REMOTE

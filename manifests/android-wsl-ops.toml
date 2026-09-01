@@ -3,4 +3,4 @@
 [[skills]]
 name = "android-source-access"
 category = "WSL Source Access"
-summary = "在 WSL 中挂载或恢复 Android 服务器源码，并记录本地路径、远程路径和 SSH 主机映射"
+summary = "保留 WSL 公开入口，并薄转发到 android-framework-ops 内唯一的自动主机识别和 CIFS/Samba 实现"

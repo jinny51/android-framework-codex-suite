@@ -4,7 +4,7 @@ Android Framework Ops 是本套件的共享核心插件。它负责 Android Fram
 
 这个插件内置可机器验证的核心工程不变量：patch 归档身份、真实证据和 Framework 专属安全规则。它不强行接管个人代码风格、项目本地规范或 review workflow；这些规则可以叠加，但不能改写核心身份和证据合同。
 
-源码挂载属于平台插件：WSL 使用 `android-wsl-ops`，macOS 使用 `android-mac-ops`。远程构建、产物定位和本地 adb 交付是平台无关能力，只在本核心插件保留一套实现。
+源码接入实现只在本核心插件保留一套，并在任何副作用前自动识别 WSL 或 macOS。成员当前仍从 `android-wsl-ops` 或 `android-mac-ops` 的 `android-source-access` 入口调用；平台插件只保留命令路径和薄转发，不再复制 CIFS/SMB、Keychain、registry 或识别实现。远程构建、产物定位和本地 adb 交付同样只在本核心插件保留一套实现。
 
 ## 包含的 skill
 
@@ -29,7 +29,7 @@ Android Framework Ops 是本套件的共享核心插件。它负责 Android Fram
 
 ## 推荐工作流
 
-1. `android-source-access`（来自 `android-wsl-ops`）或 `android-source-access`（来自 `android-mac-ops`）先确认源码路径和远程映射。
+1. `android-source-access`（来自当前系统的平台插件）先确认源码路径和远程映射；它会调用核心内部的统一实现并校验当前主机。
 2. `android-knowledge-search` 在正式分析前检索知识库仓库里的既有方案、补丁和验证证据。
 3. `android-change-policy` 在修改前确定成员身份、patch 标记和领域规则。
 4. `android-framework-change-workflow` 负责需求分析、源码修改、调试日志、风险判断和验收口径。

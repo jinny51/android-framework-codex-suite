@@ -2,6 +2,8 @@
 
 Android Mac Ops 是 macOS 平台插件，只负责原生 SMB/Samba 源码接入、Keychain 凭据引用和远程路径登记。
 
+当前公开 Skill 和命令路径保持不变，真实 SMB、Keychain、项目识别和 registry 实现集中在 `android-framework-ops`；本插件只做经过核心版本与 macOS 主机校验的薄转发。
+
 必须先安装 `android-framework-ops`，再安装本插件。
 
 ## 包含的 skill

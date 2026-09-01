@@ -2,6 +2,8 @@
 
 Android WSL Ops 是 WSL 平台插件，只负责 WSL 侧的 Samba/CIFS 源码接入和远程路径登记。
 
+当前公开 Skill 和命令路径保持不变，真实 CIFS/Samba、项目识别、registry 和凭据实现集中在 `android-framework-ops`；本插件只做经过核心版本与 WSL 主机校验的薄转发。
+
 必须先安装 `android-framework-ops`，再安装本插件。
 
 ## 包含的 skill

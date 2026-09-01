@@ -2,16 +2,16 @@
 
 面向 Android Framework 团队的 Codex 插件套件。
 
-这个仓库是 Android Framework 相关 Codex 能力的插件市场来源。团队成员安装 android-framework-ops 获得共享工程能力和唯一 Android 变更规范，再根据环境安装 android-wsl-ops（WSL）或 android-mac-ops（macOS）平台层插件。旧 Jinny 规范插件仅作兼容 wrapper，Codex 工作区维护为独立可选安装。
+这个仓库是 Android Framework 相关 Codex 能力的插件市场来源。团队成员安装 android-framework-ops 获得共享工程能力、唯一 Android 变更规范和 source-access 内部实现，再根据环境安装 android-wsl-ops（WSL）或 android-mac-ops（macOS）公开入口。Jinny 插件只提供明确请求时的可选偏好，Codex 工作区维护保持独立。
 
 ## 插件一览
 
 | 插件 | 定位 | 包含内容 | 推荐安装对象 |
 | --- | --- | --- | --- |
 | [android-framework-ops](plugins/android-framework-ops/README.md) | Android Framework 核心工程插件 | Android 变更规范、需求分析、知识检索、远程执行、构建交付、补丁归档和 incoming | 所有需要 Codex 处理 Android Framework 工程任务的成员 |
-| [android-wsl-ops](plugins/android-wsl-ops/README.md) | WSL 平台插件 | WSL Samba/CIFS 源码接入 | 在 WSL 环境中使用 Codex 的成员 |
-| [android-mac-ops](plugins/android-mac-ops/README.md) | macOS 平台插件 | macOS 原生 SMB 源码接入和 Keychain 凭据引用 | 在 macOS 环境中使用 Codex 的成员 |
-| [jinny-android-practices](plugins/jinny-android-practices/README.md) | 兼容插件 | 保留旧 `jinny-framework-coding-standards` ID 并转向 `android-change-policy` | 仅限已有安装和旧提示词 |
+| [android-wsl-ops](plugins/android-wsl-ops/README.md) | WSL 公开入口 | 薄转发到核心内唯一的 WSL CIFS/Samba 实现 | 在 WSL 环境中使用 Codex 的成员 |
+| [android-mac-ops](plugins/android-mac-ops/README.md) | macOS 公开入口 | 薄转发到核心内唯一的 SMB/Keychain 实现 | 在 macOS 环境中使用 Codex 的成员 |
+| [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选实践插件 | 在核心 Policy 之上叠加明确请求的 Jinny 命名、review 或项目偏好 | 明确需要 Jinny 偏好的成员 |
 | [codex-workspace-care](plugins/codex-workspace-care/README.md) | 独立工作区维护插件 | Codex 本地聊天历史清理、修复、隐私残留检查、上下文交接 | 需要维护本地 Codex 状态或迁移会话上下文的成员 |
 
 `codex-chat-history-cleaner` 和 `codex-chat-history-context-extractor` 不属于 Android Framework 工程链路，所以放在独立插件 `codex-workspace-care` 中。
@@ -27,7 +27,7 @@
 3. 个人或项目规则可叠加代码风格、review 口径和项目偏好。
 4. `android-framework-ops` 负责 Framework 工程闭环：知识检索、诊断修改、验收证据、补丁归档、incoming 上传材料。
 5. `android-framework-ops` 使用一套跨平台远程构建和本地 adb 交付实现。
-6. `android-wsl-ops` 或 `android-mac-ops` 只提供当前操作系统的源码挂载。
+6. `android-wsl-ops` 或 `android-mac-ops` 保留当前操作系统的公开入口；源码接入实现由核心统一拥有并自动识别主机。
 7. `codex-workspace-care` 只在用户明确需要处理本地 Codex 历史或交接上下文时使用。
 
 这样做的目的很直接：核心插件可以给很多人用，但不把某个人的编码习惯绑定进所有人的工作流。

@@ -12,7 +12,11 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-SKILL_DIR = REPO_ROOT / "plugins" / "android-wsl-ops" / "skills" / "android-source-access"
+ENTRY_SKILL_DIR = REPO_ROOT / "plugins" / "android-wsl-ops" / "skills" / "android-source-access"
+SKILL_DIR = (
+    REPO_ROOT
+    / "plugins/android-framework-ops/adapters/source-access/wsl/skills/android-source-access"
+)
 SCRIPT_DIR = SKILL_DIR / "scripts"
 INSPECTION_HELPER = (
     REPO_ROOT / "plugins" / "android-framework-ops" / "lib" / "android_framework_ops" / "remote_source_inspection.py"

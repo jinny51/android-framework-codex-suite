@@ -87,12 +87,18 @@ def test_platform_entries_are_thin_remote_inspector_adapters() -> None:
     mac = MAC_ENTRY.read_text(encoding="utf-8")
 
     for source in (wsl, mac):
-        assert "ANDROID_REMOTE_SOURCE_INSPECTION_HELPER" in source
-        assert "ANDROID_REMOTE_CHANNEL_SCRIPT" in source
+        assert "_platform_shim.sh" in source
+        assert "_core_source_access.py" not in source
         assert "score_rk=0" not in source
         assert "first_assignment()" not in source
         assert "ssh " not in source
-    assert "remote_script='" not in wsl
+    assert wsl == mac
+    for entry in (WSL_ENTRY, MAC_ENTRY):
+        platform_shim = (entry.parent / "_platform_shim.sh").read_text(encoding="utf-8")
+        locator = (entry.parent / "_core_source_access.py").read_text(encoding="utf-8")
+        assert "_core_source_access.py" in platform_shim
+        assert "ANDROID_REMOTE_SOURCE_INSPECTION_HELPER" not in platform_shim
+        assert "MIN_CORE_VERSION" in locator
 
 
 def test_mtk_alias_and_project_branch_have_one_identity(tmp_path: Path) -> None:
