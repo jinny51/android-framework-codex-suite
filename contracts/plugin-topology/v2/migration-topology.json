@@ -1,0 +1,264 @@
+{
+  "schema": "android-plugin-topology-migration-v2",
+  "contract_id": "akbs2-three-plugin-topology-v1",
+  "phase": "phase0_contract_freeze",
+  "architecture_binding": {
+    "baseline_id": "akbs-2-architecture-baseline-v1",
+    "baseline_run": "v1-20260901",
+    "architecture_sha256": "828eb97f6dbce441423f0a8c471d6c984187c8c1c846b91a3bfcbb6267a9b54b",
+    "plugin_source_baseline": "c0840685911ef7e19dba3893e014a257727c54b6"
+  },
+  "system_identity": {
+    "brand": "AKBS",
+    "official_name": "Android Knowledge Base System",
+    "rejected_expression": "Android Framework 知识库"
+  },
+  "physical_policy": {
+    "default_state": "current",
+    "materialized_states": [
+      "current"
+    ],
+    "declaration_only_states": [
+      "migration",
+      "target"
+    ],
+    "current_authority": "contracts/plugin-topology/v1/active-topology.json",
+    "current_authority_sha256": "423de887cef01689443bef8325f194e06aaff27adfe5429d0be8f578534551cd",
+    "undeclared_mixed_behavior": "reject"
+  },
+  "state_order": [
+    "current",
+    "migration",
+    "target"
+  ],
+  "states": [
+    {
+      "id": "current",
+      "mode": "physical_default",
+      "source_plugins": [
+        "android-framework-ops",
+        "android-wsl-ops",
+        "android-mac-ops",
+        "jinny-android-practices",
+        "codex-workspace-care"
+      ],
+      "marketplace_plugins": [
+        "android-framework-ops",
+        "android-wsl-ops",
+        "android-mac-ops",
+        "jinny-android-practices"
+      ],
+      "topology_authority": "../v1/active-topology.json"
+    },
+    {
+      "id": "migration",
+      "mode": "declaration_fixture",
+      "catalog_plugins": [
+        "akbs-member-ops",
+        "android-engineering-ops",
+        "jinny-android-practices",
+        "android-framework-ops",
+        "android-wsl-ops",
+        "android-mac-ops"
+      ],
+      "canonical_plugins": [
+        {
+          "id": "akbs-member-ops",
+          "role": "akbs_member_client",
+          "skills": [
+            "akbs-member-setup",
+            "akbs-knowledge-search",
+            "akbs-knowledge-merge-review",
+            "akbs-daily-report",
+            "akbs-weekly-report",
+            "akbs-patch-submit"
+          ],
+          "compatibility_skills": [
+            "android-member-setup",
+            "android-knowledge-search",
+            "android-knowledge-merge-review",
+            "android-daily-report-intake",
+            "android-weekly-report-intake",
+            "android-framework-patch-intake",
+            "android-knowledge-intake"
+          ]
+        },
+        {
+          "id": "android-engineering-ops",
+          "role": "android_engineering_controller_and_tools",
+          "skills": [
+            "android-change-policy",
+            "android-change-workflow",
+            "android-source-access",
+            "android-remote-channel",
+            "android-remote-build-deploy",
+            "android-patch-capture"
+          ],
+          "compatibility_skills": [
+            "android-framework-change-workflow",
+            "android-framework-patch-capture"
+          ]
+        },
+        {
+          "id": "jinny-android-practices",
+          "role": "optional_practices_provider",
+          "skills": [
+            "jinny-android-coding-practices",
+            "jinny-android-execution-policy"
+          ],
+          "compatibility_skills": [
+            "jinny-framework-coding-standards"
+          ]
+        }
+      ],
+      "legacy_entries": [
+        {
+          "id": "android-framework-ops",
+          "mode": "compatibility_surface_only"
+        },
+        {
+          "id": "android-wsl-ops",
+          "mode": "platform_wrapper_or_deprecation_notice_only"
+        },
+        {
+          "id": "android-mac-ops",
+          "mode": "platform_wrapper_or_deprecation_notice_only"
+        }
+      ],
+      "installation_families": {
+        "legacy_rollback": {
+          "source": "immutable_current_release",
+          "coinstall_with_target": false
+        },
+        "target_candidate": {
+          "plugins_by_profile": {
+            "report_only_or_gms": [
+              "akbs-member-ops"
+            ],
+            "local_android_engineer": [
+              "android-engineering-ops"
+            ],
+            "android_engineer_with_akbs": [
+              "akbs-member-ops",
+              "android-engineering-ops"
+            ]
+          },
+          "optional_plugins": [
+            "jinny-android-practices"
+          ],
+          "coinstall_with_legacy": false
+        }
+      }
+    },
+    {
+      "id": "target",
+      "mode": "declaration_fixture",
+      "source_plugins": [
+        "akbs-member-ops",
+        "android-engineering-ops",
+        "jinny-android-practices",
+        "codex-workspace-care"
+      ],
+      "marketplace_plugins": [
+        "akbs-member-ops",
+        "android-engineering-ops",
+        "jinny-android-practices"
+      ],
+      "plugins": [
+        {
+          "id": "akbs-member-ops",
+          "role": "akbs_member_client",
+          "skills": [
+            "akbs-member-setup",
+            "akbs-knowledge-search",
+            "akbs-knowledge-merge-review",
+            "akbs-daily-report",
+            "akbs-weekly-report",
+            "akbs-patch-submit"
+          ]
+        },
+        {
+          "id": "android-engineering-ops",
+          "role": "android_engineering_controller_and_tools",
+          "skills": [
+            "android-change-policy",
+            "android-change-workflow",
+            "android-source-access",
+            "android-remote-channel",
+            "android-remote-build-deploy",
+            "android-patch-capture"
+          ]
+        },
+        {
+          "id": "jinny-android-practices",
+          "role": "optional_practices_provider",
+          "skills": [
+            "jinny-android-coding-practices",
+            "jinny-android-execution-policy"
+          ]
+        },
+        {
+          "id": "codex-workspace-care",
+          "role": "independent_source",
+          "marketplace": false,
+          "skills": [
+            "codex-chat-history-cleaner",
+            "codex-chat-history-context-extractor"
+          ]
+        }
+      ]
+    }
+  ],
+  "invariants": [
+    "one_canonical_implementation_owner_per_intent",
+    "one_default_public_owner_per_installed_profile",
+    "legacy_and_target_install_families_are_mutually_exclusive",
+    "legacy_surfaces_are_wrapper_adapter_or_notice_only_after_owner_move",
+    "codex_workspace_care_remains_independent",
+    "legacy_config_credentials_artifacts_and_packages_are_never_rewritten_in_place",
+    "migration_and_target_are_not_materialized_in_phase0"
+  ],
+  "compatibility_coverage": {
+    "plugin_identity": [
+      "plugin.akbs-member-ops",
+      "plugin.android-engineering-ops",
+      "plugin.jinny-android-practices",
+      "plugin.legacy-android-ops",
+      "plugin.codex-workspace-care"
+    ],
+    "skill_id": [
+      "skill.akbs-member-family",
+      "skill.android-engineering-family",
+      "skill.android-source-access",
+      "skill.jinny-provider-family",
+      "skill.android-knowledge-intake"
+    ],
+    "cli_entrypoint_family": [
+      "cli.akbs-member",
+      "cli.android-engineering",
+      "cli.source-access"
+    ],
+    "config_path": [
+      "config.member-profile",
+      "config.android-engineering-extension"
+    ],
+    "state_path": [
+      "state.source-access"
+    ],
+    "artifact_root": [
+      "artifact.akbs-member",
+      "artifact.android-patch-capture",
+      "artifact.android-remote-build-deploy"
+    ],
+    "package_contract": [
+      "package.framework-change-v1",
+      "package.android-change-v2"
+    ],
+    "installed_cache_identity": [
+      "cache.legacy-installations"
+    ],
+    "marketplace_entry": [
+      "marketplace.entries"
+    ]
+  }
+}
