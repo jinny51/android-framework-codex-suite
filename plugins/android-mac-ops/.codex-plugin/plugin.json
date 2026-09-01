@@ -1,6 +1,6 @@
 {
   "name": "android-mac-ops",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "macOS public entry for the shared Android source-access implementation.",
   "author": {
     "name": "Jinny Android Framework Team",

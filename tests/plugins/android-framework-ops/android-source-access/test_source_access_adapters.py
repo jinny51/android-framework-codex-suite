@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -203,6 +204,33 @@ def test_current_wsl_public_entry_runs_core_and_macos_entry_fails_closed() -> No
     assert wrong_host.returncode == 2
     assert "platform entry expects macos, detected wsl" in wrong_host.stderr
     assert wrong_host.stdout == ""
+
+
+def test_versioned_plugin_cache_entry_reads_manifest_identity(tmp_path: Path) -> None:
+    source = PLATFORM_PLUGINS["wsl"]
+    manifest = json.loads(
+        (source / ".codex-plugin/plugin.json").read_text(encoding="utf-8")
+    )
+    installed = tmp_path / "android-wsl-ops" / manifest["version"]
+    shutil.copytree(source, installed)
+    entry = installed / "skills/android-source-access/scripts/restore-project-mount.sh"
+    env = {
+        **os.environ,
+        "ANDROID_FRAMEWORK_OPS_ROOT": str(CORE_PLUGIN),
+        "WSL_INTEROP": "/run/WSL/1_interop",
+    }
+
+    result = subprocess.run(
+        [str(entry), "--help"],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "restore-project-mount.sh --list" in result.stdout
 
 
 def test_internal_adapter_keeps_pseudo_plugin_relative_layout() -> None:

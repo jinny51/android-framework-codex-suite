@@ -1,6 +1,6 @@
 {
   "name": "android-wsl-ops",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "WSL public entry for the shared Android source-access implementation.",
   "author": {
     "name": "Jinny Android Framework Team",
