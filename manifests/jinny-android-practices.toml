@@ -1,6 +1,6 @@
-# Optional Jinny Android Framework practices.
+# Optional Jinny preferences layered on the canonical core policy.
 
 [[skills]]
 name = "jinny-framework-coding-standards"
-category = "Team Practices"
-summary = "在 Jinny 团队 Android Framework 需求实现、评审和补丁打包前应用补丁开发规范与 FrameworkLog 日志规范"
+category = "Optional Practices"
+summary = "在核心 android-change-policy 之上叠加用户明确要求的 Jinny 命名和评审偏好"

@@ -72,7 +72,7 @@ def create_capture_package(
         "--- a/frameworks/base/services/core/java/X.java\n"
         "+++ b/frameworks/base/services/core/java/X.java\n"
         "@@ -1 +1,2 @@\n"
-        "+//gyf 20260526@ nav policy toggle\n",
+        "+//legacy_author 20260526@ nav policy toggle\n",
         encoding="utf-8",
     )
     readme.write_text(valid_patch_readme(), encoding="utf-8")
@@ -218,7 +218,7 @@ def create_feature_capture_package(root: Path) -> Path:
         "--- a/services/core/java/com/android/server/wm/DisplayPolicy.java\n"
         "+++ b/services/core/java/com/android/server/wm/DisplayPolicy.java\n"
         "@@ -1 +1,2 @@\n"
-        "+//gyf 20260608@ display policy\n",
+        "+//legacy_author 20260608@ display policy\n",
         encoding="utf-8",
     )
     second_patch.write_text(
@@ -226,7 +226,7 @@ def create_feature_capture_package(root: Path) -> Path:
         "--- a/src/com/android/settings/DisplaySettings.java\n"
         "+++ b/src/com/android/settings/DisplaySettings.java\n"
         "@@ -1 +1,2 @@\n"
-        "+//gyf 20260608@ settings entry\n",
+        "+//legacy_author 20260608@ settings entry\n",
         encoding="utf-8",
     )
     write_json(
@@ -391,7 +391,7 @@ def create_multi_feature_capture_package(root: Path, *, feature_limit: int | Non
             "--- a/frameworks/base/services/core/java/X.java\n"
             "+++ b/frameworks/base/services/core/java/X.java\n"
             "@@ -1 +1,2 @@\n"
-            f"+//gyf 20260612@ {label}\n",
+            f"+//legacy_author 20260612@ {label}\n",
             encoding="utf-8",
         )
         patches.append(
@@ -902,7 +902,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "--- a/res/values/strings.xml\n"
                 "+++ b/res/values/strings.xml\n"
                 "@@ -1,3 +1,20 @@\n"
-                "+//gyf 20260623@ add performance mode resources\n"
+                "+//legacy_author 20260623@ add performance mode resources\n"
                 "+<string name=\"performance_mode_title\">Performance mode</string>\n"
                 "+<string name=\"performance_mode_power_save\">Eco mode</string>\n"
                 "+<string name=\"proxy_tip\">HTTP proxy used by the browser</string>\n"
@@ -947,7 +947,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                     "--- a/frameworks/base/services/core/java/X.java\n"
                     "+++ b/frameworks/base/services/core/java/X.java\n"
                     "@@ -1 +1,2 @@\n"
-                    "+//gyf 20260612@ raw patch should be captured by skill first\n",
+                    "+//legacy_author 20260612@ raw patch should be captured by skill first\n",
                     encoding="utf-8",
                 )
                 patches.append(str(patch))
@@ -1219,7 +1219,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "--- a/frameworks/base/services/core/java/com/android/server/wm/DisplayPolicy.java\n"
                 "+++ b/frameworks/base/services/core/java/com/android/server/wm/DisplayPolicy.java\n"
                 "@@ -1 +1,2 @@\n"
-                "+//gyf 20260526@ display policy\n",
+                "+//legacy_author 20260526@ display policy\n",
                 encoding="utf-8",
             )
 
@@ -1688,7 +1688,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "--- a/frameworks/base/services/core/java/X.java\n"
                 "+++ b/frameworks/base/services/core/java/X.java\n"
                 "@@ -1 +1,2 @@\n"
-                "+//gyf 20260526@ blocked policy investigation\n",
+                "+//legacy_author 20260526@ blocked policy investigation\n",
                 encoding="utf-8",
             )
 
@@ -1718,7 +1718,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "--- a/frameworks/base/services/core/java/X.java\n"
                 "+++ b/frameworks/base/services/core/java/X.java\n"
                 "@@ -1 +1,2 @@\n"
-                "+//gyf 20260526@ empty readme case\n",
+                "+//legacy_author 20260526@ empty readme case\n",
                 encoding="utf-8",
             )
             patch.with_suffix(".readme.md").write_text("", encoding="utf-8")
@@ -1748,7 +1748,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "--- a/frameworks/base/services/core/java/X.java\n"
                 "+++ b/frameworks/base/services/core/java/X.java\n"
                 "@@ -1 +1,2 @@\n"
-                "+//gyf 20260526@ template readme case\n",
+                "+//legacy_author 20260526@ template readme case\n",
                 encoding="utf-8",
             )
             patch.with_suffix(".readme.md").write_text(
@@ -1829,7 +1829,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "--- a/frameworks/base/services/core/java/X.java\n"
                 "+++ b/frameworks/base/services/core/java/X.java\n"
                 "@@ -1 +1,2 @@\n"
-                "+//gyf 20260526@ nav policy toggle\n",
+                "+//legacy_author 20260526@ nav policy toggle\n",
                 encoding="utf-8",
             )
 
@@ -1862,7 +1862,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                     "--- a/frameworks/base/services/core/java/X.java\n"
                     "+++ b/frameworks/base/services/core/java/X.java\n"
                     "@@ -1 +1,2 @@\n"
-                    "+//gyf 20260601@ framework policy\n",
+                    "+//legacy_author 20260601@ framework policy\n",
                     encoding="utf-8",
                 )
                 patch.with_suffix(".readme.md").write_text(valid_patch_readme(patch.stem), encoding="utf-8")
@@ -1992,7 +1992,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "--- a/frameworks/base/services/core/java/X.java\n"
                 "+++ b/frameworks/base/services/core/java/X.java\n"
                 "@@ -1 +1,2 @@\n"
-                "+//gyf 20260601@ framework policy\n",
+                "+//legacy_author 20260601@ framework policy\n",
                 encoding="utf-8",
             )
             patch.with_suffix(".readme.md").write_text("# 状态栏策略\n\n这是根据补丁 diff 自动生成的草稿说明。\n", encoding="utf-8")
@@ -2109,7 +2109,7 @@ class PatchCaptureIngestTests(unittest.TestCase):
                 "--- a/frameworks/base/services/core/java/Y.java\n"
                 "+++ b/frameworks/base/services/core/java/Y.java\n"
                 "@@ -1 +1,2 @@\n"
-                "+//gyf 20260608@ template companion case\n",
+                "+//legacy_author 20260608@ template companion case\n",
                 encoding="utf-8",
             )
             standalone_patch.with_suffix(".readme.md").write_text(

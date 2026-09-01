@@ -22,7 +22,7 @@
 - 看到一个类名、属性、Settings key、资源 key，想知道以前哪个补丁改过。
 - 管理员需要追溯日报、周报、incoming 事件或原始来源时，使用显式 `--type report`、`--type event` 或 `--type evidence`。
 - 想确认某个 incoming 是否留下了可复用验证证据。
-- 成员收到“等待确认合并”时，让 Codex 按通知中的 `confirmation_id` 读取目标知识、合并依据和 compare 结果，生成是否需要提出异议的分析摘要；`patch_package_id` 仍是业务主体，`package_key` 只表示来源。
+- 合并确认由 `android-knowledge-merge-review` 负责；本 Skill 的旧 merge 参数只作为兼容入口。
 - `android-framework-change-workflow` 在进入源码分析前，先查知识库作为参考材料。
 
 ## 常用命令
@@ -92,7 +92,7 @@ python3 "scripts/android_knowledge_search.py" \
 
 服务端结果原样显示返回的 `search_mode`，并按 `reuse_grade` 展示：`reusable` 显示“可复用候选”，`reference_only` 显示“仅参考”，`insufficient_evidence` 显示“证据不足”，`different_function` 显示“功能不同”，`duplicate_source` 显示“重复来源线索”。本地 fallback 会提示“本地文本搜索，未经过服务端复用分级”，不能直接当作服务端可复用结论。
 
-查看合并确认和依据：
+兼容入口：查看合并确认和依据（新任务应使用 `android-knowledge-merge-review`）：
 
 ```bash
 python3 "scripts/android_knowledge_search.py" \

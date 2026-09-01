@@ -606,7 +606,7 @@ def create_framework_repo(root: Path) -> Path:
     run(["git", "commit", "-m", "initial"], source_root)
     java_file.write_text(
         "class VolumeDialogImpl {\n"
-        "  //gyf 20260601@ adjust volume dialog position for product policy\n"
+        "  //legacy_author 20260601@ adjust volume dialog position for product policy\n"
         "  static final String KEY = \"persist.sys.volume_dialog_position\";\n"
         "}\n",
         encoding="utf-8",
@@ -2824,7 +2824,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "--- a/frameworks/base/services/core/java/X.java\n"
                 "+++ b/frameworks/base/services/core/java/X.java\n"
                 "@@ -1 +1,2 @@\n"
-                "+//gyf 20260602@ statusbar policy\n",
+                "+//legacy_author 20260602@ statusbar policy\n",
                 encoding="utf-8",
             )
             patch_file.with_suffix(".readme.md").write_text("", encoding="utf-8")
@@ -3609,7 +3609,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                 "--- a/frameworks/base/services/core/java/X.java\n"
                 "+++ b/frameworks/base/services/core/java/X.java\n"
                 "@@ -1 +1,2 @@\n"
-                "+//gyf 20260601@ statusbar policy\n",
+                "+//legacy_author 20260601@ statusbar policy\n",
                 encoding="utf-8",
             )
             readme_file.write_text(

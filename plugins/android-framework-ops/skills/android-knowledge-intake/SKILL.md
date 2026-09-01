@@ -1,11 +1,16 @@
 ---
 name: android-knowledge-intake
-description: Use when handling member first setup, doctor checks, plugin updates, current member configuration, or the shared member-side incoming kernel used by the daily, weekly, and patch intake skills. Do not use for knowledge curation decisions.
+description: Use as the compatibility CLI and shared member-side incoming v1 kernel used by daily, weekly, and patch intake skills. Use android-member-setup for first setup, profile guidance, doctor checks, and plugin/cache diagnostics. Do not use for knowledge curation decisions.
 ---
 
 # Android Knowledge Intake
 
-Use this skill for the member-side incoming 共享内核（shared kernel）, setup, doctor checks, plugin updates, and current configuration. Member-facing business entrypoints are `android-daily-report-intake`, `android-weekly-report-intake`, and `android-framework-patch-intake`; they all call this one script and protocol layer instead of copying upload logic.
+Use this skill for the compatibility CLI and member-side incoming 共享内核（shared kernel）.
+`android-member-setup` now owns first setup, profile guidance, doctor checks, plugin updates,
+and current configuration diagnostics. Member-facing business entrypoints remain
+`android-daily-report-intake`, `android-weekly-report-intake`, and
+`android-framework-patch-intake`; they call this protocol layer instead of copying upload
+logic. The old `doctor` command remains compatible.
 
 The skill does not write final knowledge reports, curated patches, index, or site directories. It creates a local pending incoming package first, then sends that package through the server submission channel. The member-side skill does not clone, pull, directly search, or push the database repository; member viewing UI is a separate server-side database view.
 

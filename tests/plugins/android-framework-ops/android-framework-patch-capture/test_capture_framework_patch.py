@@ -136,7 +136,7 @@ def create_plain_repo(root: Path) -> None:
     run(["git", "commit", "-m", "initial"], root)
     (source / "DisplayPolicy.java").write_text(
         "class DisplayPolicy {\n"
-        "  //gyf 20260604@ plain policy update\n"
+        "  //legacy_author 20260604@ plain policy update\n"
         "}\n",
         encoding="utf-8",
     )
@@ -156,14 +156,14 @@ def create_audio_camera_repo(root: Path) -> None:
     run(["git", "commit", "-m", "initial"], root)
     (audio / "AudioService.java").write_text(
         "class AudioService {\n"
-        "  //gyf 20260530@ adjust microphone route fallback\n"
+        "  //legacy_author 20260530@ adjust microphone route fallback\n"
         "  static final String MIC_POLICY = \"persist.sys.mic_policy\";\n"
         "}\n",
         encoding="utf-8",
     )
     (camera / "CameraService.cpp").write_text(
         "class CameraService {\n"
-        "  //gyf 20260530@ align camera permission fallback\n"
+        "  //legacy_author 20260530@ align camera permission fallback\n"
         "};\n",
         encoding="utf-8",
     )
@@ -180,7 +180,7 @@ def create_launcher_repo(root: Path) -> None:
     run(["git", "commit", "-m", "initial"], root)
     (source / "Workspace.java").write_text(
         "class Workspace {\n"
-        "  //gyf 20260728@ keep workspace labels centered\n"
+        "  //legacy_author 20260728@ keep workspace labels centered\n"
         "  static final boolean CENTER_LABELS = true;\n"
         "}\n",
         encoding="utf-8",
@@ -198,7 +198,7 @@ def create_frameworks_base_repo(root: Path) -> None:
     run(["git", "commit", "-m", "initial"], root)
     (source / "DisplayPolicy.java").write_text(
         "class DisplayPolicy {\n"
-        "  //gyf 20260608@ align cross repo feature policy\n"
+        "  //legacy_author 20260608@ align cross repo feature policy\n"
         "  static final String KEY = \"persist.sys.cross_repo_policy\";\n"
         "}\n",
         encoding="utf-8",
@@ -216,7 +216,7 @@ def create_settings_repo(root: Path) -> None:
     run(["git", "commit", "-m", "initial"], root)
     (source / "DisplaySettings.java").write_text(
         "class DisplaySettings {\n"
-        "  //gyf 20260608@ expose cross repo feature switch\n"
+        "  //legacy_author 20260608@ expose cross repo feature switch\n"
         "}\n",
         encoding="utf-8",
     )
@@ -231,7 +231,7 @@ def create_mode_only_repo(root: Path) -> Path:
     file_path = source / "DisplayPolicy.java"
     file_path.write_text(
         "class DisplayPolicy {\n"
-        "  //gyf 20260615@ existing feature marker\n"
+        "  //legacy_author 20260615@ existing feature marker\n"
         "}\n",
         encoding="utf-8",
     )
@@ -260,7 +260,7 @@ def create_repo_with_mode_noise(root: Path) -> tuple[Path, Path]:
     run(["git", "commit", "-m", "initial mixed mode repo"], root)
     file_path.write_text(
         "class DisplayPolicy {\n"
-        "  //gyf 20260615@ keep content diff while dropping mode noise\n"
+        "  //legacy_author 20260615@ keep content diff while dropping mode noise\n"
         "  static final String KEY = \"persist.sys.mode_noise\";\n"
         "}\n",
         encoding="utf-8",

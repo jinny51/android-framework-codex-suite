@@ -1,6 +1,11 @@
 # Neutral Android Framework engineering skills shipped by android-framework-ops.
 
 [[skills]]
+name = "android-change-policy"
+category = "Engineering Policy"
+summary = "应用唯一的 Android 变更规范：全域 patch 成员溯源、领域规则分层、历史作者保护和可验证门禁"
+
+[[skills]]
 name = "android-framework-change-workflow"
 category = "Framework Workflow"
 summary = "统筹 Android Framework 开工前检索、需求分析、诊断修改、验证验收、包状态判断和 incoming 材料上传"
@@ -31,9 +36,19 @@ category = "Knowledge System"
 summary = "默认搜索团队知识库中的可复用案例、平台实现、补丁、检索锚点和验证记录"
 
 [[skills]]
+name = "android-knowledge-merge-review"
+category = "Knowledge System"
+summary = "按 confirmation_id 查看 AKBS 合并依据、比较证据并在成员明确授权时提交异议"
+
+[[skills]]
 name = "android-knowledge-intake"
 category = "Knowledge System"
 summary = "成员 incoming 共享内核、当前配置诊断和插件更新检查"
+
+[[skills]]
+name = "android-member-setup"
+category = "Member Setup"
+summary = "成员首次启用、profile 配置指引、doctor、插件版本和当前会话缓存诊断"
 
 [[skills]]
 name = "android-remote-channel"

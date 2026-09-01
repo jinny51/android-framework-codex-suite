@@ -2,43 +2,47 @@
 
 面向 Android Framework 团队的 Codex 插件套件。
 
-这个仓库是 Android Framework 相关 Codex 能力的插件市场来源。团队成员安装 android-framework-ops 获得共享工程能力，再根据环境安装 android-wsl-ops（WSL）或 android-mac-ops（macOS）平台层插件。Jinny 团队实践和 Codex 工作区维护为可选安装。
+这个仓库是 Android Framework 相关 Codex 能力的插件市场来源。团队成员安装 android-framework-ops 获得共享工程能力和唯一 Android 变更规范，再根据环境安装 android-wsl-ops（WSL）或 android-mac-ops（macOS）平台层插件。旧 Jinny 规范插件仅作兼容 wrapper，Codex 工作区维护为独立可选安装。
 
 ## 插件一览
 
 | 插件 | 定位 | 包含内容 | 推荐安装对象 |
 | --- | --- | --- | --- |
-| [android-framework-ops](plugins/android-framework-ops/README.md) | Android Framework 核心工程插件 | 需求分析、知识检索、远程执行、跨平台构建交付、补丁归档、incoming 上传材料 | 所有需要 Codex 处理 Android Framework 工程任务的成员 |
+| [android-framework-ops](plugins/android-framework-ops/README.md) | Android Framework 核心工程插件 | Android 变更规范、需求分析、知识检索、远程执行、构建交付、补丁归档和 incoming | 所有需要 Codex 处理 Android Framework 工程任务的成员 |
 | [android-wsl-ops](plugins/android-wsl-ops/README.md) | WSL 平台插件 | WSL Samba/CIFS 源码接入 | 在 WSL 环境中使用 Codex 的成员 |
 | [android-mac-ops](plugins/android-mac-ops/README.md) | macOS 平台插件 | macOS 原生 SMB 源码接入和 Keychain 凭据引用 | 在 macOS 环境中使用 Codex 的成员 |
-| [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选团队实践插件 | Jinny 团队代码风格、FrameworkLog 规范、review、项目本地规范等有倾向性的规则入口 | 想沿用 Jinny 团队实践的成员 |
+| [jinny-android-practices](plugins/jinny-android-practices/README.md) | 兼容插件 | 保留旧 `jinny-framework-coding-standards` ID 并转向 `android-change-policy` | 仅限已有安装和旧提示词 |
 | [codex-workspace-care](plugins/codex-workspace-care/README.md) | 独立工作区维护插件 | Codex 本地聊天历史清理、修复、隐私残留检查、上下文交接 | 需要维护本地 Codex 状态或迁移会话上下文的成员 |
 
 `codex-chat-history-cleaner` 和 `codex-chat-history-context-extractor` 不属于 Android Framework 工程链路，所以放在独立插件 `codex-workspace-care` 中。
 
 ## 设计原则
 
-`android-framework-ops` 是中立核心插件，也是团队默认主链路。它只提供 Android Framework 专项工程能力，不强制替代成员自己的代码风格 skill、项目 `AGENTS.md`、本地规范或 review workflow。
+`android-framework-ops` 是核心插件，也是团队默认主链路。它强制可验证的核心不变量：成员身份、patch 溯源、真实证据和领域安全规则；但不强制替代成员自己的代码风格 skill、项目 `AGENTS.md`、本地规范或 review workflow。
 
 当成员同时安装自己的 skill、项目本地规则和本仓库插件时，预期组合方式是：
 
 1. 用户当前明确要求和项目本地规范优先。
-2. 个人或团队实践 skill 负责代码风格、review 口径、项目偏好。
-3. `android-framework-ops` 负责 Framework 工程闭环：知识检索、诊断修改、验收证据、补丁归档、incoming 上传材料。
-4. `android-framework-ops` 使用一套跨平台远程构建和本地 adb 交付实现。
-5. `android-wsl-ops` 或 `android-mac-ops` 只提供当前操作系统的源码挂载。
-6. `codex-workspace-care` 只在用户明确需要处理本地 Codex 历史或交接上下文时使用。
+2. `android-change-policy` 负责不可被覆盖的成员身份、patch 溯源和领域规则。
+3. 个人或项目规则可叠加代码风格、review 口径和项目偏好。
+4. `android-framework-ops` 负责 Framework 工程闭环：知识检索、诊断修改、验收证据、补丁归档、incoming 上传材料。
+5. `android-framework-ops` 使用一套跨平台远程构建和本地 adb 交付实现。
+6. `android-wsl-ops` 或 `android-mac-ops` 只提供当前操作系统的源码挂载。
+7. `codex-workspace-care` 只在用户明确需要处理本地 Codex 历史或交接上下文时使用。
 
 这样做的目的很直接：核心插件可以给很多人用，但不把某个人的编码习惯绑定进所有人的工作流。
 
 ## Android Framework 工作流
 
-一句话：`android-source-access` 负责连接服务器源码，`android-knowledge-search` 负责开工前先查知识，`android-framework-change-workflow` 负责分析和改代码并给验收结论，`android-remote-channel` 负责稳定执行服务器命令，`android-remote-build-deploy` 用一套实现完成远程编译和本地设备推送，`android-framework-patch-capture` 负责整理功能级补丁资料，`android-framework-patch-intake`、`android-daily-report-intake`、`android-weekly-report-intake` 负责按材料类型生成 incoming，`android-knowledge-intake` 承载共享内核、doctor 和版本门禁。
+一句话：`android-member-setup` 负责成员配置与 doctor，`android-source-access` 负责连接服务器源码，`android-knowledge-search` 负责开工前先查知识，`android-change-policy` 负责代码修改前的成员溯源和领域规则，`android-framework-change-workflow` 负责分析、修改和验收，其他 Skill 分别完成远程执行、构建交付、补丁采集和 incoming。
 
 | 阶段 | 负责 skill | 职责 |
 | --- | --- | --- |
+| 变更规范 | `android-change-policy` | 从已选 profile 获取 `member_alias`，应用通用 patch 溯源规则和对应领域 overlay |
 | 源码接入 / 路径映射 | `android-source-access` | 把服务器 Android 源码挂载到本地，并记录本地路径、远程路径、SSH 主机映射 |
+| 成员设置 / 健康检查 | `android-member-setup` | 配置或诊断成员 profile、`member_alias`、插件版本、会话缓存和 AKBS endpoint |
 | 开工前查知识库 | `android-knowledge-search` | 默认搜索知识库仓库里的可复用案例、平台实现、补丁、检索锚点和验证证据，判断是否有可复用方案 |
+| 知识合并复核 | `android-knowledge-merge-review` | 按 `confirmation_id` 查看目标知识、合并依据和 compare 证据；只有成员明确要求时才提交异议 |
 | 需求分析 / 代码修改 | `android-framework-change-workflow` | 分析需求或 bug，查源码，改代码，加必要调试日志，判断风险和回滚路径 |
 | 远程命令执行 | `android-remote-channel` | 管理 SSH/tmux 长会话、命令日志、占用状态和锁，避免多个 Codex 会话互相踩远程环境 |
 | 编译 / 产物定位 / 推送 | `android-remote-build-deploy` | 调用服务器编译 Android，定位 jar/apk 等产物，并推送到设备 |
@@ -79,7 +83,7 @@ android-framework-codex-suite/
 │   ├── android-framework-ops/              # Android Framework 核心工程插件
 │   ├── android-wsl-ops/                  # WSL 平台层插件
 │   ├── android-mac-ops/                  # macOS 平台层插件
-│   ├── jinny-android-practices/            # 可选团队实践插件
+│   ├── jinny-android-practices/            # 旧 Jinny 规范兼容 wrapper
 │   └── codex-workspace-care/               # 独立工作区维护插件
 ├── manifests/                              # 每个插件包含的 skill 白名单
 ├── docs/
@@ -111,7 +115,7 @@ Git 引用：main
 1. 需要 Android Framework 工程能力：安装 `android-framework-ops`。
 2. WSL 环境：安装 `android-wsl-ops`。
 3. macOS 环境：安装 `android-mac-ops`。
-4. 需要 Jinny 团队代码风格、补丁开发规范和 FrameworkLog 日志规范：额外安装 `jinny-android-practices`，使用 `jinny-framework-coding-standards`。
+4. 新成员无需安装 `jinny-android-practices`；它只为旧 Skill ID 和旧提示词保留。
 5. 需要处理 Codex 本地历史或交接上下文：额外安装 `codex-workspace-care`。
 
 维护者本地开发插件时才需要 clone 本仓库并运行校验脚本。
@@ -225,4 +229,4 @@ README.md
 scripts/validate_plugins.sh
 ```
 
-实践类、代码风格类、review 类规则默认放进 `jinny-android-practices` 或其他可选插件，不放进 `android-framework-ops`。
+成员身份、patch 溯源、证据真实性和领域安全规则必须放在核心 `android-change-policy`。个人风格、review 偏好和项目规则可以叠加，但不能覆盖核心合同。

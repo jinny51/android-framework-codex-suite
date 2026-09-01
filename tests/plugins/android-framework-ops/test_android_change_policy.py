@@ -194,3 +194,27 @@ def test_patch_analysis_ignores_markers_outside_added_lines() -> None:
 
     added = removed_only + "\n+//member01 20260828@ current marker"
     assert facts_from_diff(added)["author_date_marker_present"] is True
+
+
+def test_public_policy_skill_and_optional_jinny_layer_have_one_authority() -> None:
+    policy_skill = (
+        PLUGIN_ROOT / "skills/android-change-policy/SKILL.md"
+    ).read_text(encoding="utf-8")
+    legacy_skill = (
+        REPO_ROOT
+        / "plugins/jinny-android-practices/skills/jinny-framework-coding-standards/SKILL.md"
+    ).read_text(encoding="utf-8")
+    legacy_reference = (
+        REPO_ROOT
+        / "plugins/jinny-android-practices/skills/jinny-framework-coding-standards/references/android-framework-coding-standards.md"
+    ).read_text(encoding="utf-8")
+
+    assert "../../contracts/android-change-policy/v1/README.md" in policy_skill
+    assert "../../contracts/android-change-policy/v1/policy.json" in policy_skill
+    assert "android-change-policy" in legacy_skill
+    assert "optional preference layer" in legacy_skill
+    assert "deprecated" not in legacy_skill
+    assert "not a second policy contract" in legacy_reference
+    assert "@{" not in legacy_reference
+    assert "gyf" not in legacy_skill.casefold()
+    assert "gyf" not in legacy_reference.casefold()

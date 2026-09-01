@@ -1,7 +1,7 @@
 {
   "name": "jinny-android-practices",
-  "version": "1.0.2",
-  "description": "Optional opinionated Android Framework coding, review, and project workflow practices.",
+  "version": "1.0.3",
+  "description": "Optional Jinny naming, review, and project preferences layered on Android Change Policy.",
   "author": {
     "name": "Jinny Android Framework Team",
     "url": "https://github.com/jinny51"
@@ -19,8 +19,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Jinny Android Practices",
-    "shortDescription": "可选的 Android Framework 代码风格、评审和项目实践规则",
-    "longDescription": "Jinny 团队使用的可选 Android Framework 实践插件。它可以和 Android Framework Ops 一起使用，但不会被核心插件强制依赖。",
+    "shortDescription": "叠加在 Android Change Policy 之上的可选 Jinny 命名和评审偏好",
+    "longDescription": "可选的 Jinny 团队实践层。强制成员身份、补丁标记和 Framework 安全规则由核心 android-change-policy 统一负责；本插件只在用户明确要求时增加命名、review 或项目偏好。",
     "developerName": "Jinny Android Framework Team",
     "category": "Coding",
     "capabilities": [
@@ -29,10 +29,8 @@
       "Write"
     ],
     "defaultPrompt": [
-      "按 Jinny Framework 编码规范实现这个需求",
-      "按 Jinny 的 Framework 规范检查这次修改",
-      "用团队 review 规则看一下当前 patch",
-      "按项目本地规范整理实现方案"
+      "使用 Jinny 可选命名偏好实现这个 Framework 需求",
+      "在 Android Change Policy 基础上用 Jinny review 偏好检查当前 patch"
     ],
     "brandColor": "#7C3AED",
     "screenshots": []

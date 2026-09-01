@@ -1,6 +1,6 @@
 # Android Knowledge Intake
 
-`android-knowledge-intake` 是成员 incoming 的唯一共享内核，负责首次启用、当前配置、doctor、插件版本门禁、包生成底层命令、上传前校验和 AKBS HTTP 上传。
+`android-knowledge-intake` 是成员 incoming v1 的共享内核和兼容 CLI，负责包生成底层命令、上传前校验和 AKBS HTTP 上传。首次启用、当前配置、doctor 和插件/会话缓存诊断的新入口是 `android-member-setup`；旧 doctor 命令继续兼容。
 
 成员日常使用三个业务入口：
 
@@ -10,9 +10,9 @@
 
 三个入口都调用本 skill 的同一套脚本，不各自复制上传实现。知识沉淀、新建/合并判断和知识有效度不属于成员插件。
 
-## 首次启用
+## 首次启用（兼容说明）
 
-使用 [member-setup-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-setup-prompt.md)。提示词让成员端 Codex 完成：
+新任务使用 `android-member-setup`。唯一配置提示仍保存在 [member-setup-prompt.md](../../../../plugins/android-framework-ops/skills/android-knowledge-intake/references/member-setup-prompt.md)，避免迁移期维护两套身份和 endpoint 规则。提示词让成员端 Codex 完成：
 
 1. 从 Codex 插件市场更新 `android-framework-ops` 和当前操作系统的平台插件。
 2. 检查当前会话是否仍加载旧缓存；无法热刷新时停止生成和上传。
