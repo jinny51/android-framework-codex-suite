@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -512,6 +513,20 @@ def _all_keys(value: Any) -> set[str]:
     return keys
 
 
+def _json_integer(value: Any, *, minimum: int | None = None) -> bool:
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return minimum is None or value >= minimum
+    if isinstance(value, float):
+        return (
+            math.isfinite(value)
+            and value.is_integer()
+            and (minimum is None or value >= minimum)
+        )
+    return False
+
+
 def validate_provider_execution_decision(
     provider: dict[str, Any],
     provider_manifest_sha256: str,
@@ -520,16 +535,18 @@ def validate_provider_execution_decision(
     rollout_effect_ceiling: str,
 ) -> None:
     authority = provider.get("authority") or {}
-    if provider.get("schema") != "android-practices-provider-v1" or authority != {
-        "decision_only": True,
-        "can_spawn": False,
-        "can_write_source": False,
-        "can_acquire_lock": False,
-        "can_execute_side_effects": False,
-        "can_upload": False,
-        "can_accept_gate": False,
-        "can_final_accept": False,
-    }:
+    forbidden_authority = {
+        "can_spawn", "can_write_source", "can_acquire_lock",
+        "can_execute_side_effects", "can_upload", "can_accept_gate",
+        "can_final_accept",
+    }
+    if (
+        provider.get("schema") != "android-practices-provider-v1"
+        or not isinstance(authority, dict)
+        or set(authority) != {"decision_only"} | forbidden_authority
+        or authority.get("decision_only") is not True
+        or any(authority.get(field) is not False for field in forbidden_authority)
+    ):
         raise TopologyError("selected provider manifest is invalid or over-authorized")
     execution = (provider.get("capabilities") or {}).get("execution")
     if not isinstance(execution, dict):
@@ -575,16 +592,26 @@ def validate_provider_execution_decision(
 def validate_assignment_semantics(assignment: dict[str, Any]) -> None:
     if assignment.get("schema") != "worker-assignment-v1":
         raise TopologyError("worker assignment schema is invalid")
-    if assignment.get("permissions") != {
-        "may_acquire_authority": False,
-        "may_expand_scope": False,
-        "may_upload": False,
-        "may_accept_gate": False,
-        "may_final_accept": False,
-    }:
+    if not _json_integer(assignment.get("attempt"), minimum=1):
+        raise TopologyError("worker assignment attempt is invalid")
+    permissions = assignment.get("permissions") or {}
+    permission_fields = {
+        "may_acquire_authority", "may_expand_scope", "may_upload",
+        "may_accept_gate", "may_final_accept",
+    }
+    if (
+        not isinstance(permissions, dict)
+        or set(permissions) != permission_fields
+        or any(permissions.get(field) is not False for field in permission_fields)
+    ):
         raise TopologyError("worker assignment permissions exceed worker authority")
     constraints = assignment.get("constraints") or {}
-    if constraints.get("max_automatic_escalations") != 1 or constraints.get("environment_failure_escalates_model") is not False:
+    escalations = constraints.get("max_automatic_escalations")
+    if (
+        not _json_integer(escalations, minimum=1)
+        or escalations != 1
+        or constraints.get("environment_failure_escalates_model") is not False
+    ):
         raise TopologyError("worker assignment escalation contract differs")
     scope = assignment.get("scope") or {}
     repositories = scope.get("repositories") or []
@@ -640,7 +667,11 @@ def validate_stage_snapshot_semantics(snapshot: dict[str, Any]) -> None:
     previous = snapshot.get("previous_snapshot_sha256")
     if sequence == 1 and previous is not None:
         raise TopologyError("first stage snapshot cannot have a previous hash")
-    if not isinstance(sequence, int) or sequence < 1 or (sequence > 1 and not previous):
+    if (
+        not _json_integer(sequence, minimum=1)
+        or sequence < 1
+        or (sequence > 1 and not previous)
+    ):
         raise TopologyError("stage snapshot hash chain is incomplete")
     reason = snapshot.get("snapshot_reason")
     event = snapshot.get("event") or {}
@@ -706,12 +737,16 @@ def validate_stage_snapshot_semantics(snapshot: dict[str, Any]) -> None:
 def validate_worker_result_semantics(
     result: dict[str, Any], assignment: dict[str, Any], *, assignment_sha256: str,
 ) -> None:
+    result_attempt = result.get("attempt")
+    assignment_attempt = assignment.get("attempt")
     if (
         result.get("schema") != "worker-result-v1"
         or result.get("assignment_id") != assignment.get("assignment_id")
         or result.get("assignment_sha256") != assignment_sha256
         or result.get("run_id") != assignment.get("run_id")
-        or result.get("attempt") != assignment.get("attempt")
+        or not _json_integer(result_attempt, minimum=1)
+        or not _json_integer(assignment_attempt, minimum=1)
+        or result_attempt != assignment_attempt
         or (result.get("worker_binding") or {}).get("worker_profile_id")
         != (assignment.get("assignee") or {}).get("worker_profile_id")
     ):

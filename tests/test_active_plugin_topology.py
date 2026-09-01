@@ -478,6 +478,24 @@ def test_provider_decision_checks_profile_task_effect_and_rollout() -> None:
         module.validate_provider_execution_decision(
             provider, "a" * 64, forged, rollout_effect_ceiling="read_only"
         )
+    numeric_false = valid_provider()
+    numeric_false["authority"]["can_spawn"] = 0
+    with pytest.raises(module.TopologyError, match="over-authorized"):
+        module.validate_provider_execution_decision(
+            numeric_false,
+            "a" * 64,
+            valid_execution_decision(),
+            rollout_effect_ceiling="read_only",
+        )
+    authority_list = valid_provider()
+    authority_list["authority"] = list(authority_list["authority"])
+    with pytest.raises(module.TopologyError, match="over-authorized"):
+        module.validate_provider_execution_decision(
+            authority_list,
+            "a" * 64,
+            valid_execution_decision(),
+            rollout_effect_ceiling="read_only",
+        )
 
 
 def valid_assignment(effect: str = "read_only") -> dict:
@@ -535,6 +553,18 @@ def test_assignment_semantics_require_nonempty_machine_boundaries() -> None:
     module = validator_module()
     module.validate_assignment_semantics(valid_assignment())
     module.validate_assignment_semantics(valid_assignment("workspace_mutation"))
+    integral_float = valid_assignment()
+    integral_float["constraints"]["max_automatic_escalations"] = 1.0
+    integral_float["attempt"] = 1.0
+    module.validate_assignment_semantics(integral_float)
+    huge_integer = valid_assignment()
+    huge_integer["attempt"] = 10**1000
+    module.validate_assignment_semantics(huge_integer)
+    for invalid_attempt in (True, 0, -1, 1.5):
+        invalid = valid_assignment()
+        invalid["attempt"] = invalid_attempt
+        with pytest.raises(module.TopologyError, match="attempt"):
+            module.validate_assignment_semantics(invalid)
     empty = valid_assignment("workspace_mutation")
     empty["scope"]["paths"] = []
     with pytest.raises(module.TopologyError, match="scope must be non-empty"):
@@ -559,6 +589,18 @@ def test_assignment_semantics_require_nonempty_machine_boundaries() -> None:
     )
     with pytest.raises(module.TopologyError, match="path repositories differ"):
         module.validate_assignment_semantics(ghost_path)
+    numeric_false = valid_assignment()
+    numeric_false["permissions"]["may_acquire_authority"] = 0
+    with pytest.raises(module.TopologyError, match="permissions"):
+        module.validate_assignment_semantics(numeric_false)
+    boolean_one = valid_assignment()
+    boolean_one["constraints"]["max_automatic_escalations"] = True
+    with pytest.raises(module.TopologyError, match="escalation contract"):
+        module.validate_assignment_semantics(boolean_one)
+    permissions_list = valid_assignment()
+    permissions_list["permissions"] = list(permissions_list["permissions"])
+    with pytest.raises(module.TopologyError, match="permissions"):
+        module.validate_assignment_semantics(permissions_list)
 
 
 def valid_snapshot() -> dict:
@@ -589,6 +631,9 @@ def valid_snapshot() -> dict:
 def test_stage_snapshot_semantics_reject_hash_and_provider_contradictions() -> None:
     module = validator_module()
     module.validate_stage_snapshot_semantics(valid_snapshot())
+    integral_float = valid_snapshot()
+    integral_float["sequence"] = 1.0
+    module.validate_stage_snapshot_semantics(integral_float)
     missing = valid_snapshot()
     missing["event"].pop("planned_assignment_id")
     with pytest.raises(module.TopologyError, match="planned assignment"):
@@ -623,6 +668,10 @@ def test_stage_snapshot_semantics_reject_hash_and_provider_contradictions() -> N
     accepted_active["requirement_disposition"] = "accepted"
     with pytest.raises(module.TopologyError, match="stage state differ"):
         module.validate_stage_snapshot_semantics(accepted_active)
+    boolean_sequence = valid_snapshot()
+    boolean_sequence["sequence"] = True
+    with pytest.raises(module.TopologyError, match="hash chain"):
+        module.validate_stage_snapshot_semantics(boolean_sequence)
 
 
 def valid_result() -> dict:
@@ -653,6 +702,11 @@ def test_worker_result_semantics_bind_assignment_and_receipts() -> None:
     module.validate_worker_result_semantics(
         valid_result(), assignment, assignment_sha256="e" * 64
     )
+    integral_float = valid_result()
+    integral_float["attempt"] = 1.0
+    module.validate_worker_result_semantics(
+        integral_float, assignment, assignment_sha256="e" * 64
+    )
     replay = valid_result()
     replay["assignment_sha256"] = "0" * 64
     with pytest.raises(module.TopologyError, match="exact assignment"):
@@ -664,6 +718,25 @@ def test_worker_result_semantics_bind_assignment_and_receipts() -> None:
     with pytest.raises(module.TopologyError, match="receipt semantics"):
         module.validate_worker_result_semantics(
             impossible, assignment, assignment_sha256="e" * 64
+        )
+    boolean_attempt = valid_result()
+    boolean_attempt["attempt"] = True
+    with pytest.raises(module.TopologyError, match="exact assignment"):
+        module.validate_worker_result_semantics(
+            boolean_attempt, assignment, assignment_sha256="e" * 64
+        )
+    for invalid_attempt in (0, -1, 1.5):
+        invalid = valid_result()
+        invalid["attempt"] = invalid_attempt
+        with pytest.raises(module.TopologyError, match="exact assignment"):
+            module.validate_worker_result_semantics(
+                invalid, assignment, assignment_sha256="e" * 64
+            )
+    invalid_assignment_attempt = valid_assignment()
+    invalid_assignment_attempt["attempt"] = 0
+    with pytest.raises(module.TopologyError, match="exact assignment"):
+        module.validate_worker_result_semantics(
+            valid_result(), invalid_assignment_attempt, assignment_sha256="e" * 64
         )
     readonly_drift = valid_result()
     readonly_drift["reported_changes"] = [

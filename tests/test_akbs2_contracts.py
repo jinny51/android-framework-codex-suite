@@ -26,6 +26,8 @@ SCHEMAS = {
 FIXTURES = {
     "provider.valid": ("provider", ROOT / "contracts/android-practices-provider/v1/fixtures/provider.valid.json", True),
     "provider.invalid-authority": ("provider", ROOT / "contracts/android-practices-provider/v1/fixtures/provider.invalid-authority.json", False),
+    "coding.valid": ("coding_decision", ROOT / "contracts/android-practices-provider/v1/fixtures/coding-decision.valid.json", True),
+    "coding.invalid-override": ("coding_decision", ROOT / "contracts/android-practices-provider/v1/fixtures/coding-decision.invalid-override.json", False),
     "execution.valid": ("execution_decision", ROOT / "contracts/android-practices-provider/v1/fixtures/execution-decision.valid.json", True),
     "execution.invalid-extra-authority": ("execution_decision", ROOT / "contracts/android-practices-provider/v1/fixtures/execution-decision.invalid-extra-authority.json", False),
     "snapshot.valid": ("stage_snapshot", ROOT / "contracts/android-change-workflow/v1/fixtures/stage-snapshot.valid.json", True),
@@ -393,8 +395,8 @@ def test_schema_subset_meta_gate_and_disk_fixture_expectations() -> None:
         actual = is_valid(load(path), schemas[schema_id], schemas[schema_id])
         assert actual is expected_valid, fixture_id
         results[fixture_id] = actual
-    assert sum(results.values()) == 7
-    assert len(results) - sum(results.values()) == 6
+    assert sum(results.values()) == 8
+    assert len(results) - sum(results.values()) == 7
 
 
 def test_schema_meta_gate_rejects_unknown_keyword_and_broken_ref(tmp_path: Path) -> None:
