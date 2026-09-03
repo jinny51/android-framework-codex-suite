@@ -195,7 +195,7 @@ Real report generation requires explicit per-run consent before any session read
           "customer": "韩富友",
           "work_type": "GMS",
           "gms_release_type": "IR",
-          "gms_target": "Android 14 首个量产版本",
+          "gms_target": "A14",
           "plan_items": ["开始执行完整 GMS 测试"]
         }
       ],

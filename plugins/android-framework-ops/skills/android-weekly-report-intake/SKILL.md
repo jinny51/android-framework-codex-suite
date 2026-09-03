@@ -138,7 +138,8 @@ or demo development and requires `App 名称`. Preserve the scope resolved by th
 daily workflow; do not reclassify it from weekly item wording. Ask the member
 only when the daily source is missing, conflicting, or lacks the App name.
 
-GMS project rows use release type + target, cycle status, current self-test or
+GMS project rows use release type + Android target version in `A<digits>` form
+(for example `A14`), cycle status, current self-test or
 submission stage, cumulative self-test round/result, cumulative formal
 submission count/result, weekly progress, key points, risks, dependencies, and
 plans without Patch/App totals. Self-test rounds and submissions are

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -15,6 +16,7 @@ GMS_CYCLE_STATUSES = {"active", "approved", "cancelled"}
 GMS_CURRENT_STAGES = {"self_test", "submission"}
 GMS_SELF_TEST_RESULTS = {"not_started", "in_progress", "failed", "passed"}
 GMS_SUBMISSION_RESULTS = {"not_submitted", "under_review", "returned", "passed", "cancelled"}
+GMS_TARGET_RE = re.compile(r"^A[1-9][0-9]*$")
 GMS_CURRENT_FIELDS = (
     "gms_release_type",
     "gms_target",
@@ -32,12 +34,17 @@ def clean_gms_text(value: Any) -> str:
     return " ".join(str(value or "").split())
 
 
+def normalize_gms_target(value: Any) -> str:
+    target = clean_gms_text(value)
+    return target.upper() if re.fullmatch(r"A[1-9][0-9]*", target, re.IGNORECASE) else target
+
+
 def normalize_gms_fields(value: dict[str, Any], *, plan: bool = False) -> dict[str, Any]:
     if clean_gms_text(value.get("work_type")) != "GMS":
         return {}
     result: dict[str, Any] = {
         "gms_release_type": clean_gms_text(value.get("gms_release_type")).upper(),
-        "gms_target": clean_gms_text(value.get("gms_target")),
+        "gms_target": normalize_gms_target(value.get("gms_target")),
     }
     if plan:
         return result
@@ -57,13 +64,13 @@ def normalize_gms_fields(value: dict[str, Any], *, plan: bool = False) -> dict[s
 def gms_scope_identity(value: dict[str, Any]) -> tuple[str, str]:
     return (
         clean_gms_text(value.get("gms_release_type")).upper(),
-        clean_gms_text(value.get("gms_target")).casefold(),
+        normalize_gms_target(value.get("gms_target")).casefold(),
     )
 
 
 def gms_release_heading(value: dict[str, Any]) -> str:
     release_type = clean_gms_text(value.get("gms_release_type")).upper()
-    target = clean_gms_text(value.get("gms_target"))
+    target = normalize_gms_target(value.get("gms_target"))
     label = release_type or "需成员确认"
     return f"GMS：{label}" + (f"（{target}）" if target else "")
 
@@ -113,11 +120,11 @@ def validate_gms_fields(
         return []
     errors: list[str] = []
     release_type = clean_gms_text(value.get("gms_release_type")).upper()
-    target = clean_gms_text(value.get("gms_target"))
+    target = normalize_gms_target(value.get("gms_target"))
     if release_type not in GMS_RELEASE_TYPES:
         errors.append(f"{prefix}.gms_release_type 必须是 IR、MR、SMR、ESMR、EMR 或 LR")
-    if not target:
-        errors.append(f"{prefix}.gms_target 必须提供真实目标版本或安全补丁周期")
+    if not GMS_TARGET_RE.fullmatch(target):
+        errors.append(f"{prefix}.gms_target 必须是 Android 主版本，格式为 A<数字>，例如 A14")
     if plan:
         for field in set(GMS_CURRENT_FIELDS) - set(GMS_PLAN_FIELDS):
             if field in value:

@@ -1,6 +1,6 @@
 {
   "name": "android-framework-ops",
-  "version": "1.0.168",
+  "version": "1.0.169",
   "description": "Shared cross-domain Android workflows with policy, source access, build, capture, and AKBS capabilities.",
   "author": {
     "name": "Jinny Android Framework Team",

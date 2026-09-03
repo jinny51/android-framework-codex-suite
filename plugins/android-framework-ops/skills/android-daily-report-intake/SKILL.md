@@ -47,7 +47,8 @@ Markdown presentation rule only. Keep project and customer values in
 Generate the same-source UI read model at `materials/display/report_view.json`. Required daily payload fields include `schema=akbs-report-view-human-v1`, `report_type=daily`, `report_date`, `display_date`, `material_name`, `material_summary`, `projects[]`, `documents[]`, `standalone_work[]`, and `tomorrow_plan`; at least one of the three today arrays must be non-empty. Every project-bound today row belongs in `projects[]` and contains `project`, direct `customer`, optional `downstream_customer` (客户的客户), `today_topic`, `current_result`, `work_items[]`, `key_points[]`, and `dependencies[]`. Project work uses `Patch`, `App`, `GMS`, `Doc`, or `Other`. Only a non-project document belongs in `documents[]` with `work_type=Doc` and `document_name`. A non-project, non-document activity belongs in `standalone_work[]` with `work_type=Other` and `work_name`. Historical `Document` remains readable as `Doc`. Every work item contains `name`, `did[]`, `how[]`, `result`, and fixed-enum `status`.
 
 Every current GMS project row also records `gms_release_type`
-(IR/MR/SMR/ESMR/EMR/LR), a concrete `gms_target`, cycle status, current
+(IR/MR/SMR/ESMR/EMR/LR), an Android major-version `gms_target` written as
+`A<digits>` (for example `A14`), cycle status, current
 `self_test` or `submission` stage, cumulative self-test round/result, and
 cumulative formal-submission count/result. The two counters are independent:
 multiple self-test rounds may lead to the first submission, and the first

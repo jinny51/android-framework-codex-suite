@@ -98,7 +98,7 @@ Do not write runtime facts into the plugin, skill, or plugin-cache directory.
       "requirement_date": "2026-06-01",
       "requirement_source": "TE",
       "gms_release_type": "IR",
-      "gms_target": "Android 14 首个量产版本",
+      "gms_target": "A14",
       "gms_cycle_status": "active",
       "gms_current_stage": "submission",
       "gms_self_test_round": 3,

@@ -37,7 +37,7 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
       "customer": "韩富友",
       "work_type": "GMS",
       "gms_release_type": "IR",
-      "gms_target": "Android 14 首个量产版本",
+      "gms_target": "A14",
       "gms_cycle_status": "active",
       "gms_current_stage": "self_test",
       "gms_self_test_round": 2,
@@ -89,7 +89,7 @@ Do not write runtime facts into the plugin source, skill, or plugin-cache direct
         "customer": "韩富友",
         "work_type": "GMS",
         "gms_release_type": "IR",
-        "gms_target": "Android 14 首个量产版本",
+        "gms_target": "A14",
         "plan_items": ["开始执行完整 GMS 测试"]
       }
     ],
@@ -128,7 +128,8 @@ Rules:
   wording alone.
 - `App` requires `app_name`; other project types must not provide it.
 - A current GMS row requires `gms_release_type` (`IR`, `MR`, `SMR`, `ESMR`,
-  `EMR`, or `LR`) and a concrete `gms_target`. It also records cycle status,
+  `EMR`, or `LR`) and an Android major-version `gms_target` written as
+  `A<digits>` (for example `A14`). It also records cycle status,
   current stage, cumulative self-test round/result, and cumulative formal
   submission count/result. Self-test rounds and submissions are independent:
   several self-test rounds may lead to the first submission, and that first

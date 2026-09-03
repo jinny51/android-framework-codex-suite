@@ -2597,7 +2597,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                                 "customer": "韩富友",
                                 "work_type": "GMS",
                                 "gms_release_type": "SMR",
-                                "gms_target": "2026-06 SPL",
+                                "gms_target": "A14",
                                 "gms_cycle_status": "active",
                                 "gms_current_stage": "self_test",
                                 "gms_self_test_round": 1,
@@ -2626,7 +2626,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                                     "customer": "韩富友",
                                     "work_type": "GMS",
                                     "gms_release_type": "IR",
-                                    "gms_target": "Android 14 首个量产版本",
+                                    "gms_target": "A14",
                                     "plan_items": ["开始执行完整 GMS 测试"],
                                 }
                             ],
@@ -2662,7 +2662,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             today_markdown, plan_markdown = report.split("## 五、明日计划", 1)
 
             self.assertNotIn("TVE1065M", today_markdown)
-            self.assertIn("**TVE1065M** 韩富友｜GMS：IR（Android 14 首个量产版本）", plan_markdown)
+            self.assertIn("**TVE1065M** 韩富友｜GMS：IR（A14）", plan_markdown)
             self.assertIn("Doc：测试计划文档", plan_markdown)
             self.assertIn("Other：团队 ATS 环境维护", plan_markdown)
             self.assertEqual([row["project"] for row in view["projects"]], ["TVE8801M"])
@@ -3823,7 +3823,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                                 "customer": "客户A",
                                 "work_type": "GMS",
                                 "gms_release_type": "IR",
-                                "gms_target": "Android 14 首个量产版本",
+                                "gms_target": "A14",
                                 "gms_cycle_status": "active",
                                 "gms_current_stage": "self_test",
                                 "gms_self_test_round": 2,
@@ -3901,7 +3901,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                                     "customer": "客户A",
                                     "work_type": "GMS",
                                     "gms_release_type": "IR",
-                                    "gms_target": "Android 14 首个量产版本",
+                                    "gms_target": "A14",
                                     "plan_items": ["继续 GTS 测试"],
                                 }
                             ],
@@ -3926,7 +3926,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual([row["work_type"] for row in daily_view["projects"]], ["GMS", "Other"])
             self.assertEqual([row["work_type"] for row in daily_view["documents"]], ["Doc"])
             self.assertEqual([row["work_type"] for row in daily_view["standalone_work"]], ["Other"])
-            self.assertIn("### **TVE1067M1** 客户A｜GMS：IR（Android 14 首个量产版本）", daily_report)
+            self.assertIn("### **TVE1067M1** 客户A｜GMS：IR（A14）", daily_report)
             self.assertIn("- 类型：GMS", daily_report)
             self.assertIn("- 送测类别：IR / Initial Release", daily_report)
             self.assertIn("- 自测轮次：第 2 轮", daily_report)
@@ -3949,7 +3949,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
                                 "requirement_date": "2026-06-01",
                                 "requirement_source": "TE",
                                 "gms_release_type": "IR",
-                                "gms_target": "Android 14 首个量产版本",
+                                "gms_target": "A14",
                                 "gms_cycle_status": "active",
                                 "gms_current_stage": "submission",
                                 "gms_self_test_round": 3,
@@ -4025,7 +4025,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertEqual([row["work_type"] for row in weekly_view["projects"]], ["GMS", "Other"])
             self.assertEqual(weekly_view["documents"][0]["work_type"], "Doc")
             self.assertEqual(weekly_view["standalone_work"][0]["work_type"], "Other")
-            self.assertIn("### **TVE1067M1** 客户A｜GMS：IR（Android 14 首个量产版本）", weekly_report)
+            self.assertIn("### **TVE1067M1** 客户A｜GMS：IR（A14）", weekly_report)
             self.assertIn("- 类型：GMS", weekly_report)
             self.assertIn("- 送测类别：IR / Initial Release", weekly_report)
             self.assertIn("- 自测轮次：第 3 轮", weekly_report)
@@ -4034,6 +4034,31 @@ class MemberAutomationFlowTests(unittest.TestCase):
             self.assertIn("- 最新送测结果：审核中", weekly_report)
             self.assertIn("## 三、Doc / Other", weekly_report)
 
+    def test_current_gms_facts_require_android_major_target(self) -> None:
+        load_intake_module()
+        daily_module = importlib.import_module("akbs_intake.reports.daily_facts")
+        weekly_module = importlib.import_module("akbs_intake.reports.weekly_facts")
+        invalid = {
+            "work_type": "GMS",
+            "gms_release_type": "IR",
+            "gms_target": "GMS IR",
+            "gms_cycle_status": "active",
+            "gms_current_stage": "self_test",
+            "gms_self_test_round": 1,
+            "gms_self_test_result": "in_progress",
+            "gms_submission_count": 0,
+            "gms_submission_result": "not_submitted",
+        }
+        for errors in (
+            daily_module.validate_gms_fields(invalid, prefix="projects[0]"),
+            weekly_module.validate_gms_fields(invalid, prefix="TVE8801M"),
+        ):
+            self.assertTrue(any("必须是 Android 主版本" in error for error in errors))
+
+        valid = {**invalid, "gms_target": "A14"}
+        self.assertEqual(daily_module.validate_gms_fields(valid, prefix="projects[0]"), [])
+        self.assertEqual(weekly_module.validate_gms_fields(valid, prefix="TVE8801M"), [])
+
     def test_current_gms_facts_reject_submission_before_self_test_passes(self) -> None:
         load_intake_module()
         daily_module = importlib.import_module("akbs_intake.reports.daily_facts")
@@ -4041,7 +4066,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
         invalid = {
             "work_type": "GMS",
             "gms_release_type": "SMR",
-            "gms_target": "2026-08 SPL",
+            "gms_target": "A14",
             "gms_cycle_status": "active",
             "gms_current_stage": "submission",
             "gms_self_test_round": 1,
@@ -4088,7 +4113,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             "progress": "送测审核中",
             "work_type": "GMS",
             "gms_release_type": "IR",
-            "gms_target": "Android 14 首个量产版本",
+            "gms_target": "A14",
             "gms_cycle_status": "active",
             "gms_current_stage": "submission",
             "gms_self_test_round": 3,
@@ -4100,7 +4125,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
             **ir,
             "text": "完成 SMR 第 1 轮自测",
             "gms_release_type": "SMR",
-            "gms_target": "2026-06 SPL",
+            "gms_target": "A14",
             "gms_current_stage": "self_test",
             "gms_self_test_round": 1,
             "gms_self_test_result": "failed",
@@ -4110,7 +4135,7 @@ class MemberAutomationFlowTests(unittest.TestCase):
         seeds = weekly_module.daily_scope_seed_rows([ir, smr])
         self.assertEqual(
             [(row["gms_release_type"], row["gms_target"]) for row in seeds],
-            [("IR", "Android 14 首个量产版本"), ("SMR", "2026-06 SPL")],
+            [("IR", "A14"), ("SMR", "A14")],
         )
         assigned, ambiguous = weekly_module.assign_daily_records_to_scopes(seeds, [ir, smr])
         self.assertFalse(ambiguous)
