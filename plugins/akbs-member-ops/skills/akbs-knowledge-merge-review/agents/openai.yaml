@@ -1,0 +1,7 @@
+interface:
+  display_name: "AKBS Knowledge Merge Review"
+  short_description: "Review AKBS merge evidence and respond explicitly"
+  default_prompt: "Use $akbs-knowledge-merge-review to inspect an AKBS merge confirmation, compare its evidence, and submit a dispute only when I explicitly authorize it."
+
+policy:
+  allow_implicit_invocation: true

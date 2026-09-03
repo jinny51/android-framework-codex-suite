@@ -1,0 +1,7 @@
+interface:
+  display_name: "AKBS Patch Submit"
+  short_description: "Check Android changes; submit legacy Framework v1"
+  default_prompt: "Use $akbs-patch-submit to route the package by its exact contract: keep legacy framework_change v1 genuinely submittable; strictly read/check/prepare canonical Android change v2 locally; and use explicit android-change-v2 adapt-capture only as a read-only, zero-network Phase 2 preflight that reports the missing versioned adapter contracts without creating a target package. Never pass a capture directly to prepare, silently downgrade v2 to v1, manufacture adapter PASS, or claim client coherence is server qualification."
+
+policy:
+  allow_implicit_invocation: true

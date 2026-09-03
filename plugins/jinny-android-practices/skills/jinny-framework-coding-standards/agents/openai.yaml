@@ -1,4 +1,4 @@
 interface:
-  display_name: "Jinny Android Practices"
-  short_description: "Apply optional Jinny preferences after Android Change Policy"
-  default_prompt: "Use $jinny-framework-coding-standards only for the requested Jinny preferences, after applying $android-change-policy."
+  display_name: "Jinny Framework Coding (Compatibility)"
+  short_description: "Forward the retired coding ID to the Jinny coding provider"
+  default_prompt: "Use $jinny-framework-coding-standards only as a compatibility entry, then continue with $jinny-android-coding-practices after explicit provider resolution."

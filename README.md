@@ -1,232 +1,140 @@
-# Android Framework Codex Suite
+# Android Knowledge Base & Engineering Suite
 
-面向 Android 全领域工程团队的 Codex 插件套件。
+AKBS 的正式名称是 **Android Knowledge Base System**。这是其成员端和 Android 工程端共用的
+Codex 插件仓库。仓库名中的 `android-framework-codex-suite` 是既有 GitHub 发布标识，
+不是 AKBS 的释义。工程能力覆盖 Android 的 application、platform、native、HAL、kernel、
+device 与 build 层；type、partition（包括 vendor）和 ownership 作为正交属性表达，而不是再混成一张领域列表。
 
-AKBS 的正式名称是 **Android Knowledge Base System**。本仓库当前名称和已发布兼容 Skill ID 中的
-`framework` 是既有发布标识，不是 AKBS 的释义，也不表示 AKBS 只服务 Framework 领域。
+## 目标插件
 
-这个仓库是 Android 工程相关 Codex 能力的插件市场来源。团队成员安装 android-framework-ops 获得共享工程能力、唯一 Android 变更规范和 source-access 内部实现，再根据环境安装 android-wsl-ops（WSL）或 android-mac-ops（macOS）公开入口。Jinny 插件只提供明确请求时的可选偏好，Codex 工作区维护保持独立。
-
-## 插件一览
-
-| 插件 | 定位 | 包含内容 | 推荐安装对象 |
-| --- | --- | --- | --- |
-| [android-framework-ops](plugins/android-framework-ops/README.md) | Android 工程核心 | 全领域 domain、规范、知识、远程执行、构建、验证、本地 capture 和 Framework incoming v1 | 所有需要 Codex 处理 Android 工程任务的成员 |
-| [android-wsl-ops](plugins/android-wsl-ops/README.md) | WSL 公开入口 | 薄转发到核心内唯一的 WSL CIFS/Samba 实现 | 在 WSL 环境中使用 Codex 的成员 |
-| [android-mac-ops](plugins/android-mac-ops/README.md) | macOS 公开入口 | 薄转发到核心内唯一的 SMB/Keychain 实现 | 在 macOS 环境中使用 Codex 的成员 |
-| [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选实践插件 | 在核心 Policy 之上叠加明确请求的 Jinny 命名、review 或项目偏好 | 明确需要 Jinny 偏好的成员 |
-
-`codex-workspace-care` 源码保存在仓库中，但不属于 Android marketplace 或 Android 工程执行链。
-
-## 设计原则
-
-`android-framework-ops` 是核心插件，也是团队默认主链路。它强制可验证的核心不变量：成员身份、patch 溯源、真实证据和领域安全规则；但不强制替代成员自己的代码风格 skill、项目 `AGENTS.md`、本地规范或 review workflow。
-
-当成员同时安装自己的 skill、项目本地规则和本仓库插件时，预期组合方式是：
-
-1. 用户当前明确要求和项目本地规范优先。
-2. `android-change-policy` 负责不可被覆盖的成员身份、patch 溯源和领域规则。
-3. 个人或项目规则可叠加代码风格、review 口径和项目偏好。
-4. `android-framework-ops` 负责 Android 全领域工程闭环；仅 Framework 拥有 incoming v1 提交能力。
-5. `android-framework-ops` 使用一套跨平台远程构建和本地 adb 交付实现。
-6. `android-wsl-ops` 或 `android-mac-ops` 提供对应操作系统的公开入口；源码接入实现由核心统一拥有并自动识别主机。
-
-这样做的目的很直接：核心插件可以给很多人用，但不把某个人的编码习惯绑定进所有人的工作流。
-
-## Android 工作流
-
-一句话：`android-member-setup` 负责成员配置与 doctor，`android-source-access` 负责连接服务器源码，`android-knowledge-search` 负责开工前先查知识，`android-change-policy` 负责代码修改前的成员溯源和领域规则，`android-framework-change-workflow` 负责分析、修改和验收，其他 Skill 分别完成远程执行、构建交付、补丁采集和 incoming。
-
-| 阶段 | 负责 skill | 职责 |
+| 插件 | 职责 | 是否必需 |
 | --- | --- | --- |
-| 变更规范 | `android-change-policy` | 从已选 profile 获取 `member_alias`，应用通用 patch 溯源规则和对应领域 overlay |
-| 源码接入 / 路径映射 | `android-source-access` | 把服务器 Android 源码挂载到本地，并记录本地路径、远程路径、SSH 主机映射 |
-| 成员设置 / 健康检查 | `android-member-setup` | 配置或诊断成员 profile、`member_alias`、插件版本、会话缓存和 AKBS endpoint |
-| 开工前查知识库 | `android-knowledge-search` | 默认搜索知识库仓库里的可复用案例、平台实现、补丁、检索锚点和验证证据，判断是否有可复用方案 |
-| 知识合并复核 | `android-knowledge-merge-review` | 按 `confirmation_id` 查看目标知识、合并依据和 compare 证据；只有成员明确要求时才提交异议 |
-| 需求分析 / 代码修改 | `android-framework-change-workflow` | 选择 Framework/SystemApp/App/HAL/native/vendor/kernel/driver/device/build 领域并完成修改和领域验证 |
-| 远程命令执行 | `android-remote-channel` | 管理 SSH/tmux 长会话、命令日志、占用状态和锁，避免多个 Codex 会话互相踩远程环境 |
-| 远程 AOSP 构建 / 产物 / 推送 | `android-remote-build-deploy` | 执行受支持的 Soong/Make 模块或显式 vendor 全量构建，校验产物并通过本地 adb 交付 |
-| 功能验证 / 验收结论 | `android-framework-change-workflow` | 根据需求、日志、设备行为、风险矩阵判断任务是否完成，并决定包状态（package status） |
-| 补丁资料整理 | `android-framework-patch-capture` | 按 change_domain 把 Android 功能整理成本地 README、多源码仓库 patch 和验证材料；仅 Framework validated capture 可继续提交 v1 |
-| 补丁包上传材料 | `android-framework-patch-intake` | 生成一个完整 `framework_change` 补丁包；服务端以 `patch_package_id` 贯穿队列和主分支，并按 `request_id` 为同包补充资料 |
-| 日报上传材料 | `android-daily-report-intake` | 按 Patch/App/GMS/Doc/Other 范围生成含重点说明和依赖/需协调的个人日报正文、同源 UI 读模型和 `daily_trace` incoming |
-| 周报上传材料 | `android-weekly-report-intake` | 按 Patch/App/GMS/Doc/Other 范围汇总当前有效日报中的重点说明和依赖候选及上一周项目台账，由成员确认依赖、主责确认本周流转并自动校验总量、Android 剩余和 BSP 跟踪，生成个人周报、同源 UI 读模型和 `weekly_trace` incoming |
-| 共享内核 / 配置诊断 | `android-knowledge-intake` | 提供成员配置、doctor、插件更新、版本门禁、会话缓存门禁和 manifest 协议 |
+| [akbs-member-ops](plugins/akbs-member-ops/README.md) | 成员设置、知识检索、合并复核、日报、周报和 Android 补丁包提交 | 使用 AKBS 的成员安装 |
+| [android-engineering-ops](plugins/android-engineering-ops/README.md) | Android 变更规范、总工作流、跨平台源码接入、远程执行、构建交付和本地补丁采集 | 处理 Android 工程任务的成员安装 |
+| [jinny-android-practices](plugins/jinny-android-practices/README.md) | 可选编码实践和执行策略 Provider；只能给出决策，不能取代核心验收权 | 按成员选择安装 |
 
-GMS 日报/周报按“项目 + 客户 + 送测类别 + 目标版本”区分范围，送测类别为 IR/MR/SMR/ESMR/EMR/LR。自测轮次与正式送测次数独立累计，送测前要求最新自测通过，退回后回到自测；问题和修复仍写普通工作项。明日计划只写类别、目标和计划，不提前声明阶段或次数。
+`codex-workspace-care` 仍作为独立源码保留，不属于 Android marketplace 或执行链。
 
-`android-remote-build-deploy` 只覆盖受支持的远程 AOSP/vendor 构建，并只证明产物是否编出、是否推上设备；Gradle、Kbuild 等使用项目自己的构建入口。最终能不能算需求完成，由 `android-framework-change-workflow` 结合需求和验证证据判断。
-
-Framework 需求默认闭环是：开工前查 AKBS，开发和验证后通过 `patch-capture` 与 `android-framework-patch-intake` 生成一个 `validated` 补丁包，并由 AKBS HTTP API 写入上传队列。服务端生成的 `patch_package_id` 是队列和主分支唯一业务身份；上传目录的 `package_key` 只标识不可变物理来源。成员 Skill 负责功能边界、项目/平台/Android 版本、不可变补丁和真实验证的主要完整性检查；管理端队列检查只作安全兜底。轻量文字、字段或非补丁附件缺口通过事件 `request_id` 补到同一个补丁包，需要改补丁或拆分功能则退回重新生成。通知、资料请求和合并确认分别继续用自身事件 ID 追溯因果，不替代 `patch_package_id`。`candidate`、`draft`、失败或阻塞路径保留在本地材料或报告上下文，不进入队列。日报和周报只归档，不进入知识沉淀候选；新建知识或计划合并由管理端沉淀流程决定。
-
-按环境选择对应平台层插件：WSL 环境安装 `android-wsl-ops`，macOS 环境安装 `android-mac-ops`。
-
-## 服务器源码树命令边界
-
-这里的命令只指在远程 Android 源码树 `REMOTE_ROOT` 里执行的命令。
-
-| Skill | 会在服务器源码树上执行的典型命令 |
-| --- | --- |
-| `android-knowledge-search` | 通常不在服务器源码树执行命令，只读取知识库仓库 JSONL 索引和权威对象目录 |
-| `android-framework-change-workflow` | `rg`, `sed`, `git diff`, `git status`，以及必要的源码修改或调试日志/监控 |
-| `android-framework-patch-capture` | `git status`, `git diff HEAD`，读取一个或多个源码仓库变更并生成一个功能 README、仓库级 patch 和 evidence 文件 |
-| `android-remote-build-deploy` | `git status`, `repo status`, `.codex/build-push.sh plan/build`, `.codex/build-session.sh` 中的构建封装 |
-| `android-remote-channel` | `tmux`, `cd <REMOTE_ROOT>`, `tail`, `cat`, `mkdir`, `rm`, `flock` |
-| `android-source-access` | 通常不执行开发命令，只做 `test -d`, `ls`, `find` 这类源码识别命令 |
-
-## 目录结构
+## Skill 结构
 
 ```text
-android-framework-codex-suite/
-├── .agents/plugins/marketplace.json        # Codex 本地 marketplace 入口
-├── plugins/
-│   ├── android-framework-ops/              # Android 核心工程插件
-│   ├── android-wsl-ops/                  # WSL 平台层插件
-│   ├── android-mac-ops/                  # macOS 平台层插件
-│   ├── jinny-android-practices/            # 可选 Jinny 偏好层
-│   └── codex-workspace-care/               # 源码保留但不再属于 Android marketplace
-├── manifests/                              # 每个插件包含的 skill 白名单
-├── docs/
-│   ├── skills/                             # GitHub 上给人看的每个 skill 说明
-│   └── archive/                            # 历史计划归档，不作为当前结构事实
-└── scripts/                                # 插件校验脚本
+akbs-member-ops
+├── akbs-member-setup
+├── akbs-knowledge-search
+├── akbs-knowledge-merge-review
+├── akbs-daily-report
+├── akbs-weekly-report
+└── akbs-patch-submit
+
+android-engineering-ops
+├── android-change-policy
+├── android-change-workflow
+├── android-source-access
+├── android-remote-channel
+├── android-remote-build-deploy
+└── android-patch-capture
+
+jinny-android-practices
+├── jinny-android-coding-practices
+└── jinny-android-execution-policy
 ```
 
-每个插件必须保留 `.codex-plugin/plugin.json`。插件可安装入口由 `.agents/plugins/marketplace.json` 管理。
+迁移期的新插件还带有旧 Skill ID 的薄兼容入口。它们只提示替代项并转发到唯一实现，
+不会复制第二套业务逻辑；只有逐入口使用率归零并完成回退演练后才会删除。
 
-`plugins/<plugin>/skills/<skill>/` 是 Codex runtime skill 目录，只放 `SKILL.md`、`agents/`、`scripts/`、`references/`、`assets/` 等执行需要的文件，不放 `README.md`。GitHub 上给人看的每个 skill 说明统一放在 `docs/skills/<plugin>/<skill>/README.md`，并从插件级 README 链过去。
+## 边界
 
-## 安装
+- `android-change-workflow` 是 Android 工程总流程和最终验收者。
+- `android-change-policy` 保存所有成员都不能绕过的身份、patch 溯源、真实证据和领域安全底线。
+- `akbs-patch-submit` 面向所有受支持的 Android change domain，不把补丁业务限定为 Framework。
+- `android-source-access` 自动识别 WSL 或 macOS，并选择插件内对应适配器；成员不再按操作系统安装两个入口插件。
+- 日报、周报、知识检索和补丁提交属于 AKBS 成员能力；源码修改、构建和本地材料采集属于 Android 工程能力。
+- 旧 v1 配置、材料和历史包永久可读，不改写、不搬家；新写入使用新路径。
+- Android change v2 服务端 writer 在真实 Pilot 前保持关闭，客户端不能用改名绕开服务器能力门禁。
 
-成员通过 Codex 插件市场安装和更新本仓库，不需要手工复制或同步 skill 到本地技能目录。
+## 可选扩展
 
-在 Codex 插件市场添加 marketplace：
+成员有三种合法选择：
+
+1. `none`：不安装扩展，由核心直接执行。
+2. `jinny`：安装 `jinny-android-practices`，使用其编码实践和 Sol/Terra/Luna 执行策略。
+3. `custom`：安装成员自己的 Provider，并按 `android-practices-provider-v1` 合同声明能力。
+
+选择写在 `$CODEX_HOME/android-engineering-ops.toml`；项目可用
+`<project>/.codex/android-engineering.toml` 覆盖。Provider 必须由固定 manifest 路径、
+ID、版本和 SHA-256 精确定位，不能靠扫描描述猜测。显式选择的 Provider 缺失、损坏或越权时
+fail closed；没有声明某能力或当前任务不适用时才回到核心。
+
+`jinny-android-execution-policy` 只决定执行建议：Sol 负责需求分析、风险判断和独立复核，
+Terra 负责常规源码实现，Luna 负责边界明确的编译、推送、证据收集和材料整理。
+模型 worker 只能返回结果和证据，不能自行宣布任务完成；最终结论仍由
+`android-change-workflow` 结合真实状态作出。
+
+## 当前迁移状态
+
+仓库处于 Phase 2 migration catalog：新三插件和旧回退插件可同时出现在 marketplace，
+Codex 安装器也可能把两代都记为已安装；这种混装不是合法运行态。所有 target 业务入口
+必须在产生副作用前拒绝它，迁移工具只能按 `remove legacy → add target → target-only doctor`
+切换，不能把“目录里同时可见”误写成“安装器会自动防止混装”。
+
+- 新安装族：按角色安装 `akbs-member-ops`、`android-engineering-ops`，可选安装
+  `jinny-android-practices`。
+- 旧回退族：固定 Git commit
+  `79b3665393089ce2bdfb8db4021d03bcac84c8ad` 中的
+  `android-framework-ops@1.0.169`、单一平台插件，以及按需的
+  `jinny-android-practices@1.0.3`。
+- 安装或回退必须先移除另一安装族，再通过 Codex 插件命令安装并取得单一安装族
+  doctor 回执；禁止手工复制 cache。
+- 插件升级会更新磁盘缓存。当前任务先尝试刷新/重新执行；若 Skill catalog 仍旧，退出并重开
+  Codex 即可，不需要重启操作系统、WSL 或 AKBS 服务。
+
+旧 marketplace 入口只为精确回退保留。发布、成员迁移、服务端 v2 writer 激活和旧入口清理
+分别有独立验收门禁，不能因为本地代码存在就宣称已经上线。
+
+## 配置和身份
+
+成员身份来自已选择 profile 的 `member_alias`，不是 Git author、示例人名或事项号。新 Codex
+代码在支持 `//` 注释的文件里使用成对标记：
 
 ```text
-来源：jinny51/android-framework-codex-suite
-Git 引用：main
-稀疏路径：留空
+//<member_alias> <yyyyMMdd>@{
+...
+//<member_alias> <yyyyMMdd>@}
 ```
 
-安装后，Android 工程相关 skill 来自 Codex 插件缓存。成员不需要额外维护手工同步链路。
+新成员配置写入 `$CODEX_HOME/akbs-member-ops.toml`。只要这个权威文件存在，解析器就不再
+打开或合并任何旧成员配置；文件损坏、没有选中 profile 或 profile 不存在都会 fail closed。
+只有权威文件完全不存在时，才读取用户目录下旧
+`android-knowledge-intake.toml`、`android-knowledge-search.toml` 和报告配置作为永久只读
+兼容输入，且多个旧来源的 alias 必须一致。仓库内 `.codex/report.toml` 永远不能提供或覆盖
+成员身份。
 
-推荐安装顺序：
+不使用 AKBS 的独立工程成员可以在 `$CODEX_HOME/android-engineering-ops.toml` 的
+`[identity].member_alias` 提供身份；项目级 `.codex/android-engineering.toml` 只允许选择
+extension，不能声明身份。AKBS 身份与独立工程身份同时存在时必须一致；命令行或环境中的
+profile 只能选择已经存在的 AKBS profile，不能凭空生成身份。凭据、token、cookie、私钥和
+本地成员配置不得提交到本仓库。
+成员请求只发送 `member_alias` 作为业务身份，不把个人长期 token 写入插件配置；服务端访问
+授权仍以部署侧的固定工作站来源 IP 和服务端策略为准，插件不能自行扩大授权范围。
 
-1. 需要 Android 工程能力：安装 `android-framework-ops`。
-2. WSL 环境：安装 `android-wsl-ops`。
-3. macOS 环境：安装 `android-mac-ops`。
-4. 只有明确需要 Jinny 命名或 review 偏好时才安装 `jinny-android-practices`。
+## 维护和验证
 
-维护者本地开发插件时才需要 clone 本仓库并运行校验脚本。
-
-## 配置
-
-成员个人配置不提交到本仓库。
-
-常见配置位置：
-
-```text
-$CODEX_HOME/report/config.toml
-$CODEX_HOME/<skill-name>.toml
-<project>/.codex/report.toml
-```
-
-普通成员 TOML 只写身份和本地路径。服务器上传入口和只读知识库入口由 AKBS endpoint resolver 提供；上传、搜索和合并确认只发送 `member_alias`，服务端按固定工作站来源 IP 验证身份。成员不配置、保存或发送上传 token、session cookie、role 或客户端 IP 声明；缺少 `member_alias` 时，doctor 和业务请求会在打包或发出 HTTP 前停止。知识库仓库工作树和产物目录建议按成员私有配置指定：
-
-```text
-<Codex documents>/worktrees/knowledge
-<Codex documents>/artifacts/android-knowledge-intake
-```
-
-这些路径是模板，不是插件硬编码要求。团队成员应在自己的 `config.toml` profile 中设置 `knowledge_repo_worktree` 和 `out_dir`；成员端不配置服务器名、submit 脚本路径、知识库远端 URL 或数据库仓库工作树。
-
-## 维护
-
-普通成员默认只需要安装和更新插件，不需要向本仓库提交。
-
-维护者更新流程：
+普通成员通过 marketplace 安装和更新，不手工同步 Skill。维护者只在隔离 worktree 中修改，
+并通过统一验证入口检查插件元数据、Skill/agent/docs 一致性、迁移拓扑、混装负例、脚本回归和
+服务端合同兼容：
 
 ```bash
-# 1. 在本仓库中修改插件、skill、脚本或文档
-# 2. 在实际使用环境中验证相关工作流
-
-# 3. 自检
-scripts/validate_plugins.sh
-
-# 4. 只暂存本次文件，提交并推送
-git add <本次修改文件>
-git commit -m "update plugins"
-git push
-
-# 5. 刷新 marketplace，并重装本机实际使用的平台插件
-codex plugin marketplace upgrade android-framework-codex-suite
-codex plugin add android-framework-ops@android-framework-codex-suite
-codex plugin add android-wsl-ops@android-framework-codex-suite  # 仅 WSL
-```
-macOS 只安装 `android-mac-ops`，WSL 只安装 `android-wsl-ops`。安装更新了磁盘缓存，但已经打开的会话不会因此自动替换本轮加载的 skill；受影响工作应在新会话中继续，活跃会话只做定向事实刷新。
-
-不要提交成员个人配置、真实凭据、私钥、构建输出、日志、`__pycache__`、`.pytest_cache` 或本地历史数据库。
-
-## 自检
-
-提交前至少执行：
-
-```bash
-scripts/validate_plugins.sh
+python3 /home/jinny/akbs/maintainer/scripts/run_akbs_validation.py \
+  plugin-full --akbs-root /home/jinny/akbs --allow-dirty
 ```
 
-验证内容包括：
-
-- 每个插件都有 `.codex-plugin/plugin.json`。
-- marketplace 中声明的插件路径有效。
-- manifest 中列出的 skill 都存在。
-- skill 目录包含必要入口文件。
-- macOS 源码接入脚本通过模拟回归；发布 macOS 插件前还必须通过真实 Mac SSH 回归。
-- WSL 源码接入脚本在 Git 中可执行；共享构建交付在 WSL 与真实 Mac SSH 环境回归通过。
-- 仓库没有明显的本地缓存、日志、凭据类文件。
-
-维护时如果只想快速确认 runtime skill 目录里没有 README 残留，可以执行：
-
-```bash
-find plugins -path '*/skills/*/README.md' -print
-```
-
-没有输出就是符合当前约定。
-
-如果修改了 Python 脚本或材料上传/检索逻辑，额外执行：
-
-```bash
-python3 -m pytest --capture=no \
-  tests/plugins/android-framework-ops/android-framework-patch-capture \
-  tests/plugins/android-framework-ops/android-knowledge-intake \
-  tests/plugins/android-framework-ops/android-knowledge-search \
-  tests/plugins/codex-workspace-care/codex-chat-history-cleaner
-```
-
-在 `/mnt/c` 文件系统上运行 pytest 时，默认 capture 可能受临时文件行为影响；这里固定使用 `--capture=no`。
-
-## 新增插件或 skill
-
-新增 skill 时，需要同时更新：
+每个公开 Skill 都必须同时存在：
 
 ```text
-plugins/<plugin-name>/skills/<skill-name>/
-docs/skills/<plugin-name>/<skill-name>/README.md
-manifests/<plugin-name>.toml
-plugins/<plugin-name>/README.md
-README.md
+plugins/<plugin>/skills/<skill>/SKILL.md
+plugins/<plugin>/skills/<skill>/agents/openai.yaml
+docs/skills/<plugin>/<skill>/README.md
 ```
 
-新增插件时，需要同时更新：
-
-```text
-plugins/<plugin-name>/.codex-plugin/plugin.json
-.agents/plugins/marketplace.json
-manifests/<plugin-name>.toml
-plugins/<plugin-name>/README.md
-README.md
-scripts/validate_plugins.sh
-```
-
-成员身份、patch 溯源、证据真实性和领域安全规则必须放在核心 `android-change-policy`。个人风格、review 偏好和项目规则可以叠加，但不能覆盖核心合同。
+Runtime Skill 目录不放 README；GitHub 说明统一放在 `docs/skills/`。发布前还要在真实 WSL、
+macOS、构建服务器和设备上完成相应 Pilot，不能用 fake fixture 替代外部事实。

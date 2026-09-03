@@ -1,0 +1,61 @@
+{
+  "schema": "android-component-profiles-v2",
+  "canonical_selector": "component.layer",
+  "component_model": {
+    "layer": [
+      "application",
+      "platform",
+      "native",
+      "hal",
+      "kernel",
+      "device",
+      "build"
+    ],
+    "orthogonal_facets": [
+      "type",
+      "partition",
+      "ownership"
+    ],
+    "facets_are_required": true,
+    "weak_title_or_filename_inference_forbidden": true
+  },
+  "layer_evidence": {
+    "application": ["application_build", "manifest_and_permissions", "runtime_behavior", "rollback"],
+    "platform": ["platform_build", "api_or_service_behavior", "regression", "rollback"],
+    "native": ["native_build", "abi_api", "runtime_behavior", "rollback"],
+    "hal": ["interface_version", "vintf", "selinux", "hardware_behavior", "rollback"],
+    "kernel": ["kernel_or_module_build", "boot", "dmesg", "hardware_regression", "rollback"],
+    "device": ["board_build", "boot_integration", "partition_or_overlay", "device_behavior", "rollback"],
+    "build": ["dependency_graph", "clean_incremental", "reproducibility", "artifact_contract", "rollback"]
+  },
+  "legacy_change_domain": {
+    "status": "compatibility_input_only",
+    "canonical_output_field": "component",
+    "partial_hints": {
+      "framework": {"layer": "platform", "type": "framework"},
+      "system_app": {"layer": "application", "type": "system_app"},
+      "app": {"layer": "application", "type": "app"},
+      "hal": {"layer": "hal", "type": "hal"},
+      "native": {"layer": "native", "type": "native"},
+      "kernel": {"layer": "kernel", "type": "kernel"},
+      "driver": {"layer": "kernel", "type": "driver"},
+      "device": {"layer": "device", "type": "device"},
+      "build": {"layer": "build", "type": "build"}
+    },
+    "unknown_facet_policy": "preserve explicit values; otherwise record unknown without fabricating",
+    "ambiguous_inputs": {
+      "vendor": {
+        "reason": "vendor is an ownership or partition facet, not a layer",
+        "requires_explicit": ["layer", "type", "partition", "ownership"]
+      }
+    },
+    "history_rewrite": false
+  },
+  "submission": {
+    "canonical_package_type": "android_change_capture",
+    "v2_local_prepare_owner": "akbs-patch-submit",
+    "writer_off_behavior": "capability_gated_zero_network_side_effects",
+    "fallback_to_framework_v1": false,
+    "legacy_framework_v1": "permanent_compatibility_contract"
+  }
+}

@@ -1,9 +1,9 @@
 {
   "name": "jinny-android-practices",
-  "version": "1.0.3",
-  "description": "Optional Jinny naming, review, and project preferences layered on Android Change Policy.",
+  "version": "2.0.0",
+  "description": "Optional decision-only Jinny coding and execution provider for Android Engineering Ops.",
   "author": {
-    "name": "Jinny Android Framework Team",
+    "name": "Jinny Android Team",
     "url": "https://github.com/jinny51"
   },
   "homepage": "https://github.com/jinny51/android-framework-codex-suite",
@@ -11,26 +11,25 @@
   "license": "MIT",
   "keywords": [
     "android",
-    "framework",
-    "coding-style",
-    "review",
+    "coding-policy",
+    "execution-policy",
+    "provider",
     "team-practices"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Jinny Android Practices",
-    "shortDescription": "叠加在 Android Change Policy 之上的可选 Jinny 命名和评审偏好",
-    "longDescription": "可选的 Jinny 团队实践层。强制成员身份、补丁标记和 Framework 安全规则由核心 android-change-policy 统一负责；本插件只在用户明确要求时增加命名、review 或项目偏好。",
-    "developerName": "Jinny Android Framework Team",
+    "shortDescription": "显式选择后提供 Jinny coding 与 execution 决策，不拥有 controller 权限",
+    "longDescription": "实现 android-practices-provider-v1 的可选 Jinny provider。只返回 coding-policy-decision-v1 或 execution-policy-decision-v1；不能 spawn、写源码、取锁、执行副作用、上传或宣布 Gate/最终验收。",
+    "developerName": "Jinny Android Team",
     "category": "Coding",
     "capabilities": [
       "Interactive",
-      "Read",
-      "Write"
+      "Read"
     ],
     "defaultPrompt": [
-      "使用 Jinny 可选命名偏好实现这个 Framework 需求",
-      "在 Android Change Policy 基础上用 Jinny review 偏好检查当前 patch"
+      "使用 Jinny coding provider 给出不覆盖核心 policy 的可选规则决策",
+      "使用 Jinny execution provider 返回受 controller rollout ceiling 约束的路由决策"
     ],
     "brandColor": "#7C3AED",
     "screenshots": []

@@ -38,7 +38,7 @@ def row(matrix: dict, surface_id: str) -> dict:
     return next(item for item in matrix["rows"] if item["surface_id"] == surface_id)
 
 
-def test_functional_split_contract_is_still_the_physical_default() -> None:
+def test_legacy_functional_split_contract_is_the_immutable_rollback_authority() -> None:
     contract = load(CURRENT)
     assert contract["state"] == "active"
     assert contract["canonical_core"] == "android-framework-ops"
@@ -69,7 +69,7 @@ def test_active_topology_validator_passes_the_repository() -> None:
     )
     assert result.returncode == 0, result.stderr or result.stdout
     assert "Active plugin topology validation passed" in result.stdout
-    assert "Phase 0 declaration-only contracts validation passed" in result.stdout
+    assert "Phase 2 migration catalog validation passed" in result.stdout
 
 
 def test_active_contract_loader_rejects_ambiguous_json(tmp_path: Path) -> None:
@@ -84,16 +84,49 @@ def test_active_contract_loader_rejects_ambiguous_json(tmp_path: Path) -> None:
         module.load_json(nonfinite)
 
 
-def test_phase0_current_is_the_only_materialized_state() -> None:
+def test_phase2_migration_is_the_only_materialized_state() -> None:
     topology = load(TOPOLOGY)
+    assert topology["architecture_binding"] == {
+        "baseline_id": "akbs-2-architecture-baseline-v1",
+        "baseline_run": "v1-20260901",
+        "architecture_sha256": (
+            "828eb97f6dbce441423f0a8c471d6c984187c8c1c846b91a3bfcbb6267a9b54b"
+        ),
+        "plugin_source_baseline": "c0840685911ef7e19dba3893e014a257727c54b6",
+    }
     assert topology["physical_policy"] == {
-        "default_state": "current",
-        "materialized_states": ["current"],
-        "declaration_only_states": ["migration", "target"],
+        "default_state": "migration",
+        "materialized_states": ["migration"],
+        "declaration_only_states": ["target"],
         "current_authority": "contracts/plugin-topology/v1/active-topology.json",
         "current_authority_sha256": current_sha256(),
         "undeclared_mixed_behavior": "reject",
     }
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("architecture_binding", None),
+        ("architecture_sha256", "0" * 64),
+        ("plugin_source_baseline", "0" * 40),
+    ],
+)
+def test_rejects_missing_or_rebound_architecture_baseline(
+    field: str, value: str | None,
+) -> None:
+    module = validator_module()
+    current = load(CURRENT)
+    topology = load(TOPOLOGY)
+    matrix = load(MATRIX)
+    if field == "architecture_binding":
+        topology.pop(field)
+    else:
+        topology["architecture_binding"][field] = value
+    with pytest.raises(module.TopologyError, match="architecture binding"):
+        module.validate_contract_documents(
+            current, topology, matrix, current_sha256=current_sha256()
+        )
 
 
 def test_target_fixture_matches_reviewed_three_plugin_baseline() -> None:
@@ -129,7 +162,20 @@ def test_migration_catalog_coexistence_is_not_install_coexistence() -> None:
     assert "android-framework-ops" in migration["catalog_plugins"]
     assert "android-engineering-ops" in migration["catalog_plugins"]
     assert migration["installation_families"]["legacy_rollback"]["coinstall_with_target"] is False
+    assert migration["installation_families"]["legacy_rollback"]["source"] == (
+        "frozen_rollback_release"
+    )
     assert migration["installation_families"]["target_candidate"]["coinstall_with_legacy"] is False
+    assert migration["installation_families"]["ordered_cutover"] == {
+        "forward": [
+            "refresh_marketplace", "remove_legacy_family", "add_target_family",
+            "verify_target_only",
+        ],
+        "rollback": [
+            "remove_target_family", "add_exact_legacy_release", "verify_legacy_only",
+        ],
+        "mixed_state": "invalid_no_business_actions",
+    }
 
 
 def test_compatibility_rows_cover_every_declared_surface_and_behavior() -> None:
@@ -206,6 +252,20 @@ def test_rejects_legacy_target_install_family_coexistence() -> None:
     migration = next(item for item in topology["states"] if item["id"] == "migration")
     migration["installation_families"]["target_candidate"]["coinstall_with_legacy"] = True
     with pytest.raises(module.TopologyError, match="mutually exclusive"):
+        module.validate_contract_documents(
+            current, topology, matrix, current_sha256=current_sha256()
+        )
+
+
+def test_rejects_install_family_cutover_reordering() -> None:
+    module = validator_module()
+    current = load(CURRENT)
+    topology = load(TOPOLOGY)
+    matrix = load(MATRIX)
+    migration = next(item for item in topology["states"] if item["id"] == "migration")
+    forward = migration["installation_families"]["ordered_cutover"]["forward"]
+    forward[1], forward[2] = forward[2], forward[1]
+    with pytest.raises(module.TopologyError, match="ordered cutover"):
         module.validate_contract_documents(
             current, topology, matrix, current_sha256=current_sha256()
         )
@@ -412,13 +472,39 @@ def test_migration_target_candidate_owns_legacy_skill_wrappers() -> None:
     ]
 
 
-def test_member_config_compatibility_covers_search_and_report_paths() -> None:
+def test_member_config_compatibility_excludes_project_report_identity() -> None:
+    topology = load(TOPOLOGY)
+    identity = topology["engineering_identity_resolution"]["semantics"]
     member_config = row(load(MATRIX), "config.member-profile")
     assert set(member_config["legacy"]) >= {
         "$CODEX_HOME/android-knowledge-intake.toml",
         "$CODEX_HOME/android-knowledge-search.toml",
         "$CODEX_HOME/report/config.toml",
         "<project>/.codex/report.toml",
+    }
+    assert identity["akbs_profile"]["legacy_user_configs"] == [
+        "$CODEX_HOME/android-knowledge-intake.toml",
+        "$CODEX_HOME/android-knowledge-search.toml",
+        "$CODEX_HOME/report/config.toml",
+    ]
+    assert identity["akbs_profile"]["repository_report_config"] == (
+        "<project>/.codex/report.toml"
+    )
+    assert identity["akbs_profile"]["repository_report_identity_role"] == (
+        "cannot_supply_or_override_member_alias"
+    )
+    assert identity["closed_config_shapes"] == {
+        "user": {
+            "path": "$CODEX_HOME/android-engineering-ops.toml",
+            "allowed_tables": ["extension", "identity"],
+            "additional_tables": "forbidden",
+        },
+        "project": {
+            "path": "<project>/.codex/android-engineering.toml",
+            "allowed_tables": ["extension"],
+            "required_tables": ["extension"],
+            "additional_tables": "forbidden",
+        },
     }
 
 

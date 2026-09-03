@@ -481,10 +481,13 @@ def test_json_equality_is_boolean_safe_and_coding_decisions_execute_schema() -> 
         "provider": {
             "provider_id": "jinny-android-practices",
             "provider_version": "1.0.0",
-            "provider_manifest_sha256": "3" * 64,
-            "skill_id": "jinny-android-coding-practices",
-            "skill_version": "1.0.0",
-        },
+                "provider_manifest_sha256": "3" * 64,
+                "skill_id": "jinny-android-coding-practices",
+                "skill_version": "1.0.0",
+                "skill_sha256": "4" * 64,
+                "agent_metadata_sha256": "5" * 64,
+                "decision_entrypoint_sha256": "6" * 64,
+            },
         "outcome": {
             "type": "applied",
             "rules": [

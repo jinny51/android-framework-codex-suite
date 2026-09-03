@@ -1,0 +1,330 @@
+from __future__ import annotations
+
+import contextlib
+import importlib.util
+import io
+import json
+import os
+import subprocess
+import sys
+import unittest
+from pathlib import Path
+from unittest import mock
+
+
+ROOT = Path(__file__).resolve().parents[3]
+PLUGIN = ROOT / "plugins" / "akbs-member-ops"
+CANONICAL = {
+    "akbs-member-setup": "akbs_member_setup.py",
+    "akbs-knowledge-search": "akbs_knowledge_search.py",
+    "akbs-knowledge-merge-review": "akbs_knowledge_merge_review.py",
+    "akbs-daily-report": "akbs_daily_report.py",
+    "akbs-weekly-report": "akbs_weekly_report.py",
+    "akbs-patch-submit": "akbs_patch_submit.py",
+}
+LEGACY = {
+    "android-member-setup": "android_member_setup.py",
+    "android-knowledge-search": "android_knowledge_search.py",
+    "android-knowledge-merge-review": "android_knowledge_merge_review.py",
+    "android-daily-report-intake": "android_daily_report_intake.py",
+    "android-weekly-report-intake": "android_weekly_report_intake.py",
+    "android-framework-patch-intake": "android_framework_patch_intake.py",
+    "android-knowledge-intake": "android_knowledge_intake.py",
+}
+
+
+class SkillSurfaceTest(unittest.TestCase):
+    def load_script(self, name: str, path: Path):
+        spec = importlib.util.spec_from_file_location(name, path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_all_public_scripts_are_executable_and_help_from_unrelated_cwd(self) -> None:
+        env = os.environ.copy()
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        for skill, script_name in {**CANONICAL, **LEGACY}.items():
+            script = PLUGIN / "skills" / skill / "scripts" / script_name
+            with self.subTest(skill=skill):
+                self.assertTrue(os.access(script, os.X_OK), script)
+                completed = subprocess.run(
+                    [sys.executable, str(script), "--help"],
+                    cwd="/tmp",
+                    env=env,
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_legacy_scripts_are_thin_forwarders(self) -> None:
+        for skill, script_name in LEGACY.items():
+            source = (PLUGIN / "skills" / skill / "scripts" / script_name).read_text(encoding="utf-8")
+            with self.subTest(skill=skill):
+                self.assertLessEqual(len(source.splitlines()), 30)
+                self.assertNotIn("urllib", source)
+                self.assertNotIn("write_text", source)
+                self.assertNotIn("write_json", source)
+                self.assertIn("main", source)
+                self.assertIn("DEPRECATED:", source)
+
+    def test_legacy_help_preserves_canonical_stdout_and_adds_one_notice(self) -> None:
+        replacements = {
+            "android-member-setup": "akbs-member-setup",
+            "android-knowledge-search": "akbs-knowledge-search",
+            "android-knowledge-merge-review": "akbs-knowledge-merge-review",
+            "android-daily-report-intake": "akbs-daily-report",
+            "android-weekly-report-intake": "akbs-weekly-report",
+            "android-framework-patch-intake": "akbs-patch-submit",
+        }
+        env = os.environ.copy()
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        for legacy, canonical in replacements.items():
+            old_script = PLUGIN / "skills" / legacy / "scripts" / LEGACY[legacy]
+            new_script = PLUGIN / "skills" / canonical / "scripts" / CANONICAL[canonical]
+            with self.subTest(legacy=legacy):
+                old = subprocess.run(
+                    [sys.executable, str(old_script), "--help"], cwd="/tmp", env=env,
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+                )
+                new = subprocess.run(
+                    [sys.executable, str(new_script), "--help"], cwd="/tmp", env=env,
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+                )
+                self.assertEqual(old.returncode, new.returncode)
+                normalized_old = " ".join(
+                    old.stdout.replace(old_script.name, new_script.name).split()
+                )
+                normalized_new = " ".join(new.stdout.split())
+                self.assertEqual(normalized_old, normalized_new)
+                self.assertEqual(old.stderr, f"DEPRECATED: {legacy}; use {canonical}.\n" + new.stderr)
+
+    def test_only_one_incoming_v1_kernel_entry_exists(self) -> None:
+        kernels = list(PLUGIN.rglob("akbs_member_intake.py"))
+        self.assertEqual(
+            kernels,
+            [PLUGIN / "internal" / "incoming-v1" / "scripts" / "akbs_member_intake.py"],
+        )
+
+    def test_every_v2_help_path_bypasses_install_family_business_gate(self) -> None:
+        script = PLUGIN / "skills" / "akbs-patch-submit" / "scripts" / "akbs_patch_submit.py"
+        env = os.environ.copy()
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        for arguments in (
+            ["android-change-v2", "--help"],
+            ["android-change-v2", "read", "--help"],
+            ["android-change-v2", "check", "--help"],
+            ["android-change-v2", "prepare", "--help"],
+            ["android-change-v2", "submit", "--help"],
+            ["android-change-v2", "adapt-capture", "--help"],
+        ):
+            with self.subTest(arguments=arguments):
+                completed = subprocess.run(
+                    [sys.executable, str(script), *arguments], cwd="/tmp", env=env,
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+                )
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_search_literal_help_after_option_terminator_cannot_bypass_family_gate(self) -> None:
+        script = PLUGIN / "skills/akbs-knowledge-search/scripts/akbs_knowledge_search.py"
+        module = self.load_script("akbs_knowledge_search_help_gate_test", script)
+        with mock.patch.object(
+            module,
+            "installed_plugin_family_status",
+            return_value={"blocking": True, "message": "target not active"},
+        ) as family_gate, mock.patch.object(module, "search_main") as business:
+            with self.assertRaisesRegex(SystemExit, "target not active"):
+                module.main(["--source", "local", "--no-record-usage", "--", "--help"])
+        family_gate.assert_called_once_with()
+        business.assert_not_called()
+
+    def test_patch_literal_help_after_option_terminator_cannot_bypass_family_gate(self) -> None:
+        script = PLUGIN / "skills/akbs-patch-submit/scripts/akbs_patch_submit.py"
+        module = self.load_script("akbs_patch_submit_help_gate_test", script)
+        with mock.patch.object(
+            module,
+            "installed_plugin_family_status",
+            return_value={"blocking": True, "message": "target not active"},
+        ) as family_gate, mock.patch.object(module, "incoming_v2_main") as business:
+            with self.assertRaisesRegex(SystemExit, "target not active"):
+                module.main(["android-change-v2", "prepare", "--", "--help"])
+        family_gate.assert_called_once_with()
+        business.assert_not_called()
+
+    def test_capture_adapter_phase_boundary_is_aligned_across_public_surfaces(self) -> None:
+        surfaces = (
+            PLUGIN / "README.md",
+            PLUGIN / ".codex-plugin" / "plugin.json",
+            PLUGIN / "skills" / "akbs-patch-submit" / "SKILL.md",
+            PLUGIN / "skills" / "akbs-patch-submit" / "agents" / "openai.yaml",
+            ROOT / "docs" / "skills" / "akbs-member-ops" / "akbs-patch-submit" / "README.md",
+            ROOT / "manifests" / "akbs-member-ops.toml",
+        )
+        for surface in surfaces:
+            with self.subTest(surface=surface):
+                text = surface.read_text(encoding="utf-8")
+                self.assertIn("adapt-capture", text)
+        skill = surfaces[2].read_text(encoding="utf-8")
+        docs = surfaces[4].read_text(encoding="utf-8")
+        for text in (skill, docs):
+            normalized = " ".join(text.split())
+            self.assertIn("BLOCKED", normalized)
+            self.assertIn("Phase 4", normalized)
+            self.assertIn("versioned adapter input", normalized)
+
+    def test_canonical_search_covers_non_framework_android_changes(self) -> None:
+        skill = (PLUGIN / "skills" / "akbs-knowledge-search" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        contract = (
+            PLUGIN
+            / "skills"
+            / "akbs-knowledge-search"
+            / "references"
+            / "search-contract.md"
+        ).read_text(encoding="utf-8")
+        agent = (
+            PLUGIN
+            / "skills"
+            / "akbs-knowledge-search"
+            / "agents"
+            / "openai.yaml"
+        ).read_text(encoding="utf-8")
+        docs = (
+            ROOT
+            / "docs"
+            / "skills"
+            / "akbs-member-ops"
+            / "akbs-knowledge-search"
+            / "README.md"
+        ).read_text(encoding="utf-8")
+
+        for surface in (skill, contract, agent, docs):
+            with self.subTest(surface=surface[:40]):
+                for domain in ("GMS", "native", "HAL", "kernel", "device", "build"):
+                    self.assertIn(domain, surface)
+        self.assertNotIn("prior Android Framework solutions", skill)
+        self.assertNotIn("new Android Framework requirement", skill)
+        self.assertNotIn("primary Android Framework problem", contract)
+
+    def test_member_setup_covers_gms_and_report_only_members(self) -> None:
+        skill = (PLUGIN / "skills" / "akbs-member-setup" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        agent = (
+            PLUGIN / "skills" / "akbs-member-setup" / "agents" / "openai.yaml"
+        ).read_text(encoding="utf-8")
+        for surface in (skill, agent):
+            self.assertIn("AKBS member", surface)
+            self.assertIn("GMS", surface)
+            self.assertIn("report-only", surface)
+        self.assertNotIn("Android engineering member", skill)
+
+        docs = (
+            ROOT
+            / "docs"
+            / "skills"
+            / "akbs-member-ops"
+            / "akbs-member-setup"
+            / "README.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("GMS", docs)
+        self.assertIn("仅填报成员", docs)
+        self.assertIn("不限定为 Framework", docs)
+
+    def test_member_setup_install_preflight_is_machine_checked_before_config(self) -> None:
+        script = PLUGIN / "skills/akbs-member-setup/scripts/akbs_member_setup.py"
+        module = self.load_script("akbs_member_setup_preflight_test", script)
+        for family, expected in (
+            ({"status": "PASS", "blocking": False}, 0),
+            ({"status": "MIXED_INSTALL", "blocking": True}, 1),
+        ):
+            with self.subTest(family=family), mock.patch.object(
+                module, "installed_plugin_family_status", return_value=family
+            ) as gate, mock.patch.object(module, "incoming_main") as incoming:
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    result = module.main(["preflight-install-family"])
+                self.assertEqual(result, expected)
+                self.assertEqual(json.loads(output.getvalue()), family)
+                gate.assert_called_once_with()
+                incoming.assert_not_called()
+
+        prompt = (
+            PLUGIN
+            / "internal/incoming-v1/references/member-setup-prompt.md"
+        ).read_text(encoding="utf-8")
+        self.assertLess(
+            prompt.index("preflight-install-family"),
+            prompt.index("仅在第 1 步门禁通过后创建"),
+        )
+
+    def test_every_canonical_member_skill_gates_business_before_reads_or_writes(self) -> None:
+        for skill in CANONICAL:
+            text = (PLUGIN / "skills" / skill / "SKILL.md").read_text(
+                encoding="utf-8"
+            )
+            with self.subTest(skill=skill):
+                self.assertIn("preflight-install-family", text)
+                self.assertIn("status=PASS", text)
+
+        for report_type in ("daily", "weekly"):
+            skill = (PLUGIN / f"skills/akbs-{report_type}-report/SKILL.md").read_text(
+                encoding="utf-8"
+            )
+            facts = (
+                PLUGIN
+                / f"internal/incoming-v1/references/{report_type}-facts-contract.md"
+            ).read_text(encoding="utf-8")
+            docs = (
+                ROOT
+                / f"docs/skills/akbs-member-ops/akbs-{report_type}-report/README.md"
+            ).read_text(encoding="utf-8")
+            compact_skill = " ".join(skill.split())
+            compact_facts = " ".join(facts.split())
+            compact_docs = " ".join(docs.split())
+            report_cn = {"daily": "日报", "weekly": "周报"}[report_type]
+            self.assertIn(
+                f"Before reading report inputs, writing direct {report_type} facts, "
+                "generating a package, or performing any check/prepare/submit action, "
+                "run:",
+                compact_skill,
+            )
+            self.assertIn(
+                f"Before creating or replacing any {report_type} facts file, run "
+                "`akbs_member_setup.py preflight-install-family`",
+                compact_facts,
+            )
+            self.assertIn(
+                f"读取{report_cn}输入、创建/修改 {report_type}-facts 或执行生成、检查、"
+                "提交前，必须先运行 `akbs_member_setup.py preflight-install-family`",
+                compact_docs,
+            )
+
+    def test_target_config_exclusivity_is_documented_for_setup_and_search(self) -> None:
+        surfaces = (
+            PLUGIN / "README.md",
+            PLUGIN / "skills" / "akbs-member-setup" / "SKILL.md",
+            PLUGIN / "skills" / "akbs-knowledge-search" / "SKILL.md",
+            PLUGIN / "internal" / "incoming-v1" / "references" / "member-setup-prompt.md",
+            ROOT / "docs" / "skills" / "akbs-member-ops" / "akbs-member-setup" / "README.md",
+            ROOT / "docs" / "skills" / "akbs-member-ops" / "akbs-knowledge-search" / "README.md",
+        )
+        for surface in surfaces:
+            with self.subTest(surface=surface):
+                text = " ".join(surface.read_text(encoding="utf-8").split()).lower()
+                self.assertIn("target", text)
+                self.assertTrue("legacy" in text or "旧配置" in text)
+                self.assertTrue(
+                    "sole akbs config authority" in text
+                    or "only akbs configuration authority" in text
+                    or "唯一 akbs 配置权威" in text
+                    or "唯一 akbs 配置" in text
+                )
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -204,17 +204,17 @@ def test_public_policy_skill_and_optional_jinny_layer_have_one_authority() -> No
         REPO_ROOT
         / "plugins/jinny-android-practices/skills/jinny-framework-coding-standards/SKILL.md"
     ).read_text(encoding="utf-8")
-    legacy_reference = (
+    canonical_skill = (
         REPO_ROOT
-        / "plugins/jinny-android-practices/skills/jinny-framework-coding-standards/references/android-framework-coding-standards.md"
+        / "plugins/jinny-android-practices/skills/jinny-android-coding-practices/SKILL.md"
     ).read_text(encoding="utf-8")
 
     assert "../../contracts/android-change-policy/v1/README.md" in policy_skill
     assert "../../contracts/android-change-policy/v1/policy.json" in policy_skill
-    assert "android-change-policy" in legacy_skill
-    assert "optional preference layer" in legacy_skill
-    assert "deprecated" not in legacy_skill
-    assert "not a second policy contract" in legacy_reference
-    assert "@{" not in legacy_reference
+    assert "migration-only thin wrapper" in legacy_skill
+    assert "jinny-android-coding-practices" in legacy_skill
+    assert "Do not keep coding rules" in legacy_skill
+    assert "canonical policy" in " ".join(canonical_skill.casefold().split())
+    assert "@{" not in canonical_skill
     assert "gyf" not in legacy_skill.casefold()
-    assert "gyf" not in legacy_reference.casefold()
+    assert "gyf" not in canonical_skill.casefold()

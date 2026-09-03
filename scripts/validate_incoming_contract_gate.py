@@ -31,24 +31,7 @@ SCRIPTS_ROOT = Path(__file__).resolve().parent
 if str(SCRIPTS_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_ROOT))
 
-INTAKE_SCRIPT = (
-    REPO_ROOT
-    / "plugins"
-    / "android-framework-ops"
-    / "skills"
-    / "android-knowledge-intake"
-    / "scripts"
-    / "android_knowledge_intake.py"
-)
-CAPTURE_SCRIPT = (
-    REPO_ROOT
-    / "plugins"
-    / "android-framework-ops"
-    / "skills"
-    / "android-framework-patch-capture"
-    / "scripts"
-    / "capture_framework_patch.py"
-)
+TARGET_PLUGIN_NAMES = ("akbs-member-ops", "android-engineering-ops")
 RESIDUE_TABLES = (
     "packages",
     "intake_queue",
@@ -360,18 +343,93 @@ def verify_public_contract(system_root: Path, suite_root: Path = REPO_ROOT) -> t
     )
 
 
-def write_config(root: Path) -> dict[str, str]:
+def install_plugin_family(
+    root: Path,
+    codex_home: Path,
+    plugin_names: tuple[str, ...],
+    *,
+    inventory_dir_name: str,
+) -> dict[str, Path]:
+    marketplace = "android-framework-codex-suite"
+    runtimes: dict[str, Path] = {}
+    installed: list[dict[str, Any]] = []
+    for plugin_name in plugin_names:
+        checkout = REPO_ROOT / "plugins" / plugin_name
+        source = (
+            codex_home
+            / ".tmp/marketplaces"
+            / marketplace
+            / "plugins"
+            / plugin_name
+        )
+        source.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(
+            checkout,
+            source,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
+        )
+        manifest_path = source / ".codex-plugin/plugin.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        version = str(manifest.get("version") or "")
+        if manifest.get("name") != plugin_name or not re.fullmatch(r"\d+\.\d+\.\d+", version):
+            raise AssertionError(f"plugin manifest identity is invalid: {manifest_path}")
+        runtime = (
+            codex_home
+            / "plugins/cache"
+            / marketplace
+            / plugin_name
+            / version
+        )
+        runtime.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(
+            source,
+            runtime,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
+        )
+        if source.resolve() == runtime.resolve() or source.is_symlink() or runtime.is_symlink():
+            raise AssertionError(f"plugin source/cache identity is not independent: {plugin_name}")
+        runtimes[plugin_name] = runtime
+        installed.append(
+            {
+                "pluginId": f"{plugin_name}@{marketplace}",
+                "name": plugin_name,
+                "marketplaceName": marketplace,
+                "version": version,
+                "installed": True,
+                "enabled": True,
+                "source": {"source": "local", "path": str(source)},
+            }
+        )
+
+    inventory_bin = root / inventory_dir_name
+    inventory_bin.mkdir()
+    codex = inventory_bin / "codex"
+    payload = {"installed": installed, "available": []}
+    codex.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        f"payload = {payload!r}\n"
+        "if sys.argv[1:] != ['plugin', 'list', '--json']:\n"
+        "    raise SystemExit(64)\n"
+        "print(json.dumps(payload, sort_keys=True))\n",
+        encoding="utf-8",
+    )
+    codex.chmod(0o700)
+    runtimes["inventory_bin"] = inventory_bin
+    return runtimes
+
+
+def write_config(root: Path) -> tuple[dict[str, str], dict[str, Path]]:
     codex_home = root / "codex-home"
-    config_dir = codex_home / "report"
-    config_dir.mkdir(parents=True)
-    (config_dir / "config.toml").write_text(
+    codex_home.mkdir(parents=True)
+    (codex_home / "akbs-member-ops.toml").write_text(
         textwrap.dedent(
             f"""
             default_profile = "wick"
             incoming_schema_version = "1"
 
             [paths]
-            out_dir = "{(root / 'artifacts' / 'android-knowledge-intake').as_posix()}"
+            out_dir = "{(codex_home / 'artifacts/akbs-member-ops').as_posix()}"
 
             [profiles.wick]
             member_alias = "wick"
@@ -391,7 +449,60 @@ def write_config(root: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["CODEX_HOME"] = str(codex_home)
     env["CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"] = "1"
-    return env
+    runtimes = install_plugin_family(
+        root,
+        codex_home,
+        TARGET_PLUGIN_NAMES,
+        inventory_dir_name="target-active-plugin-inventory",
+    )
+    env["PATH"] = f"{runtimes['inventory_bin']}{os.pathsep}{env['PATH']}"
+    return env, runtimes
+
+
+def write_legacy_capture_config(root: Path) -> tuple[dict[str, str], Path]:
+    fixture_root = root / "legacy-capture-runtime"
+    codex_home = fixture_root / "codex-home"
+    config_dir = codex_home / "report"
+    config_dir.mkdir(parents=True)
+    (config_dir / "config.toml").write_text(
+        textwrap.dedent(
+            f"""
+            default_profile = "wick"
+            incoming_schema_version = "1"
+
+            [paths]
+            out_dir = "{(codex_home / 'artifacts/android-knowledge-intake').as_posix()}"
+
+            [profiles.wick]
+            member_alias = "wick"
+            member_name = "刘杰钊"
+            role = "member"
+            allowed_modes = ["daily", "weekly", "patch"]
+            knowledge_repo_worktree = "{(fixture_root / 'knowledge').as_posix()}"
+            git_user_name = "刘杰钊"
+            git_user_email = "wick@example.invalid"
+            synthetic_data = true
+            synthetic_item_count = "2"
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    runtimes = install_plugin_family(
+        fixture_root,
+        codex_home,
+        ("android-framework-ops",),
+        inventory_dir_name="legacy-active-plugin-inventory",
+    )
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(codex_home)
+    env["CODEX_REPORT_SKIP_PLUGIN_UPDATE_CHECK"] = "1"
+    env["PATH"] = f"{runtimes['inventory_bin']}{os.pathsep}{env['PATH']}"
+    script = (
+        runtimes["android-framework-ops"]
+        / "skills/android-framework-patch-capture/scripts/capture_framework_patch.py"
+    )
+    return env, script
 
 
 def init_framework_source(root: Path) -> Path:
@@ -406,27 +517,40 @@ def init_framework_source(root: Path) -> Path:
     subprocess.run(["git", "commit", "-m", "contract baseline"], cwd=source_root, check=True, stdout=subprocess.DEVNULL)
     source.write_text(
         "class VolumeDialogImpl {\n"
-        "  //wick 20260711@ contract gate change\n"
+        "  //wick 20260711@{\n"
         "  static final String KEY = \"persist.sys.contract_gate\";\n"
+        "  //wick 20260711@}\n"
         "}\n",
         encoding="utf-8",
     )
     return source_root
 
 
-def generate_real_packages(root: Path, env: dict[str, str]) -> dict[str, Path]:
-    common = [sys.executable, str(INTAKE_SCRIPT), "--profile", "wick"]
+def generate_real_packages(
+    root: Path,
+    env: dict[str, str],
+    runtimes: dict[str, Path],
+) -> dict[str, Path]:
+    intake_script = (
+        runtimes["akbs-member-ops"]
+        / "internal/incoming-v1/scripts/akbs_member_intake.py"
+    )
+    common = [sys.executable, str(intake_script), "--profile", "wick"]
     daily = run_json(common + ["daily", "--date", "2026-07-11", "--run-id", "20260711-090000-daily", "--prepare"], REPO_ROOT, env)
     weekly = run_json(common + ["weekly", "--date", "2026-07-11", "--run-id", "20260711-100000-weekly", "--prepare"], REPO_ROOT, env)
     source_root = init_framework_source(root)
+    legacy_env, capture_script = write_legacy_capture_config(root)
     capture = run_json(
         [
             sys.executable,
-            str(CAPTURE_SCRIPT),
+            str(capture_script),
             "--source-root",
             str(source_root),
             "--out-dir",
-            str(root / "artifacts" / "capture-out"),
+            str(
+                Path(legacy_env["CODEX_HOME"])
+                / "artifacts/android-framework-patch-capture/packages"
+            ),
             "--run-id",
             "20260711-110000-patch",
             "--platform",
@@ -453,8 +577,15 @@ def generate_real_packages(root: Path, env: dict[str, str]) -> dict[str, Path]:
             "未发现可直接复用补丁",
         ],
         source_root,
-        env,
+        legacy_env,
     )
+    target_capture = (
+        Path(env["CODEX_HOME"])
+        / "artifacts/android-framework-patch-capture/packages"
+        / "20260711-110000-patch"
+    )
+    target_capture.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(Path(capture["package"]), target_capture)
     patch = run_json(
         common
         + [
@@ -464,7 +595,7 @@ def generate_real_packages(root: Path, env: dict[str, str]) -> dict[str, Path]:
             "--run-id",
             "20260711-120000-patch",
             "--patch-package",
-            capture["package"],
+            str(target_capture),
             "--summary",
             "incoming v1 跨仓合同门禁",
             "--status",
@@ -577,8 +708,8 @@ class _TestClientUrlopen:
 
 
 def load_plugin_submit(suite_root: Path) -> Any:
-    plugin_root = suite_root / "plugins" / "android-framework-ops"
-    scripts_root = plugin_root / "skills" / "android-knowledge-intake" / "scripts"
+    plugin_root = suite_root / "plugins" / "akbs-member-ops"
+    scripts_root = plugin_root / "internal" / "incoming-v1" / "scripts"
     plugin_lib = plugin_root / "lib"
     if not (scripts_root / "akbs_intake" / "submit.py").is_file():
         raise AssertionError(f"plugin HTTP client is missing: {scripts_root}")
@@ -811,7 +942,11 @@ def exercise_remote_server(packages: dict[str, Path], host: str, runtime_root: s
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
         archive.add(Path(__file__), arcname="gate.py")
         archive.add(REPO_ROOT / "contracts", arcname="suite/contracts")
-        archive.add(REPO_ROOT / "plugins" / "android-framework-ops", arcname="suite/plugins/android-framework-ops")
+        archive.add(REPO_ROOT / "plugins" / "akbs-member-ops", arcname="suite/plugins/akbs-member-ops")
+        archive.add(
+            REPO_ROOT / "plugins" / "android-engineering-ops",
+            arcname="suite/plugins/android-engineering-ops",
+        )
         for name, package in sorted(packages.items()):
             archive.add(package, arcname=f"packages/{name}")
     command = (
@@ -862,7 +997,13 @@ def retarget_member(package: Path, manifest: dict[str, Any], member: str, run_id
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate plugin/server incoming v1 compatibility in an isolated runtime.")
-    parser.add_argument("--system-root", type=Path, required=True, help="Read-only AKBS system repository root")
+    parser.add_argument(
+        "--mode",
+        choices=("client-only", "remote-pilot"),
+        default="client-only",
+        help="Safe local package generation is the default; real SSH/server validation is an explicit Phase 4 pilot.",
+    )
+    parser.add_argument("--system-root", type=Path, help="Read-only AKBS system repository root")
     parser.add_argument("--server-host", default="test35", help="SSH host providing the authoritative system Python runtime")
     parser.add_argument("--server-runtime-root", default="/home/test35/akbs/system", help="System repository path on the server host")
     parser.add_argument(
@@ -880,10 +1021,12 @@ def main() -> int:
     else:
         cleanup = contextlib.nullcontext()
     with cleanup:
-        system_root = args.system_root.resolve()
-        if not (system_root / "akbs_active" / "app.py").is_file():
-            raise SystemExit(f"invalid system root: {system_root}")
         if args.server_packages_root:
+            if args.system_root is None:
+                raise SystemExit("--system-root is required with --server-packages-root")
+            system_root = args.system_root.resolve()
+            if not (system_root / "akbs_active" / "app.py").is_file():
+                raise SystemExit(f"invalid system root: {system_root}")
             package_root = args.server_packages_root.resolve()
             if args.plugin_suite_root is None:
                 raise SystemExit("--plugin-suite-root is required with --server-packages-root")
@@ -893,11 +1036,30 @@ def main() -> int:
             runtime = exercise_server(system_root, package_root.parent, packages, suite_root, public_contract)
             print(json.dumps({"status": "PASS", **public, **runtime}, ensure_ascii=False, sort_keys=True))
             return 0
-        public, _ = verify_public_contract(system_root)
         with tempfile.TemporaryDirectory(prefix="akbs-contract-gate-") as temporary:
             root = Path(temporary)
-            env = write_config(root)
-            packages = generate_real_packages(root, env)
+            env, runtimes = write_config(root)
+            packages = generate_real_packages(root, env, runtimes)
+            if args.mode == "client-only":
+                print(
+                    json.dumps(
+                        {
+                            "status": "PASS",
+                            "contract": "incoming-v1-client",
+                            "execution": "local-fixture-only",
+                            "packages": sorted(packages),
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                )
+                return 0
+            if args.system_root is None:
+                raise SystemExit("--system-root is required for --mode remote-pilot")
+            system_root = args.system_root.resolve()
+            if not (system_root / "akbs_active" / "app.py").is_file():
+                raise SystemExit(f"invalid system root: {system_root}")
+            public, _ = verify_public_contract(system_root)
             runtime = exercise_remote_server(packages, args.server_host, args.server_runtime_root, args.server_python_path)
         print(json.dumps({"status": "PASS", "contract": "incoming-v1", **public, **runtime}, ensure_ascii=False, sort_keys=True))
         return 0
