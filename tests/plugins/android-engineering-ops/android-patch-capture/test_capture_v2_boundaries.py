@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import importlib.util
 import json
 import os
@@ -173,6 +174,100 @@ def test_multi_component_capture_requires_primary_and_exact_repo_mappings() -> N
     )
     with pytest.raises(SystemExit, match="every declared component"):
         capture.bind_repository_components(unused, captures, components)
+
+
+def test_multi_component_generated_evidence_requires_exact_explicit_scope() -> None:
+    capture = load(CAPTURE_PATH, "capture_v2_evidence_scope_test")
+    components = [{"id": "platform-core"}, {"id": "settings-ui"}]
+    items = [
+        {"id": "changed-files"},
+        {"id": "verification-result"},
+        {"id": "rollback-plan"},
+        {"id": "search-before-change"},
+        {"id": "build-result", "component_ids": ["settings-ui"]},
+    ]
+    with pytest.raises(SystemExit, match="explicit --evidence-component"):
+        capture.bind_generated_evidence_components(items, components, [])
+
+    scoped = copy.deepcopy(items)
+    capture.bind_generated_evidence_components(
+        scoped,
+        components,
+        [
+            "verification-result:platform-core",
+            "rollback-plan:settings-ui",
+            "search-before-change:settings-ui",
+        ],
+    )
+    by_id = {item["id"]: item["component_ids"] for item in scoped}
+    assert by_id["changed-files"] == ["platform-core", "settings-ui"]
+    assert by_id["verification-result"] == ["platform-core"]
+    assert by_id["rollback-plan"] == ["settings-ui"]
+    assert by_id["search-before-change"] == ["settings-ui"]
+    assert by_id["build-result"] == ["settings-ui"]
+
+
+def test_component_assertion_contract_is_producer_owned_and_closed(tmp_path: Path) -> None:
+    capture = load(CAPTURE_PATH, "capture_v2_component_assertion_test")
+    source = tmp_path / "component-assertion.json"
+    valid = {
+        "kind": "component_assertion",
+        "result": "INFO",
+        "component_ids": ["platform-core", "settings-ui"],
+        "assertions": [
+            {
+                "component_id": "platform-core",
+                "assertion_id": "api_resource_compatibility",
+                "result": "INFO",
+                "observations": ["API surface inspected"],
+            },
+            {
+                "component_id": "settings-ui",
+                "assertion_id": "permission_signing_compatibility",
+                "result": "FAIL",
+                "observations": ["signature differs"],
+            },
+        ],
+    }
+    capture.validate_component_assertion_payload(
+        valid,
+        valid["component_ids"],
+        source,
+    )
+
+    consumer_group = copy.deepcopy(valid)
+    consumer_group["assertions"][0]["group_id"] = "api_or_resource_compatibility"
+    with pytest.raises(SystemExit, match="observations"):
+        capture.validate_component_assertion_payload(
+            consumer_group,
+            consumer_group["component_ids"],
+            source,
+        )
+    naked_pass = copy.deepcopy(valid)
+    naked_pass["assertions"][0].update(result="PASS")
+    naked_pass["assertions"][0].pop("observations")
+    with pytest.raises(SystemExit, match="observations"):
+        capture.validate_component_assertion_payload(
+            naked_pass,
+            naked_pass["component_ids"],
+            source,
+        )
+    outer_pass = copy.deepcopy(valid)
+    outer_pass["result"] = "PASS"
+    with pytest.raises(SystemExit, match="result=INFO"):
+        capture.validate_component_assertion_payload(
+            outer_pass,
+            outer_pass["component_ids"],
+            source,
+        )
+    incomplete_union = copy.deepcopy(valid)
+    incomplete_union["assertions"] = incomplete_union["assertions"][:1]
+    with pytest.raises(SystemExit, match="精确覆盖"):
+        capture.validate_component_assertion_payload(
+            incomplete_union,
+            incomplete_union["component_ids"],
+            source,
+        )
 
 
 @pytest.mark.parametrize(

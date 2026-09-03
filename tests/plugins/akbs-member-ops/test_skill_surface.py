@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import unittest
+import urllib.request
 from pathlib import Path
 from unittest import mock
 
@@ -261,6 +262,55 @@ class SkillSurfaceTest(unittest.TestCase):
             prompt.index("preflight-install-family"),
             prompt.index("仅在第 1 步门禁通过后创建"),
         )
+
+    def test_v1_validate_cannot_bypass_target_install_family_gate(self) -> None:
+        script = (
+            PLUGIN
+            / "internal/incoming-v1/scripts/akbs_member_intake.py"
+        )
+        module = self.load_script("akbs_member_intake_validate_gate_test", script)
+        output = io.StringIO()
+        with (
+            mock.patch.object(module, "load_config", return_value=({}, [])),
+            mock.patch.object(
+                module,
+                "installed_plugin_family_status",
+                return_value={
+                    "status": "MIXED_INSTALL",
+                    "blocking": True,
+                    "message": "target install family is not active",
+                },
+            ) as gate,
+            mock.patch.object(
+                module,
+                "reexec_latest_plugin_script_after_update",
+                side_effect=AssertionError("validate must not re-exec"),
+            ) as reexec,
+            mock.patch.object(
+                module,
+                "plugin_version_gate_check",
+                side_effect=AssertionError("validate must not enter freshness/update"),
+            ) as freshness,
+            mock.patch.object(
+                module,
+                "run",
+                side_effect=AssertionError("validate must not execute git/fetch/pull"),
+            ) as run,
+            mock.patch.object(module.os, "execv", side_effect=AssertionError("unexpected execv")) as execv,
+            mock.patch.object(urllib.request, "urlopen") as urlopen,
+            mock.patch.object(module, "validate_package") as validate,
+            contextlib.redirect_stdout(output),
+        ):
+            result = module.main(["patch", "--validate", "/tmp/package"])
+        self.assertEqual(result, 1)
+        self.assertEqual(json.loads(output.getvalue())["status"], "FAIL")
+        gate.assert_called_once_with()
+        reexec.assert_not_called()
+        freshness.assert_not_called()
+        run.assert_not_called()
+        execv.assert_not_called()
+        urlopen.assert_not_called()
+        validate.assert_not_called()
 
     def test_every_canonical_member_skill_gates_business_before_reads_or_writes(self) -> None:
         for skill in CANONICAL:

@@ -18,9 +18,12 @@ selects `primary_component_id`, and maps every captured repository to one or mor
 arguments remain a compatibility form and bind that one explicit component to all
 captured repositories. Every patch inherits only its repository's explicit binding.
 
-Any validated canonical package may be handed to `akbs-patch-submit` for strict v2
-local validation and byte-preserving prepare. With the v2 server writer disabled,
-network submission is capability-gated with zero side effects and no fallback to v1.
+The capture writer emits the additive 2.1 contract for any supported layer. Pass the
+whole capture directory to `akbs-patch-submit android-change-v2 adapt-capture`; never
+pass a capture directly to canonical-package `prepare`. The frozen 2.0 contract remains
+readable only through its original zero-write BLOCKED preflight. With the v2 server
+writer disabled, network submission is capability-gated with zero side effects and no
+fallback to v1.
 Existing legacy Framework v1 packages remain readable/submittable only through their
 permanent compatibility contract; their bytes and provenance are not rewritten.
 
@@ -54,26 +57,38 @@ $CODEX_HOME/artifacts/android-patch-capture/packages/<run-id>/
     ├── patch-problem-summary.json
     ├── risk-surface.json
     ├── coding-standard-check.json
+    ├── rollback-plan.json
     ├── remote-source-snapshot.json
     ├── build-result.json
     ├── verification-result.json
     ├── search-before-change.json
+    ├── component-assertion.json
+    ├── import-provenance.json
     └── package-check.json
 ```
+
+The component assertion and import provenance files are conditional. Assertions use
+the producer-owned neutral `android-patch-capture-component-assertion` contract and
+`assertion_id`; the capture does not contain consumer group-to-adapter interpretation.
+Its outer result is `INFO`. Nested `PASS`, `FAIL`, and `INFO` require observations;
+`NOT_APPLICABLE` requires both basis and limits. Component/assertion pairs are unique
+and the assertion component union exactly matches the evidence envelope.
 
 There is no `patches/*.readme.md` in the capture package. The change-level README lives
 at the package root.
 
 ## Manifest
 
+The following is an abridged 2.1 shape (inventory and unchanged fields are omitted):
+
 ```json
 {
-  "schema_version": "2.0",
+  "schema_version": "2.1",
   "schema": "android-patch-capture-package-v2",
   "package_type": "android_change_capture",
   "components": [
     {"id": "platform-core", "layer": "platform", "type": "framework", "partition": "system", "ownership": "aosp"},
-    {"id": "settings-ui", "layer": "application", "type": "system_app", "partition": "system_ext", "ownership": "product"}
+    {"id": "settings-ui", "layer": "application", "type": "system_app", "partition": "system_ext", "ownership": "product", "qualifiers": ["privileged"]}
   ],
   "primary_component_id": "platform-core",
   "change_id": "display-policy-settings-entry",
@@ -120,7 +135,7 @@ at the package root.
       "git": {
         "branch": "feature/TVE8402M-policy",
         "remote": "ssh://example/frameworks/base.git",
-        "head": "abc1234"
+        "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
       }
     }
   ],
@@ -144,6 +159,9 @@ at the package root.
       "path": "evidence/verification-result.json",
       "result": "PASS",
       "scope": "feature",
+      "component_ids": ["platform-core", "settings-ui"],
+      "contract": {"id": "android-patch-capture-evidence", "version": "2.1"},
+      "declared_claims": ["verification_recorded_not_server_accepted"],
       "summary": "device verification evidence"
     },
     {
@@ -152,6 +170,9 @@ at the package root.
       "path": "evidence/patch-diff-facts.json",
       "result": "INFO",
       "scope": "feature",
+      "component_ids": ["platform-core", "settings-ui"],
+      "contract": {"id": "android-patch-capture-evidence", "version": "2.1"},
+      "declared_claims": ["patch_bytes_parsed"],
       "summary": "变更补丁 diff 中解析出的客观事实"
     },
     {
@@ -160,7 +181,20 @@ at the package root.
       "path": "evidence/coding-standard-check.json",
       "result": "PASS",
       "scope": "feature",
+      "component_ids": ["platform-core", "settings-ui"],
+      "contract": {"id": "android-patch-capture-evidence", "version": "2.1"},
+      "declared_claims": ["local_policy_check_recorded"],
       "summary": "团队补丁开发与日志规范检查"
+    }
+  ],
+  "qualification_bindings": [
+    {
+      "component_id": "platform-core",
+      "repository_ids": ["repo-001"],
+      "patch_ids": ["rk14-frameworks-base@display-policy-settings-entry"],
+      "evidence_ids": ["verification-result", "patch-diff-facts", "coding-standard-check"],
+      "contract": "android-patch-capture-local-qualification-v2",
+      "declared_claims": ["verification_recorded_not_server_accepted", "patch_bytes_parsed", "local_policy_check_recorded"]
     }
   ],
   "patches": [
@@ -193,8 +227,13 @@ at the package root.
 }
 ```
 
+Every evidence row declares exact, non-empty `component_ids` membership and a
+versioned contract object. Package-wide generated evidence may list all components only
+when its payload contains facts for all of them; external evidence must state its scope,
+and a multi-component capture never borrows one component's evidence for another.
 `qualification_bindings[]` binds each component to repository IDs, patch IDs, local
-evidence IDs, a named contract, and truthful declared claims. `file_inventory.files[]`
+evidence IDs, the neutral local contract, and truthful declared claims.
+`file_inventory.files[]`
 contains path, byte size, and SHA-256 for every regular package file except
 `manifest.json`; the manifest is self-excluded explicitly because a self-hash would be
 circular. The capture authority remains local-only, cannot upload/allocate a server ID,

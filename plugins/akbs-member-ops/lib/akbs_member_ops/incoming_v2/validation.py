@@ -34,6 +34,10 @@ CONTRACT_SHA256 = {
     "client-adapter-outputs.schema.json": "953c84592416d569e3b642f09835aaf8ee668c7619d0bb52a79a4b3ddb7be7a5",
     "component-evidence-profiles.json": "5e2f0eb8341d3b6ef58084adcaeebfb6627c83807776b13f1e709fbec847dc4c",
     "capture-package.schema.json": "df925aab64a7c3854095c294f19164c7631befccd87eae6fed7614a05be665c3",
+    "capture-package-v2.1.schema.json": "e79a65a2a9e9cbde9d3bf1d605d2f5fab05797969b75fd75c9dc7a620d148901",
+    "qualification-contract-pack-v2.json": "ac064f0c6215ff9471b3b7c6ab8f9dab9fcec066b112cadfbb334985cd09b1a4",
+    "qualification-adapter-input-v2.schema.json": "612d432792d20c1aa1255e368068f7d16ac165c40600e4467ff1ea54f5c59e37",
+    "qualification-adapter-inputs-v2.schema.json": "c098833d00899063f35a3874bf2390626a448d83d62c36e6900ba7d121d55a96",
 }
 
 
@@ -239,6 +243,70 @@ def source_package_key(package: dict[str, Any]) -> str:
     return f"{run_id[:8]}/{member_alias}/{run_id}"
 
 
+def _stream_regular_file(
+    path: Path,
+    *,
+    destination: Path | None = None,
+) -> tuple[str, int]:
+    """Hash, and optionally copy, one regular file with bounded memory."""
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        source_fd = os.open(path, flags)
+    except OSError as exc:
+        raise AndroidChangeV2Error(
+            f"cannot securely open Android change v2 archive entry: {path}: {exc}"
+        ) from exc
+    try:
+        before = os.fstat(source_fd)
+        if not stat.S_ISREG(before.st_mode):
+            raise AndroidChangeV2Error(
+                f"Android change v2 archive entry is not a regular file: {path}"
+            )
+        digest = hashlib.sha256()
+        size = 0
+        output = None
+        try:
+            if destination is not None:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                output = destination.open("xb")
+            while True:
+                chunk = os.read(source_fd, 1024 * 1024)
+                if not chunk:
+                    break
+                if output is not None:
+                    output.write(chunk)
+                digest.update(chunk)
+                size += len(chunk)
+        except OSError as exc:
+            raise AndroidChangeV2Error(
+                f"cannot stream Android change v2 archive entry: {path}: {exc}"
+            ) from exc
+        finally:
+            if output is not None:
+                output.close()
+        after = os.fstat(source_fd)
+        try:
+            rebound = os.stat(path, follow_symlinks=False)
+        except OSError as exc:
+            raise AndroidChangeV2Error(
+                f"Android change v2 archive entry changed while reading: {path}: {exc}"
+            ) from exc
+        if (
+            not os.path.samestat(before, after)
+            or not os.path.samestat(before, rebound)
+            or before.st_size != after.st_size
+            or before.st_mtime_ns != after.st_mtime_ns
+            or before.st_ctime_ns != after.st_ctime_ns
+            or size != before.st_size
+        ):
+            raise AndroidChangeV2Error(
+                f"Android change v2 archive entry changed while reading: {path}"
+            )
+        return digest.hexdigest(), size
+    finally:
+        os.close(source_fd)
+
+
 def _archive_inventory(package_dir: Path) -> dict[str, tuple[str, int]]:
     inventory: dict[str, tuple[str, int]] = {}
     try:
@@ -258,13 +326,9 @@ def _archive_inventory(package_dir: Path) -> dict[str, tuple[str, int]]:
         if not stat.S_ISREG(mode):
             raise AndroidChangeV2Error(f"Android change v2 archive contains a special entry: {relative}")
         normalized = _normalized_archive_path(relative)
-        try:
-            raw = path.read_bytes()
-        except OSError as exc:
-            raise AndroidChangeV2Error(f"cannot read Android change v2 archive entry: {relative}: {exc}") from exc
         if normalized in inventory:
             raise AndroidChangeV2Error(f"duplicate Android change v2 archive path: {normalized}")
-        inventory[normalized] = (_sha256(raw), len(raw))
+        inventory[normalized] = _stream_regular_file(path)
     return inventory
 
 
@@ -702,11 +766,12 @@ def prepare_package(value: Path, *, pending_root: Path | None = None) -> dict[st
             relative = Path(relative_text)
             path = source / relative
             target = temporary / relative
-            raw = path.read_bytes()
-            if len(raw) != expected_size or _sha256(raw) != expected_sha:
+            observed_sha, observed_size = _stream_regular_file(
+                path,
+                destination=target,
+            )
+            if observed_size != expected_size or observed_sha != expected_sha:
                 raise AndroidChangeV2Error(f"Android change v2 source changed while copying: {relative_text}")
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(raw)
         if _archive_inventory(source) != source_inventory:
             raise AndroidChangeV2Error("Android change v2 source changed while copying")
         # Validate copied bytes before making the stable pending path visible.

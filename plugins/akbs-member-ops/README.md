@@ -65,14 +65,13 @@ writer blocked, so v2 submit fails before network or file submission side
 effects and never falls back to Framework v1.
 
 An `android-patch-capture-package-v2/2.0/android_change_capture` directory is a
-different source contract and cannot be passed directly to v2 `prepare`.
-`android-change-v2 adapt-capture CAPTURE` performs a strict, read-only preflight
-against the hash-pinned Draft 2020-12 capture schema, then checks its validated
-status chain, local-only authority, multi-component bindings, and complete
-SHA-256 file inventory. Phase 2 returns a structured `BLOCKED` gap
-because the per-evidence-group versioned adapter input contracts are not frozen;
-it writes no canonical package or adapter PASS. Phase 4 contract activation is
-required before this adapter may create a new target artifact.
+frozen read-only source contract and cannot be passed directly to v2 `prepare`.
+`android-change-v2 adapt-capture CAPTURE` preserves that 2.0 BLOCKED preflight.
+For additive capture 2.1, it evaluates the hash-pinned 37-group qualification
+pack and materializes a canonical v2 package offline for enabled application and
+platform layers. The source capture is unchanged, output is idempotent,
+`server_qualified=false`, and the writer remains off. Other frozen layers fail
+with `layer_not_enabled`; no path falls back to Framework v1.
 
 ## Install-family boundary
 

@@ -115,7 +115,7 @@ def git_metadata(root: Path) -> dict[str, str]:
     return {
         "root": str(root),
         "branch": output(["branch", "--show-current"]),
-        "head": output(["rev-parse", "--short", "HEAD"]),
+        "head": output(["rev-parse", "HEAD"]),
         "remote": output(["config", "--get", "remote.origin.url"]),
         "remotes": output(["remote", "-v"]),
         "status": output(["status", "--short"]),

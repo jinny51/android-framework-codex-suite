@@ -28,7 +28,7 @@ summary = "基于有效日报和跨周台账生成、校验、修订和提交成
 [[skills]]
 name = "akbs-patch-submit"
 category = "Knowledge System"
-summary = "处理 legacy Framework v1 提交、通用 Android change v2 本地准备及 adapt-capture 零写 preflight/writer-off 门禁"
+summary = "处理 legacy Framework v1 提交、Android change v2 本地准备及 adapt-capture 2.0 preflight/2.1 离线 materialize/writer-off 门禁"
 
 [[skills]]
 name = "android-member-setup"

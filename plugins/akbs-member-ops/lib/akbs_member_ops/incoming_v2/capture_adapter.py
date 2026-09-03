@@ -1,9 +1,8 @@
-"""Strict, read-only preflight for android-patch-capture v2 packages.
+"""Strict preflight for android-patch-capture v2 packages.
 
-Phase 2 deliberately stops before materializing an AKBS Android change v2
-package.  The evidence-group adapter input contracts and server writers are not
-frozen, so a structurally valid capture produces a hash-bound diagnostic with a
-BLOCKED result, never a synthetic adapter PASS document.
+Capture 2.0 remains a read-only Phase-2 compatibility contract.  Capture 2.1
+adds component-precise evidence bindings for the offline Phase-4 materializer;
+neither path can submit or claim server qualification.
 """
 
 from __future__ import annotations
@@ -12,8 +11,9 @@ import hashlib
 import os
 import re
 import stat
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, Callable, Iterator
 
 from .schema import DRAFT_2020_12_SCHEMA, SchemaError, load_json_bytes, validate_document
 from .validation import (
@@ -31,7 +31,15 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 CAPTURE_SCHEMA_PATH = (
     PLUGIN_ROOT / "contracts" / "android-patch-capture" / "v2" / "capture-package.schema.json"
 )
+CAPTURE_SCHEMA_V21_PATH = (
+    PLUGIN_ROOT
+    / "contracts"
+    / "android-patch-capture"
+    / "v2"
+    / "capture-package-v2.1.schema.json"
+)
 CAPTURE_IDENTITY = ("android-patch-capture-package-v2", "2.0", "android_change_capture")
+CAPTURE_V21_IDENTITY = ("android-patch-capture-package-v2", "2.1", "android_change_capture")
 CAPTURE_LAYERS = {"application", "platform", "native", "hal", "kernel", "device", "build"}
 TOKEN_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@+-]{0,255}$")
@@ -45,9 +53,11 @@ BUILTIN_EVIDENCE = {
     "patch-problem-summary": ("patch_problem_summary", "evidence/patch-problem-summary.json"),
     "risk-surface": ("risk_surface", "evidence/risk-surface.json"),
     "coding-standard-check": ("coding_standard_check", "evidence/coding-standard-check.json"),
+    "rollback-plan": ("rollback_plan", "evidence/rollback-plan.json"),
     "search-before-change": ("search_before_change", "evidence/search-before-change.json"),
     "package-check": ("package_check", "evidence/package-check.json"),
     "remote-source-snapshot": ("remote_source_snapshot", "evidence/remote-source-snapshot.json"),
+    "import-provenance": ("import_provenance", "evidence/import-provenance.json"),
 }
 
 
@@ -276,6 +286,65 @@ def _read_regular(root_fd: int, relative: str, *, max_bytes: int = MAX_JSON_BYTE
             os.close(directory_fd)
 
 
+def _copy_regular(
+    root_fd: int,
+    relative: str,
+    destination: Path,
+    expected: dict[str, Any],
+) -> dict[str, Any]:
+    """Stream one pinned regular file to a new target without buffering the file."""
+    normalized = _normalized_path(relative)
+    parts = PurePosixPath(normalized).parts
+    parent_fd = _open_root_view(root_fd)
+    opened_directories = [parent_fd]
+    try:
+        for part in parts[:-1]:
+            try:
+                child_fd = os.open(part, _directory_flags(), dir_fd=parent_fd)
+            except OSError as exc:
+                _capture_error(f"cannot securely open parent of {normalized}: {exc}")
+            opened_directories.append(child_fd)
+            parent_fd = child_fd
+        try:
+            source_fd = os.open(parts[-1], _file_flags(), dir_fd=parent_fd)
+        except OSError as exc:
+            _capture_error(f"cannot securely open {normalized}: {exc}")
+        try:
+            opened = os.fstat(source_fd)
+            if not stat.S_ISREG(opened.st_mode):
+                _capture_error(f"archive entry is not a regular file: {normalized}")
+            if opened.st_size != expected.get("size_bytes"):
+                _capture_error(f"archive entry size differs from pinned inventory: {normalized}")
+            digest = hashlib.sha256()
+            size = 0
+            try:
+                with destination.open("xb") as output:
+                    while True:
+                        chunk = os.read(source_fd, 1024 * 1024)
+                        if not chunk:
+                            break
+                        output.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
+                after = os.fstat(source_fd)
+                rebound = os.stat(parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+            except OSError as exc:
+                _capture_error(f"cannot stream archive entry {normalized}: {exc}")
+            if (
+                not _same_file(opened, after)
+                or not os.path.samestat(opened, rebound)
+                or size != expected.get("size_bytes")
+                or digest.hexdigest() != expected.get("sha256")
+            ):
+                _capture_error(f"archive entry differs from pinned inventory: {normalized}")
+            return {"sha256": digest.hexdigest(), "size_bytes": size}
+        finally:
+            os.close(source_fd)
+    finally:
+        for directory_fd in reversed(opened_directories):
+            os.close(directory_fd)
+
+
 def _strict_json(root_fd: int, display_root: Path, relative: str) -> tuple[bytes, dict[str, Any]]:
     raw = _read_regular(root_fd, relative)
     try:
@@ -328,6 +397,68 @@ def _component_ids(value: Any, known: set[str], label: str) -> list[str]:
     return value
 
 
+def _validate_component_assertion_payload(
+    payload: dict[str, Any],
+    expected_component_ids: list[str],
+    evidence_id: str,
+) -> None:
+    if (
+        set(payload)
+        - {"kind", "result", "component_ids", "assertions", "summary", "message"}
+        or payload.get("kind") != "component_assertion"
+        or payload.get("result") != "INFO"
+        or payload.get("component_ids") != expected_component_ids
+    ):
+        _capture_error(f"component assertion envelope differs: {evidence_id}")
+    assertions = payload.get("assertions")
+    if not isinstance(assertions, list) or not assertions:
+        _capture_error(f"component assertion rows are missing: {evidence_id}")
+    observed_components: set[str] = set()
+    observed_pairs: set[tuple[str, str]] = set()
+    for row in assertions:
+        if not isinstance(row, dict):
+            _capture_error(f"component assertion row is not an object: {evidence_id}")
+        component_id = row.get("component_id")
+        assertion_id = row.get("assertion_id")
+        result = row.get("result")
+        if (
+            component_id not in expected_component_ids
+            or not isinstance(assertion_id, str)
+            or not TOKEN_RE.fullmatch(assertion_id)
+            or result not in {"PASS", "FAIL", "INFO", "NOT_APPLICABLE"}
+        ):
+            _capture_error(f"component assertion identity/result differs: {evidence_id}")
+        pair = (component_id, assertion_id)
+        if pair in observed_pairs:
+            _capture_error(f"component assertion pair is duplicated: {evidence_id}")
+        observed_pairs.add(pair)
+        observed_components.add(component_id)
+        if result == "NOT_APPLICABLE":
+            if set(row) != {
+                "component_id",
+                "assertion_id",
+                "result",
+                "basis",
+                "limits",
+            } or not all(
+                isinstance(row.get(field), str) and row[field].strip()
+                for field in ("basis", "limits")
+            ):
+                _capture_error(f"component assertion N/A basis differs: {evidence_id}")
+        else:
+            observations = row.get("observations")
+            if (
+                set(row)
+                != {"component_id", "assertion_id", "result", "observations"}
+                or not isinstance(observations, list)
+                or not observations
+                or any(not isinstance(item, str) or not item.strip() for item in observations)
+            ):
+                _capture_error(f"component assertion observations differ: {evidence_id}")
+    if observed_components != set(expected_component_ids):
+        _capture_error(f"component assertion component union differs: {evidence_id}")
+
+
 def _declared_inventory(manifest: dict[str, Any]) -> dict[str, tuple[str, int]]:
     declaration = _require_object(manifest.get("file_inventory"), "file_inventory")
     if (
@@ -356,11 +487,15 @@ def _declared_inventory(manifest: dict[str, Any]) -> dict[str, tuple[str, int]]:
     return declared
 
 
-def _validate_identity_status_authority(manifest: dict[str, Any]) -> None:
+def _validate_identity_status_authority(
+    manifest: dict[str, Any],
+    *,
+    expected_identity: tuple[str, str, str] = CAPTURE_IDENTITY,
+) -> None:
     identity = (manifest.get("schema"), manifest.get("schema_version"), manifest.get("package_type"))
-    if identity != CAPTURE_IDENTITY:
+    if identity != expected_identity:
         _capture_error(
-            "package identity is not android-patch-capture-package-v2/2.0/android_change_capture; "
+            "package identity is not the requested android-patch-capture v2 contract; "
             "legacy/v1 fallback is forbidden"
         )
     if "change_domain" in manifest:
@@ -413,6 +548,8 @@ def _validate_components_and_payloads(
     inventory: dict[str, dict[str, Any]],
     root_fd: int,
     display_root: Path,
+    *,
+    capture_version: str = "2.0",
 ) -> dict[str, Any]:
     component_rows, components = _unique_rows(manifest.get("components"), "components")
     component_ids = set(components)
@@ -508,7 +645,26 @@ def _validate_components_and_payloads(
         if path not in inventory or not path.startswith("evidence/") or not path.endswith(".json"):
             _capture_error(f"evidence path is missing or outside evidence/: {item['id']}")
         _component_ids(item.get("component_ids"), component_ids, f"evidence {item['id']}.component_ids")
-        _require_nonempty_text(item.get("contract"), f"evidence {item['id']}.contract")
+        contract = item.get("contract")
+        if capture_version == "2.0":
+            _require_nonempty_text(contract, f"evidence {item['id']}.contract")
+        elif (
+            not isinstance(contract, dict)
+            or set(contract) != {"id", "version"}
+            or not isinstance(contract.get("id"), str)
+            or not ID_RE.fullmatch(contract["id"])
+            or not isinstance(contract.get("version"), str)
+            or not contract["version"].strip()
+        ):
+            _capture_error(f"evidence {item['id']}.contract must be a versioned contract object")
+        elif capture_version == "2.1":
+            expected_contract_id = (
+                "android-patch-capture-component-assertion"
+                if item.get("kind") == "component_assertion"
+                else "android-patch-capture-evidence"
+            )
+            if contract != {"id": expected_contract_id, "version": "2.1"}:
+                _capture_error(f"evidence {item['id']}.contract is not accepted for capture 2.1")
         claims = item.get("declared_claims")
         if (
             not isinstance(claims, list)
@@ -526,6 +682,11 @@ def _validate_components_and_payloads(
             _capture_error(f"evidence bytes differ from the pinned archive inventory: {item['id']}")
         evidence_payloads[item["id"]] = payload
         expected_builtin = BUILTIN_EVIDENCE.get(item["id"])
+        if capture_version == "2.0" and item["id"] in {
+            "rollback-plan",
+            "import-provenance",
+        }:
+            expected_builtin = None
         if expected_builtin is not None and (item.get("kind"), path) != expected_builtin:
             _capture_error(f"built-in evidence kind/path differs: {item['id']}")
         payload_kind = payload.get("kind")
@@ -533,6 +694,29 @@ def _validate_components_and_payloads(
             _capture_error(f"evidence manifest kind differs from JSON payload: {item['id']}")
         if expected_builtin is None and payload_kind is None:
             _capture_error(f"external evidence JSON does not bind its kind: {item['id']}")
+        payload_component_ids = payload.get("component_ids")
+        if (
+            capture_version == "2.1"
+            and payload_component_ids is not None
+            and payload_component_ids != item.get("component_ids")
+        ):
+            _capture_error(
+                f"evidence manifest component_ids differ from JSON payload: {item['id']}"
+            )
+        if capture_version == "2.1" and item.get("kind") == "component_assertion":
+            _validate_component_assertion_payload(
+                payload,
+                item["component_ids"],
+                item["id"],
+            )
+        if (
+            capture_version == "2.1"
+            and item["id"] in {
+                "verification-result", "rollback-plan", "search-before-change"
+            }
+            and payload_component_ids is None
+        ):
+            _capture_error(f"component-scoped evidence payload is unbound: {item['id']}")
         payload_result = (
             payload.get("status") if item.get("kind") == "package_check" else payload.get("result")
         )
@@ -541,6 +725,15 @@ def _validate_components_and_payloads(
                 _capture_error(f"evidence result is not bound by its JSON payload: {item['id']}")
         elif payload_result != item.get("result"):
             _capture_error(f"evidence manifest result differs from JSON payload: {item['id']}")
+        if capture_version == "2.1":
+            basis = item.get("not_applicable_basis")
+            valid_basis = (
+                isinstance(basis, dict)
+                and set(basis) == {"basis", "limits"}
+                and all(isinstance(basis.get(key), str) and basis[key].strip() for key in basis)
+            )
+            if (item.get("result") == "NOT_APPLICABLE") != valid_basis:
+                _capture_error(f"evidence N/A basis differs: {item['id']}")
 
     binding_rows = manifest.get("qualification_bindings")
     if not isinstance(binding_rows, list) or not binding_rows or any(not isinstance(item, dict) for item in binding_rows):
@@ -550,7 +743,12 @@ def _validate_components_and_payloads(
         component_id = binding.get("component_id")
         if component_id not in components or component_id in bindings:
             _capture_error("qualification_bindings component IDs must cover components uniquely")
-        if binding.get("contract") != "android-patch-capture-local-qualification-v1":
+        expected_binding_contract = (
+            "android-patch-capture-local-qualification-v1"
+            if capture_version == "2.0"
+            else "android-patch-capture-local-qualification-v2"
+        )
+        if binding.get("contract") != expected_binding_contract:
             _capture_error(f"capture qualification contract differs: {component_id}")
         expected_repositories = {
             row["id"] for row in repository_rows if component_id in row["component_ids"]
@@ -639,6 +837,9 @@ def _validate_components_and_payloads(
             for item in patch_rows
         ],
         "evidence_count": len(evidence_rows),
+        "evidence": evidence_rows,
+        "evidence_payloads": evidence_payloads,
+        "qualification_bindings": binding_rows,
     }
 
 
@@ -671,6 +872,7 @@ def _preflight_capture_from_fd(
         first_inventory,
         root_fd,
         root,
+        capture_version="2.0",
     )
     _assert_root_binding(root, root_identity)
 
@@ -789,6 +991,127 @@ def _preflight_capture_from_fd(
     }
     _assert_root_binding(root, root_identity)
     return result
+
+
+def read_materializable_capture(value: Path) -> dict[str, Any]:
+    """Read one immutable capture-2.1 snapshot for offline materialization."""
+    _require_descriptor_support()
+    root = _capture_root(value)
+    try:
+        root_fd = os.open(root, _directory_flags())
+    except OSError as exc:
+        _capture_error(f"cannot securely open package root: {exc}")
+    try:
+        root_identity = os.fstat(root_fd)
+        if not stat.S_ISDIR(root_identity.st_mode):
+            _capture_error("opened package root is not a directory")
+        _assert_root_binding(root, root_identity)
+        manifest_raw, manifest = _strict_json(root_fd, root, "manifest.json")
+        try:
+            validate_document(manifest, _load_contract(CAPTURE_SCHEMA_V21_PATH))
+        except SchemaError as exc:
+            _capture_error(f"capture manifest schema violation: {exc}")
+        _validate_identity_status_authority(manifest, expected_identity=CAPTURE_V21_IDENTITY)
+        first_inventory = _archive_inventory(root_fd)
+        declared = _declared_inventory(manifest)
+        actual_declared = {
+            path: (facts["sha256"], facts["size_bytes"])
+            for path, facts in first_inventory.items()
+            if path != "manifest.json"
+        }
+        if declared != actual_declared:
+            _capture_error("file_inventory does not exactly bind every non-manifest regular file")
+        details = _validate_components_and_payloads(
+            manifest,
+            first_inventory,
+            root_fd,
+            root,
+            capture_version="2.1",
+        )
+        second_inventory = _archive_inventory(root_fd)
+        final_manifest_raw = _read_regular(root_fd, "manifest.json")
+        if first_inventory != second_inventory or manifest_raw != final_manifest_raw:
+            _capture_error("capture package changed during materializer preflight")
+        _assert_root_binding(root, root_identity)
+        inventory_binding = [
+            [path, facts["sha256"], facts["size_bytes"]]
+            for path, facts in sorted(first_inventory.items())
+        ]
+        return {
+            "root": root,
+            "root_identity": root_identity,
+            "manifest": manifest,
+            "manifest_bytes": manifest_raw,
+            "manifest_sha256": hashlib.sha256(manifest_raw).hexdigest(),
+            "inventory": first_inventory,
+            "archive_inventory_sha256": canonical_json_sha256(inventory_binding),
+            "details": details,
+        }
+    finally:
+        os.close(root_fd)
+
+
+@contextmanager
+def open_materializable_capture_files(
+    snapshot: dict[str, Any],
+) -> Iterator[Callable[[str, Path], dict[str, Any]]]:
+    """Yield a constant-memory copier bound to one validated capture snapshot."""
+    _require_descriptor_support()
+    root = snapshot["root"]
+    try:
+        root_fd = os.open(root, _directory_flags())
+    except OSError as exc:
+        _capture_error(f"cannot securely reopen package root: {exc}")
+    try:
+        root_identity = os.fstat(root_fd)
+        if not os.path.samestat(snapshot["root_identity"], root_identity):
+            _capture_error("package root identity changed before materialization")
+        _assert_root_binding(root, root_identity)
+        if (
+            _archive_inventory(root_fd) != snapshot["inventory"]
+            or _read_regular(root_fd, "manifest.json") != snapshot["manifest_bytes"]
+        ):
+            _capture_error("capture package changed before materialization")
+
+        def copy_file(relative: str, destination: Path) -> dict[str, Any]:
+            facts = snapshot["inventory"].get(relative)
+            if not isinstance(facts, dict):
+                _capture_error(f"capture file is absent from pinned inventory: {relative}")
+            return _copy_regular(root_fd, relative, destination, facts)
+
+        yield copy_file
+        if (
+            _archive_inventory(root_fd) != snapshot["inventory"]
+            or _read_regular(root_fd, "manifest.json") != snapshot["manifest_bytes"]
+        ):
+            _capture_error("capture package changed during materialization")
+        _assert_root_binding(root, root_identity)
+    finally:
+        os.close(root_fd)
+
+
+def capture_schema_version(value: Path) -> str:
+    """Read only the schema version through the same no-follow root discipline."""
+    _require_descriptor_support()
+    root = _capture_root(value)
+    try:
+        root_fd = os.open(root, _directory_flags())
+    except OSError as exc:
+        _capture_error(f"cannot securely open package root: {exc}")
+    try:
+        root_identity = os.fstat(root_fd)
+        _assert_root_binding(root, root_identity)
+        _raw, manifest = _strict_json(root_fd, root, "manifest.json")
+        identity = (manifest.get("schema"), manifest.get("package_type"))
+        if identity != ("android-patch-capture-package-v2", "android_change_capture"):
+            _capture_error("capture identity is unknown; legacy/v1 fallback is forbidden")
+        version = manifest.get("schema_version")
+        if version not in {"2.0", "2.1"}:
+            _capture_error("capture schema version is unknown; legacy/v1 fallback is forbidden")
+        _assert_root_binding(root, root_identity)
+        return version
+    finally:
+        os.close(root_fd)
 
 
 def preflight_capture(value: Path) -> dict[str, Any]:

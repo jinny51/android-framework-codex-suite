@@ -122,6 +122,11 @@ def current_skill_cache_metadata() -> dict[str, str]:
     return _call_version_gate(_version_gate.current_skill_cache_metadata)
 
 
+def installed_plugin_family_status() -> dict[str, Any]:
+    """Read only the active install family; never enter freshness/update logic."""
+    return _call_version_gate(_version_gate.installed_plugin_family_status)
+
+
 def latest_installed_plugin_cache_metadata(plugin_name: str = "akbs-member-ops") -> dict[str, str]:
     return _call_version_gate(lambda: _version_gate.latest_installed_plugin_cache_metadata(plugin_name))
 
@@ -758,7 +763,29 @@ def main(argv: list[str] | None = None) -> int:
         getattr(args, "inspect_information_request", "")
         or getattr(args, "complete_information_request", "")
     )
-    if args.command in PACKAGE_TYPES and not args.validate and (args.prepare or args.submit_latest or args.upload or patch_information_action):
+    if args.command in PACKAGE_TYPES and args.validate:
+        # Validation is a local read-only contract/install-family gate.  It must
+        # never fetch metadata, update an installation, or re-exec another copy.
+        install_family = installed_plugin_family_status()
+        if install_family.get("blocking"):
+            print(
+                json.dumps(
+                    {
+                        "status": "FAIL",
+                        "message": install_family.get("message") or "插件本地安装族检查失败。",
+                        "install_family": install_family,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return 1
+    elif args.command in PACKAGE_TYPES and (
+        args.prepare
+        or args.submit_latest
+        or args.upload
+        or patch_information_action
+    ):
         freshness = plugin_version_gate_check(config, fetch=True, require=True)
         if freshness.get("blocking"):
             reexec_error = reexec_latest_plugin_script_after_update(freshness)

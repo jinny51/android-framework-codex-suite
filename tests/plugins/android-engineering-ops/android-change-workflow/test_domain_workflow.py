@@ -53,11 +53,17 @@ def test_submission_boundary_is_general_v2_prepare_with_legacy_v1_compatibility(
     assert contract["fallback_to_framework_v1"] is False
     workflow = (WORKFLOW / "SKILL.md").read_text(encoding="utf-8")
     capture = (CAPTURE / "SKILL.md").read_text(encoding="utf-8")
+    capture_contract = (
+        PLUGIN / "contracts/android-patch-capture/v2/README.md"
+    ).read_text(encoding="utf-8")
     for text in (workflow, capture):
         assert "any supported layer" in text.lower()
         assert "byte-preserving prepare" in text
         assert "zero side effects" in text
         assert "never" in text.lower() and "fall back" in text.lower()
+    for text in (capture, capture_contract):
+        assert "layer_not_enabled" not in text
+        assert "any supported layer" in text.lower()
 
 
 def test_source_authority_and_build_routes_cover_remote_and_local_projects() -> None:

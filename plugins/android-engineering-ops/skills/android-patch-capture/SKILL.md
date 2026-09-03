@@ -1,16 +1,18 @@
 ---
 name: android-patch-capture
-description: "Use after one coherent Android change in an application, platform, native, HAL, kernel, device, or build component is implemented, staged, failed, or blocked and needs a reviewable local android_change_capture. Any validated layer may proceed to canonical akbs-patch-submit v2 local prepare; network submission remains capability-gated."
+description: "Use after one coherent Android change in an application, platform, native, HAL, kernel, device, or build component is implemented, staged, failed, or blocked and needs a reviewable local android_change_capture. Capture 2.1 records exact component evidence for any supported layer; network submission remains capability-gated."
 ---
 
 # Android Patch Capture
 
 Use this Skill when one coherent Android change is ready to be packaged as a reviewable or cautionary local engineering material package. A change may be a feature, bug fix, failed attempt, or blocked/stage-worthy implementation. This Skill does not implement requirements, diagnose root cause, build, deploy, decide final correctness, or make curation decisions. It packages existing source changes into one change README, one or more repository-level patches, and evidence.
 
-Use it after `android-change-workflow` has produced a concrete change. A validated
-capture from any supported layer may continue to canonical `akbs-patch-submit` for
-strict v2 local validation and byte-preserving prepare. Writer-off gates network
-submission with zero side effects; it never causes fallback to Framework v1.
+Use it after `android-change-workflow` has produced a concrete change. The capture
+taxonomy covers any supported layer across all seven Android engineering layers,
+and capture/local validation is available for every one of them. A downstream
+consumer may impose its own independently versioned acceptance policy without
+changing this engineering contract. Writer-off gates network submission with
+zero side effects and never causes fallback to Framework v1.
 
 ## Active Install Family
 
@@ -48,6 +50,20 @@ only known hints, while `--component-layer`, `--component-type`,
 `--component-partition`, and `--component-ownership` provide exact facts. Legacy
 Framework material normalizes only for read display to `platform/framework`; its
 history is never rewritten.
+
+Evidence membership is exact. Generated facts bind only components their payload
+actually proves. In a multi-component capture, `verification-result`,
+`rollback-plan`, and `search-before-change` require explicit repeated
+`--evidence-component EVIDENCE_ID:COMPONENT_ID` mappings; capture fails closed
+when those mappings are absent. External evidence must declare `component_ids`;
+omission is accepted only for an unambiguous single-component capture. Evidence
+from one component cannot qualify another. Conditional producer facts may use a
+neutral `component_assertion` JSON input whose assertions each name one
+`component_id`, one producer-owned `assertion_id`, and `PASS`, `FAIL`, `INFO`, or
+`NOT_APPLICABLE`. The envelope result is always `INFO`; nested `PASS`, `FAIL`, and
+`INFO` require non-empty `observations`, while N/A requires non-empty `basis` and
+`limits`. Capture validates the closed shape, unique component/assertion pairs,
+and exact component union. It does not embed or interpret AKBS group mappings.
 
 ## Remote-Only Source Contract
 
@@ -142,6 +158,12 @@ python3 "scripts/capture_android_patch.py" \
   --primary-component-id platform-core \
   --repo-component frameworks/base=platform-core \
   --repo-component packages/apps/Settings=settings-ui \
+  --evidence-component verification-result:platform-core \
+  --evidence-component verification-result:settings-ui \
+  --evidence-component rollback-plan:platform-core \
+  --evidence-component rollback-plan:settings-ui \
+  --evidence-component search-before-change:platform-core \
+  --evidence-component search-before-change:settings-ui \
   --change-id display-policy-settings-entry \
   --summary "调整显示策略和设置入口" \
   --problem-summary "显示策略缺少目标产品要求的配置入口和运行时行为" \
@@ -219,14 +241,16 @@ python3 "scripts/capture_android_patch.py" \
 ```
 
 To prepare later with canonical `akbs-patch-submit`, pass the whole capture package
-directory so bytes and evidence remain intact. Writer-off must return a capability gate
-before network side effects. Never fall back to v1 or relabel v2 material as a v1
-Framework package:
+directory to `android-change-v2 adapt-capture`. Capture 2.0 remains read-only and
+returns the original Phase-2 BLOCKED preflight. Capture 2.1 materializes a new,
+hash-bound canonical package below the AKBS member artifact root without changing
+the capture. Writer-off still rejects network submit. Never fall back to v1 or
+relabel v2 material as a v1 Framework package:
 
 ```bash
 python3 "<akbs-patch-submit>/scripts/akbs_patch_submit.py" \
-  --prepare \
-  --patch-package "$CODEX_HOME/artifacts/android-patch-capture/packages/<run-id>"
+  android-change-v2 adapt-capture \
+  "$CODEX_HOME/artifacts/android-patch-capture/packages/<run-id>"
 ```
 
 ## Packaging Rules

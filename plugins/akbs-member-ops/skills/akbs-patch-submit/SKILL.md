@@ -1,6 +1,6 @@
 ---
 name: akbs-patch-submit
-description: "Use when an AKBS member needs to preflight a capture or read, check, prepare, or submit an Android change package. Supports real legacy Framework change v1 submission, read-only capture-v2 adaptation preflight, and local generic Android change v2 handling; adapter materialization and v2 server submission remain fail-closed while their contracts are disabled."
+description: "Use when an AKBS member needs to preflight or locally materialize a capture, or read, check, prepare, or submit an Android change package. Supports real legacy Framework change v1 submission, capture 2.0 compatibility preflight, capture 2.1 offline adaptation for enabled layers, and local canonical Android change v2 handling; v2 server submission remains fail-closed."
 ---
 
 # AKBS Patch Submit
@@ -28,9 +28,12 @@ business input and must not bypass the gate. Continue only on exit 0 with JSON
   checkable, and genuinely submittable through the internal incoming v1 kernel.
 - Generic `akbs-android-change-package-v2/2/android_change` supports strict local
   read, check, and byte-preserving prepare.
-- `android-patch-capture-package-v2/2.0/android_change_capture` is a distinct
-  source contract. It supports only explicit `android-change-v2 adapt-capture`
-  preflight in Phase 2 and cannot be passed directly to `prepare`.
+- `android-patch-capture-package-v2/2.0/android_change_capture` remains the
+  frozen read-only preflight contract and cannot be passed directly to `prepare`.
+- Capture 2.1 is the additive Phase 4 materializer input. `adapt-capture` creates a new
+  canonical package only for enabled `application` and `platform` components.
+  Native, HAL, kernel, device, and build are frozen but return
+  `layer_not_enabled` until a later contract release.
 - Android change v2 server qualification and writer activation are not available.
   A v2 submit attempt fails locally before config loading, plugin freshness
   network access, archive creation, POST, receipt writing, or v1 fallback.
@@ -43,22 +46,27 @@ business input and must not bypass the gate. Continue only on exit 0 with JSON
 The v2 client outputs are untrusted inputs. The local checker validates schema,
 the frozen evidence-profile hash, qualification-input hash, file hashes and sizes,
 archive inventory, component bindings, and required evidence groups. A PASS means
-`client_semantic_coherence_valid`; it never means server-qualified. Because the
-versioned adapter input contracts and server implementations are not frozen, this
-Skill never manufactures adapter PASS rows.
+`client_semantic_coherence_valid`; it never means server-qualified.
+The hash-pinned qualification pack freezes all 37 evidence groups using shared
+shape families and a machine-validated versioned adapter input contract with
+closed per-group rules. Producer-owned capture `component_assertion.assertion_id`
+values map here through each structured group's `accepted_assertion_ids`;
+consumer `group_id` never enters the capture contract. Offline adapter rows remain
+`untrusted_client_input`; they never represent server qualification.
 Each v2 component must provide the contract's canonical `layer`, `type`,
 `partition`, and `ownership` facets. Legacy `change_domain` is not a v2 facet and
 is rejected rather than used to infer any canonical value.
 
 ## Generic Android change v2
 
-Preflight a validated multi-component capture without network or file writes:
+Preflight a frozen capture 2.0 without network or file writes, or materialize a
+complete capture 2.1 locally:
 
 ```bash
 python3 "scripts/akbs_patch_submit.py" android-change-v2 adapt-capture /path/to/capture
 ```
 
-The Phase 2 result is intentionally non-zero with `status=BLOCKED` and
+For 2.0, the Phase 2 result remains intentionally non-zero with `status=BLOCKED` and
 `reason_code=android_change_v2_adapter_contracts_unavailable`. The preflight
 strictly checks the bundled, hash-pinned Draft 2020-12 capture schema before the
 capture's semantic identity and declared/effective
@@ -67,8 +75,10 @@ manifest SHA-256 inventory, patch SHA-1 bytes, `components[]`,
 `primary_component_id`, repository and patch `component_ids[]`, evidence and
 qualification bindings. It emits their hashes and structured gaps to stdout,
 but creates no canonical v2 package, client-adapter output, receipt, or PASS.
-Only after Phase 4 activates the per-group versioned adapter input contracts may
-the adapter create a new hash-bound target artifact for `check` and `prepare`.
+For 2.1, the same command evaluates component-scoped evidence and writes one
+deterministic hash-bound canonical package. Repeating the same input returns the
+same package as an idempotent reuse. The source capture is never rewritten,
+`server_qualified` remains false, and no HTTP or v1 route is attempted.
 
 Read only the manifest identity and component layers:
 
@@ -123,7 +133,7 @@ text, fields, and non-patch attachments bound to that causal `request_id`.
 ## Boundaries
 
 - Use `$android-patch-capture` when source changes or recapture are required,
-  then run the explicit `adapt-capture` preflight. Do not feed that capture
+  then run the explicit `adapt-capture` route. Do not feed that capture
   directory directly to `prepare` and do not route it through v1.
 - Use `$akbs-knowledge-search` before implementation and record the honest reuse
   decision; search evidence is not a curation merge decision.

@@ -74,14 +74,25 @@ from android_engineering_ops.practices.schema import (
 )
 
 
-SCHEMA_VERSION = "2.0"
+SCHEMA_VERSION = "2.1"
 CAPTURE_SCHEMA = (
+    PLUGIN_ROOT
+    / "contracts/android-patch-capture/v2/capture-package-v2.1.schema.json"
+)
+# Frozen capture 2.0 contract retained for read-only compatibility tooling.
+# New capture output is always validated against CAPTURE_SCHEMA above.
+LEGACY_CAPTURE_SCHEMA = (
     PLUGIN_ROOT
     / "contracts/android-patch-capture/v2/capture-package.schema.json"
 )
 PATCH_NAME_RE = re.compile(r"^[a-z0-9]+[0-9]+-[A-Za-z0-9._-]+@[a-z0-9_.-]+\.patch$")
 FRAMEWORK_LOG_LITERAL_RE = re.compile(r"FrameworkLog\.(?:d|i|w|e)\s*\([^,]+,\s*\"")
-SUPPORTED_EXTERNAL_EVIDENCE_KINDS = {"build_result", "deploy_result", "device_health"}
+SUPPORTED_EXTERNAL_EVIDENCE_KINDS = {
+    "build_result",
+    "deploy_result",
+    "device_health",
+    "component_assertion",
+}
 AUTO_VERIFICATION_EVIDENCE_NAMES = (
     ".codex/evidence/latest-build-delivery.json",
     ".codex/evidence/build-delivery.json",
@@ -102,6 +113,21 @@ LEGACY_CHANGE_DOMAINS = (
 COMPONENT_LAYERS = ("application", "platform", "native", "hal", "kernel", "device", "build")
 COMPONENT_TOKEN_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+AUTO_SCOPED_EVIDENCE_IDS = {
+    "changed-files",
+    "patch-diff-facts",
+    "patch-problem-summary",
+    "risk-surface",
+    "coding-standard-check",
+    "package-check",
+    "remote-source-snapshot",
+    "import-provenance",
+}
+EXPLICIT_MULTI_COMPONENT_EVIDENCE_IDS = {
+    "verification-result",
+    "rollback-plan",
+    "search-before-change",
+}
 LEGACY_COMPONENT_HINTS = {
     "framework": ("platform", "framework"),
     "system_app": ("application", "system_app"),
@@ -218,7 +244,67 @@ def resolve_components(args: argparse.Namespace) -> tuple[list[dict[str, str]], 
         primary = component["id"]
     if primary not in {component["id"] for component in components}:
         raise SystemExit("--primary-component-id must select one declared component")
+    by_id = {component["id"]: component for component in components}
+    for raw in getattr(args, "component_qualifier", None) or []:
+        if ":" not in raw:
+            raise SystemExit("--component-qualifier must be COMPONENT_ID:QUALIFIER")
+        component_id, qualifier = raw.split(":", 1)
+        if component_id not in by_id or not COMPONENT_TOKEN_RE.fullmatch(qualifier):
+            raise SystemExit(
+                "--component-qualifier contains an unknown component or invalid qualifier"
+            )
+        values = by_id[component_id].setdefault("qualifiers", [])
+        if qualifier in values:
+            raise SystemExit("--component-qualifier values must be unique per component")
+        values.append(qualifier)
     return components, primary
+
+
+def bind_generated_evidence_components(
+    evidence_items: list[dict[str, Any]],
+    components: list[dict[str, Any]],
+    raw_bindings: list[str],
+) -> None:
+    """Bind generated evidence only where scope is derived or explicitly declared."""
+    known_components = {component["id"] for component in components}
+    known_evidence = {item["id"] for item in evidence_items}
+    bindings: dict[str, list[str]] = {}
+    for raw in raw_bindings:
+        if ":" not in raw:
+            raise SystemExit("--evidence-component must be EVIDENCE_ID:COMPONENT_ID")
+        evidence_id, component_id = raw.split(":", 1)
+        if evidence_id not in known_evidence or component_id not in known_components:
+            raise SystemExit(
+                "--evidence-component references unknown evidence or component"
+            )
+        values = bindings.setdefault(evidence_id, [])
+        if component_id in values:
+            raise SystemExit("--evidence-component values must be unique")
+        values.append(component_id)
+
+    all_components = [component["id"] for component in components]
+    for item in evidence_items:
+        evidence_id = item["id"]
+        declared = item.get("component_ids")
+        if declared is not None:
+            if evidence_id in bindings and set(bindings[evidence_id]) != set(declared):
+                raise SystemExit(
+                    f"--evidence-component conflicts with payload scope: {evidence_id}"
+                )
+            continue
+        if evidence_id in bindings:
+            item["component_ids"] = bindings[evidence_id]
+        elif len(components) == 1 or evidence_id in AUTO_SCOPED_EVIDENCE_IDS:
+            item["component_ids"] = list(all_components)
+        elif evidence_id in EXPLICIT_MULTI_COMPONENT_EVIDENCE_IDS:
+            raise SystemExit(
+                "multi-component capture requires explicit --evidence-component for "
+                f"{evidence_id}"
+            )
+        else:
+            raise SystemExit(
+                f"evidence component scope cannot be proved automatically: {evidence_id}"
+            )
 
 
 def bind_repository_components(
@@ -781,6 +867,70 @@ def evidence_file_name(kind: str, source: Path, used_names: set[str]) -> str:
     return f"{kind.replace('_', '-')}-{sha1_text(str(source))[:8]}.json"
 
 
+def validate_component_assertion_payload(
+    payload: dict[str, Any],
+    component_ids: list[str],
+    source: Path,
+) -> None:
+    allowed_envelope = {"kind", "result", "component_ids", "assertions", "summary", "message"}
+    if set(payload) - allowed_envelope or payload.get("result") != "INFO":
+        raise SystemExit(
+            f"component_assertion envelope 必须字段闭合且 result=INFO: {source}"
+        )
+    assertions = payload.get("assertions")
+    if not isinstance(assertions, list) or not assertions:
+        raise SystemExit(f"component_assertion.assertions 必须是非空数组: {source}")
+    observed_components: set[str] = set()
+    observed_pairs: set[tuple[str, str]] = set()
+    for assertion in assertions:
+        if not isinstance(assertion, dict):
+            raise SystemExit(f"component_assertion assertion 必须是对象: {source}")
+        component_id = assertion.get("component_id")
+        assertion_id = assertion.get("assertion_id")
+        result = assertion.get("result")
+        if (
+            component_id not in component_ids
+            or not isinstance(assertion_id, str)
+            or not COMPONENT_TOKEN_RE.fullmatch(assertion_id)
+            or result not in {"PASS", "FAIL", "INFO", "NOT_APPLICABLE"}
+        ):
+            raise SystemExit(
+                "component_assertion 必须精确绑定 component_id、assertion_id 和受控 result: "
+                f"{source}"
+            )
+        pair = (component_id, assertion_id)
+        if pair in observed_pairs:
+            raise SystemExit(f"component_assertion component/assertion pair 重复: {source}")
+        observed_pairs.add(pair)
+        observed_components.add(component_id)
+        if result == "NOT_APPLICABLE":
+            if set(assertion) != {
+                "component_id", "assertion_id", "result", "basis", "limits"
+            } or not all(
+                isinstance(assertion.get(field), str) and assertion[field].strip()
+                for field in ("basis", "limits")
+            ):
+                raise SystemExit(
+                    f"component_assertion N/A 必须只有非空 basis/limits: {source}"
+                )
+        else:
+            observations = assertion.get("observations")
+            if (
+                set(assertion)
+                != {"component_id", "assertion_id", "result", "observations"}
+                or not isinstance(observations, list)
+                or not observations
+                or any(not isinstance(item, str) or not item.strip() for item in observations)
+            ):
+                raise SystemExit(
+                    f"component_assertion {result} 必须只有非空 observations: {source}"
+                )
+    if observed_components != set(component_ids):
+        raise SystemExit(
+            f"component_assertion assertions 必须精确覆盖 envelope component_ids: {source}"
+        )
+
+
 def collect_external_evidence(args: argparse.Namespace, evidence_dir: Path) -> list[dict[str, Any]]:
     sources: list[Path] = []
     for raw_dir in args.evidence_dir or []:
@@ -808,6 +958,29 @@ def collect_external_evidence(args: argparse.Namespace, evidence_dir: Path) -> l
             allowed = ", ".join(sorted(SUPPORTED_EXTERNAL_EVIDENCE_KINDS))
             raise SystemExit(f"外部 evidence kind 不支持: {kind} ({source}); 允许: {allowed}")
         payload.setdefault("kind", kind)
+        known_components = {item["id"] for item in args.components}
+        component_ids = payload.get("component_ids")
+        if component_ids is None and len(known_components) == 1:
+            component_ids = sorted(known_components)
+            payload["component_ids"] = component_ids
+        if (
+            not isinstance(component_ids, list)
+            or not component_ids
+            or any(not isinstance(item, str) for item in component_ids)
+            or len(component_ids) != len(set(component_ids))
+            or not set(component_ids).issubset(known_components)
+        ):
+            raise SystemExit(
+                f"外部 evidence 必须精确声明非空 component_ids，且只能引用本包组件: {source}"
+            )
+        declared_claims: list[str]
+        contract_id = "android-patch-capture-evidence"
+        if kind == "component_assertion":
+            validate_component_assertion_payload(payload, component_ids, source)
+            declared_claims = ["component_assertions_recorded"]
+            contract_id = "android-patch-capture-component-assertion"
+        else:
+            declared_claims = ["external_evidence_recorded"]
         target_name = evidence_file_name(kind, source, used_names)
         used_names.add(target_name)
         target = evidence_dir / target_name
@@ -820,6 +993,9 @@ def collect_external_evidence(args: argparse.Namespace, evidence_dir: Path) -> l
                 "result": evidence_result(payload),
                 "scope": "change",
                 "summary": str(payload.get("summary") or payload.get("message") or f"{kind} evidence"),
+                "component_ids": component_ids,
+                "contract": {"id": contract_id, "version": "2.1"},
+                "declared_claims": declared_claims,
             }
         )
     return entries
@@ -1114,11 +1290,39 @@ def validate_capture_manifest(manifest: dict[str, Any], package_dir: Path) -> No
     evidence_ids = {item["id"] for item in manifest["evidence"]}
     if len(evidence_ids) != len(manifest["evidence"]):
         raise SystemExit("capture manifest repeats an evidence id")
+    evidence_components = {
+        item["id"]: set(item["component_ids"]) for item in manifest["evidence"]
+    }
     for item in manifest["evidence"]:
-        if set(item["component_ids"]) != set(component_ids):
-            raise SystemExit("capture manifest evidence does not bind every component")
-        if not (package_dir / item["path"]).is_file():
+        if not set(item["component_ids"]) or not set(item["component_ids"]).issubset(
+            component_ids
+        ):
+            raise SystemExit("capture manifest evidence component binding is invalid")
+        evidence_path = package_dir / item["path"]
+        if not evidence_path.is_file():
             raise SystemExit("capture manifest references missing evidence")
+        payload = read_json(evidence_path)
+        payload_component_ids = payload.get("component_ids")
+        if payload_component_ids is not None and payload_component_ids != item["component_ids"]:
+            raise SystemExit("capture evidence payload/manifest component bindings differ")
+        if item["id"] in EXPLICIT_MULTI_COMPONENT_EVIDENCE_IDS and payload_component_ids is None:
+            raise SystemExit("capture component-scoped evidence payload is unbound")
+        if item["kind"] == "component_assertion":
+            validate_component_assertion_payload(
+                payload,
+                list(item["component_ids"]),
+                evidence_path,
+            )
+        payload_result = (
+            payload.get("status")
+            if item["kind"] == "package_check"
+            else payload.get("result")
+        )
+        if payload_result is None:
+            if item["result"] != "INFO":
+                raise SystemExit("capture evidence result is not bound by its payload")
+        elif payload_result != item["result"]:
+            raise SystemExit("capture evidence payload/manifest results differ")
     qualifications = manifest["qualification_bindings"]
     if {item["component_id"] for item in qualifications} != set(component_ids) or (
         len(qualifications) != len(component_ids)
@@ -1132,6 +1336,13 @@ def validate_capture_manifest(manifest: dict[str, Any], package_dir: Path) -> No
             raise SystemExit("capture manifest qualification references an unknown patch")
         if not set(binding["evidence_ids"]).issubset(evidence_ids):
             raise SystemExit("capture manifest qualification references unknown evidence")
+        if any(
+            component_id not in evidence_components[evidence_id]
+            for evidence_id in binding["evidence_ids"]
+        ):
+            raise SystemExit(
+                "capture manifest qualification borrows evidence from another component"
+            )
         if not any(
             component_id in repository_components[repository]
             for repository in binding["repository_ids"]
@@ -1468,6 +1679,23 @@ def parse_args() -> argparse.Namespace:
         help="Required for multi-component capture; optional ID override for single-component input.",
     )
     parser.add_argument(
+        "--component-qualifier",
+        action="append",
+        default=[],
+        metavar="COMPONENT_ID:QUALIFIER",
+        help="Bind a controlled conditional-qualification facet to one component; repeatable.",
+    )
+    parser.add_argument(
+        "--evidence-component",
+        action="append",
+        default=[],
+        metavar="EVIDENCE_ID:COMPONENT_ID",
+        help=(
+            "Explicitly scope verification-result, rollback-plan, and "
+            "search-before-change in a multi-component capture; repeatable."
+        ),
+    )
+    parser.add_argument(
         "--repo-component",
         action="append",
         default=[],
@@ -1699,7 +1927,7 @@ def main() -> int:
     resolved_project, project_inference = infer_capture_project_for_change(args, captures, trusted_platform=platform_name)
     args.project = resolved_project
 
-    now = dt.datetime.now()
+    now = dt.datetime.now().astimezone()
     run_id = validate_run_id(args.run_id or f"{now:%Y%m%d-%H%M%S}-change")
     out_root = (
         Path(args.out_dir).expanduser()
@@ -1730,6 +1958,11 @@ def main() -> int:
     auto_verification_payload = load_auto_verification_payload(args)
     verification_payload = verification_result(args, auto_verification_payload)
     search_payload = search_before_change(args)
+    rollback_payload = {
+        "kind": "rollback_plan",
+        "result": "PASS" if args.rollback.strip() else "INFO",
+        "plan": args.rollback.strip(),
+    }
     change_facts = aggregate_change_facts(captures)
     problem_payload, risk_payload = change_problem_and_risk_payloads(args, captures, change_facts)
     coding_check = coding_standard_check(args, captures)
@@ -1817,6 +2050,14 @@ def main() -> int:
             "summary": "团队补丁开发与日志规范检查",
         },
         {
+            "id": "rollback-plan",
+            "kind": "rollback_plan",
+            "path": "evidence/rollback-plan.json",
+            "result": rollback_payload["result"],
+            "scope": "change",
+            "summary": "explicit rollback plan",
+        },
+        {
             "id": "search-before-change",
             "kind": "search_before_change",
             "path": "evidence/search-before-change.json",
@@ -1834,6 +2075,35 @@ def main() -> int:
         },
     ]
     evidence_items.extend(collect_external_evidence(args, evidence_dir))
+    if args.workflow_contract in {"manual_import", "historical_import"}:
+        write_json(
+            evidence_dir / "import-provenance.json",
+            {
+                "kind": "import_provenance",
+                "result": "PASS",
+                "component_ids": [component["id"] for component in components],
+                "repository_artifacts": [
+                    {
+                        "repository_id": capture.repository_id,
+                        "component_ids": list(capture.component_ids),
+                        "patch_artifact_sha256": hashlib.sha256(
+                            (patch_dir / capture.patch_name).read_bytes()
+                        ).hexdigest(),
+                    }
+                    for capture in captures
+                ],
+            },
+        )
+        evidence_items.append(
+            {
+                "id": "import-provenance",
+                "kind": "import_provenance",
+                "path": "evidence/import-provenance.json",
+                "result": "PASS",
+                "scope": "change",
+                "summary": "hash-bound import provenance",
+            }
+        )
     if snapshot_payload is not None:
         write_json(evidence_dir / "remote-source-snapshot.json", snapshot_payload)
         evidence_items.append(
@@ -1847,6 +2117,27 @@ def main() -> int:
             }
         )
 
+    bind_generated_evidence_components(
+        evidence_items,
+        components,
+        args.evidence_component,
+    )
+    evidence_components = {
+        evidence["id"]: list(evidence["component_ids"])
+        for evidence in evidence_items
+    }
+    for evidence_id, payload in (
+        ("verification-result", verification_payload),
+        ("patch-diff-facts", change_facts),
+        ("patch-problem-summary", problem_payload),
+        ("risk-surface", risk_payload),
+        ("coding-standard-check", coding_check),
+        ("rollback-plan", rollback_payload),
+        ("search-before-change", search_payload),
+        ("package-check", package_check),
+    ):
+        payload["component_ids"] = evidence_components[evidence_id]
+
     evidence_claims = {
         "changed_files": ["repository_change_inventory"],
         "verification_result": ["verification_recorded_not_server_accepted"],
@@ -1854,17 +2145,20 @@ def main() -> int:
         "patch_problem_summary": ["problem_solution_summary_recorded"],
         "risk_surface": ["risk_surface_recorded"],
         "coding_standard_check": ["local_policy_check_recorded"],
+        "rollback_plan": ["rollback_plan_recorded"],
         "search_before_change": ["optional_search_decision_recorded"],
+        "import_provenance": ["hash_bound_import_provenance_recorded"],
         "package_check": ["local_package_check_recorded"],
         "remote_source_snapshot": ["immutable_source_snapshot_recorded"],
     }
-    all_component_ids = [component["id"] for component in components]
     for evidence in evidence_items:
-        evidence["component_ids"] = list(all_component_ids)
-        evidence["contract"] = "android-patch-capture-evidence-v1"
-        evidence["declared_claims"] = evidence_claims.get(
-            str(evidence.get("kind")), ["external_evidence_recorded"]
+        evidence.setdefault(
+            "contract",
+            {"id": "android-patch-capture-evidence", "version": "2.1"},
         )
+        evidence.setdefault("declared_claims", evidence_claims.get(
+            str(evidence.get("kind")), ["external_evidence_recorded"]
+        ))
 
     patch_items = [
         {
@@ -1989,17 +2283,19 @@ def main() -> int:
                     if component["id"] in capture.component_ids
                 ],
                 "evidence_ids": [
-                    "changed-files",
-                    "patch-diff-facts",
-                    "coding-standard-check",
-                    "package-check",
+                    evidence["id"]
+                    for evidence in evidence_items
+                    if component["id"] in evidence["component_ids"]
                 ],
-                "contract": "android-patch-capture-local-qualification-v1",
-                "declared_claims": [
-                    "patch_bytes_captured",
-                    "repository_component_mapping_declared",
-                    "local_checks_recorded",
-                ],
+                "contract": "android-patch-capture-local-qualification-v2",
+                "declared_claims": list(
+                    dict.fromkeys(
+                        claim
+                        for evidence in evidence_items
+                        if component["id"] in evidence["component_ids"]
+                        for claim in evidence["declared_claims"]
+                    )
+                ),
             }
             for component in components
         ],
@@ -2018,6 +2314,7 @@ def main() -> int:
         {
             "kind": "changed_files",
             "scope": "change",
+            "component_ids": evidence_components["changed-files"],
             "repositories": [
                 {
                     "repository_id": capture.repository_id,
@@ -2036,6 +2333,7 @@ def main() -> int:
     write_json(evidence_dir / "risk-surface.json", risk_payload)
     write_json(evidence_dir / "coding-standard-check.json", coding_check)
     write_json(evidence_dir / "verification-result.json", verification_payload)
+    write_json(evidence_dir / "rollback-plan.json", rollback_payload)
     write_json(evidence_dir / "search-before-change.json", search_payload)
     write_json(evidence_dir / "package-check.json", package_check)
     manifest["file_inventory"] = {

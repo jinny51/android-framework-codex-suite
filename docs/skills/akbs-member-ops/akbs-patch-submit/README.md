@@ -8,7 +8,8 @@ parser `--help` 可以跳过；`--` 后面的字面 `--help` 仍是业务输入�
 
 - `knowledge-incoming-package/1/framework_change`：永久兼容读取，并继续通过 incoming v1 真实提交。
 - `akbs-android-change-package-v2/2/android_change`：覆盖 application、platform、native、HAL、kernel、device、build，当前只开放本地 read/check/prepare。
-- `android-patch-capture-package-v2/2.0/android_change_capture`：只允许显式 `adapt-capture` 做零网络、零写 preflight；不能把 capture 目录直接交给 `prepare`。
+- `android-patch-capture-package-v2/2.0/android_change_capture`：保留零网络、零写的兼容 preflight；不能把 capture 目录直接交给 `prepare`。
+- `android-patch-capture-package-v2/2.1/android_change_capture`：作为 Phase 4 的离线 materializer 输入，按 hash-pinned 37 组 qualification 合同生成 canonical v2；首轮只启用 application/platform，其余层返回 `layer_not_enabled`。
 
 v2 的本地 PASS 只代表 `client_semantic_coherence_valid`。客户端 adapter outputs 仍是 untrusted input，服务端必须重新计算资格；当前证据 profile 明确将 writer 设为 blocked，所以 submit 在任何更新检查网络、tar、HTTP、receipt 或 v1 fallback 前返回 `android_change_v2_writer_off`。
 
@@ -22,15 +23,19 @@ python3 "scripts/akbs_patch_submit.py" android-change-v2 submit /path/to/package
 python3 "scripts/akbs_patch_submit.py" android-change-v2 adapt-capture /path/to/capture
 ```
 
-Phase 2 的 `adapt-capture` 先按插件内 hash-pinned Draft 2020-12 capture
+对于 2.0，`adapt-capture` 先按插件内 hash-pinned Draft 2020-12 capture
 schema 严格校验，再检查 identity/结构、validated
 状态链、local-only authority、除 manifest 自身外的全量 regular-file
 SHA-256 inventory、patch SHA-1、`components[]`、`primary_component_id`、每个
 repository/patch 的 `component_ids[]`、evidence 与 qualification bindings。
-检查成功仍返回非零的结构化 `BLOCKED`，原因是 per-group versioned adapter
-input contracts 尚未冻结；它不创建 canonical 包、client-adapter outputs、
-receipt 或伪 PASS。只有 Phase 4 激活合同后，adapter 才可生成新的 hash-bound
-target artifact，再交给 `check`/`prepare`。
+检查成功仍返回非零的结构化 `BLOCKED`，且不创建 canonical 包、
+client-adapter outputs、receipt 或伪 PASS。
+
+对于 2.1，同一命令按 component 精确校验证据，并通过 machine-validated
+versioned adapter input schema 生成确定性的 hash-bound canonical v2 包；
+重复执行复用同一结果，原 capture 不改写。
+client adapter 输出仍是 untrusted input，`server_qualified=false`，不发
+HTTP，也不进入 v1 fallback。v2 server writer 继续关闭。
 
 `prepare` 不生成或补写 adapter PASS，只在完整 schema、profile SHA、qualification hash、组件/证据绑定及目录 bytes 全部通过后，把输入原样保存到：
 

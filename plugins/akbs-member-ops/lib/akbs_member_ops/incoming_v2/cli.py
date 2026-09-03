@@ -6,7 +6,10 @@ import argparse
 import json
 from pathlib import Path
 
-from .capture_adapter import preflight_capture
+from akbs_member_ops.member.profile import MemberProfileError, load_member_profile
+
+from .capture_adapter import capture_schema_version, preflight_capture
+from .materializer import materialize_capture
 from .validation import (
     AndroidChangeV2Error,
     check_package,
@@ -21,9 +24,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="akbs_patch_submit.py android-change-v2",
         description=(
             "Read, strictly check, or byte-preserve an Android change v2 package, or "
-            "preflight an android-patch-capture v2 package without materializing output. "
-            "Adapter materialization and server submission remain fail-closed while their "
-            "contracts are blocked."
+            "preflight capture 2.0 or offline-materialize capture 2.1. Server submission "
+            "remains fail-closed."
         ),
     )
     subparsers = parser.add_subparsers(dest="action", required=True)
@@ -32,9 +34,10 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_argument("package", type=Path, help="package directory or manifest.json")
     adapt = subparsers.add_parser(
         "adapt-capture",
-        help="strictly preflight an android-patch-capture v2 package without writing output",
+        help="preflight capture 2.0 or offline-materialize capture 2.1",
     )
     adapt.add_argument("capture", type=Path, help="capture package directory or manifest.json")
+    adapt.add_argument("--profile", default="", help="configured AKBS member profile")
     return parser
 
 
@@ -48,9 +51,18 @@ def main(argv: list[str] | None = None) -> int:
         elif args.action == "prepare":
             result = prepare_package(args.package)
         elif args.action == "adapt-capture":
-            result = preflight_capture(args.capture)
-            print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
-            return 1
+            if capture_schema_version(args.capture) == "2.0":
+                result = preflight_capture(args.capture)
+                print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+                return 1
+            try:
+                profile = load_member_profile(args.profile or None)
+            except MemberProfileError as exc:
+                raise AndroidChangeV2Error(f"member profile cannot bind capture: {exc}") from exc
+            result = materialize_capture(
+                args.capture,
+                member_alias=profile.member_alias,
+            )
         else:
             identity = read_package(args.package)
             result = {
