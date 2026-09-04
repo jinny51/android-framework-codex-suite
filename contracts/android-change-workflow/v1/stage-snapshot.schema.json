@@ -95,7 +95,6 @@
       "properties": {
         "type": {"enum": ["snapshot", "assignment_planned", "mutation_authority_bound", "gate_changed", "paused", "resumed", "handoff"]},
         "planned_assignment_id": {"$ref": "#/$defs/id"},
-        "planned_worker_task_id": {"$ref": "#/$defs/id"},
         "worker_result_sha256": {"$ref": "#/$defs/sha256"}
       }
     },
@@ -123,7 +122,7 @@
         "properties": {
           "event": {
             "properties": {"type": {"const": "assignment_planned"}},
-            "required": ["planned_assignment_id", "planned_worker_task_id"]
+            "required": ["planned_assignment_id"]
           }
         }
       }

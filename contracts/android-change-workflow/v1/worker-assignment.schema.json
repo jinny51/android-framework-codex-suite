@@ -7,7 +7,6 @@
   "required": [
     "schema",
     "assignment_id",
-    "worker_task_id",
     "run_id",
     "attempt",
     "issued_at",
@@ -26,7 +25,6 @@
   "properties": {
     "schema": {"const": "worker-assignment-v1"},
     "assignment_id": {"$ref": "#/$defs/id"},
-    "worker_task_id": {"$ref": "#/$defs/id"},
     "run_id": {"$ref": "#/$defs/id"},
     "attempt": {"type": "integer", "minimum": 1},
     "issued_at": {"type": "string", "format": "date-time"},

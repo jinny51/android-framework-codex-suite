@@ -8,10 +8,6 @@
       "contract": "android-coding-policy-provider-v1",
       "skill_id": "jinny-android-coding-practices",
       "skill_version": "1.0.0",
-      "skill_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-      "agent_metadata_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
-      "decision_entrypoint_path": "skills/jinny-android-coding-practices/scripts/jinny_coding_policy.py",
-      "decision_entrypoint_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
       "decision_schema": "coding-policy-decision-v1",
       "applicability": {"workflow_actions": ["implementation"], "component_layers": ["application"]}
     },
@@ -19,10 +15,6 @@
       "contract": "android-execution-policy-provider-v1",
       "skill_id": "jinny-android-execution-policy",
       "skill_version": "1.0.0",
-      "skill_sha256": "4444444444444444444444444444444444444444444444444444444444444444",
-      "agent_metadata_sha256": "5555555555555555555555555555555555555555555555555555555555555555",
-      "decision_entrypoint_path": "skills/jinny-android-execution-policy/scripts/jinny_execution_policy.py",
-      "decision_entrypoint_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
       "decision_schema": "execution-policy-decision-v1",
       "applicability": {"workflow_actions": ["analysis"], "component_layers": ["application"]},
       "worker_profiles": {

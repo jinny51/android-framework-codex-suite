@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the AKBS 2 migration catalog, rollback release, and contracts."""
+"""Validate the released topology and declaration-only AKBS 2 contracts."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ import hashlib
 import json
 import math
 import re
-import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -17,17 +16,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CURRENT_CONTRACT = ROOT / "contracts/plugin-topology/v1/active-topology.json"
 MIGRATION_CONTRACT = ROOT / "contracts/plugin-topology/v2/migration-topology.json"
 COMPATIBILITY_MATRIX = ROOT / "contracts/plugin-topology/v2/compatibility-matrix.json"
-COMPATIBILITY_TEST_MAP = ROOT / "contracts/plugin-topology/v2/compatibility-test-map.json"
 MARKETPLACE = ROOT / ".agents/plugins/marketplace.json"
 SKILL_RE = re.compile(r'^name\s*=\s*"([^"]+)"\s*$', re.MULTILINE)
-SKILL_FRONTMATTER_NAME_RE = re.compile(r"\A---\s*\nname:\s*([^\n]+)\n", re.MULTILINE)
 STATES = ("current", "migration", "target")
-ARCHITECTURE_BINDING = {
-    "baseline_id": "akbs-2-architecture-baseline-v1",
-    "baseline_run": "v1-20260901",
-    "architecture_sha256": "828eb97f6dbce441423f0a8c471d6c984187c8c1c846b91a3bfcbb6267a9b54b",
-    "plugin_source_baseline": "c0840685911ef7e19dba3893e014a257727c54b6",
-}
 TARGET_PLUGINS = {
     "akbs-member-ops": (
         "akbs-member-setup", "akbs-knowledge-search", "akbs-knowledge-merge-review",
@@ -40,67 +31,6 @@ TARGET_PLUGINS = {
     "jinny-android-practices": (
         "jinny-android-coding-practices", "jinny-android-execution-policy",
     ),
-}
-TARGET_PLUGIN_VERSIONS = {
-    "akbs-member-ops": "2.0.0",
-    "android-engineering-ops": "2.0.0",
-    "jinny-android-practices": "2.0.0",
-}
-MIGRATION_ALIASES = {
-    "akbs-member-ops": (
-        "android-member-setup", "android-knowledge-search",
-        "android-knowledge-merge-review", "android-daily-report-intake",
-        "android-weekly-report-intake", "android-framework-patch-intake",
-        "android-knowledge-intake",
-    ),
-    "android-engineering-ops": (
-        "android-framework-change-workflow", "android-framework-patch-capture",
-    ),
-    "jinny-android-practices": ("jinny-framework-coding-standards",),
-}
-MIGRATION_MARKETPLACE = (
-    "akbs-member-ops", "android-engineering-ops", "jinny-android-practices",
-    "android-framework-ops", "android-wsl-ops", "android-mac-ops",
-)
-MIGRATION_SOURCE_PLUGINS = (*MIGRATION_MARKETPLACE, "codex-workspace-care")
-TARGET_MARKETPLACE = (
-    "akbs-member-ops", "android-engineering-ops", "jinny-android-practices",
-)
-TARGET_SOURCE_PLUGINS = (*TARGET_MARKETPLACE, "codex-workspace-care")
-CURRENT_COMPATIBILITY = {
-    "android-framework-ops": (
-        "1.0.169", "ac7b33d205a3408005b1857480595e0386be53cdeb817f35f4933f1e95269dac",
-        "e810e7d2637d31b91e2102c55c6b3279c7eb926b",
-    ),
-    "android-wsl-ops": (
-        "1.0.8", "ae6ccc417800ce35d7f37a2f28d8eb1ddab3538d56500c9bc4e0166acbe818c3",
-        "03dc46cb3d69365611aa08414ee6049883e21868",
-    ),
-    "android-mac-ops": (
-        "1.0.10", "80abb47bd67d3f046df5f73799c20286c835660f1a7d37427b197840c365951f",
-        "489e64443a9d962fbd45afc556f8c844bfb3cbc9",
-    ),
-}
-LEGACY_RELEASE = {
-    "git_commit": "79b3665393089ce2bdfb8db4021d03bcac84c8ad",
-    "plugins": {
-        "android-framework-ops": (
-            "1.0.169", "ac7b33d205a3408005b1857480595e0386be53cdeb817f35f4933f1e95269dac",
-            "e810e7d2637d31b91e2102c55c6b3279c7eb926b",
-        ),
-        "android-wsl-ops": (
-            "1.0.8", "ae6ccc417800ce35d7f37a2f28d8eb1ddab3538d56500c9bc4e0166acbe818c3",
-            "03dc46cb3d69365611aa08414ee6049883e21868",
-        ),
-        "android-mac-ops": (
-            "1.0.10", "80abb47bd67d3f046df5f73799c20286c835660f1a7d37427b197840c365951f",
-            "489e64443a9d962fbd45afc556f8c844bfb3cbc9",
-        ),
-        "jinny-android-practices": (
-            "1.0.3", "9face744fe5006039d79462e4b0ea9f7cd65a6aa22df9c5d85ecca803c423030",
-            "3790b3ccc1e708442fa81d1b2883761904765ea8",
-        ),
-    },
 }
 CHANGED_LEGACY_SKILLS = {
     "android-member-setup", "android-knowledge-search", "android-knowledge-merge-review",
@@ -133,146 +63,6 @@ ALLOWED_COINSTALL_REFERENCES = {
     "android-mac-ops", "android-wsl-ops", "legacy_and_target_source_access",
     "legacy_install_family", "target_install_family",
 }
-PHASE_CONTRACT_IDS = ("phase0", "phase1", "phase2", "phase3", "phase4", "phase5", "phase6")
-LIFECYCLE_PHASE_IDS = {
-    *PHASE_CONTRACT_IDS, "current", "rollback", "independent",
-}
-ACTIVATION_KEYS = {
-    "materialization_phase", "real_activation_phase", "gates_by_phase",
-    "ordered_actions_by_phase", "forbidden_coinstall",
-}
-ORDERED_INSTALL_CUTOVER = {
-    "forward": (
-        "refresh_marketplace", "remove_legacy_family", "add_target_family",
-        "verify_target_only",
-    ),
-    "rollback": (
-        "remove_target_family", "add_exact_legacy_release", "verify_legacy_only",
-    ),
-    "mixed_state": "invalid_no_business_actions",
-}
-CLI_ENTRYPOINT_BINDINGS = {
-    "cli.akbs-member": {
-        "legacy": (
-            "android_member_setup.py", "android_knowledge_search.py",
-            "android_knowledge_merge_review.py", "android_daily_report_intake.py",
-            "android_weekly_report_intake.py", "android_framework_patch_intake.py",
-            "android_knowledge_intake.py",
-        ),
-        "target": (
-            "akbs_member_setup.py", "akbs_knowledge_search.py",
-            "akbs_knowledge_merge_review.py", "akbs_daily_report.py",
-            "akbs_weekly_report.py", "akbs_patch_submit.py",
-            "android_member_setup.py", "android_knowledge_search.py",
-            "android_knowledge_merge_review.py", "android_daily_report_intake.py",
-            "android_weekly_report_intake.py", "android_framework_patch_intake.py",
-            "android_knowledge_intake.py",
-        ),
-    },
-    "cli.android-engineering": {
-        "legacy": (
-            "android-framework-change-workflow:health_scan_logcat.py",
-            "android-framework-change-workflow:logcat_slice.py",
-            "android-framework-change-workflow:extract_video_frames.py",
-            "android-framework-change-workflow:collect_diagnostics.sh",
-            "android-framework-change-workflow:diagnostic_log_audit.py",
-            "android-framework-patch-capture:capture_framework_patch.py",
-            "android-framework-patch-capture:capture_remote_snapshot.py",
-            "android-remote-channel:remote-channel.sh",
-            "android-remote-build-deploy:resolve_remote_mapping.py",
-            "android-remote-build-deploy:remote-build-v2.py",
-            "android-remote-build-deploy:push_artifacts.py",
-        ),
-        "target": (
-            "android-change-workflow:android_change_controller.py",
-            "android-change-workflow:resolve_android_practices.py",
-            "android-change-workflow:health_scan_logcat.py",
-            "android-change-workflow:logcat_slice.py",
-            "android-change-workflow:extract_video_frames.py",
-            "android-change-workflow:collect_diagnostics.sh",
-            "android-change-workflow:diagnostic_log_audit.py",
-            "android-patch-capture:capture_android_patch.py",
-            "android-patch-capture:capture_remote_snapshot.py",
-            "android-patch-capture:read_legacy_capture.py",
-            "android-framework-patch-capture:capture_framework_patch.py",
-            "android-framework-patch-capture:capture_remote_snapshot.py",
-            "android-remote-channel:remote-channel.sh",
-            "android-remote-build-deploy:resolve_remote_mapping.py",
-            "android-remote-build-deploy:remote-build-v2.py",
-            "android-remote-build-deploy:push_artifacts.py",
-        ),
-    },
-    "cli.android-practices-provider": {
-        "legacy": (),
-        "target": (
-            "jinny-android-coding-practices:jinny_coding_policy.py",
-            "jinny-android-execution-policy:jinny_execution_policy.py",
-        ),
-    },
-}
-SURFACE_PHASE_BINDINGS = {
-    "plugin.akbs-member-ops": ("phase2", "phase4"),
-    "plugin.android-engineering-ops": ("phase2", "phase4"),
-    "plugin.jinny-android-practices": ("phase2", "phase4"),
-    "plugin.legacy-android-ops": ("current", "current"),
-    "plugin.codex-workspace-care": ("independent", "independent"),
-    "skill.akbs-member-family": ("phase2", "phase4"),
-    "skill.android-engineering-family": ("phase2", "phase4"),
-    "skill.android-source-access": ("phase2", "phase4"),
-    "skill.jinny-provider-family": ("phase2", "phase4"),
-    "skill.android-knowledge-intake": ("phase2", "phase4"),
-    "cli.akbs-member": ("phase2", "phase4"),
-    "cli.android-engineering": ("phase2", "phase4"),
-    "cli.android-practices-provider": ("phase2", "phase4"),
-    "cli.source-access": ("phase2", "phase4"),
-    "config.member-profile": ("phase2", "phase4"),
-    "config.android-engineering-extension": ("phase2", "phase3"),
-    "state.source-access": ("phase2", "phase4"),
-    "artifact.akbs-member": ("phase2", "phase4"),
-    "artifact.android-patch-capture": ("phase2", "phase4"),
-    "artifact.android-remote-build-deploy": ("phase2", "phase4"),
-    "package.framework-change-v1": ("current", "current"),
-    "package.android-change-v2": ("phase2", "phase4"),
-    "cache.legacy-installations": ("phase5", "phase5"),
-    "marketplace.entries": ("phase2", "phase5"),
-}
-PHASE_CONTRACT_SHA256 = "73a5e71e880d4786fc278dd558d08cd31b15d280652e8a5830e360c8734326f1"
-ENGINEERING_IDENTITY_RESOLUTION_SHA256 = (
-    "a51a3d17279c26c04d5ba23f7e8fe5ead5964687219df231a7be99012556ab87"
-)
-ENGINEERING_IDENTITY_SURFACES = (
-    "config.member-profile",
-    "config.android-engineering-extension",
-)
-ENGINEERING_IDENTITY_MATRIX_SHA256 = (
-    "1956a123cccb1ffece974d9f8d430bb728d03a72c24da9ab9785fa579b56f666"
-)
-SURFACE_ACTIVATION_SHA256 = {
-    "plugin.akbs-member-ops": "c7adb056dd9eb73322d17d370d431c50ff7bc902ee3c87257055f7e3c3297a80",
-    "plugin.android-engineering-ops": "94033cd811852dad2eb7d3cb22f079fc0b3fdf3d3dd801739761759c8f8a40f2",
-    "plugin.jinny-android-practices": "17545c4dd13c20f219d23a39f675387da13166de9ec2f4ec0881cee96987ae88",
-    "plugin.legacy-android-ops": "f841247cff744c068f07fb1dbdd5f4123065ac4a6349663e8bbce520385df6ac",
-    "plugin.codex-workspace-care": "ec5a508e05a873132c03440d450684376f7a7cee184c7ccb09511b7a9cd81a11",
-    "skill.akbs-member-family": "8569a26ac5b609b828f5426bada76cdace6d1327f7192a12f7284ea10cc349f5",
-    "skill.android-engineering-family": "4756da3241595f07a659f51deb575de6f35f9d5ac292d39283f76baa1025f102",
-    "skill.android-source-access": "739ebe560dfcdcaa934aa47535819b345e6521ce4cbeede5358e1dd6882d5bb6",
-    "skill.jinny-provider-family": "af6374a382c0960f0b0749e37a477f3ca0122b56d70844c05a4ad09db592b707",
-    "skill.android-knowledge-intake": "f436ee73f6c81b46705899994f0e57d11da76725c964fd9893ba759fd2e78133",
-    "cli.akbs-member": "7f188bc18e00fef552c6bf60d62c436ee9dbe4c2115cada8c6b8db24b154812d",
-    "cli.android-engineering": "d3dc379ace0e396c0deab3a768ec5f3d135612510e32bf5f7bda6f7a09d98d48",
-    "cli.android-practices-provider": "add7c3eeb94670d9d770318abb9aaa284dd7407efb09f889e0354b519b274d3d",
-    "cli.source-access": "d7a1207f69c845a7184f1bb35f40db6336948da56884bcd1fd9a1de21f498e98",
-    "config.member-profile": "1f00d7d231c19d9c367fb5e6f1783f42978bb75a55e02537b2649340ddc19d4b",
-    "config.android-engineering-extension": "34c2f8dcd7f37eeabce048d0f02338976728f27e69ee4dead845da1c55236c57",
-    "state.source-access": "059f7b598e8fcbba81911336e0b9ccd34a1e990fc37e2c5bc45024b4cd825f46",
-    "artifact.akbs-member": "fcdc229e403d574bd28c04136d1d371df63fcfdf1b59af62c23dfd00559e05e3",
-    "artifact.android-patch-capture": "3ba6d4538b7d8c36eda38728fcb6835a9d0b679979e8703dcb8c5ff005256380",
-    "artifact.android-remote-build-deploy": "b0c9b6b85f8213974fde9dcfe694fcf694c35ab386a4b437b5583309dfc0630e",
-    "package.framework-change-v1": "d5c012849422e3d4e59f6928d451e574727032bbec4872377eac5ac57896dccc",
-    "package.android-change-v2": "f8d8986b4d46a523f0c42e26e5ca6195b9002da395f68c45a88053d9f4590444",
-    "cache.legacy-installations": "5d3abc52e67e2ecf73eed490ee140eac4bba2fafedac461940395804613f7d61",
-    "marketplace.entries": "05ac96f642e211b2f00e5194e7895192f9f79a9f59273b70337065d3e498d1f5",
-}
 SURFACE_DEFAULT_BINDINGS = {
     "plugin.akbs-member-ops": (("android-framework-ops",), ("android-framework-ops",), ("akbs-member-ops",), ("akbs-member-ops",)),
     "plugin.android-engineering-ops": (("android-framework-ops",), ("android-framework-ops",), ("android-engineering-ops",), ("android-engineering-ops",)),
@@ -286,7 +76,6 @@ SURFACE_DEFAULT_BINDINGS = {
     "skill.android-knowledge-intake": (("android-knowledge-intake",), ("android-knowledge-intake",), (), ()),
     "cli.akbs-member": (("legacy-cli-family",), ("legacy-cli-family",), ("target-cli-family",), ("target-cli-family",)),
     "cli.android-engineering": (("legacy-engineering-cli",), ("legacy-engineering-cli",), ("target-engineering-cli",), ("target-engineering-cli",)),
-    "cli.android-practices-provider": ((), (), (), ()),
     "cli.source-access": (("host-command-family",), ("host-command-family",), ("target-source-command-family",), ("target-source-command-family",)),
     "config.member-profile": (("legacy-config",), ("legacy-config",), ("akbs-member-ops-config",), ("akbs-member-ops-config",)),
     "config.android-engineering-extension": (("core-direct",), ("core-direct",), ("core-direct",), ("core-direct",)),
@@ -312,7 +101,6 @@ SURFACE_COINSTALL_BINDINGS = {
     "skill.android-knowledge-intake": (),
     "cli.akbs-member": ("android-framework-ops",),
     "cli.android-engineering": ("android-framework-ops",),
-    "cli.android-practices-provider": ("legacy_install_family",),
     "cli.source-access": ("android-wsl-ops", "android-mac-ops", "android-framework-ops"),
     "config.member-profile": (),
     "config.android-engineering-extension": (),
@@ -338,7 +126,6 @@ SURFACE_REMOVAL_BINDINGS = {
     "skill.android-knowledge-intake": ("per_legacy_cli_adoption_zero",),
     "cli.akbs-member": ("per_cli_adoption_zero",),
     "cli.android-engineering": ("per_cli_adoption_zero",),
-    "cli.android-practices-provider": ("per_provider_entrypoint_adoption_zero",),
     "cli.source-access": ("per_host_cli_adoption_zero",),
     "config.member-profile": ("writer_adoption_zero",),
     "config.android-engineering-extension": ("separate_contract_revision",),
@@ -396,236 +183,6 @@ def manifest_skills(root: Path, plugin: str) -> list[str]:
     return SKILL_RE.findall(path.read_text(encoding="utf-8"))
 
 
-def plugin_metadata(root: Path, plugin: str) -> dict[str, Any]:
-    return load_json(root / "plugins" / plugin / ".codex-plugin" / "plugin.json")
-
-
-def git_plugin_tree_oid(root: Path, commit: str, plugin: str) -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "--verify", f"{commit}:plugins/{plugin}"],
-        cwd=root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    oid = result.stdout.strip()
-    if result.returncode != 0 or re.fullmatch(r"[0-9a-f]{40}", oid) is None:
-        raise TopologyError(f"legacy rollback Git tree is unavailable: {plugin}")
-    return oid
-
-
-def git_blob_bytes(root: Path, commit: str, relative_path: str) -> bytes:
-    result = subprocess.run(
-        ["git", "show", f"{commit}:{relative_path}"],
-        cwd=root,
-        check=False,
-        capture_output=True,
-    )
-    if result.returncode != 0:
-        raise TopologyError(f"legacy rollback Git blob is unavailable: {relative_path}")
-    return result.stdout
-
-
-def require_clean_compatibility_plugin_source(root: Path, plugin: str, tree_oid: str) -> None:
-    head_tree_oid = git_plugin_tree_oid(root, "HEAD", plugin)
-    status = subprocess.run(
-        ["git", "status", "--porcelain=v1", "--untracked-files=all", "--", f"plugins/{plugin}"],
-        cwd=root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if status.returncode != 0 or head_tree_oid != tree_oid or status.stdout.strip():
-        raise TopologyError(f"physical compatibility source differs: {plugin}")
-
-
-def _validate_skill_surface(root: Path, plugin: str, skill: str) -> None:
-    skill_root = root / "plugins" / plugin / "skills" / skill
-    skill_file = skill_root / "SKILL.md"
-    agent_file = skill_root / "agents" / "openai.yaml"
-    docs_file = root / "docs" / "skills" / plugin / skill / "README.md"
-    if not skill_file.is_file():
-        raise TopologyError(f"declared Skill is missing: {plugin}:{skill}")
-    match = SKILL_FRONTMATTER_NAME_RE.search(skill_file.read_text(encoding="utf-8"))
-    if not match or match.group(1).strip().strip('"\'') != skill:
-        raise TopologyError(f"Skill frontmatter name differs: {plugin}:{skill}")
-    if not agent_file.is_file() or f"${skill}" not in agent_file.read_text(encoding="utf-8"):
-        raise TopologyError(f"Skill agent prompt differs: {plugin}:{skill}")
-    if not docs_file.is_file():
-        raise TopologyError(f"Skill documentation is missing: {plugin}:{skill}")
-
-
-def validate_migration_plugin_layout(root: Path, topology: dict[str, Any]) -> None:
-    migration = _state_map(topology)["migration"]
-    canonical_rows = {row["id"]: row for row in migration["canonical_plugins"]}
-    for plugin, canonical_skills in TARGET_PLUGINS.items():
-        metadata = plugin_metadata(root, plugin)
-        if metadata.get("name") != plugin:
-            raise TopologyError(f"plugin manifest name differs: {plugin}")
-        if metadata.get("version") != TARGET_PLUGIN_VERSIONS[plugin]:
-            raise TopologyError(f"plugin manifest version differs: {plugin}")
-        if plugin == "jinny-android-practices" and "Write" in (
-            metadata.get("interface", {}).get("capabilities") or []
-        ):
-            raise TopologyError("decision-only Jinny provider must not advertise Write")
-        expected_skills = [*canonical_skills, *MIGRATION_ALIASES[plugin]]
-        actual_skills = manifest_skills(root, plugin)
-        if actual_skills != expected_skills:
-            raise TopologyError(f"migration manifest skills mismatch for {plugin}")
-        actual_dirs = sorted(
-            path.name for path in (root / "plugins" / plugin / "skills").iterdir()
-            if path.is_dir()
-        )
-        if actual_dirs != sorted(expected_skills):
-            raise TopologyError(f"migration Skill directories mismatch for {plugin}")
-        for skill in expected_skills:
-            _validate_skill_surface(root, plugin, skill)
-        row = canonical_rows[plugin]
-        if row.get("version") != metadata["version"]:
-            raise TopologyError(f"topology version differs from plugin manifest: {plugin}")
-
-    provider_rel = migration["provider_discovery"]["manifest_relative_path"]
-    provider_path = root / "plugins" / "jinny-android-practices" / provider_rel
-    provider = load_json(provider_path)
-    if (
-        provider.get("schema") != "android-practices-provider-v1"
-        or provider.get("provider_id") != "jinny-android-practices"
-        or provider.get("provider_version") != TARGET_PLUGIN_VERSIONS["jinny-android-practices"]
-        or set((provider.get("capabilities") or {})) != {"coding", "execution"}
-        or provider["capabilities"]["coding"].get("skill_id")
-        != "jinny-android-coding-practices"
-        or provider["capabilities"]["execution"].get("skill_id")
-        != "jinny-android-execution-policy"
-        or provider["capabilities"]["coding"].get("skill_version") != "2.0.0"
-        or provider["capabilities"]["execution"].get("skill_version") != "2.0.0"
-        or provider.get("compatible_core_contracts") != ["android-engineering-ops-v1"]
-        or provider.get("fallback") != {
-            "capability_absent": "core",
-            "applicability_miss": "core",
-            "provider_missing_or_invalid": "fail_closed",
-            "declared_capability_broken": "fail_closed",
-            "invalid_decision": "fail_closed",
-        }
-        or provider.get("authority") != {
-            "decision_only": True,
-            "can_spawn": False,
-            "can_write_source": False,
-            "can_acquire_lock": False,
-            "can_execute_side_effects": False,
-            "can_upload": False,
-            "can_accept_gate": False,
-            "can_final_accept": False,
-        }
-    ):
-        raise TopologyError("Jinny provider manifest differs")
-
-    compatibility_rows = {
-        row["id"]: row for row in migration["compatibility_source_entries"]
-    }
-    for plugin in ("android-framework-ops", "android-wsl-ops", "android-mac-ops"):
-        metadata_path = root / "plugins" / plugin / ".codex-plugin" / "plugin.json"
-        row = compatibility_rows[plugin]
-        if file_sha256(metadata_path) != row["plugin_manifest_sha256"]:
-            raise TopologyError(f"physical compatibility manifest differs: {plugin}")
-        require_clean_compatibility_plugin_source(root, plugin, row["git_tree_oid"])
-    legacy_rows = {row["id"]: row for row in migration["legacy_entries"]}
-    commit = migration["legacy_release"]["git_commit"]
-    for plugin, (_, expected_manifest_sha256, expected_tree_oid) in LEGACY_RELEASE["plugins"].items():
-        manifest_bytes = git_blob_bytes(
-            root, commit, f"plugins/{plugin}/.codex-plugin/plugin.json"
-        )
-        if hashlib.sha256(manifest_bytes).hexdigest() != expected_manifest_sha256:
-            raise TopologyError(f"legacy rollback Git manifest changed: {plugin}")
-        if git_plugin_tree_oid(root, commit, plugin) != expected_tree_oid:
-            raise TopologyError(f"legacy rollback Git tree changed: {plugin}")
-        if plugin != "jinny-android-practices":
-            row = legacy_rows[plugin]
-            if (
-                row.get("plugin_manifest_sha256") != expected_manifest_sha256
-                or row.get("git_tree_oid") != expected_tree_oid
-            ):
-                raise TopologyError(f"legacy rollback catalog differs: {plugin}")
-
-
-def validate_marketplace_entries(marketplace: dict[str, Any], expected: tuple[str, ...]) -> None:
-    rows = marketplace.get("plugins")
-    if not isinstance(rows, list):
-        raise TopologyError("marketplace plugins must be a list")
-    names = tuple(row.get("name") for row in rows if isinstance(row, dict))
-    if len(names) != len(rows) or names != expected or len(names) != len(set(names)):
-        raise TopologyError("marketplace plugin order or identity differs")
-    for row, name in zip(rows, expected):
-        if row.get("source") != {"source": "local", "path": f"./plugins/{name}"}:
-            raise TopologyError(f"marketplace source differs: {name}")
-        if row.get("policy") != {
-            "installation": "AVAILABLE", "authentication": "ON_INSTALL",
-        } or row.get("category") != "Coding":
-            raise TopologyError(f"marketplace policy differs: {name}")
-
-
-def validate_packaged_contract_parity(root: Path) -> None:
-    """Keep standalone plugin copies byte-identical to the frozen suite contracts."""
-
-    pairs = {
-        "contracts/android-practices-provider/v1/provider.schema.json": (
-            "plugins/android-engineering-ops/contracts/android-practices-provider/v1/provider.schema.json"
-        ),
-        "contracts/android-practices-provider/v1/coding-policy-decision.schema.json": (
-            "plugins/android-engineering-ops/contracts/android-practices-provider/v1/"
-            "coding-policy-decision.schema.json"
-        ),
-        "contracts/android-practices-provider/v1/execution-policy-decision.schema.json": (
-            "plugins/android-engineering-ops/contracts/android-practices-provider/v1/"
-            "execution-policy-decision.schema.json"
-        ),
-        "contracts/android-change-workflow/v1/stage-snapshot.schema.json": (
-            "plugins/android-engineering-ops/contracts/android-change-workflow/v1/"
-            "stage-snapshot.schema.json"
-        ),
-        "contracts/android-change-workflow/v1/worker-assignment.schema.json": (
-            "plugins/android-engineering-ops/contracts/android-change-workflow/v1/"
-            "worker-assignment.schema.json"
-        ),
-        "contracts/android-change-workflow/v1/worker-result.schema.json": (
-            "plugins/android-engineering-ops/contracts/android-change-workflow/v1/"
-            "worker-result.schema.json"
-        ),
-        "contracts/incoming/v2/akbs-android-change-package.schema.json": (
-            "plugins/akbs-member-ops/contracts/incoming/v2/"
-            "akbs-android-change-package.schema.json"
-        ),
-        "contracts/incoming/v2/client-adapter-outputs.schema.json": (
-            "plugins/akbs-member-ops/contracts/incoming/v2/"
-            "client-adapter-outputs.schema.json"
-        ),
-        "contracts/incoming/v2/component-evidence-profiles.json": (
-            "plugins/akbs-member-ops/contracts/incoming/v2/"
-            "component-evidence-profiles.json"
-        ),
-        "contracts/incoming/v1/verification-acceptance-v2.json": (
-            "plugins/akbs-member-ops/internal/incoming-v1/references/"
-            "verification-acceptance-v2.json"
-        ),
-    }
-    engineering_acceptance = (
-        root / "plugins/android-engineering-ops/contracts/verification/v2/acceptance.json"
-    )
-    acceptance = root / "contracts/incoming/v1/verification-acceptance-v2.json"
-    for authority_relative, packaged_relative in pairs.items():
-        authority = root / authority_relative
-        packaged = root / packaged_relative
-        if not authority.is_file() or not packaged.is_file():
-            raise TopologyError(
-                f"standalone packaged contract is missing: {authority_relative} -> {packaged_relative}"
-            )
-        if authority.read_bytes() != packaged.read_bytes():
-            raise TopologyError(
-                f"standalone packaged contract drifted: {authority_relative} -> {packaged_relative}"
-            )
-    if not engineering_acceptance.is_file() or acceptance.read_bytes() != engineering_acceptance.read_bytes():
-        raise TopologyError("engineering verification acceptance contract drifted")
-
-
 def _state_map(topology: dict[str, Any]) -> dict[str, dict[str, Any]]:
     rows = topology.get("states")
     if not isinstance(rows, list):
@@ -669,105 +226,6 @@ def _default_families(value: Any, *, surface_id: str) -> None:
                 raise TopologyError(f"{surface_id} has duplicate default owners in one install family")
 
 
-def _validate_phase_lifecycle_contract(matrix: dict[str, Any]) -> None:
-    expected_semantics = {
-        "meaning": "first candidate availability under phase-local gates",
-        "does_not_grant": [
-            "real_member_activation",
-            "real_remote_or_device_side_effects",
-            "provider_worker_dispatch",
-            "server_write",
-            "legacy_removal",
-        ],
-        "real_authority_source": "phase_contract",
-    }
-    if matrix.get("activation_field_semantics") != expected_semantics:
-        raise TopologyError("compatibility activation semantics differ")
-    phases = matrix.get("phase_contract")
-    if not isinstance(phases, dict) or tuple(phases) != PHASE_CONTRACT_IDS:
-        raise TopologyError("compatibility Phase 0-6 contract differs")
-    for phase_id, value in phases.items():
-        if not isinstance(value, dict) or not isinstance(value.get("purpose"), str) or not value["purpose"]:
-            raise TopologyError(f"{phase_id} lifecycle purpose is invalid")
-        list_fields = set(value) - {"purpose"}
-        expected_fields = {"allowed", "forbidden"} if phase_id in {"phase0", "phase1", "phase2", "phase3"} else {"required", "forbidden"}
-        if list_fields != expected_fields:
-            raise TopologyError(f"{phase_id} lifecycle fields differ")
-        for field in list_fields:
-            items = value[field]
-            if (
-                not isinstance(items, list)
-                or not items
-                or len(items) != len(set(items))
-                or not all(isinstance(item, str) and item for item in items)
-            ):
-                raise TopologyError(f"{phase_id} lifecycle {field} differs")
-        positive_field = "allowed" if "allowed" in value else "required"
-        if set(value[positive_field]) & set(value["forbidden"]):
-            raise TopologyError(f"{phase_id} lifecycle permits and forbids the same behavior")
-    if canonical_json_sha256_v1(phases) != PHASE_CONTRACT_SHA256:
-        raise TopologyError("compatibility Phase 0-6 semantics drifted")
-    if not {
-        "real_member_rollout",
-        "real_remote_build_adb_or_upload",
-        "real_mount_or_keychain_mutation",
-        "server_submit",
-        "provider_worker_dispatch",
-        "legacy_removal",
-    }.issubset(phases["phase2"]["forbidden"]):
-        raise TopologyError("Phase 2 permits a real effect or migration")
-    if not {
-        "fake_remote_build_adb_upload", "readonly_provider_worker_routing",
-        "core_direct_comparison",
-    }.issubset(phases["phase3"]["allowed"]):
-        raise TopologyError("Phase 3 isolated experiment scope differs")
-    if not {
-        "real_wsl_engineering_member", "real_macos_engineering_member",
-        "real_gms_report_only_member", "none_jinny_custom_modes",
-        "v1_framework_v2_and_non_framework_v2",
-        "capture_submit_queue_curation_knowledge_search_loop",
-    }.issubset(phases["phase4"]["required"]):
-        raise TopologyError("Phase 4 real pilot scope differs")
-    if "per_member_target_only_receipt" not in phases["phase5"]["required"]:
-        raise TopologyError("Phase 5 lacks per-member target-only receipts")
-    if not {
-        "per_entry_adoption_zero_receipt", "permanent_v1_read_compatibility",
-        "history_preservation",
-    }.issubset(phases["phase6"]["required"]):
-        raise TopologyError("Phase 6 cleanup proof differs")
-
-
-def _validate_engineering_identity_resolution(topology: dict[str, Any]) -> None:
-    contract = topology.get("engineering_identity_resolution")
-    if not isinstance(contract, dict) or set(contract) != {
-        "schema", "canonicalization", "semantics_sha256", "semantics",
-    }:
-        raise TopologyError("engineering identity resolution contract differs")
-    if (
-        contract.get("schema") != "android-engineering-identity-resolution-v1"
-        or contract.get("canonicalization") != "akbs-canonical-json-sha256-v1"
-        or not isinstance(contract.get("semantics"), dict)
-    ):
-        raise TopologyError("engineering identity resolution contract differs")
-    digest = canonical_json_sha256_v1(contract["semantics"])
-    if (
-        digest != ENGINEERING_IDENTITY_RESOLUTION_SHA256
-        or contract.get("semantics_sha256") != digest
-    ):
-        raise TopologyError("engineering identity resolution semantics drifted")
-
-
-def _validate_engineering_identity_matrix(
-    rows_by_id: dict[str, dict[str, Any]],
-) -> None:
-    try:
-        rows = [rows_by_id[surface_id] for surface_id in ENGINEERING_IDENTITY_SURFACES]
-    except KeyError as exc:
-        raise TopologyError("engineering identity compatibility surface is missing") from exc
-    if canonical_json_sha256_v1(rows) != ENGINEERING_IDENTITY_MATRIX_SHA256:
-        raise TopologyError("engineering identity compatibility semantics drifted")
-
-
 def validate_contract_documents(
     current: dict[str, Any],
     topology: dict[str, Any],
@@ -781,22 +239,20 @@ def validate_contract_documents(
         raise TopologyError("migration topology schema is invalid")
     if topology.get("contract_id") != "akbs2-three-plugin-topology-v1":
         raise TopologyError("migration topology contract ID is invalid")
-    if topology.get("phase") != "phase2_migration_materialized":
-        raise TopologyError("migration topology phase is not materialized Phase 2")
-    if topology.get("architecture_binding") != ARCHITECTURE_BINDING:
-        raise TopologyError("migration topology architecture binding differs")
+    if topology.get("phase") != "phase0_contract_freeze":
+        raise TopologyError("migration topology phase is not declaration-only Phase 0")
     if tuple(topology.get("state_order") or ()) != STATES:
         raise TopologyError("migration topology state order differs")
     expected_policy = {
-        "default_state": "migration",
-        "materialized_states": ["migration"],
-        "declaration_only_states": ["target"],
+        "default_state": "current",
+        "materialized_states": ["current"],
+        "declaration_only_states": ["migration", "target"],
         "current_authority": "contracts/plugin-topology/v1/active-topology.json",
         "current_authority_sha256": current_sha256,
         "undeclared_mixed_behavior": "reject",
     }
     if topology.get("physical_policy") != expected_policy:
-        raise TopologyError("Phase 2 physical topology policy differs")
+        raise TopologyError("Phase 0 physical topology policy differs")
     states = _state_map(topology)
     if topology.get("system_identity") != {
         "brand": "AKBS",
@@ -804,76 +260,32 @@ def validate_contract_documents(
         "rejected_expression": "Android Framework 知识库",
     }:
         raise TopologyError("AKBS system identity differs")
-    _validate_engineering_identity_resolution(topology)
     current_plugins = [row["id"] for row in current.get("plugins", [])]
     current_marketplace = [row["id"] for row in current.get("plugins", []) if row.get("marketplace") is True]
     if states["current"].get("source_plugins") != current_plugins:
         raise TopologyError("current fixture differs from released source plugins")
     if set(states["current"].get("marketplace_plugins") or []) != set(current_marketplace):
         raise TopologyError("current fixture differs from released marketplace plugins")
-    if states["current"].get("mode") != "immutable_rollback_fixture":
-        raise TopologyError("current fixture is not the immutable rollback authority")
-    if tuple(states["migration"].get("catalog_plugins") or ()) != MIGRATION_MARKETPLACE:
+    if states["current"].get("mode") != "physical_default":
+        raise TopologyError("current fixture is not the physical default")
+    expected_catalog = {
+        "akbs-member-ops", "android-engineering-ops", "jinny-android-practices",
+        "android-framework-ops", "android-wsl-ops", "android-mac-ops",
+    }
+    if set(states["migration"].get("catalog_plugins") or []) != expected_catalog:
         raise TopologyError("migration catalog plugin set differs")
-    if tuple(states["migration"].get("source_plugins") or ()) != MIGRATION_SOURCE_PLUGINS:
-        raise TopologyError("migration source plugin order differs")
-    if tuple(states["migration"].get("marketplace_plugins") or ()) != MIGRATION_MARKETPLACE:
-        raise TopologyError("migration marketplace plugin order differs")
-    if states["migration"].get("mode") != "physical_default":
+    if states["migration"].get("mode") != "declaration_fixture":
         raise TopologyError("migration fixture mode differs")
-    compatibility_entries = {
-        item["id"]: item["mode"]
-        for item in states["migration"].get("compatibility_source_entries", [])
-    }
-    if compatibility_entries != {
-        "android-framework-ops": "physical_compatibility_source",
-        "android-wsl-ops": "physical_compatibility_source",
-        "android-mac-ops": "physical_compatibility_source",
-    }:
-        raise TopologyError("migration compatibility source roles differ")
-    compatibility_rows = {
-        item["id"]: item
-        for item in states["migration"].get("compatibility_source_entries", [])
-    }
-    for plugin, (version, digest, tree_oid) in CURRENT_COMPATIBILITY.items():
-        row = compatibility_rows.get(plugin) or {}
-        if (
-            row.get("version") != version
-            or row.get("plugin_manifest_sha256") != digest
-            or row.get("git_tree_oid") != tree_oid
-        ):
-            raise TopologyError(f"current compatibility identity differs: {plugin}")
     legacy_entries = {
         item["id"]: item["mode"]
         for item in states["migration"].get("legacy_entries", [])
     }
     if legacy_entries != {
-        "android-framework-ops": "immutable_release_catalog_entry",
-        "android-wsl-ops": "immutable_release_catalog_entry",
-        "android-mac-ops": "immutable_release_catalog_entry",
+        "android-framework-ops": "compatibility_surface_only",
+        "android-wsl-ops": "platform_wrapper_or_deprecation_notice_only",
+        "android-mac-ops": "platform_wrapper_or_deprecation_notice_only",
     }:
         raise TopologyError("migration legacy plugin roles differ")
-    legacy_rows = {item["id"]: item for item in states["migration"].get("legacy_entries", [])}
-    for plugin, (version, digest, tree_oid) in LEGACY_RELEASE["plugins"].items():
-        if plugin == "jinny-android-practices":
-            continue
-        row = legacy_rows.get(plugin) or {}
-        if (
-            row.get("version") != version
-            or row.get("plugin_manifest_sha256") != digest
-            or row.get("git_tree_oid") != tree_oid
-        ):
-            raise TopologyError(f"legacy rollback identity differs: {plugin}")
-    legacy_release = states["migration"].get("legacy_release") or {}
-    legacy_jinny = legacy_release.get("jinny_android_practices") or {}
-    jinny_version, jinny_digest, jinny_tree_oid = LEGACY_RELEASE["plugins"]["jinny-android-practices"]
-    if (
-        legacy_release.get("git_commit") != LEGACY_RELEASE["git_commit"]
-        or legacy_jinny.get("version") != jinny_version
-        or legacy_jinny.get("plugin_manifest_sha256") != jinny_digest
-        or legacy_jinny.get("git_tree_oid") != jinny_tree_oid
-    ):
-        raise TopologyError("legacy rollback release binding differs")
     migration_targets = {
         row["id"]: tuple(row["skills"])
         for row in states["migration"].get("canonical_plugins", [])
@@ -884,68 +296,23 @@ def validate_contract_documents(
     }
     if migration_targets != TARGET_PLUGINS:
         raise TopologyError("migration target plugins differ from the reviewed baseline")
-    migration_versions = {
-        row["id"]: row.get("version")
-        for row in states["migration"].get("canonical_plugins", [])
-    }
-    if migration_versions != TARGET_PLUGIN_VERSIONS:
-        raise TopologyError("migration target plugin versions differ")
     migration_aliases = {
         row["id"]: tuple(row.get("compatibility_skills") or ())
         for row in states["migration"].get("canonical_plugins", [])
     }
-    if migration_aliases != MIGRATION_ALIASES:
-        raise TopologyError("migration compatibility Skill ownership differs")
-    expected_skill_migrations = [
-        (legacy, target, plugin)
-        for plugin, pairs in {
-            "akbs-member-ops": (
-                ("android-member-setup", "akbs-member-setup"),
-                ("android-knowledge-search", "akbs-knowledge-search"),
-                ("android-knowledge-merge-review", "akbs-knowledge-merge-review"),
-                ("android-daily-report-intake", "akbs-daily-report"),
-                ("android-weekly-report-intake", "akbs-weekly-report"),
-                ("android-framework-patch-intake", "akbs-patch-submit"),
-                ("android-knowledge-intake", "internal:incoming-v1"),
-            ),
-            "android-engineering-ops": (
-                ("android-framework-change-workflow", "android-change-workflow"),
-                ("android-framework-patch-capture", "android-patch-capture"),
-            ),
-            "jinny-android-practices": (
-                ("jinny-framework-coding-standards", "jinny-android-coding-practices"),
-            ),
-        }.items()
-        for legacy, target in pairs
-    ]
-    actual_skill_migrations = [
-        (row.get("legacy"), row.get("target"), row.get("owner"))
-        for row in states["migration"].get("skill_migrations", [])
-        if isinstance(row, dict)
-    ]
-    if actual_skill_migrations != expected_skill_migrations:
-        raise TopologyError("migration Skill mapping differs")
-    if states["migration"].get("provider_discovery") != {
-        "manifest_relative_path": "contracts/android-practices-provider/v1/provider.json",
-        "selection_modes": ["none", "jinny", "custom"],
-        "project_config": "<project>/.codex/android-engineering.toml",
-        "user_config": "$CODEX_HOME/android-engineering-ops.toml",
-        "precedence": "project_then_user_then_none",
-        "active_inventory": "codex plugin list --json",
-        "historical_cache_role": "evidence_only",
-        "provider_root_authority": "active_inventory_versioned_cache",
-        "arbitrary_manifest_path_allowed": False,
-        "config_bindings": {
-            "none": ["mode"],
-            "jinny": ["mode", "provider_version", "provider_manifest_sha256"],
-            "custom": [
-                "mode", "plugin_name", "provider_id", "provider_version",
-                "provider_manifest_sha256",
-            ],
-        },
-        "selected_invalid_behavior": "fail_closed",
+    if migration_aliases != {
+        "akbs-member-ops": (
+            "android-member-setup", "android-knowledge-search",
+            "android-knowledge-merge-review", "android-daily-report-intake",
+            "android-weekly-report-intake", "android-framework-patch-intake",
+            "android-knowledge-intake",
+        ),
+        "android-engineering-ops": (
+            "android-framework-change-workflow", "android-framework-patch-capture",
+        ),
+        "jinny-android-practices": ("jinny-framework-coding-standards",),
     }:
-        raise TopologyError("provider discovery contract differs")
+        raise TopologyError("migration compatibility Skill ownership differs")
     if {key: target_rows[key] for key in TARGET_PLUGINS} != TARGET_PLUGINS:
         raise TopologyError("target fixture differs from the reviewed three-plugin baseline")
     if (
@@ -971,23 +338,11 @@ def validate_contract_documents(
     ):
         raise TopologyError("codex-workspace-care is not preserved independently")
     families = states["migration"].get("installation_families") or {}
-    ordered_cutover = families.get("ordered_cutover") or {}
     if (
-        families.get("legacy_rollback", {}).get("source") != "frozen_rollback_release"
-        or families.get("legacy_rollback", {}).get("coinstall_with_target") is not False
+        families.get("legacy_rollback", {}).get("coinstall_with_target") is not False
         or families.get("target_candidate", {}).get("coinstall_with_legacy") is not False
     ):
         raise TopologyError("legacy and target install families must be mutually exclusive")
-    if (
-        tuple(ordered_cutover.get("forward") or ())
-        != ORDERED_INSTALL_CUTOVER["forward"]
-        or tuple(ordered_cutover.get("rollback") or ())
-        != ORDERED_INSTALL_CUTOVER["rollback"]
-        or ordered_cutover.get("mixed_state")
-        != ORDERED_INSTALL_CUTOVER["mixed_state"]
-        or set(ordered_cutover) != set(ORDERED_INSTALL_CUTOVER)
-    ):
-        raise TopologyError("install-family ordered cutover differs")
     if matrix.get("schema") != "android-plugin-compatibility-matrix-v2":
         raise TopologyError("compatibility matrix schema is invalid")
     if matrix.get("topology_contract") != {
@@ -998,7 +353,6 @@ def validate_contract_documents(
         raise TopologyError("compatibility matrix state order differs")
     if set(matrix.get("required_behavior_keys") or ()) != REQUIRED_BEHAVIORS:
         raise TopologyError("compatibility matrix behavior contract differs")
-    _validate_phase_lifecycle_contract(matrix)
     rows = matrix.get("rows")
     if not isinstance(rows, list):
         raise TopologyError("compatibility matrix rows must be a list")
@@ -1011,7 +365,6 @@ def validate_contract_documents(
         set(row_ids) == set(SURFACE_DEFAULT_BINDINGS)
         == set(SURFACE_COINSTALL_BINDINGS)
         == set(SURFACE_REMOVAL_BINDINGS)
-        == set(SURFACE_PHASE_BINDINGS)
     ):
         raise TopologyError("compatibility matrix semantic binding registry differs")
     allowed_kinds = {
@@ -1069,58 +422,25 @@ def validate_contract_documents(
             raise TopologyError(f"{surface_id} fallback fields differ")
         if (
             not isinstance(row.get("activation"), dict)
-            or set(row["activation"]) != ACTIVATION_KEYS
-            or row["activation"]["materialization_phase"] not in LIFECYCLE_PHASE_IDS
-            or row["activation"]["real_activation_phase"] not in LIFECYCLE_PHASE_IDS
-            or not isinstance(row["activation"]["gates_by_phase"], dict)
-            or not isinstance(row["activation"]["ordered_actions_by_phase"], dict)
-            or not isinstance(row["activation"]["forbidden_coinstall"], list)
+            or set(row["activation"]) != {"phase", "gates", "ordered_actions", "forbidden_coinstall"}
+            or not isinstance(row["activation"]["phase"], str)
+            or not row["activation"]["phase"].strip()
+            or any(not isinstance(row["activation"][field], list) for field in ("gates", "ordered_actions", "forbidden_coinstall"))
         ):
             raise TopologyError(f"{surface_id} activation fields differ")
-        gates_by_phase = row["activation"]["gates_by_phase"]
-        actions_by_phase = row["activation"]["ordered_actions_by_phase"]
-        if (
-            not gates_by_phase
-            or set(gates_by_phase) != set(actions_by_phase)
-            or not set(gates_by_phase).issubset(LIFECYCLE_PHASE_IDS)
-            or row["activation"]["materialization_phase"] not in gates_by_phase
-            or row["activation"]["real_activation_phase"] not in gates_by_phase
-        ):
-            raise TopologyError(f"{surface_id} activation phase lifecycle differs")
-        actual_phase_binding = (
-            row["activation"]["materialization_phase"],
-            row["activation"]["real_activation_phase"],
-        )
-        if actual_phase_binding != SURFACE_PHASE_BINDINGS[surface_id]:
-            raise TopologyError(f"{surface_id} materialization or real activation phase differs")
-        for phase_id in gates_by_phase:
-            for field, values in (
-                ("gates_by_phase", gates_by_phase[phase_id]),
-                ("ordered_actions_by_phase", actions_by_phase[phase_id]),
+        for field in ("gates", "ordered_actions", "forbidden_coinstall"):
+            values = row["activation"][field]
+            if (
+                len(values) != len(set(values))
+                or not all(isinstance(item, str) and item.strip() for item in values)
             ):
-                if (
-                    not isinstance(values, list)
-                    or not values
-                    or len(values) != len(set(values))
-                    or not all(isinstance(item, str) and item.strip() for item in values)
-                ):
-                    raise TopologyError(
-                        f"{surface_id} activation {field}.{phase_id} values differ"
-                    )
-        values = row["activation"]["forbidden_coinstall"]
-        if (
-            len(values) != len(set(values))
-            or not all(isinstance(item, str) and item.strip() for item in values)
-        ):
-            raise TopologyError(f"{surface_id} activation forbidden_coinstall values differ")
+                raise TopologyError(f"{surface_id} activation {field} values differ")
         if not set(row["activation"]["forbidden_coinstall"]).issubset(
             ALLOWED_COINSTALL_REFERENCES
         ):
             raise TopologyError(f"{surface_id} coinstall reference is unknown")
         if tuple(row["activation"]["forbidden_coinstall"]) != SURFACE_COINSTALL_BINDINGS[surface_id]:
             raise TopologyError(f"{surface_id} coinstall binding differs")
-        if canonical_json_sha256_v1(row["activation"]) != SURFACE_ACTIVATION_SHA256[surface_id]:
-            raise TopologyError(f"{surface_id} activation semantics drifted")
         if (
             not isinstance(row.get("deprecation"), dict)
             or set(row["deprecation"]) != {"starts", "behavior", "notice_required"}
@@ -1164,14 +484,6 @@ def validate_contract_documents(
             and not any(gate.startswith("per_") for gate in row["removal"]["gates"])
         ):
             raise TopologyError(f"{surface_id} lacks individual removal resolution")
-    _validate_engineering_identity_matrix(by_id)
-    for surface_id, expected in CLI_ENTRYPOINT_BINDINGS.items():
-        actual = by_id[surface_id]
-        if (
-            tuple(actual["legacy"]) != expected["legacy"]
-            or tuple(actual["target"]) != expected["target"]
-        ):
-            raise TopologyError(f"{surface_id} public entrypoint inventory differs")
     target_skills = {skill for skills in TARGET_PLUGINS.values() for skill in skills}
     if not target_skills.issubset(covered_names):
         raise TopologyError("target Skill IDs are not covered by compatibility rows")
@@ -1182,25 +494,6 @@ def validate_contract_documents(
         "android-framework-ops", "android-wsl-ops", "android-mac-ops",
     }:
         raise TopologyError("source-access mixed install is not fail-closed")
-    if (
-        set(source_access["activation"]["gates_by_phase"]["phase2"])
-        != {
-            "simulated_wsl_dispatch_test", "simulated_darwin_dispatch_test",
-            "fixture_state_path_identity", "no_side_effect",
-        }
-        or not {"real_wsl_test", "real_macos_test", "real_state_in_place_readback"}.issubset(
-            source_access["activation"]["gates_by_phase"]["phase4"]
-        )
-    ):
-        raise TopologyError("source-access simulated materialization and real pilot gates differ")
-    marketplace_row = by_id["marketplace.entries"]
-    if (
-        "real_macos_before_macos_claim"
-        in marketplace_row["activation"]["gates_by_phase"].get("phase2", [])
-        or "real_macos_pilot_before_macos_claim"
-        not in marketplace_row["activation"]["gates_by_phase"].get("phase4", [])
-    ):
-        raise TopologyError("marketplace candidate publication is confused with real Mac activation")
     legacy_v1 = by_id["package.framework-change-v1"]
     if legacy_v1["removal"]["legacy_reader_retention"] != "permanent" or legacy_v1["removal"]["history_rewrite"] is not False:
         raise TopologyError("Framework v1 permanent-read contract differs")
@@ -1215,7 +508,7 @@ def validate_contract_documents(
         "client_output_hash_binding",
         "complete_server_adapter_input_contracts",
         "server_adapter_recalculation",
-    }.issubset(android_v2["activation"]["gates_by_phase"]["phase4"]):
+    }.issubset(android_v2["activation"]["gates"]):
         raise TopologyError("Android change v2 qualification activation gates differ")
     if not {
         "client-output-cross-package-replay",
@@ -1225,122 +518,14 @@ def validate_contract_documents(
         raise TopologyError("Android change v2 qualification negative tests differ")
 
 
-def validate_compatibility_test_map(root: Path, matrix: dict[str, Any]) -> None:
-    path = root / COMPATIBILITY_TEST_MAP.relative_to(ROOT)
-    payload = load_json(path)
-    matrix_path = root / COMPATIBILITY_MATRIX.relative_to(ROOT)
-    topology = load_json(root / MIGRATION_CONTRACT.relative_to(ROOT))
-    if payload.get("schema") != "android-plugin-compatibility-test-map-v2":
-        raise TopologyError("compatibility test map schema differs")
-    if payload.get("matrix") != {
-        "path": "compatibility-matrix.json",
-        "matrix_id": matrix.get("matrix_id"),
-        "sha256": file_sha256(matrix_path),
-    }:
-        raise TopologyError("compatibility test map matrix binding differs")
-    identity_contract = topology.get("engineering_identity_resolution") or {}
-    rows_by_id = {
-        str(row.get("surface_id")): row
-        for row in matrix.get("rows", [])
-        if isinstance(row, dict)
-    }
-    try:
-        identity_rows = [
-            rows_by_id[surface_id]
-            for surface_id in ENGINEERING_IDENTITY_SURFACES
-        ]
-    except KeyError as exc:
-        raise TopologyError(
-            "compatibility test map identity surface is missing"
-        ) from exc
-    if payload.get("identity_resolution") != {
-        "source": (
-            "migration-topology.json#/engineering_identity_resolution/semantics"
-        ),
-        "canonicalization": "akbs-canonical-json-sha256-v1",
-        "sha256": identity_contract.get("semantics_sha256"),
-        "matrix_surfaces": list(ENGINEERING_IDENTITY_SURFACES),
-        "matrix_semantics_sha256": canonical_json_sha256_v1(identity_rows),
-    }:
-        raise TopologyError("compatibility test map identity binding differs")
-    if (
-        identity_contract.get("semantics_sha256")
-        != ENGINEERING_IDENTITY_RESOLUTION_SHA256
-        or canonical_json_sha256_v1(identity_rows)
-        != ENGINEERING_IDENTITY_MATRIX_SHA256
-    ):
-        raise TopologyError("compatibility test map identity semantics drifted")
-    if payload.get("binding") != {
-        "source": "compatibility-matrix.rows[*].test",
-        "required_inventory_node_template": (
-            "tests/test_phase2_migration_topology.py::"
-            "test_required_compatibility_id_inventory[{surface_id}:{test_id}]"
-        ),
-        "negative_inventory_node_template": (
-            "tests/test_phase2_migration_topology.py::"
-            "test_negative_compatibility_id_inventory[{surface_id}:{test_id}]"
-        ),
-        "collection": "pytest_parametrized_case_inventory",
-        "missing_or_extra_behavior": "fail_closed",
-    }:
-        raise TopologyError("compatibility test map binding differs")
-    if payload.get("semantics") != {
-        "purpose": "case_inventory_and_phase_planning_only",
-        "behavioral_proof": False,
-        "inventory_green_satisfies_phase_gate": False,
-        "proof_source": "separate_executable_tests_and_hash_bound_phase_receipts",
-    }:
-        raise TopologyError("compatibility inventory semantics differ")
-    if payload.get("proof_requirements") != {
-        "phase2": "target_and_rollback_plugin_test_suites_plus_final_plugin_validation_receipt",
-        "phase3": "isolated_model_routing_experiment_receipt",
-        "phase4": "real_pilot_receipts_for_wsl_macos_gms_modes_and_v1_v2_knowledge_loop",
-        "phase5": "per_member_target_only_migration_and_rollback_receipts",
-        "phase6": "per_entry_adoption_zero_and_removal_receipts",
-    }:
-        raise TopologyError("compatibility proof requirements differ")
-    test_file = root / "tests/test_phase2_migration_topology.py"
-    text = test_file.read_text(encoding="utf-8")
-    for function in (
-        "test_required_compatibility_id_inventory",
-        "test_negative_compatibility_id_inventory",
-        "test_compatibility_inventory_explicitly_is_not_behavioral_proof",
-        "test_engineering_identity_resolution_is_closed_and_hash_bound",
-        "test_topology_validator_rejects_identity_semantic_rewrite",
-        "test_identity_negative_case_cannot_be_removed",
-        "test_identity_test_map_binds_contract_and_matrix_semantics",
-    ):
-        if f"def {function}(" not in text:
-            raise TopologyError(f"compatibility parametrized test is missing: {function}")
-
-
 def validate_materialized_plugin_ids(
-    source_plugins: set[str],
-    marketplace_plugins: set[str],
-    topology: dict[str, Any],
-    *,
-    require_materialized: bool = True,
-) -> str:
-    states = _state_map(topology)
-    candidates = {
-        "current": (
-            set(states["current"]["source_plugins"]),
-            set(states["current"]["marketplace_plugins"]),
-        ),
-        "migration": (set(MIGRATION_SOURCE_PLUGINS), set(MIGRATION_MARKETPLACE)),
-        "target": (set(TARGET_SOURCE_PLUGINS), set(TARGET_MARKETPLACE)),
-    }
-    matches = [
-        state
-        for state, (expected_source, expected_marketplace) in candidates.items()
-        if source_plugins == expected_source and marketplace_plugins == expected_marketplace
-    ]
-    if len(matches) != 1:
-        raise TopologyError("undeclared mixed plugin topology: source or marketplace IDs differ")
-    state = matches[0]
-    if require_materialized and state not in topology["physical_policy"]["materialized_states"]:
-        raise TopologyError(f"declared but non-materialized plugin topology: {state}")
-    return state
+    source_plugins: set[str], marketplace_plugins: set[str], topology: dict[str, Any],
+) -> None:
+    current = _state_map(topology)["current"]
+    if source_plugins != set(current["source_plugins"]):
+        raise TopologyError("undeclared mixed plugin topology: source plugin IDs differ")
+    if marketplace_plugins != set(current["marketplace_plugins"]):
+        raise TopologyError("undeclared mixed plugin topology: marketplace IDs differ")
 
 
 def _property_names(value: Any) -> set[str]:
@@ -2345,35 +1530,21 @@ def validate_repository(root: Path = ROOT) -> None:
     validate_contract_documents(
         current, topology, matrix, current_sha256=file_sha256(current_path),
     )
-    validate_compatibility_test_map(root, matrix)
     marketplace = load_json(root / MARKETPLACE.relative_to(ROOT))
     source_plugins = {
         path.parent.parent.name
         for path in (root / "plugins").glob("*/.codex-plugin/plugin.json")
     }
-    marketplace_names = tuple(
-        row.get("name") for row in marketplace.get("plugins", []) if isinstance(row, dict)
-    )
-    state = validate_materialized_plugin_ids(
-        source_plugins, set(marketplace_names), topology,
-    )
-    if state != topology["physical_policy"]["default_state"]:
-        raise TopologyError("repository does not match the default physical topology")
-    if state == "migration":
-        validate_marketplace_entries(marketplace, MIGRATION_MARKETPLACE)
-        validate_migration_plugin_layout(root, topology)
-        validate_packaged_contract_parity(root)
-    elif state == "target":
-        validate_marketplace_entries(marketplace, TARGET_MARKETPLACE)
-    else:
-        validate_marketplace_entries(
-            marketplace,
-            tuple(row["id"] for row in current["plugins"] if row.get("marketplace") is True),
-        )
+    source_plugins.add("codex-workspace-care")
+    marketplace_plugins = {row["name"] for row in marketplace.get("plugins", [])}
+    validate_materialized_plugin_ids(source_plugins, marketplace_plugins, topology)
+    expected_marketplace = {
+        row["id"] for row in current["plugins"] if row.get("marketplace") is True
+    }
+    if marketplace_plugins != expected_marketplace:
+        raise TopologyError("released marketplace topology differs")
     for row in current["plugins"]:
         plugin = row["id"]
-        if plugin == "jinny-android-practices":
-            continue
         plugin_root = root / "plugins" / plugin
         if not plugin_root.is_dir():
             raise TopologyError(f"declared plugin source is missing: {plugin}")
@@ -2405,7 +1576,7 @@ def main() -> int:
     except (OSError, json.JSONDecodeError, TopologyError) as error:
         raise SystemExit(str(error)) from error
     print("Active plugin topology validation passed")
-    print("AKBS 2 Phase 2 migration catalog validation passed")
+    print("AKBS 2 Phase 0 declaration-only contracts validation passed")
     return 0
 
 

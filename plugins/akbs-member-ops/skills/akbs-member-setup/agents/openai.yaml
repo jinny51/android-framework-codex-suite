@@ -1,7 +1,0 @@
-interface:
-  display_name: "AKBS Member Setup"
-  short_description: "Configure member identity and verify client readiness"
-  default_prompt: "Use $akbs-member-setup to configure or diagnose my AKBS member profile, including GMS or report-only membership. Before creating or modifying member config, run the read-only preflight-install-family command and continue only on target-only PASS; then verify authoritative active-plugin identity and generation, session cache, and AKBS endpoint readiness, binding the active marketplace source to the exact versioned execution cache and failing closed unless pluginId/version, both direct manifest bytes, and both publication content plus normalized executable-bit hashes agree."
-
-policy:
-  allow_implicit_invocation: true

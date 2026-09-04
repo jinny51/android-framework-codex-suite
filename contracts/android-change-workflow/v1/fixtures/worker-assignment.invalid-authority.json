@@ -1,7 +1,6 @@
 {
   "schema": "worker-assignment-v1",
   "assignment_id": "assignment-1",
-  "worker_task_id": "worker-1",
   "run_id": "run-1",
   "attempt": 1,
   "issued_at": "2026-09-01T00:00:00Z",

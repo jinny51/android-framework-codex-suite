@@ -39,16 +39,13 @@
     "providerBinding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["provider_id", "provider_version", "provider_manifest_sha256", "skill_id", "skill_version", "skill_sha256", "agent_metadata_sha256", "decision_entrypoint_sha256"],
+      "required": ["provider_id", "provider_version", "provider_manifest_sha256", "skill_id", "skill_version"],
       "properties": {
         "provider_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*-android-practices$"},
         "provider_version": {"$ref": "#/$defs/semver"},
         "provider_manifest_sha256": {"$ref": "#/$defs/sha256"},
         "skill_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
-        "skill_version": {"$ref": "#/$defs/semver"},
-        "skill_sha256": {"$ref": "#/$defs/sha256"},
-        "agent_metadata_sha256": {"$ref": "#/$defs/sha256"},
-        "decision_entrypoint_sha256": {"$ref": "#/$defs/sha256"}
+        "skill_version": {"$ref": "#/$defs/semver"}
       }
     },
     "scope": {

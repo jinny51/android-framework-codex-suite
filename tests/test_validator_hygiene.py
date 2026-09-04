@@ -39,10 +39,6 @@ def test_current_plugin_validator_inventory_is_explicit() -> None:
             "scripts/akbs_intake/doctor.py"
         ),
         Path(
-            "plugins/akbs-member-ops/internal/incoming-v1/"
-            "scripts/akbs_intake/doctor.py"
-        ),
-        Path(
             "plugins/codex-workspace-care/skills/codex-chat-history-context-extractor/"
             "scripts/self_test_extract_codex_context.py"
         ),
@@ -65,14 +61,13 @@ def test_shell_validators_install_exit_cleanup_or_remote_owned_cleanup() -> None
     assert "remote validator owned-directory cleanup failed" in macos
     assert 'cleanup-private' in macos and '>/dev/null 2>&1 || true' not in macos
     assert "pwd -P" in macos
-    assert "android-change-workflow/scripts" in macos
-    assert "plugins/android-engineering-ops" in macos
+    assert "android-framework-change-workflow/scripts" in macos
+    assert "android-knowledge-intake/references/verification-acceptance-v2.json" in macos
     assert ".agents/plugins/marketplace.json" in macos
-    assert "manifests/android-engineering-ops.toml" in macos
+    assert "manifests/android-framework-ops.toml" in macos
     assert "contracts/source-access" in macos
     assert "adapters/source-access" in macos
-    assert "skills/android-source-access/scripts/android_source_access.py" in macos
-    assert "plugins/android-engineering-ops/lib" in macos
+    assert "internal/android-source-access" in macos
     assert "--expected-host macos" in macos
 
 
@@ -96,9 +91,6 @@ def test_aggregate_declares_the_installed_plugin_creator_validator_after_cleanup
     assert installed_validator in aggregate
     assert aggregate.index("validator_cleanup_install") < aggregate.index('for plugin in')
     assert aggregate.index("validator_cleanup_install") < aggregate.index('python3 "$validator"')
-    assert "--import-mode=importlib" in aggregate
-    assert 'tests/test_*.py' in aggregate
-    assert 'tests/plugins/*' in aggregate
 
 
 def test_python_validator_components_use_parent_or_finally_cleanup() -> None:
@@ -115,23 +107,15 @@ def test_python_validator_components_use_parent_or_finally_cleanup() -> None:
     aggregate = (REPO_ROOT / "scripts/validate_plugins.sh").read_text(encoding="utf-8")
     assert self_test_relative in aggregate
     assert "validator_cleanup_install" in aggregate
-    assert "validate_incoming_contract_gate.py\" --mode client-only" in aggregate
-    assert "--mode remote-pilot" not in aggregate
-    assert 'choices=("client-only", "remote-pilot")' in incoming
-    assert 'default="client-only"' in incoming
 
 
-def test_doctors_are_read_only_and_shared_guard_copies_are_declared() -> None:
-    doctors = (
+def test_doctor_is_read_only_and_shared_guard_copies_are_declared() -> None:
+    doctor = (
         REPO_ROOT
-        / "plugins/android-framework-ops/skills/android-knowledge-intake/scripts/akbs_intake/doctor.py",
-        REPO_ROOT
-        / "plugins/akbs-member-ops/internal/incoming-v1/scripts/akbs_intake/doctor.py",
-    )
-    for doctor_path in doctors:
-        doctor = doctor_path.read_text(encoding="utf-8")
-        for writer in ("write_text(", "write_bytes(", "mkdir(", "tempfile.", 'open("w'):
-            assert writer not in doctor, doctor_path
+        / "plugins/android-framework-ops/skills/android-knowledge-intake/scripts/akbs_intake/doctor.py"
+    ).read_text(encoding="utf-8")
+    for writer in ("write_text(", "write_bytes(", "mkdir(", "tempfile.", 'open("w'):
+        assert writer not in doctor
     hygiene = (REPO_ROOT / "scripts/validator_hygiene.py").read_text(encoding="utf-8")
     assert "from validator_path_guard import" in hygiene
     assert "guard_write_path(" in hygiene

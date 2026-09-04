@@ -9,10 +9,7 @@
     "provider_version": "1.0.0",
     "provider_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "skill_id": "jinny-android-execution-policy",
-    "skill_version": "1.0.0",
-    "skill_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-    "agent_metadata_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-    "decision_entrypoint_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    "skill_version": "1.0.0"
   },
   "outcome": {
     "type": "delegate",
